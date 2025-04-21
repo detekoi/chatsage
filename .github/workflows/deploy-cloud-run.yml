@@ -1,0 +1,96 @@
+# .github/workflows/deploy-cloud-run.yml
+
+name: Deploy StreamSage to Cloud Run
+
+on:
+  push:
+    branches:
+      - main # Trigger deployment only on pushes to the main branch
+
+env:
+  # --- Configure these variables ---
+  GCP_PROJECT_ID: 'your-gcp-project-id' # Replace with your GCP Project ID
+  GCP_REGION: 'your-gcp-region'        # Replace with your Cloud Run region (e.g., us-central1)
+  CLOUD_RUN_SERVICE_NAME: 'streamsage' # Replace with your Cloud Run service name
+
+  # --- Application Runtime Configuration (Non-Secrets) ---
+  # These are passed directly as environment variables to Cloud Run
+  TWITCH_BOT_USERNAME: 'your_bot_username' # Replace with your bot's username
+  TWITCH_CHANNELS: 'channel1,channel2'    # Replace with channels to join
+  GEMINI_MODEL_ID: 'gemini-2.0-flash-001'  # Or override if needed
+  LOG_LEVEL: 'info'                      # Production log level
+  STREAM_INFO_FETCH_INTERVAL_SECONDS: '120' # Default fetch interval
+  NODE_ENV: 'production'
+  PINO_PRETTY_LOGGING: 'false'           # Ensure JSON logs in production
+
+jobs:
+  deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    # --- Permissions for Workload Identity Federation ---
+    permissions:
+      contents: 'read'
+      id-token: 'write' # Required for google-github-actions/auth using WIF
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- Authenticate to Google Cloud ---
+      # Using Workload Identity Federation (Recommended)
+      # Replace with your WIF provider and service account email
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ env.GCP_PROJECT_ID }}/locations/global/workloadIdentityPools/your-wif-pool-id/providers/your-wif-provider-id' # Replace pool/provider IDs
+          service_account: 'your-cloud-run-deployer-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com' # Replace with your deployer Service Account email
+
+      # --- Set up Google Cloud SDK ---
+      # Needed for the deploy action implicitly and potentially other gcloud commands
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      # --- Build and Deploy to Cloud Run ---
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE_NAME }}
+          project: ${{ env.GCP_PROJECT_ID }}
+          region: ${{ env.GCP_REGION }}
+          # source: ./ # Uses the Dockerfile in the current directory by default
+
+          # --- Environment Variables ---
+          # Pass non-secret environment variables directly
+          env_vars: |
+            NODE_ENV=${{ env.NODE_ENV }}
+            LOG_LEVEL=${{ env.LOG_LEVEL }}
+            PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }}
+            TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }}
+            TWITCH_CHANNELS=${{ env.TWITCH_CHANNELS }}
+            GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }}
+            STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }}
+
+          # --- Secrets Management ---
+          # Reference secrets stored in Google Secret Manager
+          # Format: ENV_VAR_NAME=sm://PROJECT_ID/SECRET_NAME/VERSION
+          # Cloud Run will resolve these at runtime. Ensure the Run Service Account has access.
+          # Replace SECRET_NAME with the actual names of your secrets in Secret Manager.
+          # Use 'latest' for the version to always get the newest enabled version.
+          secrets: |
+            TWITCH_BOT_OAUTH_TOKEN=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN/latest
+            GEMINI_API_KEY=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_GEMINI_API_KEY/latest
+            TWITCH_CLIENT_ID=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_ID/latest
+            TWITCH_CLIENT_SECRET=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_SECRET/latest
+
+          # Optional: Deployment timeout (default 15m)
+          # timeout: 15m
+
+      # --- Output Deployment URL ---
+      # Use the output from the deploy step
+      - name: Show Deployment URL
+        run: echo "Deployed to Cloud Run: ${{ steps.deploy.outputs.url }}"
