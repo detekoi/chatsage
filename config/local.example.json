@@ -1,0 +1,23 @@
+{
+    "comment": "This is an example configuration structure. The application primarily uses environment variables (.env file or system env). This file is for reference.",
+    "twitch": {
+      "username": "your_bot_username",
+      "oauthToken": "oauth:your_bot_oauth_token",
+      "channels": [
+        "channel1",
+        "channel2"
+      ],
+      "clientId": "your_twitch_app_client_id",
+      "clientSecret": "your_twitch_app_client_secret"
+    },
+    "gemini": {
+      "apiKey": "your_gemini_api_key",
+      "modelId": "gemini-2.0-flash-001"
+    },
+    "app": {
+      "streamInfoFetchIntervalSeconds": 120,
+      "logLevel": "info",
+      "prettyLog": true,
+      "nodeEnv": "development"
+    }
+  }

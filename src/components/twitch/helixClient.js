@@ -143,7 +143,6 @@ function getHelixClient() {
  * @param {string[]} broadcasterIds - An array of broadcaster user IDs to query. Max 100 per request.
  * @returns {Promise<object[]>} A promise resolving to an array of channel information objects.
  *                                Returns an empty array if input is empty or on API error after logging.
- * @throws {Error} Propagates errors from Axios/API if critical.
  */
 async function getChannelInformation(broadcasterIds) {
     if (!broadcasterIds || broadcasterIds.length === 0) {
@@ -168,17 +167,52 @@ async function getChannelInformation(broadcasterIds) {
         return response.data?.data || [];
     } catch (error) {
         // Errors are already logged by the response interceptor
-        logger.error({ err: error, broadcasterIds }, `Failed to get channel information for IDs: ${broadcasterIds.join(',')}`);
-        // Decide on return value: empty array allows polling to continue perhaps,
-        // or re-throw if it's critical that this fetch succeeds.
-        // Returning empty array for now to allow graceful degradation.
+        logger.error({ err: { message: error.message, code: error.code } , broadcasterIds }, `Failed to get channel information for IDs: ${broadcasterIds.join(',')}`);
+        // Return empty array for graceful degradation
         return [];
     }
 }
+
+/**
+ * Fetches user information (including ID) from Twitch Helix API based on login names.
+ * @param {string[]} loginNames - An array of user login names (channel names) to query. Max 100 per request.
+ * @returns {Promise<object[]>} A promise resolving to an array of user objects from the API.
+ *                                Returns an empty array if input is empty or on API error after logging.
+ */
+async function getUsersByLogin(loginNames) {
+    if (!loginNames || loginNames.length === 0) {
+        logger.warn('getUsersByLogin called with empty login names.');
+        return [];
+    }
+    if (loginNames.length > 100) {
+        logger.warn(`getUsersByLogin called with ${loginNames.length} names. Max 100 allowed per request. Truncating.`);
+        loginNames = loginNames.slice(0, 100);
+    }
+
+    const client = getHelixClient(); // Ensures client is initialized
+    const params = new URLSearchParams();
+    loginNames.forEach(name => params.append('login', name));
+
+    logger.debug({ loginNames }, 'Fetching user information by login from Helix...');
+
+    try {
+        const response = await client.get('/users', { params });
+        // Spec: https://dev.twitch.tv/docs/api/reference/#get-users
+        // Data is expected in response.data.data
+        return response.data?.data || [];
+    } catch (error) {
+         // Errors are already logged by the response interceptor
+         logger.error({ err: { message: error.message, code: error.code } , loginNames }, `Failed to get user information for logins: ${loginNames.join(',')}`);
+         // Return empty array for graceful degradation
+         return [];
+    }
+}
+
 
 // Export initializer, getter, and specific API call functions
 export {
     initializeHelixClient,
     getHelixClient,
     getChannelInformation,
+    getUsersByLogin, // <-- Added export
 };
