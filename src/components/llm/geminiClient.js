@@ -1,4 +1,8 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+// Import using the default import method as suggested by the error
+import GoogleGenerativeAI_pkg from "@google/genai";
+// Destructure the necessary components from the imported package object
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = GoogleGenerativeAI_pkg;
+
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js'; // Assuming config has gemini.apiKey and gemini.modelId
 
@@ -21,22 +25,19 @@ function initializeGeminiClient(geminiConfig) {
 
     try {
         logger.info(`Initializing GoogleGenerativeAI with model: ${geminiConfig.modelId}`);
+        // Now use the destructured GoogleGenerativeAI class
         genAI = new GoogleGenerativeAI(geminiConfig.apiKey);
         generativeModel = genAI.getGenerativeModel({
             model: geminiConfig.modelId,
-            // Default safety settings - block potentially harmful content
-            // Adjust these thresholds based on testing and requirements
             safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
             ],
              generationConfig: {
-                // Adjust temperature for creativity vs. predictability (0.0 - 1.0)
                 temperature: 0.7,
-                 // Limit the maximum number of tokens in the generated response
-                maxOutputTokens: 250, // Adjust as needed for typical chat responses
+                maxOutputTokens: 250,
             }
         });
         logger.info('Gemini client and model initialized successfully.');
@@ -85,14 +86,12 @@ function getGeminiClient() {
  * @returns {string} The fully formatted prompt string.
  */
 function buildPrompt(context) {
-    // Use "N/A" or similar for missing optional context parts
     const game = context.streamGame || "N/A";
     const title = context.streamTitle || "N/A";
     const tags = context.streamTags || "N/A";
     const summary = context.chatSummary || "No summary available.";
     const history = context.recentChatHistory || "No recent messages.";
 
-    // Ensure required parts are present
     if (!context.username || context.currentMessage === undefined || context.currentMessage === null) {
         logger.error({ providedContext: context }, 'Cannot build prompt: Missing username or currentMessage.');
         throw new Error('Missing required context (username, currentMessage) for building prompt.');
@@ -113,7 +112,7 @@ ${history}
 
 **New message from ${context.username}:** ${context.currentMessage}
 
-StreamSage Response:`; // Added bot name for clarity in prompt
+StreamSage Response:`;
 }
 
 
@@ -123,7 +122,7 @@ StreamSage Response:`; // Added bot name for clarity in prompt
  * @returns {Promise<string | null>} Resolves with the generated text response, or null if generation failed or was blocked.
  */
 async function generateResponse(context) {
-    const model = getGeminiClient(); // Ensures model is initialized
+    const model = getGeminiClient();
     let promptText;
 
     try {
@@ -131,21 +130,20 @@ async function generateResponse(context) {
         logger.debug({ prompt: promptText }, 'Generated prompt for Gemini API');
     } catch (error) {
          logger.error({ err: error }, 'Failed to build prompt.');
-         return null; // Cannot proceed without a valid prompt
+         return null;
     }
 
     try {
         const result = await model.generateContent(promptText);
         const response = result.response;
 
-        // Check for safety blocks first
         if (response.promptFeedback?.blockReason) {
             logger.warn({
                 blockReason: response.promptFeedback.blockReason,
                 safetyRatings: response.promptFeedback.safetyRatings,
-                prompt: promptText // Log prompt that caused block
+                prompt: "[prompt omitted]" // Avoid logging potentially problematic prompt verbatim
             }, 'Gemini request blocked due to prompt safety settings.');
-            return null; // Indicate blocked prompt
+            return null;
         }
 
         if (!response.candidates || response.candidates.length === 0 || !response.candidates[0].content) {
@@ -153,38 +151,41 @@ async function generateResponse(context) {
              return null;
         }
 
-        // Check finish reason for the first candidate
         const candidate = response.candidates[0];
-        if (candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+        if ( candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
              logger.warn({
                 finishReason: candidate.finishReason,
-                safetyRatings: candidate.safetyRatings, // Safety ratings can also be on candidate
+                safetyRatings: candidate.safetyRatings,
              }, `Gemini generation finished unexpectedly: ${candidate.finishReason}`);
              if (candidate.finishReason === 'SAFETY') {
                  logger.warn('Gemini response content blocked due to safety settings.');
              }
-             return null; // Indicate blocked or problematic response
+             return null;
+        }
+
+        // Check for content parts before joining
+        if (!candidate.content.parts || candidate.content.parts.length === 0) {
+            logger.warn({ candidate }, 'Gemini response candidate missing content parts.');
+            return null;
         }
 
         const text = candidate.content.parts.map(part => part.text).join('');
-        logger.info({ responseLength: text.length, finishReason: candidate.finishReason }, 'Successfully generated response from Gemini.');
+        logger.info({ responseLength: text.length, finishReason: candidate.finishReason || 'N/A' }, 'Successfully generated response from Gemini.');
         return text.trim();
 
     } catch (error) {
-        // Handle specific API errors based on recommendations in spec 5.3
-        logger.error({ err: error, prompt: promptText }, 'Error during Gemini API call');
+        logger.error({ err: error, prompt: "[prompt omitted]" }, 'Error during Gemini API call');
 
-        // TODO: Implement retry logic with exponential backoff for specific error types
-        // (e.g., 429 RESOURCE_EXHAUSTED, 500 INTERNAL, 503 UNAVAILABLE)
-        // This basic version just logs and returns null.
-
-        if (error.message && error.message.includes('429')) { // Simple check for rate limit
+        if (error.message && error.message.includes('429')) {
              logger.warn('Gemini API rate limit likely exceeded. Consider backoff/retry.');
         } else if (error.message && (error.message.includes('500') || error.message.includes('503'))) {
              logger.warn('Gemini API server error encountered. Consider backoff/retry.');
+        } else if (error.message?.includes('API key not valid')) { // More specific error check
+            logger.error('Gemini API key is not valid. Please check GEMINI_API_KEY in .env');
         }
 
-        return null; // Indicate failure
+
+        return null;
     }
 }
 
@@ -194,5 +195,5 @@ export {
     getGeminiClient,
     getGenAIInstance,
     generateResponse,
-    buildPrompt, // Exporting buildPrompt might be useful for testing/debugging
+    buildPrompt,
 };
