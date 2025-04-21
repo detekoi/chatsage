@@ -1,6 +1,7 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
-import { initializeIrcClient, getIrcClient } from './components/twitch/ircClient.js';
+// Correct the import for ircClient functions
+import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
@@ -11,19 +12,12 @@ let streamInfoIntervalId = null;
 
 /**
  * Gracefully shuts down the application.
- * @param {string} signal - The signal received (e.g., 'SIGINT', 'SIGTERM').
  */
 async function gracefulShutdown(signal) {
+    // ... (gracefulShutdown function remains the same) ...
     logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
-
-    // 1. Stop accepting new work (if applicable, e.g., web server)
-    // Not directly applicable here, but good practice
-
-    // 2. Stop polling for stream info
     stopStreamInfoPolling(streamInfoIntervalId);
-
-    // 3. Disconnect IRC client
-    const ircClient = getIrcClient();
+    const ircClient = getIrcClient(); // Still uses getIrcClient
     if (ircClient && ircClient.readyState() === 'OPEN') {
         try {
             logger.info('Disconnecting from Twitch IRC...');
@@ -33,10 +27,6 @@ async function gracefulShutdown(signal) {
             logger.error({ err }, 'Error during IRC disconnect.');
         }
     }
-
-    // 4. Release any other resources (e.g., database connections)
-    // Add cleanup here if needed in the future
-
     logger.info('StreamSage shutdown complete.');
     process.exit(0);
 }
@@ -49,7 +39,7 @@ async function main() {
         logger.info(`Starting StreamSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
-        // --- Initialize Core Components ---
+        // --- Initialize Core Components (excluding IRC client creation/connection) ---
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);
 
@@ -59,19 +49,36 @@ async function main() {
         logger.info('Initializing Context Manager...');
         initializeContextManager();
 
-        logger.info('Initializing Twitch IRC Client...');
-        await initializeIrcClient(config.twitch);
-
         logger.info('Initializing Command Processor...');
         initializeCommandProcessor();
 
-        // --- Get Initialized Instances ---
-        const ircClient = getIrcClient();
-        const contextManager = getContextManager();
-        const helixClient = getHelixClient();
-        const geminiClient = getGeminiClient();
+        // --- Get Instances needed before IRC connection ---
+        const contextManager = getContextManager(); // Needed for listeners
+        const helixClient = getHelixClient();       // Needed for listeners
 
-        // --- Setup Event Listeners and Logic ---
+        // --- Create IRC Client Instance ---
+        logger.info('Creating Twitch IRC Client instance...');
+        const ircClient = createIrcClient(config.twitch); // Use createIrcClient
+
+        // --- Setup IRC Event Listeners BEFORE Connecting ---
+        logger.debug('Attaching IRC event listeners...');
+
+        ircClient.on('connected', (address, port) => {
+            logger.info(`Successfully connected to Twitch IRC: ${address}:${port}`);
+            logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
+            // helixClient and contextManager are already available here
+            streamInfoIntervalId = startStreamInfoPolling(
+                config.twitch.channels,
+                config.app.streamInfoFetchIntervalMs,
+                helixClient,
+                contextManager
+            );
+        });
+
+        ircClient.on('disconnected', (reason) => {
+            logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
+            stopStreamInfoPolling(streamInfoIntervalId);
+        });
 
         ircClient.on('message', (channel, tags, message, self) => {
             if (self) return;
@@ -82,49 +89,34 @@ async function main() {
                 logger.error({ err, channel: cleanChannel, user: username }, 'Error adding message to context');
             });
 
-            // 2. Process potential commands
             processCommand(cleanChannel, tags, message).catch(err => {
                  logger.error({ err, channel: cleanChannel, user: username }, 'Error processing command');
             });
 
+            // Placeholder LLM trigger
             if (message.toLowerCase().includes(`@${config.twitch.username.toLowerCase()}`)) {
                 logger.info({ channel: cleanChannel, user: username }, 'Bot mentioned, considering LLM response...');
+                // Add LLM call logic here later
             }
         });
 
-        // Handle IRC connection events
-        ircClient.on('connected', (address, port) => {
-            logger.info(`Successfully connected to Twitch IRC: ${address}:${port}`);
-            // Start polling *after* successful connection
-            logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
-            streamInfoIntervalId = startStreamInfoPolling(
-                config.twitch.channels, // Pass configured channels
-                config.app.streamInfoFetchIntervalMs,
-                helixClient,
-                contextManager
-            );
-        });
-
-        ircClient.on('disconnected', (reason) => {
-            logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
-            // Stop polling if disconnected
-            stopStreamInfoPolling(streamInfoIntervalId);
-            // tmi.js handles reconnection internally based on config, but we might need
-            // specific logic here if reconnection fails permanently.
-        });
-
-        // Log other events for debugging if needed
-        // ircClient.on('join', (channel, username, self) => { ... });
-        // ircClient.on('part', (channel, username, self) => { ... });
-        // ircClient.on('notice', (channel, msgid, message) => { ... });
+        // Add other basic listeners if desired (optional here, could be in ircClient.js)
+        ircClient.on('connecting', (address, port) => { logger.info(`Connecting to Twitch IRC at ${address}:${port}...`); });
+        ircClient.on('logon', () => { logger.info('Successfully logged on to Twitch IRC.'); });
+        ircClient.on('join', (channel, username, self) => { if (self) { logger.info(`Joined channel: ${channel}`); } });
 
 
+        // --- Connect IRC Client ---
+        logger.info('Connecting Twitch IRC Client...');
+        await connectIrcClient(); // Use connectIrcClient
+
+        // --- Post-Connection Logging ---
         logger.info('StreamSage components initialized and event listeners attached.');
         logger.info(`Ready and listening to channels: ${config.twitch.channels.join(', ')}`);
 
     } catch (error) {
         logger.fatal({ err: error }, 'Fatal error during StreamSage initialization.');
-        process.exit(1); // Exit with error code
+        process.exit(1);
     }
 }
 
