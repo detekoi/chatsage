@@ -31,7 +31,7 @@ This document lists the primary sources and documentation pages referenced durin
     *   [Grounding with Google Search (Search Tool)](https://ai.google.dev/gemini-api/docs/grounding)
     *   [Rate Limits](https://ai.google.dev/gemini-api/docs/rate-limits)
     *   [Troubleshooting Guide (Error Codes)](https://ai.google.dev/gemini-api/docs/troubleshooting)
-*   **Google GenAI SDK (`@google/genai` for Node.js):**
+*   **Google GenAI SDK (`@google/generative-ai` for Node.js):**
     *   GitHub Repository (Includes examples & README): [google-gemini/generative-ai-js](https://github.com/google-gemini/generative-ai-js) or [googleapis/js-genai](https://github.com/googleapis/js-genai)
     *   [Google Cloud SDK Overview](https://cloud.google.com/vertex-ai/generative-ai/docs/sdks/overview)
 *   **Google Cloud Services:**

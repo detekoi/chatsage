@@ -36,7 +36,7 @@ This specification covers the core architecture, components, data flow, configur
 | `Scope`                | Defines the specific permissions granted by a user to an application via OAuth.                                                                         |
 | `SDK`                  | Software Development Kit                                                                                                                              |
 | `tmi.js`               | A Node.js library for interacting with Twitch chat via IRC.                                                                                           |
-| `@google/genai`        | The Node.js SDK for interacting with the Google Gemini API.                                                                                            |
+| `@google/generative-ai`        | The Node.js SDK for interacting with the Google Gemini API.                                                                                            |
 
 # 2. Core Architecture
 
@@ -44,7 +44,7 @@ This specification covers the core architecture, components, data flow, configur
 
 StreamSage employs a modular architecture designed for real-time interaction and contextual awareness within Twitch channels. It leverages external services for chat connectivity (Twitch IRC), advanced language understanding (Google Gemini LLM), and real-time stream data retrieval (Twitch Helix API).
 
-The core components interact as follows: The Twitch IRC Interface connects to Twitch chat, receiving messages and sending bot responses. Incoming messages are passed to the Context Manager and potentially the Command Processor. To generate intelligent responses, the Context Manager gathers relevant chat history, summaries, and current stream information (fetched periodically by the Twitch Helix API Interface). This consolidated context is provided to the LLM Interaction component, which formats it into a prompt and sends it to the Gemini API via the `@google/genai` SDK. The LLM's response is returned, potentially processed further, and sent back to the chat via the Twitch IRC Interface. Configuration settings are managed by the Configuration Manager, and all significant events and errors are logged by the Logger.
+The core components interact as follows: The Twitch IRC Interface connects to Twitch chat, receiving messages and sending bot responses. Incoming messages are passed to the Context Manager and potentially the Command Processor. To generate intelligent responses, the Context Manager gathers relevant chat history, summaries, and current stream information (fetched periodically by the Twitch Helix API Interface). This consolidated context is provided to the LLM Interaction component, which formats it into a prompt and sends it to the Gemini API via the `@google/generative-ai` SDK. The LLM's response is returned, potentially processed further, and sent back to the chat via the Twitch IRC Interface. Configuration settings are managed by the Configuration Manager, and all significant events and errors are logged by the Logger.
 
 (An architectural diagram should be included here, illustrating the Twitch IRC Interface, Twitch Helix API Interface, Context Manager, LLM Interaction, Command Processor, Configuration Manager, Logger, and their interactions with external Twitch IRC, Twitch Helix API, and Google Gemini API services).
 
@@ -59,9 +59,9 @@ The integration of the Helix API introduces a primary data source alongside the 
     *   Responsibilities: Manages authenticated communication with the Twitch Helix REST API; periodically fetches current stream information (game, title, tags) for active channels using the configured HTTP client; handles API-specific authentication using the configured Twitch `Client ID` and appropriate OAuth token (App Access Token recommended for public data); adheres to Helix API rate limits.
     *   Technology: Node.js HTTP client library (e.g., `axios`), Twitch Helix API. The use of a standard library like `axios` is recommended due to its maturity, widespread adoption, and features like promise-based requests and interceptors, which can be useful for centralized handling of authentication or logging.
     *   Dependencies: Requires `TWITCH_CLIENT_ID` and appropriate credentials (e.g., `TWITCH_CLIENT_SECRET` or OAuth token) from configuration.
-*   **LLM Interaction (`@google/genai`):**
-    *   Responsibilities: Constructs prompts incorporating context provided by the Context Manager; sends requests to the configured Google Gemini model via the `@google/genai` SDK; processes responses received from the LLM; handles API-specific errors and rate limits related to the Gemini service.
-    *   Technology: `@google/genai` Node.js SDK.
+*   **LLM Interaction (`@google/generative-ai`):**
+    *   Responsibilities: Constructs prompts incorporating context provided by the Context Manager; sends requests to the configured Google Gemini model via the `@google/generative-ai` SDK; processes responses received from the LLM; handles API-specific errors and rate limits related to the Gemini service.
+    *   Technology: `@google/generative-ai` Node.js SDK.
 *   **Context Manager:**
     *   Responsibilities: Maintains state for each channel the bot operates in; stores recent chat messages (`chatHistory`); generates and stores summaries of longer conversations (`chatSummary`); stores and updates current stream information (`streamContext`) fetched via the Helix API Interface; provides consolidated context (chat history, summary, stream info) to the LLM Interaction component upon request.
     *   State Management: The mechanism for persisting state (in-memory, database, cache) will depend on deployment architecture and scalability requirements. Platforms like `Kubernetes` offer `Persistent Volumes` suitable for stateful applications, while serverless environments like `Cloud Run` might necessitate external stores (e.g., `Redis`, `Firestore`) to maintain state across potentially ephemeral instances. This choice impacts how state survives restarts or scaling events and should be made considering the expected operational environment.
@@ -79,7 +79,7 @@ The integration of the Helix API introduces a primary data source alongside the 
 3.  **Stream Info Update:** The successful response from Helix (containing game, title, tags) is passed to the Context Manager, which updates the `streamContext` for the corresponding channel, including a `lastUpdated` timestamp. Errors during the fetch are logged and handled according to Section 5.4.
 4.  **Chat Message Received:** Twitch IRC Interface receives a message via `tmi.js`, including message content and user tags.
 5.  **Context Gathering:** The message is passed to the Context Manager, which updates the `chatHistory` for the channel. If the message is not a command and requires an LLM response, the Context Manager retrieves the current `chatSummary`, relevant `chatHistory`, and the latest `streamContext` from its state for that channel.
-6.  **LLM Prompting:** The LLM Interaction component receives the assembled context, formats it into the defined prompt structure (Section 3.3.1), including the fetched stream info, and sends it to the Gemini API using `@google/genai`.
+6.  **LLM Prompting:** The LLM Interaction component receives the assembled context, formats it into the defined prompt structure (Section 3.3.1), including the fetched stream info, and sends it to the Gemini API using `@google/generative-ai`.
 7.  **LLM Response:** Gemini API processes the prompt and returns a generated text response. Errors (API errors, safety blocks) are handled according to Section 5.3.
 8.  **Response Processing:** The LLM Interaction component receives the response text. It may undergo post-processing if needed (e.g., filtering, formatting).
 9.  **Send Chat Message:** The processed response is sent to the Twitch IRC Interface, which uses `tmi.js`'s `say` or `action` method to send the message back to the appropriate Twitch channel, respecting IRC rate limits (Section 4.1).
@@ -108,15 +108,15 @@ The bot's behavior is configured through environment variables or a configuratio
 
 The `STREAM_INFO_FETCH_INTERVAL_SECONDS` default of 120 seconds (2 minutes) represents a balance between keeping the stream context reasonably fresh and avoiding excessive calls to the Twitch Helix API, thereby conserving rate limit points. Fetching data like stream title and game too frequently often yields redundant information while still consuming API quota.
 
-# 3. LLM Integration (`@google/genai`)
+# 3. LLM Integration (`@google/generative-ai`)
 
 ## 3.1 Model Selection
 
-The primary LLM for this bot will be a Google Gemini model, accessed via the `@google/genai` SDK. The recommended model is `gemini-2.0-flash-001` (or the latest stable `gemini-2.0-flash` alias), offering a balance of performance, cost-efficiency, and multimodal capabilities suitable for this application. The specific model ID used should be configurable via the `GEMINI_MODEL_ID` parameter. The latest stable version identifier (e.g., `gemini-2.0-flash-001`) is preferred over aliases like `gemini-2.0-flash` for production environments to ensure predictable behavior, as aliases can point to updated models over time.
+The primary LLM for this bot will be a Google Gemini model, accessed via the `@google/generative-ai` SDK. The recommended model is `gemini-2.0-flash-001` (or the latest stable `gemini-2.0-flash` alias), offering a balance of performance, cost-efficiency, and multimodal capabilities suitable for this application. The specific model ID used should be configurable via the `GEMINI_MODEL_ID` parameter. The latest stable version identifier (e.g., `gemini-2.0-flash-001`) is preferred over aliases like `gemini-2.0-flash` for production environments to ensure predictable behavior, as aliases can point to updated models over time.
 
 ## 3.2 API Interaction
 
-All interactions with the Gemini API will be handled through the `@google/genai` Node.js SDK. This includes:
+All interactions with the Gemini API will be handled through the `@google/generative-ai` Node.js SDK. This includes:
 
 *   Initializing the client with the `GEMINI_API_KEY`. Server-side initialization is recommended for security.
 *   Selecting the appropriate model (`GEMINI_MODEL_ID`).
@@ -160,7 +160,7 @@ Bot Response:
 
 **Context vs. Efficiency:** Adding the **Current Stream Information** block significantly enhances the LLM's ability to provide responses relevant to the ongoing stream activity (e.g., answering questions about the game being played). However, this directly increases the number of input tokens sent with every request to the Gemini API. This has implications for both API costs (often token-based) and response latency, as larger prompts take longer to process. The current design prioritizes contextual relevance over minimizing token count. Should cost or latency become significant concerns during operation, future optimizations might involve: \* Conditionally including stream information only when message analysis suggests it's relevant. \* Further summarizing the stream information or only including changes since the last interaction. \* Adjusting the frequency of stream info updates (`STREAM_INFO_FETCH_INTERVAL_SECONDS`) to reduce API calls and potentially stale context inclusion.
 
-**Structured Output Considerations:** This prompt structure provides stream information as context to the LLM. If the bot required the LLM to generate structured data (e.g., extracting specific entities from chat related to the stream game), relying solely on natural language instructions within the prompt (e.g., "Respond in JSON format") can be unreliable, as the model might fail to adhere strictly to the requested format. For guaranteed structured output, the `@google/genai` SDK's `responseSchema` feature or the `function calling` mechanism should be employed in future revisions if such functionality is needed. `responseSchema` allows defining a specific `JSON` schema that the model is constrained to follow, while `function calling` enables the model to request the execution of predefined application functions with structured arguments. For the current requirement of simply informing the LLM about the stream state, including the information directly in the prompt is sufficient.
+**Structured Output Considerations:** This prompt structure provides stream information as context to the LLM. If the bot required the LLM to generate structured data (e.g., extracting specific entities from chat related to the stream game), relying solely on natural language instructions within the prompt (e.g., "Respond in JSON format") can be unreliable, as the model might fail to adhere strictly to the requested format. For guaranteed structured output, the `@google/generative-ai` SDK's `responseSchema` feature or the `function calling` mechanism should be employed in future revisions if such functionality is needed. `responseSchema` allows defining a specific `JSON` schema that the model is constrained to follow, while `function calling` enables the model to request the execution of predefined application functions with structured arguments. For the current requirement of simply informing the LLM about the stream state, including the information directly in the prompt is sufficient.
 
 # 4. Rate Limiting
 
@@ -216,7 +216,7 @@ Handle errors related to the IRC connection lifecycle and message handling:
 *   Reconnection failures (`maxreconnect` event): Log critical error after exhausting retry attempts. Potentially stop bot operation for the affected channel(s) or globally, depending on the desired fault tolerance.
 *   Errors sending messages (e.g., attempting `client.say()` before the `connected` event fires, permission errors for commands like `/host` if the bot lacks editor/broadcaster status, sending non-string data). Log the error and the message content that failed.
 
-## 5.3 `@google/genai` Errors
+## 5.3 `@google/generative-ai` Errors
 
 Handle errors originating from the Google Gemini API interactions:
 
@@ -369,7 +369,7 @@ Interaction with the Twitch Helix API requires `OAuth 2.0` authentication using 
 The following Node.js packages form the core dependencies for the StreamSage:
 
 *   `tmi.js`: Core library for Twitch IRC chat interaction (connection, message send/receive).
-*   `@google/genai`: Official SDK for interacting with the Google Gemini LLM API.
+*   `@google/generative-ai`: Official SDK for interacting with the Google Gemini LLM API.
 *   `axios`: Recommended HTTP client for making RESTful requests to the Twitch Helix API. Provides promise-based API and robust error handling capabilities.
 *   **Logging Library** (Choose one and its cloud integration if applicable):
     *   `winston`: A popular, versatile logging library.
@@ -390,7 +390,7 @@ Example using `npm`:
 
 ```bash
 # Core dependencies
-npm install tmi.js @google/genai axios
+npm install tmi.js @google/generative-ai axios
 
 # Choose and install ONE logging option
 npm install winston                 # Option 1a: Winston core
@@ -407,7 +407,7 @@ Example using `yarn`:
 
 ```bash
 # Core dependencies
-yarn add tmi.js @google/genai axios
+yarn add tmi.js @google/generative-ai axios
 
 # Choose and install ONE logging option
 yarn add winston                    # Option 1a: Winston core
@@ -431,7 +431,7 @@ This specification (Version 1.0) outlines the design for the StreamSage, an AI-p
 Key technical elements include:
 
 *   A modular architecture using `tmi.js` for IRC chat and `axios` for Helix API interaction.
-*   Leveraging the `@google/genai` SDK with a stable Gemini Flash model and integrated Google Search.
+*   Leveraging the `@google/generative-ai` SDK with a stable Gemini Flash model and integrated Google Search.
 *   An autonomous response system using Gemini's structured output (`responseSchema`) for reliable desire assessment.
 *   A dynamic response threshold based on smoothed chat velocity.
 *   Comprehensive error handling for IRC, Gemini API, and Helix API interactions, including retry logic for transient errors.

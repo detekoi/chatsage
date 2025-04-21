@@ -1,19 +1,17 @@
-// Import using the default import method as suggested by the error
-import GoogleGenerativeAI_pkg from "@google/genai";
-// Destructure the necessary components from the imported package object
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = GoogleGenerativeAI_pkg;
+// REVERTING to the standard named import style
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 import logger from '../../lib/logger.js';
-import config from '../../config/index.js'; // Assuming config has gemini.apiKey and gemini.modelId
+import config from '../../config/index.js';
 
 let genAI = null;
 let generativeModel = null;
 
 /**
  * Initializes the GoogleGenerativeAI client and the specific model.
- * @param {object} geminiConfig - Gemini configuration containing apiKey and modelId.
  */
-function initializeGeminiClient(geminiConfig) {
+// Add export keyword directly
+export function initializeGeminiClient(geminiConfig) {
     if (genAI) {
         logger.warn('Gemini client already initialized.');
         return;
@@ -25,8 +23,10 @@ function initializeGeminiClient(geminiConfig) {
 
     try {
         logger.info(`Initializing GoogleGenerativeAI with model: ${geminiConfig.modelId}`);
-        // Now use the destructured GoogleGenerativeAI class
-        genAI = new GoogleGenerativeAI(geminiConfig.apiKey);
+        // Use the named import directly as a constructor
+        genAI = new GoogleGenerativeAI(geminiConfig.apiKey); // Use named import
+
+        // This is the standard method we expect to work with recent SDK versions
         generativeModel = genAI.getGenerativeModel({
             model: geminiConfig.modelId,
             safetySettings: [
@@ -42,50 +42,30 @@ function initializeGeminiClient(geminiConfig) {
         });
         logger.info('Gemini client and model initialized successfully.');
     } catch (error) {
-        logger.fatal({ err: error }, 'Failed to initialize GoogleGenerativeAI client.');
-        genAI = null; // Reset on failure
+        logger.fatal({ err: { message: error.message, stack: error.stack, name: error.name } }, 'Failed to initialize GoogleGenerativeAI client.');
+        genAI = null;
         generativeModel = null;
-        throw error; // Propagate error to stop application startup
+        throw error;
     }
 }
 
-/**
- * Gets the initialized GoogleGenerativeAI instance. (Less commonly needed than the model)
- * @returns {GoogleGenerativeAI} The GoogleGenerativeAI instance.
- * @throws {Error} If the client has not been initialized.
- */
-function getGenAIInstance() {
+// ... (rest of the file with export keywords on functions) ...
+
+export function getGenAIInstance() {
      if (!genAI) {
         throw new Error('Gemini client (GenAI) has not been initialized.');
     }
     return genAI;
 }
-/**
- * Gets the initialized generative model instance.
- * @returns {GenerativeModel} The initialized generative model instance.
- * @throws {Error} If the client/model has not been initialized.
- */
-function getGeminiClient() {
+
+export function getGeminiClient() {
     if (!generativeModel) {
         throw new Error('Gemini client (Model) has not been initialized. Call initializeGeminiClient first.');
     }
     return generativeModel;
 }
 
-
-/**
- * Constructs the prompt string based on the provided context components.
- * @param {object} context - Context object.
- * @param {string} context.streamGame - Current game name.
- * @param {string} context.streamTitle - Current stream title.
- * @param {string} context.streamTags - Current stream tags (comma-separated).
- * @param {string} context.chatSummary - Summary of older chat messages.
- * @param {string} context.recentChatHistory - String representation of recent messages.
- * @param {string} context.username - Username of the user who sent the current message.
- * @param {string} context.currentMessage - The content of the current message.
- * @returns {string} The fully formatted prompt string.
- */
-function buildPrompt(context) {
+export function buildPrompt(context) {
     const game = context.streamGame || "N/A";
     const title = context.streamTitle || "N/A";
     const tags = context.streamTags || "N/A";
@@ -115,13 +95,7 @@ ${history}
 StreamSage Response:`;
 }
 
-
-/**
- * Generates a response using the Gemini API based on provided context.
- * @param {object} context - Context object (see buildPrompt for structure).
- * @returns {Promise<string | null>} Resolves with the generated text response, or null if generation failed or was blocked.
- */
-async function generateResponse(context) {
+export async function generateResponse(context) {
     const model = getGeminiClient();
     let promptText;
 
@@ -141,7 +115,7 @@ async function generateResponse(context) {
             logger.warn({
                 blockReason: response.promptFeedback.blockReason,
                 safetyRatings: response.promptFeedback.safetyRatings,
-                prompt: "[prompt omitted]" // Avoid logging potentially problematic prompt verbatim
+                prompt: "[prompt omitted]"
             }, 'Gemini request blocked due to prompt safety settings.');
             return null;
         }
@@ -163,7 +137,6 @@ async function generateResponse(context) {
              return null;
         }
 
-        // Check for content parts before joining
         if (!candidate.content.parts || candidate.content.parts.length === 0) {
             logger.warn({ candidate }, 'Gemini response candidate missing content parts.');
             return null;
@@ -180,20 +153,10 @@ async function generateResponse(context) {
              logger.warn('Gemini API rate limit likely exceeded. Consider backoff/retry.');
         } else if (error.message && (error.message.includes('500') || error.message.includes('503'))) {
              logger.warn('Gemini API server error encountered. Consider backoff/retry.');
-        } else if (error.message?.includes('API key not valid')) { // More specific error check
+        } else if (error.message?.includes('API key not valid')) {
             logger.error('Gemini API key is not valid. Please check GEMINI_API_KEY in .env');
         }
-
 
         return null;
     }
 }
-
-// Export the necessary functions
-export {
-    initializeGeminiClient,
-    getGeminiClient,
-    getGenAIInstance,
-    generateResponse,
-    buildPrompt,
-};

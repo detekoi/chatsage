@@ -4,7 +4,8 @@ import { initializeIrcClient, getIrcClient } from './components/twitch/ircClient
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
-import { initializeCommandProcessor } from './components/commands/commandProcessor.js';
+import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js'; // Import processMessage
+// Using 'as processCommand' to avoid potential naming conflicts if needed, and for clarity
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js'; // Assuming a dedicated poller module
 
 let streamInfoIntervalId = null; // To keep track of the polling timer
@@ -69,7 +70,7 @@ async function main() {
         // --- Get Initialized Instances ---
         const ircClient = getIrcClient();
         const contextManager = getContextManager();
-        const commandProcessor = getCommandProcessor(); // Assuming commandProcessor exports this
+        //const commandProcessor = getCommandProcessor(); // Assuming commandProcessor exports this
         const helixClient = getHelixClient(); // Needed for poller
         const geminiClient = getGeminiClient(); // Needed for poller/summarizer
 

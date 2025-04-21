@@ -15,7 +15,7 @@ describe('StreamSage Integration Tests', () => {
         // Perform initial setup for integration tests
         // - Load config (potentially test-specific config)
         // - Initialize components (mocking external calls)
-        // e.g., mock tmi.js connect/say, mock axios, mock @google/genai
+        // e.g., mock tmi.js connect/say, mock axios, mock @google/generative-ai
         // await initializeAllComponents();
     });
 

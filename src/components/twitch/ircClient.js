@@ -1,5 +1,6 @@
 import tmi from 'tmi.js';
 import logger from '../../lib/logger.js';
+import config from '../../config/index.js';
 
 // Module-level variable to hold the client instance
 let client = null;
