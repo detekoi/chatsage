@@ -4,11 +4,10 @@ import { initializeIrcClient, getIrcClient } from './components/twitch/ircClient
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
-import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js'; // Import processMessage
-// Using 'as processCommand' to avoid potential naming conflicts if needed, and for clarity
-import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js'; // Assuming a dedicated poller module
+import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
+import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
 
-let streamInfoIntervalId = null; // To keep track of the polling timer
+let streamInfoIntervalId = null;
 
 /**
  * Gracefully shuts down the application.
@@ -51,59 +50,45 @@ async function main() {
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
         // --- Initialize Core Components ---
-        // Order can matter depending on dependencies
         logger.info('Initializing Gemini Client...');
-        initializeGeminiClient(config.gemini); // Assuming sync init for now
+        initializeGeminiClient(config.gemini);
 
         logger.info('Initializing Twitch Helix Client...');
-        await initializeHelixClient(config.twitch); // Auth might be async
+        await initializeHelixClient(config.twitch);
 
         logger.info('Initializing Context Manager...');
-        initializeContextManager(); // Likely sync init
+        initializeContextManager();
 
         logger.info('Initializing Twitch IRC Client...');
-        await initializeIrcClient(config.twitch); // Connection is async
+        await initializeIrcClient(config.twitch);
 
         logger.info('Initializing Command Processor...');
-        initializeCommandProcessor(); // Likely sync init
+        initializeCommandProcessor();
 
         // --- Get Initialized Instances ---
         const ircClient = getIrcClient();
         const contextManager = getContextManager();
-        //const commandProcessor = getCommandProcessor(); // Assuming commandProcessor exports this
-        const helixClient = getHelixClient(); // Needed for poller
-        const geminiClient = getGeminiClient(); // Needed for poller/summarizer
+        const helixClient = getHelixClient();
+        const geminiClient = getGeminiClient();
 
         // --- Setup Event Listeners and Logic ---
 
-        // Handle incoming chat messages
         ircClient.on('message', (channel, tags, message, self) => {
-            // Ignore self messages
             if (self) return;
-
-            // Clean channel name (remove #)
             const cleanChannel = channel.substring(1);
             const username = tags['display-name'] || tags.username;
 
-            // Log message received (optional, can be verbose)
-            // logger.debug({ channel: cleanChannel, user: username, message }, 'Message received');
-
-            // 1. Update context (async operation)
             contextManager.addMessage(cleanChannel, username, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: username }, 'Error adding message to context');
             });
 
             // 2. Process potential commands
-            commandProcessor.processMessage(cleanChannel, tags, message).catch(err => {
+            processCommand(cleanChannel, tags, message).catch(err => {
                  logger.error({ err, channel: cleanChannel, user: username }, 'Error processing command');
             });
 
-            // 3. Determine if LLM response is needed (placeholder for more complex logic)
-            // Example: Respond if mentioned or randomly? Needs refinement.
             if (message.toLowerCase().includes(`@${config.twitch.username.toLowerCase()}`)) {
                 logger.info({ channel: cleanChannel, user: username }, 'Bot mentioned, considering LLM response...');
-                // Trigger LLM response generation (async) - this logic would likely live elsewhere
-                // generateLlmResponse(cleanChannel, username, message);
             }
         });
 
