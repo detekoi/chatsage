@@ -103,6 +103,7 @@ export function getGeminiClient() {
  * @returns {string} The formatted context string.
  */
 export function buildContextPrompt(context) {
+    const channelName = context.channelName || "N/A"; 
     const game = context.streamGame || "N/A";
     const title = context.streamTitle || "N/A";
     const tags = context.streamTags || "N/A";
@@ -112,6 +113,7 @@ export function buildContextPrompt(context) {
     // Return only the context parts
     return `
 **Current Stream Information:**
+Channel: ${channelName}
 Game: ${game}
 Title: ${title}
 Tags: ${tags}

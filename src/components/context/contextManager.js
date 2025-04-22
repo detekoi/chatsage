@@ -219,6 +219,7 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
     const recentHistory = state.chatHistory.slice(-15); // Get last ~15 messages for immediate context
 
     return {
+        channelName: state.channelName,
         streamGame: state.streamContext.game,
         streamTitle: state.streamContext.title,
         streamTags: state.streamContext.tags?.join(', ') || null, // Join tags array
