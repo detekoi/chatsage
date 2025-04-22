@@ -3,6 +3,7 @@ import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText } from '../../llm/geminiClient.js';
+import { getUsersByLogin } from '../../twitch/helixClient.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
@@ -12,37 +13,32 @@ function isPrivilegedUser(tags, channelName) {
 }
 
 /**
- * Handler for the !translate command with moderator controls.
+ * Handler for the !translate command with moderator controls and robust argument parsing.
  */
 const translateHandler = {
     name: 'translate',
     description: 'Manage automatic message translation for users.',
-    usage: '!translate <lang> | !translate stop | !translate <lang|stop> [user] (mods) | !translate stop all (mods)',
-    // Permission check will be done inside execute based on args
+    usage: '!translate <language> | !translate stop | !translate <language> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)',
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user, args } = context;
-        const commandArg = args[0]?.toLowerCase();
-        const targetLanguageOrStop = commandArg; // e.g., "german" or "stop"
-        let targetUsername = args[1]?.toLowerCase().replace(/^@/, ''); // e.g., "otheruser" (remove leading @ if present)
-
         const channelName = channel.substring(1);
-        const invokingUsernameLower = user.username; // Lowercase username of the person typing the command
+        const invokingUsernameLower = user.username;
         const invokingDisplayName = user['display-name'] || user.username;
         const contextManager = getContextManager();
         const isModOrBroadcaster = isPrivilegedUser(user, channelName);
 
-        // --- Input Validation & Permission Checks ---
-
-        if (!targetLanguageOrStop) {
+        // --- Input Validation ---
+        if (args.length === 0) {
             enqueueMessage(channel, `@${invokingDisplayName}, Usage: !translate <language> | !translate stop | !translate <lang> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)`);
             return;
         }
 
-        const isStopAction = targetLanguageOrStop === 'stop';
+        const action = args[0].toLowerCase();
+        const isStopAction = action === 'stop';
 
-        // Handling !translate stop all (requires privileges)
-        if (isStopAction && targetUsername === 'all') {
+        // --- Handle !translate stop all ---
+        if (isStopAction && args.length > 1 && args[1].toLowerCase() === 'all') {
             if (!isModOrBroadcaster) {
                 enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop all translations.`);
                 return;
@@ -54,59 +50,97 @@ const translateHandler = {
                 logger.error({ err: e, channel: channelName }, 'Error disabling all translations.');
                 enqueueMessage(channel, `@${invokingDisplayName}, Sorry, an error occurred trying to stop all translations.`);
             }
-            return; // Action complete
+            return;
         }
 
-        // Determine the user whose translation state is being modified
-        let effectiveUsernameLower = invokingUsernameLower; // Default to self
-        if (targetUsername && targetUsername !== 'all') {
-            // Trying to modify another user's state
-            if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can control translation for other users.`);
-                return;
-            }
-            effectiveUsernameLower = targetUsername; // Mod is targeting someone else
-            logger.info(`[${channelName}] Mod ${invokingUsernameLower} targeting translation for ${effectiveUsernameLower}`);
-        }
-        const effectiveDisplayName = (effectiveUsernameLower === invokingUsernameLower) ? invokingDisplayName : targetUsername; // Use target username for display if different
-
-        // --- Execute Action ---
+        // --- Argument Parsing Logic ---
+        let targetUsernameLower = null;
+        let language = null;
 
         if (isStopAction) {
-            // Disable translation for effectiveUsernameLower
-            try {
-                const wasTranslating = contextManager.disableUserTranslation(channelName, effectiveUsernameLower);
+            // Handle !translate stop [username]
+            if (args.length > 1) {
+                const potentialUsername = args[1].toLowerCase().replace(/^@/, '');
+                if (!isModOrBroadcaster) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop translation for other users.`);
+                    return;
+                }
+                targetUsernameLower = potentialUsername;
+            } else {
+                targetUsernameLower = invokingUsernameLower;
+            }
+        } else {
+            // Handle !translate <language> [username]
+            if (args.length === 1) {
+                // Single argument is always language, target self
+                targetUsernameLower = invokingUsernameLower;
+                language = args[0];
+            } else { // args.length > 1
+                // Check if the last argument could be a username *intended* as such
+                const potentialUsername = args[args.length - 1].toLowerCase().replace(/^@/, '');
+                let isTargetingOther = false; // Assume not targeting other initially
+
+                // Only mods/broadcasters can target others explicitly
+                if (isModOrBroadcaster) {
+                    // Check if the last arg *is* a real user AND it's not the invoking user themselves
+                    // (prevents "!translate Pig Latin" from being interpreted as targeting user 'latin')
+                    try {
+                        const users = await getUsersByLogin([potentialUsername]);
+                        if (users && users.length > 0 && potentialUsername !== invokingUsernameLower) {
+                            // It's a real user, and it's not self. Treat as targeting.
+                            isTargetingOther = true;
+                            targetUsernameLower = potentialUsername;
+                            language = args.slice(0, -1).join(' ');
+                        }
+                    } catch (e) {
+                        logger.error({ err: e, potentialUsername }, 'Error checking username with Twitch API');
+                        // Error out for clarity when API fails
+                        enqueueMessage(channel, `@${invokingDisplayName}, Error checking username. Could not process command.`);
+                        return;
+                    }
+                }
+
+                // If we didn't identify the last arg as an intended target username...
+                if (!isTargetingOther) {
+                    // Treat all args as language, target self
+                    targetUsernameLower = invokingUsernameLower;
+                    language = args.join(' ');
+                }
+            }
+        }
+
+        // --- Determine target display name ---
+        const effectiveDisplayName = (targetUsernameLower === invokingUsernameLower) ? invokingDisplayName : targetUsernameLower;
+
+        // --- Execute Action ---
+        try {
+            if (isStopAction) {
+                // Disable translation
+                const wasTranslating = contextManager.disableUserTranslation(channelName, targetUsernameLower);
                 const stopMessage = wasTranslating
                     ? `@${invokingDisplayName}, Okay, stopped translating messages for ${effectiveDisplayName}.`
                     : `@${invokingDisplayName}, Translation was already off for ${effectiveDisplayName}.`;
                 enqueueMessage(channel, stopMessage);
-            } catch (e) {
-                logger.error({ err: e, user: effectiveUsernameLower }, 'Error disabling translation.');
-                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, there was an error trying to stop translation for ${effectiveDisplayName}.`);
-            }
-        } else {
-            // Enable translation for effectiveUsernameLower
-            const targetLanguage = args.slice(0, targetUsername ? 1 : undefined).join(' '); // Language is first arg if no user specified, else still first arg
-            if (!targetLanguage) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Please specify a language.`);
-                return;
-            }
-            try {
-                contextManager.enableUserTranslation(channelName, effectiveUsernameLower, targetLanguage);
-
-                const baseConfirmation = `Okay, translating messages for ${effectiveDisplayName} into ${targetLanguage}. Use "!translate stop${targetUsername ? ' ' + targetUsername : ''}" to disable.`;
-                const translatedConfirmation = await translateText(baseConfirmation, targetLanguage);
+            } else {
+                // Enable translation
+                if (!language) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, Please specify a language.`);
+                    return;
+                }
+                contextManager.enableUserTranslation(channelName, targetUsernameLower, language);
+                const baseConfirmation = `Okay, translating messages for ${effectiveDisplayName} into ${language}. Use "!translate stop${targetUsernameLower !== invokingUsernameLower ? ' ' + targetUsernameLower : ''}" to disable.`;
+                const translatedConfirmation = await translateText(baseConfirmation, language);
                 let finalConfirmation = `@${invokingDisplayName}, ${baseConfirmation}`;
                 if (translatedConfirmation?.trim()) {
-                    finalConfirmation += ` / ${translatedConfirmation}`;
+                    finalConfirmation += ` / (${translatedConfirmation})`;
                 } else {
-                    logger.warn(`Could not translate confirmation message into ${targetLanguage}.`);
+                    logger.warn(`Could not translate confirmation message into ${language}.`);
                 }
                 enqueueMessage(channel, finalConfirmation);
-            } catch (e) {
-                logger.error({ err: e, user: effectiveUsernameLower, language: targetLanguage }, 'Error enabling translation.');
-                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, there was an error trying to enable translation to ${targetLanguage} for ${effectiveDisplayName}.`);
             }
+        } catch (e) {
+            logger.error({ err: e, action, language, targetUsernameLower }, 'Error executing translate command action.');
+            enqueueMessage(channel, `@${invokingDisplayName}, Sorry, an error occurred while processing the translate command.`);
         }
     },
 };

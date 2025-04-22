@@ -66,7 +66,7 @@ const gameHandler = {
 
             if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial !game response too long (${finalReplyText.length} chars). Attempting summarization.`);
-                replyPrefix = `@${userName} About ${currentGameName} (Summary): `;
+                replyPrefix = `@${userName} About ${currentGameName}: `; // Invisible prefix for the summary
 
                 const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
                 if (summary?.trim()) {
