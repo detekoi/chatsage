@@ -380,4 +380,4 @@ function getContextManager() {
     return manager;
 }
 
-export { initializeContextManager, getContextManager, };
+export { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation };

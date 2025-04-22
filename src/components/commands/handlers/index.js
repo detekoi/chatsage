@@ -5,19 +5,20 @@ import logger from '../../../lib/logger.js';
 // Core Bot Commands
 // import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
-import search from './search.js';
-import translate from './translate.js';
 // import about from './about.js';
+import help from './sage.js';
 
 // Stream Context Commands
 // import game from './game.js';
 // import info from './info.js';
 
 // Knowledge & LLM Commands
-// import ask from './ask.js';
+// import ask from './ask.js'; // !ask command points to search until confidence threshold can be implemented
 // import fact from './fact.js';
-// import search from './search.js'; // Note: command was !wiki in description? Using !search for consistency.
+import search from './search.js';
 // import explain from './explain.js';
+import translate from './translate.js';
+
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -48,7 +49,8 @@ const commandHandlers = {
     // info: info,
 
     // --- Knowledge & LLM Commands ---
-    // ask: ask,
+    ask: search,
+    sage: sage,
     // fact: fact,
     search: search,
     // wiki: search,   // !wiki alias (if desired)
