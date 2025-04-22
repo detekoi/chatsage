@@ -35,7 +35,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
         logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
-        replyPrefix = `@${userName} (Summary): `;
+        replyPrefix = `@${userName}: `; // Changed to a more concise prefix that does not include "(Summary)"
 
         const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
         if (summary?.trim()) {

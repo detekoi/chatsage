@@ -43,7 +43,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
         if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
-            replyPrefix = `@${displayName} (Summary): `; // Indicate summary
+            replyPrefix = `@${displayName}: `; // 'Invisible' prefix that does not include "(Summary)"
 
             const summary = await summarizeText(initialResponseText, SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
