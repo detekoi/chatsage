@@ -3,7 +3,7 @@ import logger from './lib/logger.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 // Import getGeminiClient and generateResponse
-import { initializeGeminiClient, getGeminiClient, generateResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
+import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';

@@ -1,7 +1,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getIrcClient } from '../twitch/ircClient.js';
-import { generateResponse as generateLlmResponse, summarizeText } from './geminiClient.js';
+import { generateStandardResponse as generateLlmResponse, summarizeText } from './geminiClient.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;

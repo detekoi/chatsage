@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 // Import BOTH search generation AND the new summarizer
-import { generateSearchGroundedResponse, summarizeText } from '../../llm/geminiClient.js';
+import { generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
 // Define IRC message length limit (be conservative)
