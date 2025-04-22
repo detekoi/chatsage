@@ -47,7 +47,7 @@ async function main() {
         await initializeHelixClient(config.twitch);
 
         logger.info('Initializing Context Manager...');
-        initializeContextManager();
+        initializeContextManager(config.twitch.channels);
 
         logger.info('Initializing Command Processor...');
         initializeCommandProcessor();

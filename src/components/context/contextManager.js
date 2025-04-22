@@ -1,5 +1,5 @@
 import logger from '../../lib/logger.js';
-import { getHelixClient } from '../twitch/helixClient.js'; // Needed for broadcaster ID lookup
+import { getHelixClient, getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
@@ -39,16 +39,25 @@ const channelStates = new Map();
 
 // --- Initialization ---
 /**
- * Initializes the Context Manager.
- * Currently just logs, but could pre-load state in the future.
+ * Initializes the Context Manager by creating initial state entries
+ * for all configured channels.
+ * @param {string[]} configuredChannels - Array of channel names (without '#').
  */
-function initializeContextManager() {
+function initializeContextManager(configuredChannels = []) {
     if (channelStates.size > 0) {
         logger.warn('Context Manager already initialized or has existing state.');
+        // Optionally clear or handle existing state if re-initializing
     } else {
         logger.info('Initializing Context Manager...');
+        if (configuredChannels.length === 0) {
+            logger.warn('No configured channels provided to Context Manager on initialization.');
+        }
+        // Pre-populate state for each configured channel
+        for (const channelName of configuredChannels) {
+            _getOrCreateChannelState(channelName); // This populates the map
+        }
+        logger.info(`Context Manager initialized for channels: ${configuredChannels.join(', ')}`);
     }
-    // Future: Load state from persistent storage if implemented
 }
 
 /**
@@ -58,10 +67,11 @@ function initializeContextManager() {
  */
 function _getOrCreateChannelState(channelName) {
     if (!channelStates.has(channelName)) {
-        logger.info(`Creating new state entry for channel: ${channelName}`);
+        // Log level changed to DEBUG as this is now expected during init
+        logger.debug(`Creating new state entry for channel: ${channelName}`);
         channelStates.set(channelName, {
             channelName: channelName,
-            broadcasterId: null, // Will be fetched lazily
+            broadcasterId: null,
             chatHistory: [],
             chatSummary: '',
             streamContext: {
@@ -193,32 +203,34 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
 
 /**
  * Lazily fetches and caches the broadcaster ID for a channel name.
- * Requires helixClient.getUsersByLogin to be implemented.
  * @param {string} channelName - Channel name (without '#').
  * @returns {Promise<string | null>} Broadcaster user ID, or null if lookup fails.
  */
 async function getBroadcasterId(channelName) {
     const state = _getOrCreateChannelState(channelName);
     if (state.broadcasterId) {
+        logger.debug(`[${channelName}] Using cached broadcaster ID: ${state.broadcasterId}`);
         return state.broadcasterId;
     }
 
-    logger.info(`Broadcaster ID not cached for ${channelName}. Fetching from Helix...`);
-    try {
-        const helixClient = getHelixClient(); // Assumes helixClient is initialized
-        // We need a function like this in helixClient.js:
-        const users = await helixClient.getUsersByLogin([channelName]);
+    logger.info(`[${channelName}] Broadcaster ID not cached. Attempting fetch via Helix...`);
 
-        if (users && users.length > 0) {
+    try {
+        // Call getUsersByLogin directly - it handles the Helix client internally
+        const users = await getUsersByLogin([channelName]);
+
+        logger.debug({ channel: channelName, userCount: users?.length, usersData: users }, `[${channelName}] Received response from getUsersByLogin.`);
+
+        if (users && users.length > 0 && users[0].id) {
             state.broadcasterId = users[0].id;
-            logger.info(`Cached broadcaster ID for ${channelName}: ${state.broadcasterId}`);
+            logger.info(`[${channelName}] Successfully fetched and cached broadcaster ID: ${state.broadcasterId}`);
             return state.broadcasterId;
         } else {
-            logger.error(`Could not find broadcaster ID for channel name: ${channelName}`);
+            logger.error(`[${channelName}] Could not find broadcaster ID in Helix response for login name.`);
             return null;
         }
     } catch (error) {
-        logger.error({ err: error, channel: channelName }, `Failed to fetch broadcaster ID for ${channelName}`);
+        logger.error({ err: { message: error.message, code: error.code }, channel: channelName }, `[${channelName}] Error during getUsersByLogin call.`);
         return null;
     }
 }
@@ -230,32 +242,50 @@ async function getBroadcasterId(channelName) {
  */
 async function getChannelsForPolling() {
     const channelsToPoll = [];
-    // Create a list of promises for fetching missing IDs
     const idFetchPromises = [];
+
+    // Use a Set to avoid duplicate fetches if channelStates has duplicates (shouldn't happen with Map)
+    const channelsNeedingId = new Set();
 
     for (const channelName of channelStates.keys()) {
          const state = channelStates.get(channelName);
          if (state.broadcasterId) {
             channelsToPoll.push({ channelName: state.channelName, broadcasterId: state.broadcasterId });
          } else {
-            // Add promise to fetch missing ID
-            idFetchPromises.push(
-                getBroadcasterId(channelName).then(id => {
-                    if (id) {
-                        channelsToPoll.push({ channelName: channelName, broadcasterId: id });
-                    }
-                    // If ID fetch fails, it's logged in getBroadcasterId, we just don't add it here
-                })
-            );
+            // Only add if not already trying to fetch
+            if (!channelsNeedingId.has(channelName)) {
+                channelsNeedingId.add(channelName);
+                // --- Added Debugging ---
+                logger.debug(`[${channelName}] Adding promise to fetch missing broadcaster ID.`);
+                // --- End Added Debugging ---
+                idFetchPromises.push(
+                    getBroadcasterId(channelName).then(id => {
+                        if (id) {
+                            // Add to list *after* successful fetch
+                            channelsToPoll.push({ channelName: channelName, broadcasterId: id });
+                        }
+                        // Remove from set regardless of success/failure to prevent retries *within this cycle*
+                        channelsNeedingId.delete(channelName);
+                    }).catch(err => {
+                        // Log errors from the getBroadcasterId promise itself
+                        logger.error({ err, channel: channelName }, `[${channelName}] Error resolving getBroadcasterId promise in getChannelsForPolling.`);
+                        channelsNeedingId.delete(channelName);
+                    })
+                );
+            }
          }
     }
 
-    // Wait for all missing ID fetches to complete
-    await Promise.all(idFetchPromises);
+    // Wait for all fetches initiated in *this cycle* to complete
+    if (idFetchPromises.length > 0) {
+        logger.debug(`Waiting for ${idFetchPromises.length} broadcaster ID fetches to complete...`);
+        await Promise.all(idFetchPromises);
+        logger.debug(`Broadcaster ID fetches completed for this cycle.`);
+    }
 
+    // Return the list which now includes any IDs fetched successfully during this call
     return channelsToPoll;
 }
-
 
 // Define what the "manager" object exposes
 const manager = {
@@ -264,7 +294,7 @@ const manager = {
     updateStreamContext: updateStreamContext,
     recordStreamContextFetchError: recordStreamContextFetchError,
     getContextForLLM: getContextForLLM,
-    getBroadcasterId: getBroadcasterId, // Expose if needed directly elsewhere
+    getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
 };
 
@@ -277,4 +307,4 @@ function getContextManager() {
     return manager;
 }
 
-export { initializeContextManager, getContextManager };
+export { initializeContextManager, getContextManager, };

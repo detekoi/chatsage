@@ -1,4 +1,5 @@
 import logger from '../../lib/logger.js';
+import { getChannelInformation } from './helixClient.js';
 // No need to import helixClient directly here, pass it in
 // No need to import contextManager directly here, pass it in
 
@@ -7,7 +8,7 @@ let pollingIntervalId = null;
 /**
  * Fetches stream information for a batch of channels.
  * @param {Array<{channelName: string, broadcasterId: string}>} channels - Batch of channels with IDs.
- * @param {import('./helixClient.js').HelixClient} helixClient - Initialized Helix client instance.
+ * @param {import('./helixClient.js').HelixClient} helixClient - Initialized Helix client instance (still needed for potential future direct calls).
  * @param {import('../context/contextManager.js').ContextManager} contextManager - Context manager instance.
  */
 async function fetchBatch(channels, helixClient, contextManager) {
@@ -17,8 +18,8 @@ async function fetchBatch(channels, helixClient, contextManager) {
     logger.debug(`Polling stream info for IDs: ${broadcasterIds.join(', ')}`);
 
     try {
-        // Fetch channel info from Helix API
-        const channelInfoList = await helixClient.getChannelInformation(broadcasterIds);
+        // Fetch channel info using the imported function directly
+        const channelInfoList = await getChannelInformation(broadcasterIds);
 
         // Create a map for easy lookup by ID
         const infoMap = new Map(channelInfoList.map(info => [info.broadcaster_id, info]));
