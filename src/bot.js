@@ -90,13 +90,20 @@ async function main() {
 
         // --- MESSAGE HANDLER ---
         ircClient.on('message', (channel, tags, message, self) => {
+            if (self) {
+                // Add self message to context ONLY
+                getContextManager().addMessage(channel.substring(1), tags.username, message, tags).catch(err => {
+                    logger.error({ err, channel: channel.substring(1), user: tags.username }, 'Error adding self message to context');
+                });
+                return; // Prevent further processing for self messages
+            }
+
             const cleanChannel = channel.substring(1);
             const lowerUsername = tags.username;
             const displayName = tags['display-name'] || tags.username;
             const contextManager = getContextManager();
 
             // --- Stop Translation Check ---
-            // This needs to work even for self messages if the bot somehow said "stop translating"
             const stopPhrases = [
                 '!translate stop',
                 'stop translating',
@@ -114,61 +121,62 @@ async function main() {
                 isStopCommand = true;
             }
 
-            // Still add the "stop" message itself to context if needed, but don't process further
             if (isStopCommand) {
-                // Add stop message to context before returning
                 contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                     logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
                 });
                 return;
             }
 
-            // 1. Add ALL messages (including self) to context
+            // 1. Add user message to context (async)
             contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
             });
 
-            // --- Logic that should ONLY run for NON-SELF messages ---
-            if (!self) {
-                // 2. Process potential commands (only if NOT self)
-                processCommand(cleanChannel, tags, message).catch(err => {
+            // 2. Process potential commands (async) AND check if one ran
+            let commandProcessed = false; // Flag
+            processCommand(cleanChannel, tags, message)
+                .then(processed => {
+                    commandProcessed = processed; // Set flag based on return value
+                    // Now check translation/mention ONLY if a command DID NOT run
+                    if (!commandProcessed) {
+                        // --- Automatic Translation Logic ---
+                        const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
+                        if (userState?.isTranslating && userState.targetLanguage) {
+                            (async () => {
+                                logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
+                                try {
+                                    const translatedText = await translateText(message, userState.targetLanguage);
+                                    if (translatedText) {
+                                        const reply = `Translation for @${displayName}: ${translatedText}`;
+                                        enqueueMessage(channel, reply);
+                                    } else {
+                                        logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
+                                    }
+                                } catch (err) {
+                                    logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error during automatic translation.');
+                                }
+                            })();
+                            return; // Don't process mention if translating
+                        }
+
+                        // --- Mention Check ---
+                        const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
+                        if (message.toLowerCase().startsWith(mentionPrefix)) {
+                            const userMessageContent = message.substring(mentionPrefix.length).trim();
+                            if (userMessageContent) {
+                                logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
+                                handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention")
+                                    .catch(err => logger.error({ err }, "Error in async mention handler call"));
+                            } else {
+                                logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);
+                            }
+                        }
+                    }
+                })
+                .catch(err => {
                     logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error processing command');
                 });
-
-                // --- Automatic Translation Logic (only if NOT self) ---
-                const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
-                if (userState?.isTranslating && userState.targetLanguage) {
-                    (async () => {
-                        logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
-                        try {
-                            const translatedText = await translateText(message, userState.targetLanguage);
-                            if (translatedText) {
-                                const reply = `Translation for @${displayName}: ${translatedText}`;
-                                enqueueMessage(channel, reply);
-                            } else {
-                                logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
-                                // Optional: Notify user translation failed? Might be spammy.
-                            }
-                        } catch (err) {
-                            logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error during automatic translation.');
-                        }
-                    })();
-                    return; // Don't process mentions if translating this user's message
-                }
-
-                // 3. Check for mention and trigger LLM response (only if NOT self)
-                const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
-                if (message.toLowerCase().startsWith(mentionPrefix)) {
-                    const userMessageContent = message.substring(mentionPrefix.length).trim();
-                    if (userMessageContent) {
-                        logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
-                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention")
-                            .catch(err => logger.error({ err }, "Error in async mention handler call"));
-                    } else {
-                        logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);
-                    }
-                }
-            } // End of if(!self) block
         }); // End of message handler
 
         // Add other basic listeners

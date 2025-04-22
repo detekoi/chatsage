@@ -82,12 +82,13 @@ function hasPermission(handler, tags, channelName) {
  * @param {string} channelName - Channel name (without '#').
  * @param {object} tags - tmi.js message tags.
  * @param {string} message - Raw message content.
+ * @returns {Promise<boolean>} True if a command was successfully found and executed (or attempted), false otherwise.
  */
 async function processMessage(channelName, tags, message) {
     const parsed = parseCommand(message);
 
     if (!parsed) {
-        return; // Not a command or just the prefix
+        return false; // Not a command or just the prefix
     }
 
     const { command, args } = parsed;
@@ -96,14 +97,14 @@ async function processMessage(channelName, tags, message) {
     if (!handler || typeof handler.execute !== 'function') {
         // Optional: Respond if command doesn't exist? Maybe only if mentioned? Avoid spam.
         // logger.debug(`Command prefix used, but no handler found for: ${command}`);
-        return;
+        return false;
     }
 
     // --- Permission Check ---
     if (!hasPermission(handler, tags, channelName)) {
         logger.debug(`User ${tags.username} lacks permission for command !${command} in #${channelName}`);
         // Optional: Send a whisper or message indicating lack of permission? Be careful about spam.
-        return;
+        return false;
     }
 
     // --- Execute Command ---
@@ -120,6 +121,7 @@ async function processMessage(channelName, tags, message) {
         };
         // Execute the command's handler function
         await handler.execute(context);
+        return true; // Command was successfully executed
 
     } catch (error) {
         logger.error({ err: error, command: command, user: tags.username, channel: channelName },
@@ -131,6 +133,7 @@ async function processMessage(channelName, tags, message) {
         } catch (sayError) {
              logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
         }
+        return true; // Command was attempted, even though it failed
     }
 }
 
