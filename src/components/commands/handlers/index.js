@@ -41,8 +41,6 @@ const commandHandlers = {
     // help: help, // Define help command
     // commands: help, // Alias !commands to !help handler
     ping: ping,
-    search: search,
-    translate: translate,
     // about: about,
 
     // --- Stream Context Commands ---
@@ -52,9 +50,11 @@ const commandHandlers = {
     // --- Knowledge & LLM Commands ---
     // ask: ask,
     // fact: fact,
-    // search: search, // !search alias
+    search: search,
     // wiki: search,   // !wiki alias (if desired)
     // explain: explain,
+    translate: translate,
+
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)

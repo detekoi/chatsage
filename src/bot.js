@@ -135,7 +135,7 @@ async function main() {
                         if (translatedText) {
                             const reply = `Translation for @${displayName}: ${translatedText}`;
                             // Basic length check for reply
-                            if (reply.length > 450) {
+                            if (reply.length > 500) {
                                 logger.warn(`Translation reply too long (${reply.length}). Sending truncated.`);
                                 await ircClient.say(channel, reply.substring(0, 447) + '...');
                             } else {
