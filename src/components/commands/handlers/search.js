@@ -42,12 +42,13 @@ const searchHandler = {
             }
 
             // 2. Format the initial reply and check length
-            let replyPrefix = `@${userName} Here's what I found about "${userQuery}": `;
+            let replyPrefix = `@${userName} Here's what I found: `;
             let finalReplyText = initialResponseText; // Start with the full response
 
             if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial search response too long (${finalReplyText.length} chars). Attempting summarization.`);
-                replyPrefix = `@${userName} The info was a bit long, here's a summary about "${userQuery}": `;
+                // Keep the original prefix even when summarizing
+                // replyPrefix = `@${userName} The info was a bit long, here's a summary about "${userQuery}": `;
 
                 // 3. Summarize if too long
                 const summary = await summarizeText(initialResponseText, SUMMARY_TARGET_LENGTH);
