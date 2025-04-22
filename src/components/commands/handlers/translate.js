@@ -53,7 +53,7 @@ const translateHandler = {
                 let finalConfirmation = `@${displayName}, ${baseConfirmation}`;
                 if (translatedConfirmation && translatedConfirmation.trim().length > 0) {
                     // Append translated version if successful
-                    finalConfirmation += ` / (${translatedConfirmation})`;
+                    finalConfirmation += ` / ${translatedConfirmation}`;
                 } else {
                     logger.warn(`Could not translate confirmation message into ${targetLanguage}.`);
                 }

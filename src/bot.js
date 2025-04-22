@@ -107,8 +107,10 @@ async function main() {
             const stopPhrases = [
                 '!translate stop',
                 'stop translating',
+                'stop translate',
                 `@${config.twitch.username.toLowerCase()} stop`, // Mention bot + stop
                 `@${config.twitch.username.toLowerCase()} stop translating`,
+                `@${config.twitch.username.toLowerCase()} stop translate`,
                 `@${config.twitch.username.toLowerCase()}, stop translating`,
             ];
             let isStopCommand = false;
