@@ -7,6 +7,7 @@ import { initializeGeminiClient, getGeminiClient, generateResponse as generateLl
 import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
+import { initializeIrcSender, enqueueMessage, clearMessageQueue } from './lib/ircSender.js';
 import { handleStandardLlmQuery } from './components/llm/llmUtils.js';
 
 let streamInfoIntervalId = null;
@@ -19,6 +20,8 @@ const SUMMARY_TARGET_LENGTH = 400;  // Define globally for reuse
 async function gracefulShutdown(signal) {
     logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
     stopStreamInfoPolling(streamInfoIntervalId);
+    clearMessageQueue(); // Clear the message queue before disconnecting
+    
     const ircClient = getIrcClient();
     if (ircClient && ircClient.readyState() === 'OPEN') {
         try {
@@ -53,6 +56,9 @@ async function main() {
 
         logger.info('Initializing Command Processor...');
         initializeCommandProcessor();
+
+        logger.info('Initializing IRC Sender...');
+        initializeIrcSender();
 
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
@@ -106,8 +112,7 @@ async function main() {
                 logger.info(`[${cleanChannel}] User ${lowerUsername} used a stop phrase.`);
                 const wasStopped = contextManager.disableUserTranslation(cleanChannel, lowerUsername);
                 if (wasStopped) {
-                    ircClient.say(channel, `@${displayName}, Translation stopped.`).catch(e => 
-                        logger.error({ err: e }, 'Failed to send translation stop confirmation'));
+                    enqueueMessage(channel, `@${displayName}, Translation stopped.`);
                 }
                 isStopCommand = true; // Prevent further processing of this specific message
             }
@@ -137,13 +142,7 @@ async function main() {
                         const translatedText = await translateText(message, userState.targetLanguage);
                         if (translatedText) {
                             const reply = `Translation for @${displayName}: ${translatedText}`;
-                            // Basic length check for reply
-                            if (reply.length > 500) {
-                                logger.warn(`Translation reply too long (${reply.length}). Sending truncated.`);
-                                await ircClient.say(channel, reply.substring(0, 447) + '...');
-                            } else {
-                                await ircClient.say(channel, reply);
-                            }
+                            enqueueMessage(channel, reply);
                         } else {
                             logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
                             // Optional: Notify user translation failed? Might be spammy.

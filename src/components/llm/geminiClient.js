@@ -4,6 +4,9 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/ge
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 
+// --- Define the System Instruction ---
+const CHAT_SAGE_SYSTEM_INSTRUCTION = "You are ChatSage, a wise and helpful AI assistant in a Twitch chat. Be concise and engaging like a chatbot.";
+
 let genAI = null;
 let generativeModel = null;
 
@@ -77,9 +80,7 @@ export function buildPrompt(context) {
         throw new Error('Missing required context (username, currentMessage) for building prompt.');
     }
 
-    return `You are StreamSage, a wise and helpful AI assistant in a Twitch chat. Be concise and engaging like a chatbot.
-
-**Current Stream Information:**
+    return `**Current Stream Information:**
 Game: ${game}
 Title: ${title}
 Tags: ${tags}
@@ -90,9 +91,7 @@ ${summary}
 **Recent Messages:**
 ${history}
 
-**New message from ${context.username}:** ${context.currentMessage}
-
-StreamSage Response:`;
+**New message from ${context.username}:** ${context.currentMessage}`;
 }
 
 export async function generateResponse(context) {
@@ -100,15 +99,29 @@ export async function generateResponse(context) {
     let promptText;
 
     try {
-        promptText = buildPrompt(context);
-        logger.debug({ prompt: promptText }, 'Generated prompt for Gemini API');
+        // If context.currentMessage exists, use it directly as the prompt
+        // This allows pre-formatted prompts to be passed in
+        if (context.currentMessage && typeof context.currentMessage === 'string') {
+            promptText = context.currentMessage;
+            logger.debug('Using pre-formatted prompt message');
+        } else {
+            promptText = buildPrompt(context);
+            logger.debug('Built prompt from context');
+        }
+        logger.debug({ promptLength: promptText.length }, 'Generated prompt for Gemini API');
     } catch (error) {
          logger.error({ err: error }, 'Failed to build prompt.');
          return null;
     }
 
     try {
-        const result = await model.generateContent(promptText);
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: promptText }] }],
+            systemInstruction: {
+                role: "system",
+                parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }]
+            }
+        });
         const response = result.response;
 
         if (response.promptFeedback?.blockReason) {
@@ -165,27 +178,28 @@ export async function generateResponse(context) {
 /**
  * Generates a response using the Gemini API, enabling the Google Search tool.
  * Takes a pre-formatted prompt string as input.
- * @param {string} promptText - The prompt instructing the model to perform a search.
+ * @param {string} searchUserPrompt - The prompt instructing the model to perform a search.
  * @returns {Promise<string | null>} Resolves with the generated text response, or null if generation failed/blocked.
  */
-export async function generateSearchGroundedResponse(promptText) {
-    if (!promptText || typeof promptText !== 'string' || promptText.trim().length === 0) {
-        logger.error('generateSearchGroundedResponse called with invalid promptText.');
+export async function generateSearchGroundedResponse(searchUserPrompt) {
+    if (!searchUserPrompt || typeof searchUserPrompt !== 'string' || searchUserPrompt.trim().length === 0) {
+        logger.error('generateSearchGroundedResponse called with invalid searchUserPrompt.');
         return null;
     }
     const model = getGeminiClient(); // Ensures model is initialized
 
-    logger.debug({ promptLength: promptText.length }, 'Attempting search-grounded Gemini API call');
+    logger.debug({ promptLength: searchUserPrompt.length }, 'Attempting search-grounded Gemini API call');
 
     try {
         const result = await model.generateContent({
-             contents: [{ role: "user", parts: [{ text: promptText }] }],
-             // Enable the Google Search tool (aka "grounding")
+             contents: [{ role: "user", parts: [{ text: searchUserPrompt }] }],
              tools: [{
                  googleSearch: {} // Enable Google Search
              }],
-             // Tool config can be added here if needed (e.g., disableSemanticFiltering)
-             // tool_config: { function_calling_config: { mode: ... } } // For function calling, not needed for basic search
+             systemInstruction: {
+                 role: "system",
+                 parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }]
+             }
         });
 
         const response = result.response;
@@ -262,8 +276,13 @@ Concise Summary:`;
     logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
 
     try {
-        // Use the standard generateContent, no search needed here
-        const result = await model.generateContent(summarizationPrompt);
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: summarizationPrompt }] }],
+            systemInstruction: {
+                role: "system",
+                parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }]
+            }
+        });
         const response = result.response;
 
         // Standard safety/validity checks

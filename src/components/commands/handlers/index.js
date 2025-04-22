@@ -13,7 +13,7 @@ import sage from './sage.js';
 // import info from './info.js';
 
 // Knowledge & LLM Commands
-// import ask from './ask.js'; // !ask command points to search until confidence threshold can be implemented
+import askHandler from './ask.js'; // !ask command with function calling
 // import fact from './fact.js';
 import search from './search.js';
 // import explain from './explain.js';
@@ -49,7 +49,7 @@ const commandHandlers = {
     // info: info,
 
     // --- Knowledge & LLM Commands ---
-    ask: search,
+    ask: askHandler,
     sage: sage,
     // fact: fact,
     search: search,

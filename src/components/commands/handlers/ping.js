@@ -1,5 +1,6 @@
 // src/components/commands/handlers/ping.js
 import logger from '../../../lib/logger.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 
 /**
  * Handler for the !ping command.
@@ -10,10 +11,10 @@ const pingHandler = {
     description: 'Checks if the bot is responsive. Responds with Pong!',
     permission: 'everyone', // Anyone can use this command
     execute: async (context) => {
-        const { channel, ircClient, user } = context;
+        const { channel, user } = context;
         try {
             const response = `Pong! @${user['display-name'] || user.username}`;
-            await ircClient.say(channel, response);
+            enqueueMessage(channel, response);
             logger.info(`Executed !ping command in ${channel} for ${user.username}`);
         } catch (error) {
             logger.error({ err: error, channel: channel, user: user.username }, `Failed to send Pong response for !ping command.`);

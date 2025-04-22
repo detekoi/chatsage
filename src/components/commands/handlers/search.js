@@ -1,6 +1,7 @@
 import logger from '../../../lib/logger.js';
 // Import BOTH search generation AND the new summarizer
 import { generateSearchGroundedResponse, summarizeText } from '../../llm/geminiClient.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 
 // Define IRC message length limit (be conservative)
 const MAX_IRC_MESSAGE_LENGTH = 450;
@@ -16,14 +17,12 @@ const searchHandler = {
     description: 'Searches the web for information on a topic. Usage: !search <your query>',
     permission: 'everyone', // Or restrict if desired (e.g., 'subscriber')
     execute: async (context) => {
-        const { channel, user, args, ircClient } = context;
+        const { channel, user, args } = context;
         const userQuery = args.join(' ').trim();
         const userName = user['display-name'] || user.username; // Get username for replies
 
         if (!userQuery) {
-            try {
-                await ircClient.say(channel, `@${userName}, please provide something to search for. Usage: !search <your query>`);
-            } catch (sayError) { logger.error({ err: sayError }, 'Failed to send search usage message.'); }
+            enqueueMessage(channel, `@${userName}, please provide something to search for. Usage: !search <your query>`);
             return;
         }
 
@@ -37,7 +36,7 @@ const searchHandler = {
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
-                await ircClient.say(channel, `@${userName}, sorry, I couldn't find information about "${userQuery}" right now.`);
+                enqueueMessage(channel, `@${userName}, sorry, I couldn't find information about "${userQuery}" right now.`);
                 return; // Exit if no initial response
             }
 
@@ -71,13 +70,11 @@ const searchHandler = {
                  finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
 
-            await ircClient.say(channel, finalMessage);
+            enqueueMessage(channel, finalMessage);
 
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);
-            try {
-                await ircClient.say(channel, `@${userName}, sorry, an error occurred while searching.`);
-            } catch (sayError) { logger.error({ err: sayError }, 'Failed to send search error message.'); }
+            enqueueMessage(channel, `@${userName}, sorry, an error occurred while searching.`);
         }
     },
 };
