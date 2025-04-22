@@ -2,6 +2,7 @@ import logger from '../../../lib/logger.js';
 // Need contextManager functions to update user state
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { translateText } from '../../llm/geminiClient.js';
 
 /**
  * Handler for the !translate command.
@@ -29,11 +30,10 @@ const translateHandler = {
             // Disable translation
             try {
                 const wasTranslating = contextManager.disableUserTranslation(channelName, userName);
-                if (wasTranslating) {
-                    enqueueMessage(channel, `@${displayName}, Okay, I will stop translating your messages.`);
-                } else {
-                    enqueueMessage(channel, `@${displayName}, Translation was already off for you.`);
-                }
+                const stopMessage = wasTranslating
+                    ? `@${displayName}, Okay, I will stop translating your messages.`
+                    : `@${displayName}, Translation was already off for you.`;
+                enqueueMessage(channel, stopMessage);
             } catch (e) {
                 logger.error({ err: e, user: userName }, 'Error disabling translation or sending message.');
                 enqueueMessage(channel, `@${displayName}, Sorry, there was an error trying to stop translation.`);
@@ -43,10 +43,25 @@ const translateHandler = {
             const targetLanguage = args.join(' '); // Allow multi-word languages like "Simplified Chinese"
             try {
                 contextManager.enableUserTranslation(channelName, userName, targetLanguage);
-                enqueueMessage(channel, `@${displayName}, Okay, I will try to translate your next messages into ${targetLanguage}. Use "!translate stop" to disable.`);
+                
+                // Generate the confirmation message
+                const baseConfirmation = `Okay, I will try to translate your next messages into ${targetLanguage}. Use "!translate stop" to disable.`;
+
+                // Attempt to translate the confirmation itself
+                const translatedConfirmation = await translateText(baseConfirmation, targetLanguage);
+
+                let finalConfirmation = `@${displayName}, ${baseConfirmation}`;
+                if (translatedConfirmation && translatedConfirmation.trim().length > 0) {
+                    // Append translated version if successful
+                    finalConfirmation += ` / (${translatedConfirmation})`;
+                } else {
+                    logger.warn(`Could not translate confirmation message into ${targetLanguage}.`);
+                }
+
+                enqueueMessage(channel, finalConfirmation);
             } catch (e) {
-                 logger.error({ err: e, user: userName, language: targetLanguage }, 'Error enabling translation or sending message.');
-                 enqueueMessage(channel, `@${displayName}, Sorry, there was an error trying to enable translation to ${targetLanguage}.`);
+                logger.error({ err: e, user: userName, language: targetLanguage }, 'Error enabling translation or sending message.');
+                enqueueMessage(channel, `@${displayName}, Sorry, there was an error trying to enable translation to ${targetLanguage}.`);
             }
         }
     },
