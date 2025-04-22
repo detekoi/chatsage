@@ -17,7 +17,7 @@ const helpHandler = {
         const displayName = user['display-name'] || user.username;
 
         try {
-            const response = `@${displayName}, you can find my command list and usage examples here: ${HELP_URL}`;
+            const response = `@${displayName}, you can find my command list here: ${HELP_URL}`;
             enqueueMessage(channel, response);
             logger.info(`Executed !help command in ${channel} for ${user.username}`);
         } catch (error) {

@@ -9,7 +9,7 @@ import ping from './ping.js'; // Let's create ping first as a simple example
 // import sage from './sage.js'; // UNUSED: sage is now aliased to ask
 
 // Stream Context Commands
-// import game from './game.js';
+import game from './game.js';
 // import info from './info.js';
 
 // Knowledge & LLM Commands
@@ -46,7 +46,7 @@ const commandHandlers = {
     // about: about,
 
     // --- Stream Context Commands ---
-    // game: game,
+    game: game,
     // info: info,
 
     // --- Knowledge & LLM Commands ---

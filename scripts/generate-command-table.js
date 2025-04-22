@@ -37,9 +37,9 @@ for (const [commandName, handler] of sortedEntries) {
 
     const escapeHtml = (unsafe) => {
         return unsafe
-             .replace(/&/g, "&")
-             .replace(/</g, "<")
-             .replace(/>/g, ">");
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;");
      };
 
     htmlOutput += `            <tr>\n`;
