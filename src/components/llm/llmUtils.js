@@ -1,7 +1,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getIrcClient } from '../twitch/ircClient.js';
-import { generateStandardResponse as generateLlmResponse, summarizeText } from './geminiClient.js';
+import { generateStandardResponse as generateLlmResponse, buildContextPrompt, summarizeText } from './geminiClient.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
@@ -29,15 +29,18 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
             return;
         }
 
-        // b. Generate initial response
-        const initialResponseText = await generateLlmResponse(llmContext);
+        // b. Build context prompt string
+        const contextPrompt = buildContextPrompt(llmContext);
+
+        // c. Generate initial response with both context and user message
+        const initialResponseText = await generateLlmResponse(contextPrompt, userMessage);
         if (!initialResponseText?.trim()) {
             logger.warn({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'LLM generated null or empty response.');
             await ircClient.say(channel, `@${displayName} Sorry, I couldn't come up with a reply to that.`);
             return;
         }
 
-        // c. Check length and Summarize if needed
+        // d. Check length and Summarize if needed
         let replyPrefix = `@${displayName} `; // Simple prefix
         let finalReplyText = initialResponseText;
 
@@ -56,7 +59,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
             }
         }
 
-        // d. Final length check and Send
+        // e. Final length check and Send
         let finalMessage = replyPrefix + finalReplyText;
         if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
              logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
