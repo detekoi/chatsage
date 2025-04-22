@@ -132,7 +132,7 @@ const translateHandler = {
                 const translatedConfirmation = await translateText(baseConfirmation, language);
                 let finalConfirmation = `@${invokingDisplayName}, ${baseConfirmation}`;
                 if (translatedConfirmation?.trim()) {
-                    finalConfirmation += ` / (${translatedConfirmation})`;
+                    finalConfirmation += ` / ${translatedConfirmation}`;
                 } else {
                     logger.warn(`Could not translate confirmation message into ${language}.`);
                 }
