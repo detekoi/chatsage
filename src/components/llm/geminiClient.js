@@ -312,7 +312,7 @@ export async function translateText(textToTranslate, targetLanguage) {
     const model = getGeminiClient();
 
     // Simple, direct translation prompt
-    const translationPrompt = `Translate the following text into ${targetLanguage}:
+    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary:
 
 "${textToTranslate}"
 
