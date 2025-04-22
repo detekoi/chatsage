@@ -160,3 +160,77 @@ export async function generateResponse(context) {
         return null;
     }
 }
+
+// --- NEW: Search Grounded Response Generation ---
+/**
+ * Generates a response using the Gemini API, enabling the Google Search tool.
+ * Takes a pre-formatted prompt string as input.
+ * @param {string} promptText - The prompt instructing the model to perform a search.
+ * @returns {Promise<string | null>} Resolves with the generated text response, or null if generation failed/blocked.
+ */
+export async function generateSearchGroundedResponse(promptText) {
+    if (!promptText || typeof promptText !== 'string' || promptText.trim().length === 0) {
+        logger.error('generateSearchGroundedResponse called with invalid promptText.');
+        return null;
+    }
+    const model = getGeminiClient(); // Ensures model is initialized
+
+    logger.debug({ promptLength: promptText.length }, 'Attempting search-grounded Gemini API call');
+
+    try {
+        const result = await model.generateContent({
+             contents: [{ role: "user", parts: [{ text: promptText }] }],
+             // Enable the Google Search tool (aka "grounding")
+             tools: [{
+                 googleSearch: {} // Enable Google Search
+             }],
+             // Tool config can be added here if needed (e.g., disableSemanticFiltering)
+             // tool_config: { function_calling_config: { mode: ... } } // For function calling, not needed for basic search
+        });
+
+        const response = result.response;
+
+        // Standard safety/validity checks
+        if (response.promptFeedback?.blockReason) {
+            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Search-grounded Gemini request blocked due to prompt safety settings.');
+            return null;
+        }
+        if (!response.candidates?.length || !response.candidates[0].content) {
+            logger.warn('Search-grounded Gemini response missing candidates or content.');
+             return null;
+        }
+
+        const candidate = response.candidates[0];
+
+         // Check for API citations (evidence from search) - optional but informative
+        if (candidate.citationMetadata?.citationSources?.length > 0) {
+            logger.info({ citations: candidate.citationMetadata.citationSources }, 'Gemini response included search citations.');
+            // NOTE: We are currently just returning the text, not the structured citation info.
+            // Future enhancement: Extract and format citations if desired.
+        } else {
+            logger.info('Gemini response did not include specific search citations (or grounding was not used).');
+        }
+
+
+        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+             logger.warn({ finishReason: candidate.finishReason }, `Search-grounded Gemini generation finished unexpectedly: ${candidate.finishReason}`);
+              if (candidate.finishReason === 'SAFETY') { logger.warn('Search-grounded Gemini response content blocked due to safety settings.'); }
+             return null;
+        }
+         if (!candidate.content?.parts?.length) {
+            logger.warn('Search-grounded Gemini response candidate missing content parts.');
+            return null;
+        }
+
+        const text = candidate.content.parts.map(part => part.text).join('');
+        logger.info({ responseLength: text.length, finishReason: candidate.finishReason || 'N/A' }, 'Successfully generated search-grounded response from Gemini.');
+        return text.trim();
+
+    } catch (error) {
+        logger.error({ err: error, prompt: "[prompt omitted]" }, 'Error during search-grounded Gemini API call');
+        // ... add specific error handling (rate limits, API key, network) as in generateResponse ...
+        if (error.message?.includes('API key not valid')) { logger.error('Gemini API key is not valid.'); }
+        // Add retry logic if needed for transient errors
+        return null;
+    }
+}

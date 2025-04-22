@@ -5,6 +5,7 @@ import logger from '../../../lib/logger.js';
 // Core Bot Commands
 // import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
+import search from './search.js';
 // import about from './about.js';
 
 // Stream Context Commands
@@ -39,6 +40,7 @@ const commandHandlers = {
     // help: help, // Define help command
     // commands: help, // Alias !commands to !help handler
     ping: ping,
+    search: search,
     // about: about,
 
     // --- Stream Context Commands ---
@@ -73,6 +75,5 @@ if (loadedCommands.length > 0) {
 } else {
      logger.warn('No command handlers were imported or mapped in handlers/index.js');
 }
-
 
 export default commandHandlers;
