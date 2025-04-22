@@ -3,7 +3,7 @@ import logger from './lib/logger.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
-import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation } from './components/context/contextManager.js';
+import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation, disableAllTranslationsInChannel } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
 import { initializeIrcSender, enqueueMessage, clearMessageQueue } from './lib/ircSender.js';
@@ -12,6 +12,13 @@ import { handleStandardLlmQuery } from './components/llm/llmUtils.js';
 let streamInfoIntervalId = null;
 const MAX_IRC_MESSAGE_LENGTH = 450; // Define globally for reuse
 const SUMMARY_TARGET_LENGTH = 400;  // Define globally for reuse
+
+// Helper function for checking mod/broadcaster status
+function isPrivilegedUser(tags, channelName) {
+    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
+    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
+    return isMod || isBroadcaster;
+}
 
 /**
  * Gracefully shuts down the application.
@@ -102,83 +109,134 @@ async function main() {
             const lowerUsername = tags.username;
             const displayName = tags['display-name'] || tags.username;
             const contextManager = getContextManager();
+            const isModOrBroadcaster = isPrivilegedUser(tags, cleanChannel);
 
             // --- Stop Translation Check ---
-            const stopPhrases = [
-                '!translate stop',
+            const lowerMessage = message.toLowerCase().trim();
+            const stopTriggers = [
                 'stop translating',
-                'stop translate',
-                `@${config.twitch.username.toLowerCase()} stop`, // Mention bot + stop
+                'stop translate'
+            ];
+            const mentionStopTriggers = [
+                `@${config.twitch.username.toLowerCase()} stop`,
                 `@${config.twitch.username.toLowerCase()} stop translating`,
                 `@${config.twitch.username.toLowerCase()} stop translate`,
                 `@${config.twitch.username.toLowerCase()}, stop translating`,
             ];
-            let isStopCommand = false;
-            if (stopPhrases.some(phrase => message.toLowerCase().trim() === phrase)) {
-                logger.info(`[${cleanChannel}] Received stop phrase from ${lowerUsername} (self=${self}).`);
-                const wasStopped = contextManager.disableUserTranslation(cleanChannel, lowerUsername);
-                if (wasStopped) {
-                    enqueueMessage(channel, `@${displayName}, Translation stopped.`);
+
+            let isStopRequest = false;
+            let targetUserForStop = lowerUsername; // Default to self
+            let stopGlobally = false;
+
+            // Check for command "!translate stop [user|all]"
+            if (lowerMessage.startsWith('!translate stop')) {
+                isStopRequest = true;
+                const parts = message.trim().split(/ +/); // Split by spaces
+                if (parts.length > 2) {
+                    const target = parts[2].toLowerCase().replace(/^@/, '');
+                    if (target === 'all') {
+                        if (isModOrBroadcaster) {
+                            stopGlobally = true;
+                        }
+                        // else: command handler will reject permission
+                    } else {
+                        if (isModOrBroadcaster) {
+                            targetUserForStop = target;
+                        }
+                        // else: command handler will reject permission
+                    }
                 }
-                isStopCommand = true;
+                // If just "!translate stop", targetUserForStop remains self
+            }
+            // Check for natural language stop phrases
+            else if (stopTriggers.some(phrase => lowerMessage === phrase)) {
+                isStopRequest = true; // Stop for self
+            }
+            // Check for mention stop phrases
+            else if (mentionStopTriggers.some(phrase => lowerMessage === phrase)) {
+                isStopRequest = true; // Stop for self
             }
 
-            if (isStopCommand) {
+            // Handle stop request IF IDENTIFIED
+            if (isStopRequest) {
+                logger.info(`[${cleanChannel}] User ${lowerUsername} initiated stop request (target: ${stopGlobally ? 'all' : targetUserForStop}, global: ${stopGlobally}).`);
+
+                // Add message to context before processing stop
                 contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
-                    logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
+                    logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding stop request to context');
                 });
-                return;
+
+                // Execute stop logic (permission check happens in command/here)
+                if (stopGlobally) { // Already checked permission above
+                    const count = contextManager.disableAllTranslationsInChannel(cleanChannel);
+                    enqueueMessage(channel, `@${displayName}, Okay, stopped translations globally for ${count} user(s).`);
+                } else {
+                    // Check permission if target is not self
+                    if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
+                        enqueueMessage(channel, `@${displayName}, Only mods/broadcaster can stop translation for others.`);
+                    } else {
+                        const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
+                        if (targetUserForStop === lowerUsername) { // Message for self stop
+                            enqueueMessage(channel, wasStopped ? `@${displayName}, Translation stopped.` : `@${displayName}, Translation was already off.`);
+                        } else { // Message for mod stopping someone else
+                            enqueueMessage(channel, wasStopped ? `@${displayName}, Stopped translation for ${targetUserForStop}.` : `@${displayName}, Translation was already off for ${targetUserForStop}.`);
+                        }
+                    }
+                }
+                return; // Stop processing this message further
             }
 
-            // 1. Add user message to context (async)
+            // --- Continue with normal message processing ---
+
+            // 1. Add message to context
             contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
             });
 
-            // 2. Process potential commands (async) AND check if one ran
-            let commandProcessed = false; // Flag
-            processCommand(cleanChannel, tags, message)
-                .then(processed => {
-                    commandProcessed = processed; // Set flag based on return value
-                    // Now check translation/mention ONLY if a command DID NOT run
-                    if (!commandProcessed) {
-                        // --- Automatic Translation Logic ---
-                        const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
-                        if (userState?.isTranslating && userState.targetLanguage) {
-                            (async () => {
-                                logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
-                                try {
-                                    const translatedText = await translateText(message, userState.targetLanguage);
-                                    if (translatedText) {
-                                        const reply = `🌐💬 @${displayName}: ${translatedText}`;
-                                        enqueueMessage(channel, reply);
-                                    } else {
-                                        logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
-                                    }
-                                } catch (err) {
-                                    logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error during automatic translation.');
-                                }
-                            })();
-                            return; // Don't process mention if translating
-                        }
-
-                        // --- Mention Check ---
-                        const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
-                        if (message.toLowerCase().startsWith(mentionPrefix)) {
-                            const userMessageContent = message.substring(mentionPrefix.length).trim();
-                            if (userMessageContent) {
-                                logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
-                                handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention")
-                                    .catch(err => logger.error({ err }, "Error in async mention handler call"));
-                            } else {
-                                logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);
-                            }
-                        }
-                    }
-                })
-                .catch(err => {
+            // 2. Process commands (but !translate stop was handled above)
+            let wasTranslateCommand = message.trim().toLowerCase().startsWith('!translate '); // Keep this simple check
+            if (!isStopRequest) { // Don't re-process stop commands
+                processCommand(cleanChannel, tags, message).catch(err => {
                     logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error processing command');
                 });
+            }
+
+            // --- Automatic Translation Logic ---
+            const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
+            // Translate only if: enabled, NOT the !translate command itself, AND NOT a !translate stop command
+            if (userState?.isTranslating && userState.targetLanguage && !wasTranslateCommand && !isStopRequest) {
+                (async () => {
+                    logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
+                    try {
+                        const translatedText = await translateText(message, userState.targetLanguage);
+                        if (translatedText) {
+                            const reply = `🌐💬 @${displayName}: ${translatedText}`;
+                            enqueueMessage(channel, reply);
+                        } else {
+                            logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
+                        }
+                    } catch (err) {
+                        logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error during automatic translation.');
+                    }
+                })();
+                return;
+            }
+
+            // --- Mention Check ---
+            // Check only if: not self, not translate cmd, not stop request, not already translated
+            if (!self && !wasTranslateCommand && !isStopRequest) {
+                const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
+                if (message.toLowerCase().startsWith(mentionPrefix)) {
+                    const userMessageContent = message.substring(mentionPrefix.length).trim();
+                    if (userMessageContent) {
+                        logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
+                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention")
+                            .catch(err => logger.error({ err }, "Error in async mention handler call"));
+                    } else {
+                        logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);
+                    }
+                }
+            }
         }); // End of message handler
 
         // Add other basic listeners

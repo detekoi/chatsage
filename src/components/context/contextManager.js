@@ -357,6 +357,36 @@ function getUserTranslationState(channelName, username) {
      return channelState.userStates.get(username.toLowerCase()) || null; // Return null if user state doesn't exist yet
 }
 
+/**
+ * Disables translation for ALL users currently tracked in a specific channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {number} The number of users whose translation was disabled.
+ */
+function disableAllTranslationsInChannel(channelName) {
+    const channelState = channelStates.get(channelName); // Get existing state
+    if (!channelState || !channelState.userStates || channelState.userStates.size === 0) {
+        logger.debug(`[${channelName}] No user states found to disable all translations.`);
+        return 0; // Nothing to disable
+    }
+
+    let disabledCount = 0;
+    for (const userState of channelState.userStates.values()) {
+        if (userState.isTranslating) {
+            userState.isTranslating = false;
+            userState.targetLanguage = null;
+            disabledCount++;
+            logger.debug(`[${channelName}] Disabled translation for user ${userState.username} via global stop.`);
+        }
+    }
+
+    if (disabledCount > 0) {
+        logger.info(`[${channelName}] Disabled translation globally for ${disabledCount} users.`);
+    } else {
+        logger.info(`[${channelName}] Global translation stop requested, but no users had translation enabled.`);
+    }
+    return disabledCount;
+}
+
 // Define what the "manager" object exposes
 const manager = {
     initialize: initializeContextManager,
@@ -366,19 +396,23 @@ const manager = {
     getContextForLLM: getContextForLLM,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
-    // --- NEWLY ADDED ---
     enableUserTranslation,
     disableUserTranslation,
     getUserTranslationState,
+    disableAllTranslationsInChannel,
 };
 
 /**
  * Gets the singleton Context Manager instance/interface.
  */
 function getContextManager() {
-    // In this simple case, we just return the manager object.
-    // If more complex state/methods were private, this could return a more restricted interface.
     return manager;
 }
 
-export { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation };
+export {
+    initializeContextManager,
+    getContextManager,
+    getUserTranslationState,
+    disableUserTranslation,
+    disableAllTranslationsInChannel,
+};
