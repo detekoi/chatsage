@@ -148,7 +148,7 @@ async function main() {
                                 try {
                                     const translatedText = await translateText(message, userState.targetLanguage);
                                     if (translatedText) {
-                                        const reply = `Translation for @${displayName}: ${translatedText}`;
+                                        const reply = `🌐💬 @${displayName}: ${translatedText}`;
                                         enqueueMessage(channel, reply);
                                     } else {
                                         logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
