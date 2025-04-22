@@ -234,3 +234,65 @@ export async function generateSearchGroundedResponse(promptText) {
         return null;
     }
 }
+
+// --- Text Summarization Function ---
+/**
+ * Summarizes the provided text using the Gemini API to fit within a target length.
+ * @param {string} textToSummarize - The text content to be summarized.
+ * @param {number} [targetCharLength=400] - An approximate target character length for the summary.
+ * @returns {Promise<string|null>} The summarized text, or null on failure.
+ */
+export async function summarizeText(textToSummarize, targetCharLength = 400) {
+    if (!textToSummarize || typeof textToSummarize !== 'string' || textToSummarize.trim().length === 0) {
+        logger.error('summarizeText called with invalid textToSummarize.');
+        return null;
+    }
+    const model = getGeminiClient(); // Ensures model is initialized
+
+    // Construct a prompt specifically for summarization with a length constraint
+    const summarizationPrompt = `Please summarize the following text concisely. Aim for a summary that is approximately under ${targetCharLength} characters long, capturing the key points.
+
+Text to Summarize:
+--- START ---
+${textToSummarize}
+--- END ---
+
+Concise Summary:`;
+
+    logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
+
+    try {
+        // Use the standard generateContent, no search needed here
+        const result = await model.generateContent(summarizationPrompt);
+        const response = result.response;
+
+        // Standard safety/validity checks
+        if (response.promptFeedback?.blockReason) {
+            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Summarization prompt blocked by Gemini safety settings.');
+            return null;
+        }
+        if (!response.candidates?.length || !response.candidates[0].content) {
+            logger.warn('Summarization response missing candidates or content.');
+             return null;
+        }
+        const candidate = response.candidates[0];
+        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+             logger.warn({ finishReason: candidate.finishReason }, `Summarization generation finished unexpectedly: ${candidate.finishReason}`);
+              if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
+             return null;
+        }
+         if (!candidate.content?.parts?.length) {
+            logger.warn('Summarization response candidate missing content parts.');
+            return null;
+        }
+
+        const summary = candidate.content.parts.map(part => part.text).join('');
+        logger.info({ originalLength: textToSummarize.length, summaryLength: summary.length }, 'Successfully generated summary from Gemini.');
+        return summary.trim();
+
+    } catch (error) {
+        logger.error({ err: error, prompt: "[summarization prompt omitted]" }, 'Error during summarization Gemini API call');
+        // Add specific error handling if needed
+        return null;
+    }
+}
