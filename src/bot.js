@@ -1,9 +1,9 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
-// Correct the import for ircClient functions
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
-import { initializeGeminiClient, getGeminiClient } from './components/llm/geminiClient.js';
+// Import getGeminiClient and generateResponse
+import { initializeGeminiClient, getGeminiClient, generateResponse as generateLlmResponse } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
@@ -14,10 +14,9 @@ let streamInfoIntervalId = null;
  * Gracefully shuts down the application.
  */
 async function gracefulShutdown(signal) {
-    // ... (gracefulShutdown function remains the same) ...
     logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
     stopStreamInfoPolling(streamInfoIntervalId);
-    const ircClient = getIrcClient(); // Still uses getIrcClient
+    const ircClient = getIrcClient();
     if (ircClient && ircClient.readyState() === 'OPEN') {
         try {
             logger.info('Disconnecting from Twitch IRC...');
@@ -39,7 +38,7 @@ async function main() {
         logger.info(`Starting StreamSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
-        // --- Initialize Core Components (excluding IRC client creation/connection) ---
+        // --- Initialize Core Components ---
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);
 
@@ -53,12 +52,14 @@ async function main() {
         initializeCommandProcessor();
 
         // --- Get Instances needed before IRC connection ---
-        const contextManager = getContextManager(); // Needed for listeners
-        const helixClient = getHelixClient();       // Needed for listeners
+        const contextManager = getContextManager();
+        const helixClient = getHelixClient();
+        // Get gemini client instance early if needed, or get inside async IIFE
+        // const geminiClient = getGeminiClient();
 
         // --- Create IRC Client Instance ---
         logger.info('Creating Twitch IRC Client instance...');
-        const ircClient = createIrcClient(config.twitch); // Use createIrcClient
+        const ircClient = createIrcClient(config.twitch);
 
         // --- Setup IRC Event Listeners BEFORE Connecting ---
         logger.debug('Attaching IRC event listeners...');
@@ -66,12 +67,11 @@ async function main() {
         ircClient.on('connected', (address, port) => {
             logger.info(`Successfully connected to Twitch IRC: ${address}:${port}`);
             logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
-            // helixClient and contextManager are already available here
             streamInfoIntervalId = startStreamInfoPolling(
                 config.twitch.channels,
                 config.app.streamInfoFetchIntervalMs,
-                helixClient,
-                contextManager
+                helixClient, // Pass already retrieved instance
+                contextManager // Pass already retrieved instance
             );
         });
 
@@ -80,27 +80,74 @@ async function main() {
             stopStreamInfoPolling(streamInfoIntervalId);
         });
 
+        // --- MESSAGE HANDLER ---
         ircClient.on('message', (channel, tags, message, self) => {
+            // Ignore self messages
             if (self) return;
+
             const cleanChannel = channel.substring(1);
             const username = tags['display-name'] || tags.username;
 
+            // 1. Update context (async but don't wait for it)
             contextManager.addMessage(cleanChannel, username, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: username }, 'Error adding message to context');
             });
 
+            // 2. Process potential commands (async but don't wait)
             processCommand(cleanChannel, tags, message).catch(err => {
                  logger.error({ err, channel: cleanChannel, user: username }, 'Error processing command');
             });
 
-            // Placeholder LLM trigger
+            // 3. Check for mention and trigger LLM response (async IIFE)
             if (message.toLowerCase().includes(`@${config.twitch.username.toLowerCase()}`)) {
                 logger.info({ channel: cleanChannel, user: username }, 'Bot mentioned, considering LLM response...');
-                // Add LLM call logic here later
-            }
-        });
 
-        // Add other basic listeners if desired (optional here, could be in ircClient.js)
+                // Use an async IIFE to handle the async operations without blocking message processing
+                (async () => {
+                    try {
+                        // Get fresh instances inside async scope if preferred, or use ones from outer scope
+                        const currentContextManager = getContextManager();
+                        // const currentGeminiClient = getGeminiClient(); // No need, using imported function
+                        const currentIrcClient = getIrcClient();
+
+                        // a. Get context for the LLM
+                        const llmContext = currentContextManager.getContextForLLM(cleanChannel, username, message);
+
+                        if (!llmContext) {
+                            logger.warn({ channel: cleanChannel, user: username }, 'Could not retrieve context for LLM response.');
+                            return; // Exit if no context available
+                        }
+
+                        // b. Call the imported generateLlmResponse function
+                        const responseText = await generateLlmResponse(llmContext);
+
+                        // c. Check and send the response
+                        if (responseText && responseText.trim().length > 0) {
+                             logger.info({ channel: cleanChannel, responseLength: responseText.length }, 'Sending LLM response to chat.');
+                             // Add username prefix for clarity in chat
+                             const formattedResponse = `@${username} ${responseText}`;
+                             await currentIrcClient.say(channel, formattedResponse); // Use original channel with #
+                        } else {
+                            logger.warn({ channel: cleanChannel }, 'LLM generated null or empty response for mention.');
+                            // Optionally send a default message like "Sorry, I couldn't generate a response."
+                            // await currentIrcClient.say(channel, `@${username} Sorry, I had trouble thinking of a reply.`);
+                        }
+
+                    } catch (error) {
+                         logger.error({ err: error, channel: cleanChannel, user: username }, 'Error processing LLM response for mention.');
+                         // Optional: Notify user of error?
+                         try {
+                              const currentIrcClient = getIrcClient();
+                              await currentIrcClient.say(channel, `@${username} Sorry, an error occurred while processing your request.`);
+                         } catch (sayError) {
+                             logger.error({ err: sayError }, 'Failed to send LLM error message to chat.');
+                         }
+                    }
+                })(); // Immediately invoke the async function
+            }
+        }); // End of message handler
+
+        // Add other basic listeners
         ircClient.on('connecting', (address, port) => { logger.info(`Connecting to Twitch IRC at ${address}:${port}...`); });
         ircClient.on('logon', () => { logger.info('Successfully logged on to Twitch IRC.'); });
         ircClient.on('join', (channel, username, self) => { if (self) { logger.info(`Joined channel: ${channel}`); } });
@@ -121,8 +168,8 @@ async function main() {
 }
 
 // --- Graceful Shutdown Handling ---
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); // Docker stop, Kubernetes termination
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));  // Ctrl+C
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // --- Start the Application ---
 main();
@@ -130,11 +177,8 @@ main();
 // --- Optional: Unhandled Rejection/Exception Handling ---
 process.on('unhandledRejection', (reason, promise) => {
     logger.error({ reason, promise }, 'Unhandled Rejection at Promise');
-    // Consider whether to crash or attempt recovery depending on the error
 });
-
 process.on('uncaughtException', (error) => {
     logger.fatal({ err: error }, 'Uncaught Exception thrown');
-    // It's generally recommended to exit after an uncaught exception
     process.exit(1);
 });
