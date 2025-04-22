@@ -72,7 +72,7 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment)
 
         const response = result.response;
 
-        // Check for blocks/errors similar to geminiClient.generateResponse
+        // Check for blocks/errors similar to geminiClient.generateStandardResponse
         if (response.promptFeedback?.blockReason) {
             logger.warn({ channel: channelName, blockReason: response.promptFeedback.blockReason }, 'Summarization prompt blocked by Gemini safety settings.');
             return null;

@@ -123,7 +123,7 @@ ${summary}
 ${history}`;
 }
 
-// --- UPDATED generateResponse (Standard - no search) ---
+// --- UPDATED generateStandardResponse (Standard - no search) ---
 /**
  * Generates a standard response using ONLY internal knowledge.
  * @param {string} contextPrompt - Context string from buildContextPrompt.
@@ -181,7 +181,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     }
 }
 
-// --- UPDATED generateSearchGroundedResponse (WITH search tool) ---
+// --- UPDATED generateSearchResponse (WITH search tool) ---
 /**
  * Generates a response WITH Google Search enabled.
  * @param {string} contextPrompt - Context string from buildContextPrompt.

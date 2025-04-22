@@ -1,6 +1,7 @@
 import logger from '../../../lib/logger.js';
-// Import BOTH search generation AND the new summarizer
-import { generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
+// Import context manager and prompt builder
+import { getContextManager } from '../../context/contextManager.js';
+import { buildContextPrompt, generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
 // Define IRC message length limit (be conservative)
@@ -10,7 +11,7 @@ const SUMMARY_TARGET_LENGTH = 400;
 
 /**
  * Handler for the !search command.
- * Takes user query, asks Gemini to search Google, and returns the result.
+ * Fetches context, then asks Gemini to search Google and returns the result.
  */
 const searchHandler = {
     name: 'search',
@@ -19,7 +20,9 @@ const searchHandler = {
     execute: async (context) => {
         const { channel, user, args } = context;
         const userQuery = args.join(' ').trim();
+        const channelName = channel.substring(1); // Remove #
         const userName = user['display-name'] || user.username; // Get username for replies
+        const contextManager = getContextManager(); // Get context manager
 
         if (!userQuery) {
             enqueueMessage(channel, `@${userName}, please provide something to search for. Usage: !search <your query>`);
@@ -28,11 +31,18 @@ const searchHandler = {
 
         logger.info(`Executing !search command for ${userName} in ${channel} with query: "${userQuery}"`);
 
-        const searchPrompt = `Please perform a Google Search for the following topic and provide a concise answer based only on the search results: "${userQuery}"`;
-
         try {
-            // 1. Get initial search response
-            const initialResponseText = await generateSearchGroundedResponse(searchPrompt);
+            // 1. Get Context
+            const llmContext = contextManager.getContextForLLM(channelName, userName, `searching for: ${userQuery}`); // Get context object
+            if (!llmContext) {
+                logger.warn(`[${channelName}] Could not get context for !search command from user ${userName}.`);
+                enqueueMessage(channel, `@${userName}, sorry, I couldn't retrieve the current context to perform the search.`);
+                return;
+            }
+            const contextPrompt = buildContextPrompt(llmContext); // Build context string
+
+            // 2. Get search response using the correct function and arguments
+            const initialResponseText = await generateSearchResponse(contextPrompt, userQuery); // Pass BOTH context and query
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
@@ -40,36 +50,32 @@ const searchHandler = {
                 return; // Exit if no initial response
             }
 
-            // 2. Format the initial reply and check length
-            let replyPrefix = `@${userName} Here's what I found: `;
-            let finalReplyText = initialResponseText; // Start with the full response
+            // 3. Format the initial reply and check length (prefix simplified)
+            let replyPrefix = `@${userName} `; // Simpler prefix for search results
+            let finalReplyText = initialResponseText;
 
             if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial search response too long (${finalReplyText.length} chars). Attempting summarization.`);
-                // Keep the original prefix even when summarizing
-                // replyPrefix = `@${userName} The info was a bit long, here's a summary about "${userQuery}": `;
+                replyPrefix = `@${userName}: `; // Changed to a more concise prefix that does not include "(Summary)"
 
-                // 3. Summarize if too long
-                const summary = await summarizeText(initialResponseText, SUMMARY_TARGET_LENGTH);
+                const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
 
                 if (summary && summary.trim().length > 0) {
-                    finalReplyText = summary; // Use the summary
+                    finalReplyText = summary;
                     logger.info(`Summarization successful (${finalReplyText.length} chars).`);
                 } else {
-                    logger.warn(`Summarization failed or returned empty for query: "${userQuery}". Falling back to truncation.`);
-                    // Fallback: Truncate the original response if summarization fails
-                    const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3; // -3 for "..."
+                    logger.warn(`Summarization failed for query: "${userQuery}". Falling back to truncation.`);
+                    const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
                     finalReplyText = initialResponseText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
                 }
             }
 
-            // 4. Final length check (even summary might be too long in rare cases) & Send
+            // 4. Final length check & Send
             let finalMessage = replyPrefix + finalReplyText;
             if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-                 logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
-                 finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+                logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
+                finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
-
             enqueueMessage(channel, finalMessage);
 
         } catch (error) {
