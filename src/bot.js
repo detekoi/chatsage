@@ -3,7 +3,7 @@ import logger from './lib/logger.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 // Import getGeminiClient and generateResponse
-import { initializeGeminiClient, getGeminiClient, generateResponse as generateLlmResponse } from './components/llm/geminiClient.js';
+import { initializeGeminiClient, getGeminiClient, generateResponse as generateLlmResponse, translateText } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
@@ -86,64 +86,112 @@ async function main() {
             if (self) return;
 
             const cleanChannel = channel.substring(1);
-            const username = tags['display-name'] || tags.username;
+            const lowerUsername = tags.username; // Use lowercase for state lookup
+            const displayName = tags['display-name'] || tags.username;
+            const contextManager = getContextManager();
+
+            // --- Stop Translation Check (runs even if translation is off, for robustness) ---
+            const stopPhrases = [
+                '!translate stop',
+                'stop translating',
+                `@${config.twitch.username.toLowerCase()} stop`, // Mention bot + stop
+                `@${config.twitch.username.toLowerCase()} stop translating`,
+                `@${config.twitch.username.toLowerCase()}, stop translating`,
+            ];
+            let isStopCommand = false;
+            if (stopPhrases.some(phrase => message.toLowerCase().trim() === phrase)) {
+                logger.info(`[${cleanChannel}] User ${lowerUsername} used a stop phrase.`);
+                const wasStopped = contextManager.disableUserTranslation(cleanChannel, lowerUsername);
+                if (wasStopped) {
+                    ircClient.say(channel, `@${displayName}, Translation stopped.`).catch(e => 
+                        logger.error({ err: e }, 'Failed to send translation stop confirmation'));
+                }
+                isStopCommand = true; // Prevent further processing of this specific message
+            }
+
+            // Exit early if it was a stop command/phrase
+            if (isStopCommand) {
+                return;
+            }
 
             // 1. Update context (async but don't wait for it)
-            contextManager.addMessage(cleanChannel, username, message, tags).catch(err => {
-                logger.error({ err, channel: cleanChannel, user: username }, 'Error adding message to context');
+            contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
+                logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
             });
 
             // 2. Process potential commands (async but don't wait)
             processCommand(cleanChannel, tags, message).catch(err => {
-                 logger.error({ err, channel: cleanChannel, user: username }, 'Error processing command');
+                logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error processing command');
             });
 
-            // 3. Check for mention and trigger LLM response (async IIFE)
+            // --- Automatic Translation Logic ---
+            const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
+            if (userState?.isTranslating && userState.targetLanguage) {
+                // Use IIFE for async translation logic
+                (async () => {
+                    logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
+                    try {
+                        const translatedText = await translateText(message, userState.targetLanguage);
+                        if (translatedText) {
+                            const reply = `Translation for @${displayName}: ${translatedText}`;
+                            // Basic length check for reply
+                            if (reply.length > 450) {
+                                logger.warn(`Translation reply too long (${reply.length}). Sending truncated.`);
+                                await ircClient.say(channel, reply.substring(0, 447) + '...');
+                            } else {
+                                await ircClient.say(channel, reply);
+                            }
+                        } else {
+                            logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
+                            // Optional: Notify user translation failed? Might be spammy.
+                        }
+                    } catch (err) {
+                        logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error during automatic translation.');
+                    }
+                })();
+                // Return here to prevent the mention logic from *also* running on this message
+                return;
+            }
+
+            // 3. Check for mention and trigger LLM response (only if not translating)
             if (message.toLowerCase().includes(`@${config.twitch.username.toLowerCase()}`)) {
-                logger.info({ channel: cleanChannel, user: username }, 'Bot mentioned, considering LLM response...');
+                logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, considering LLM response...');
 
                 // Use an async IIFE to handle the async operations without blocking message processing
                 (async () => {
                     try {
-                        // Get fresh instances inside async scope if preferred, or use ones from outer scope
                         const currentContextManager = getContextManager();
-                        // const currentGeminiClient = getGeminiClient(); // No need, using imported function
                         const currentIrcClient = getIrcClient();
-
-                        // a. Get context for the LLM
-                        const llmContext = currentContextManager.getContextForLLM(cleanChannel, username, message);
+                        const llmContext = currentContextManager.getContextForLLM(cleanChannel, displayName, message);
 
                         if (!llmContext) {
-                            logger.warn({ channel: cleanChannel, user: username }, 'Could not retrieve context for LLM response.');
-                            return; // Exit if no context available
+                            logger.warn({ channel: cleanChannel, user: lowerUsername }, 'Could not retrieve context for LLM response.');
+                            return;
                         }
 
-                        // b. Call the imported generateLlmResponse function
                         const responseText = await generateLlmResponse(llmContext);
 
-                        // c. Check and send the response
-                        if (responseText && responseText.trim().length > 0) {
-                             logger.info({ channel: cleanChannel, responseLength: responseText.length }, 'Sending LLM response to chat.');
-                             // Add username prefix for clarity in chat
-                             const formattedResponse = `@${username} ${responseText}`;
-                             await currentIrcClient.say(channel, formattedResponse); // Use original channel with #
+                        if (responseText?.trim()) {
+                            const formattedResponse = `@${displayName} ${responseText}`;
+                            if (formattedResponse.length > 450) {
+                                logger.warn(`LLM response too long (${formattedResponse.length}). Sending truncated.`);
+                                await currentIrcClient.say(channel, formattedResponse.substring(0, 447) + '...');
+                            } else {
+                                await currentIrcClient.say(channel, formattedResponse);
+                            }
                         } else {
                             logger.warn({ channel: cleanChannel }, 'LLM generated null or empty response for mention.');
-                            // Optionally send a default message like "Sorry, I couldn't generate a response."
-                            // await currentIrcClient.say(channel, `@${username} Sorry, I had trouble thinking of a reply.`);
                         }
-
                     } catch (error) {
-                         logger.error({ err: error, channel: cleanChannel, user: username }, 'Error processing LLM response for mention.');
-                         // Optional: Notify user of error?
-                         try {
-                              const currentIrcClient = getIrcClient();
-                              await currentIrcClient.say(channel, `@${username} Sorry, an error occurred while processing your request.`);
-                         } catch (sayError) {
-                             logger.error({ err: sayError }, 'Failed to send LLM error message to chat.');
-                         }
+                        logger.error({ err: error, channel: cleanChannel, user: lowerUsername }, 'Error processing LLM response for mention.');
+                        try {
+                            const currentIrcClient = getIrcClient();
+                            await currentIrcClient.say(channel, `@${displayName} Sorry, an error occurred while processing your request.`);
+                        } catch (sayError) {
+                            logger.error({ err: sayError }, 'Failed to send LLM error message to chat.');
+                        }
                     }
-                })(); // Immediately invoke the async function
+                })();
             }
         }); // End of message handler
 

@@ -77,7 +77,7 @@ export function buildPrompt(context) {
         throw new Error('Missing required context (username, currentMessage) for building prompt.');
     }
 
-    return `You are StreamSage, a helpful AI assistant in a Twitch chat. Be concise and engaging like a chatbot.
+    return `You are StreamSage, a wise and helpful AI assistant in a Twitch chat. Be concise and engaging like a chatbot.
 
 **Current Stream Information:**
 Game: ${game}
@@ -293,6 +293,63 @@ Concise Summary:`;
     } catch (error) {
         logger.error({ err: error, prompt: "[summarization prompt omitted]" }, 'Error during summarization Gemini API call');
         // Add specific error handling if needed
+        return null;
+    }
+}
+
+// --- Translation Function ---
+/**
+ * Translates text to the target language using the Gemini API.
+ * @param {string} textToTranslate - The text to translate.
+ * @param {string} targetLanguage - The language to translate into (e.g., "Spanish", "Japanese").
+ * @returns {Promise<string|null>} The translated text, or null on failure.
+ */
+export async function translateText(textToTranslate, targetLanguage) {
+    if (!textToTranslate || !targetLanguage) {
+        logger.error('translateText called with missing text or target language.');
+        return null;
+    }
+    const model = getGeminiClient();
+
+    // Simple, direct translation prompt
+    const translationPrompt = `Translate the following text into ${targetLanguage}:
+
+"${textToTranslate}"
+
+Translation:`;
+
+    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
+
+    try {
+        const result = await model.generateContent(translationPrompt);
+        const response = result.response;
+
+        // Standard safety/validity checks
+        if (response.promptFeedback?.blockReason) {
+            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Translation prompt blocked by Gemini safety settings.');
+            return null;
+        }
+        if (!response.candidates?.length || !response.candidates[0].content) {
+            logger.warn('Translation response missing candidates or content.');
+             return null;
+        }
+        const candidate = response.candidates[0];
+        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+             logger.warn({ finishReason: candidate.finishReason }, `Translation generation finished unexpectedly: ${candidate.finishReason}`);
+              if (candidate.finishReason === 'SAFETY') { logger.warn('Translation response content blocked due to safety settings.'); }
+             return null;
+        }
+         if (!candidate.content?.parts?.length) {
+            logger.warn('Translation response candidate missing content parts.');
+            return null;
+        }
+
+        const translatedText = candidate.content.parts.map(part => part.text).join('');
+        logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: translatedText.length }, 'Successfully generated translation from Gemini.');
+        return translatedText.trim();
+
+    } catch (error) {
+        logger.error({ err: error, prompt: "[translation prompt omitted]" }, 'Error during translation Gemini API call');
         return null;
     }
 }

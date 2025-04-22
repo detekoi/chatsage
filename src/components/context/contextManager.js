@@ -20,12 +20,19 @@ interface StreamContext {
     fetchErrorCount: number;
 }
 
+interface UserState { // <-- NEW Interface
+    username: string; // Store the username lowercase for consistent lookup
+    isTranslating: boolean;
+    targetLanguage: string | null;
+}
+
 interface ChannelState {
     channelName: string; // e.g., 'xqc'
     broadcasterId: string | null;
     chatHistory: Message[];
     chatSummary: string;
     streamContext: StreamContext;
+    userStates: Map<string, UserState>; // <-- NEW Map: username -> UserState
 }
 */
 
@@ -82,9 +89,30 @@ function _getOrCreateChannelState(channelName) {
                 lastUpdated: null,
                 fetchErrorCount: 0,
             },
+            userStates: new Map() // <-- Initialize the userStates Map here
         });
     }
     return channelStates.get(channelName);
+}
+
+/**
+ * Gets or creates the state object for a given user within a channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} username - Username (lowercase).
+ * @returns {UserState} The state object for the user in that channel.
+ */
+function _getOrCreateUserState(channelName, username) {
+    const channelState = _getOrCreateChannelState(channelName);
+    const lowerUser = username.toLowerCase(); // Use lowercase for map key consistency
+    if (!channelState.userStates.has(lowerUser)) {
+        logger.debug(`[${channelName}] Creating new state for user: ${lowerUser}`);
+        channelState.userStates.set(lowerUser, {
+            username: lowerUser,
+            isTranslating: false,
+            targetLanguage: null,
+        });
+    }
+    return channelState.userStates.get(lowerUser);
 }
 
 /**
@@ -287,6 +315,47 @@ async function getChannelsForPolling() {
     return channelsToPoll;
 }
 
+/**
+ * Enables translation mode for a user in a channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} username - Username (lowercase).
+ * @param {string} language - Target language.
+ */
+function enableUserTranslation(channelName, username, language) {
+    const userState = _getOrCreateUserState(channelName, username);
+    userState.isTranslating = true;
+    userState.targetLanguage = language;
+    logger.info(`[${channelName}] Enabled translation to ${language} for user ${username}`);
+}
+
+/**
+ * Disables translation mode for a user in a channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} username - Username (lowercase).
+ */
+function disableUserTranslation(channelName, username) {
+    const userState = _getOrCreateUserState(channelName, username);
+    if (userState.isTranslating) {
+        userState.isTranslating = false;
+        userState.targetLanguage = null;
+        logger.info(`[${channelName}] Disabled translation for user ${username}`);
+        return true; // Indicate that translation was disabled
+    }
+    return false; // Indicate translation was already off
+}
+
+/**
+ * Gets the current translation state for a user.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} username - Username (lowercase).
+ * @returns {UserState | null} The user's state or null if not found (shouldn't happen with getOrCreate).
+ */
+function getUserTranslationState(channelName, username) {
+     const channelState = channelStates.get(channelName); // Only check existing channels
+     if (!channelState) return null;
+     return channelState.userStates.get(username.toLowerCase()) || null; // Return null if user state doesn't exist yet
+}
+
 // Define what the "manager" object exposes
 const manager = {
     initialize: initializeContextManager,
@@ -296,6 +365,10 @@ const manager = {
     getContextForLLM: getContextForLLM,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
+    // --- NEWLY ADDED ---
+    enableUserTranslation,
+    disableUserTranslation,
+    getUserTranslationState,
 };
 
 /**

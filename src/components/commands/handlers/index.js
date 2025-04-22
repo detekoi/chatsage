@@ -6,6 +6,7 @@ import logger from '../../../lib/logger.js';
 // import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
 import search from './search.js';
+import translate from './translate.js';
 // import about from './about.js';
 
 // Stream Context Commands
@@ -41,6 +42,7 @@ const commandHandlers = {
     // commands: help, // Alias !commands to !help handler
     ping: ping,
     search: search,
+    translate: translate,
     // about: about,
 
     // --- Stream Context Commands ---
