@@ -6,7 +6,7 @@ import logger from '../../../lib/logger.js';
 // import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
 // import about from './about.js';
-import help from './sage.js';
+import sage from './sage.js';
 
 // Stream Context Commands
 // import game from './game.js';

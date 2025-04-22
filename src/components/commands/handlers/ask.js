@@ -1,3 +1,4 @@
+// Unused, !ask is aliased to !search
 import logger from '../../../lib/logger.js';
 // Need context to build the prompt
 import { getContextManager } from '../../context/contextManager.js';

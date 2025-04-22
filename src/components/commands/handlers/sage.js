@@ -1,7 +1,6 @@
 import logger from '../../../lib/logger.js';
-// Import the REUSABLE LLM handler function from bot.js
-// NOTE: This creates a slight dependency, consider moving the helper to a shared lib later if preferred.
-import { handleStandardLlmQuery } from '../../../bot.js';
+// Import the REUSABLE LLM handler function from llmUtils
+import { handleStandardLlmQuery } from '../../llm/llmUtils.js';
 
 /**
  * Handler for the !sage command.
