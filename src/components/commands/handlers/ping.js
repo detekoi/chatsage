@@ -9,6 +9,7 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 const pingHandler = {
     name: 'ping',
     description: 'Checks if the bot is responsive. Responds with Pong!',
+    usage: '!ping',
     permission: 'everyone', // Anyone can use this command
     execute: async (context) => {
         const { channel, user } = context;

@@ -10,7 +10,8 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
  */
 const sageHandler = {
     name: 'sage',
-    description: 'Ask the bot a question or give it a prompt for a standard response. Usage: !sage <your prompt>',
+    description: 'Ask the bot a question or give it a prompt for a standard response.',
+    usage: '!sage <your prompt>',
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user, args } = context;

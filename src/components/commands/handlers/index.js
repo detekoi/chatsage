@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 
 // Import individual command handlers (we will create these files later)
 // Core Bot Commands
-// import help from './help.js';
+import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
 // import about from './about.js';
 // import sage from './sage.js'; // UNUSED: sage is now aliased to ask
@@ -39,7 +39,8 @@ logger.debug('Loading command handlers...');
 // Structure: { commandName: { execute: function, permission: string, description: string }, ... }
 const commandHandlers = {
     // --- Core Bot Commands ---
-    // help: help, // Define help command
+    help: help, // Define help command
+    commands: help,
     // commands: help, // Alias !commands to !help handler
     ping: ping,
     // about: about,

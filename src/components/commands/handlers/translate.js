@@ -16,7 +16,8 @@ function isPrivilegedUser(tags, channelName) {
  */
 const translateHandler = {
     name: 'translate',
-    description: 'Manage translation. Usage: !translate <lang> | !translate stop | !translate <lang> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)',
+    description: 'Manage automatic message translation for users.',
+    usage: '!translate <lang> | !translate stop | !translate <lang|stop> [user] (mods) | !translate stop all (mods)',
     // Permission check will be done inside execute based on args
     permission: 'everyone',
     execute: async (context) => {

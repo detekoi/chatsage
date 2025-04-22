@@ -62,7 +62,8 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
  */
 const askHandler = {
     name: 'ask', // Keep name as 'ask'
-    description: 'Ask ChatSage a question. Usage: !ask <your question>',
+    description: 'Ask ChatSage a question. Uses search intelligently.',
+    usage: '!ask <your question>',
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user, args } = context; // No ircClient needed directly

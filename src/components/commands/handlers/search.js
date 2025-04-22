@@ -15,7 +15,8 @@ const SUMMARY_TARGET_LENGTH = 400;
  */
 const searchHandler = {
     name: 'search',
-    description: 'Searches the web for information on a topic. Usage: !search <your query>',
+    description: 'Searches the web for information on a topic.',
+    usage: '!search <your query>',
     permission: 'everyone', // Or restrict if desired (e.g., 'subscriber')
     execute: async (context) => {
         const { channel, user, args } = context;
