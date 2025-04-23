@@ -252,8 +252,8 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: "Empty query" };
     const model = getGeminiClient();
 
-    // Construct prompt for the decision-making call
-    const decisionPrompt = `${contextPrompt}\n\n**User Query:** "${userQuery}"\n\n**Task:** Analyze the user query and context. Decide if Google Search is essential for an accurate answer by calling the 'decide_if_search_needed' function. Be conservative; only require search if absolutely necessary (e.g., for real-time data, recent events, obscure facts).`;
+    // Updated prompt: More direct instruction to CALL the function ONLY.
+    const decisionPrompt = `${contextPrompt}\n\n**User Query:** "${userQuery}"\n\n**CRITICAL TASK:** Your ONLY task is to determine if Google Search is absolutely essential to answer the User Query accurately, considering the provided context. Call the 'decide_if_search_needed' function with your decision. Do NOT answer the user's query directly in this step. Base your decision on whether the query involves real-time data, video game guidance, recent events (after late 2024), specific obscure facts, or rapidly changing topics not likely covered by general knowledge or the provided context.`;
 
     logger.debug({ promptLength: decisionPrompt.length }, 'Attempting function calling decision for search');
 
@@ -261,6 +261,12 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
             tools: checkSearchNeededTool,
+            // Explicitly configure the function calling mode
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: "ANY", // Force the model to choose from the provided functions
+                }
+            },
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
         });
 
