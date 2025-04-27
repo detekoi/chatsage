@@ -329,7 +329,7 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
             }
             let excludedLocations = [];
             try {
-                excludedLocations = await getRecentLocations(channelName, 10);
+                excludedLocations = await getRecentLocations(channelName, 25);
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent locations, proceeding with no exclusions.");
             }
