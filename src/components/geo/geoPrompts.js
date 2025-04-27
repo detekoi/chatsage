@@ -98,8 +98,6 @@ Provide a brief (around 300-400 characters) but engaging and informative descrip
 1.  Key facts (location, type of place).
 2.  Historical or cultural significance, including indigenous perspectives or importance to diverse communities if applicable. Mention multiple names (native/colonial) if relevant for context.
 3.  Highlight any LGBTQIA+ significance if relevant and well-known (e.g., Stonewall Inn).
-4.  Mention notable accessibility features if commonly known.
-5.  Optionally include a link to a reputable source (like Wikipedia) for users to learn more, formatted like [Learn More: URL].
 
 Ensure the tone is respectful and celebratory of the location's heritage.
 Description:`;
