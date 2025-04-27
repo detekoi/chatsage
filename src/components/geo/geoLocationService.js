@@ -97,7 +97,13 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
  */
 export async function validateGuess(targetName, guess, alternateNames = []) {
     const model = getGeminiClient();
-    const prompt = `Target Location: "${targetName}" (Alternates: ${alternateNames.join(', ') || 'none'}). Player Guess: "${guess}".\nTask: Call the 'check_guess' function to validate if the Player Guess accurately matches the Target Location or its known alternates. Prioritize exact (case-insensitive) matches or official alternate names as correct (is_correct: true, confidence: 1.0). Consider common misspellings potentially correct but with slightly lower confidence. If the guess is a landmark within the target city, it might be considered correct with justification. Otherwise, mark as incorrect. Provide brief reasoning.`;
+    const prompt = `Target Location: "${targetName}" (Alternates: ${alternateNames.join(', ') || 'none'}). Player Guess: "${guess}".\nTask: Call the 'check_guess' function to validate if the Player Guess accurately matches the Target Location or its known alternates. Prioritize exact (case-insensitive) matches or official alternate names as correct (is_correct: true, confidence: 1.0). Consider common misspellings potentially correct but with slightly lower confidence. If the guess is a landmark within the target city, it might be considered correct with justification. 
+    Consider these specific cases:
+    - If the guess is the correct country/continent but not the specific target (e.g., guess 'Australia' for target 'Uluru'), set is_correct: false, confidence: 0.3, reasoning: 'Correct country, but guess is too broad'.
+    - If the guess is a nearby city/landmark but not the target (e.g., guess 'Sydney Opera House' for target 'Uluru'), set is_correct: false, confidence: 0.2, reasoning: 'Related landmark, but incorrect location'.
+    - If the guess is a similar landmark but in a different location (e.g., guess 'Eiffel Tower in Las Vegas' for target 'Eiffel Tower in Paris'), set is_correct: false, confidence: 0.1, reasoning: 'Similar landmark exists elsewhere'.
+    - If the guess is a common misspelling, consider setting is_correct: true, confidence: 0.9, reasoning: 'Correct location (accepted misspelling)'.
+    Otherwise, mark as incorrect. Provide brief reasoning.`;
     logger.debug({ targetName, guess, alternateNames }, '[GeoLocation] Validating guess');
     try {
         const result = await model.generateContent({
