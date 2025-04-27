@@ -371,22 +371,51 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
 
         const roundDurationMs = gameState.config.roundDurationMinutes * 60 * 1000;
         logger.info(`[GeoGame][${channelName}] Round end timer scheduled for ${gameState.config.roundDurationMinutes} minutes (${roundDurationMs}ms).`);
-        gameState.roundEndTimer = setTimeout(() => {
-            // Only trigger timeout logic if the game is still actively in progress
-            if (gameState.state === 'inProgress') {
-                 logger.info(`[GeoGame][${channelName}] Round timer expired. Game timed out.`);
-                 gameState.state = 'timeout'; // Mark state *before* sending message/transitioning
-                 const timeoutMessage = formatTimeoutMessage(gameState.targetLocation.name);
-                 enqueueMessage(`#${channelName}`, timeoutMessage);
-                 _transitionToEnding(gameState, "timeout"); // Handle reveal and reset
-            } else {
-                 logger.debug(`[GeoGame][${channelName}] Round timer expired, but game state is ${gameState.state}. No timeout action needed.`);
+
+        gameState.roundEndTimer = setTimeout(async () => { // Make callback async for awaits
+            // --- BEGIN ADDED LOGGING & ERROR HANDLING ---
+            try {
+                logger.info(`[GeoGame][${gameState.channelName}] Round timer callback fired.`);
+                logger.debug(`[GeoGame][${gameState.channelName}] Checking game state before timeout logic. Current state: ${gameState.state}`);
+
+                // Only trigger timeout logic if the game is still actively in progress
+                if (gameState.state === 'inProgress') {
+                    logger.info(`[GeoGame][${gameState.channelName}] Game state is 'inProgress'. Proceeding with timeout.`);
+                    gameState.state = 'timeout'; // Mark state *before* sending message/transitioning
+                    logger.debug(`[GeoGame][${gameState.channelName}] Game state set to 'timeout'.`);
+
+                    const timeoutMessage = formatTimeoutMessage(gameState.targetLocation?.name || 'Unknown Location'); // Handle potential missing location
+                    logger.debug(`[GeoGame][${gameState.channelName}] Enqueuing timeout message: "${timeoutMessage}"`);
+                    enqueueMessage(`#${channelName}`, timeoutMessage);
+
+                    logger.info(`[GeoGame][${gameState.channelName}] Transitioning to ending state due to timeout.`);
+                    await _transitionToEnding(gameState, "timeout"); // Use await if _transitionToEnding is async
+                    logger.info(`[GeoGame][${gameState.channelName}] Ending transition called after timeout.`);
+
+                } else {
+                    logger.warn(`[GeoGame][${gameState.channelName}] Round timer expired, but game state was '${gameState.state}'. No timeout action taken.`);
+                }
+            } catch (error) {
+                 logger.error({ err: error, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] CRITICAL ERROR inside roundEndTimer callback.`);
+                 // Attempt a graceful end even if the main logic failed
+                 if (gameState.state !== 'ending' && gameState.state !== 'idle') {
+                    logger.warn(`[GeoGame][${gameState.channelName}] Attempting emergency transition to ending state after timer error.`);
+                    try {
+                        await _transitionToEnding(gameState, "timer_error");
+                    } catch (transitionError) {
+                         logger.error({ err: transitionError, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Error during emergency ending transition.`);
+                         // Fallback: ensure timers are cleared and state is idle to prevent lockup
+                         _clearTimers(gameState);
+                         gameState.state = 'idle';
+                    }
+                 }
             }
+            // --- END ADDED LOGGING & ERROR HANDLING ---
         }, roundDurationMs);
 
         logger.info(`[GeoGame][${channelName}] Game started successfully. Target: ${gameState.targetLocation.name}. First clue sent.`);
-        // The command handler will send the confirmation message to the user who started it
-        return { success: true, message: `Geo-Game started! Mode: ${mode}${gameTitle ? ` (${gameTitle})` : ''}. Good luck!` };
+        // Return minimal success message - command handler will send the confirmation directly to chat
+        return { success: true, message: "" };
 
     } catch (error) {
         logger.error({ err: error }, `[GeoGame][${channelName}] Critical error during game start process.`);
