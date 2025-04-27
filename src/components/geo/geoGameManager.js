@@ -141,9 +141,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 const timeString = seconds !== null ? ` in ${seconds}s` : '';
                 baseMessageContent = `✅ Congrats @${gameState.winner.displayName}! You correctly guessed: ${gameState.targetLocation.name}${timeString}! ${revealText || '(Summary unavailable)'}`;
             } else if (reason === "timeout") {
-                baseMessageContent = `⏱️ Time's up! The answer was: ${gameState.targetLocation.name}. ${revealText || '(Summary unavailable)'}`;
+                // Only prepend emoji, let LLM handle the announcement and summary
+                baseMessageContent = `⏱️ ${revealText || `Time's up! The location was ${gameState.targetLocation.name}. (Summary unavailable)`}`;
             } else if (reason === "stopped") {
-                baseMessageContent = `🛑 Game stopped. The answer was: ${gameState.targetLocation.name}. ${revealText || '(Summary unavailable)'}`;
+                // Only prepend emoji, let LLM handle the announcement and summary
+                baseMessageContent = `🛑 ${revealText || `Game stopped. The location was ${gameState.targetLocation.name}. (Summary unavailable)`}`;
             } else {
                 baseMessageContent = `📢 The answer was: ${gameState.targetLocation.name}! ${revealText || '(Summary unavailable)'}`;
             }
@@ -161,9 +163,9 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                             const timeString = seconds !== null ? ` in ${seconds}s` : '';
                             finalMessage = `✅ Congrats @${gameState.winner.displayName}! You correctly guessed: ${gameState.targetLocation.name}${timeString}! ${summary.trim()}`;
                         } else if (reason === "timeout") {
-                            finalMessage = `⏱️ Time's up! The answer was: ${gameState.targetLocation.name}. ${summary.trim()}`;
+                            finalMessage = `⏱️ ${summary.trim()}`;
                         } else if (reason === "stopped") {
-                            finalMessage = `🛑 Game stopped. The answer was: ${gameState.targetLocation.name}. ${summary.trim()}`;
+                            finalMessage = `🛑 ${summary.trim()}`;
                         } else {
                             finalMessage = `📢 The answer was: ${gameState.targetLocation.name}! ${summary.trim()}`;
                         }
@@ -184,9 +186,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     }
 
     // Enqueue the formatted final message (reveal details)
-    if (finalMessage) {
-        enqueueMessage(`#${gameState.channelName}`, finalMessage);
-    }
+    logger.debug(`[GeoGame][${gameState.channelName}] About to send final message:`, { finalMessage });
+    enqueueMessage(`#${gameState.channelName}`, finalMessage || "An error occurred, and the final location couldn't be revealed.");
     
     // Record game results if score tracking is enabled
     if (gameState.config.scoreTracking && gameState.targetLocation?.name) {

@@ -94,21 +94,24 @@ export async function generateFollowUpClue(locationName, previousClues = [], mod
  * @returns {Promise<string|null>}
  */
 export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown") {
-    let outcomeContext = "";
+    let outcomeInstruction = "";
     if (reason === "guessed") {
-        outcomeContext = "The players successfully guessed the location! Write a fun, celebratory summary for the location.";
+        // Keep the instruction for guessed relatively simple, as the congrats part is handled in geoGameManager
+        outcomeInstruction = `The players successfully guessed the location! Write a fun, celebratory summary for \"${locationName}\".`;
     } else if (reason === "timeout") {
-        outcomeContext = "Time ran out before anyone guessed correctly. Write a fun, informative summary for the location.";
+        // Explicitly instruct LLM to announce timeout and reveal location at the start
+        outcomeInstruction = `Time ran out before anyone guessed correctly. Start your response by announcing the timeout and revealing the location was \"${locationName}\". Then, continue with a fun, informative summary.`;
     } else if (reason === "stopped") {
-        outcomeContext = "The game was stopped manually. Write a simple, informative summary for the location.";
+        // Explicitly instruct LLM to announce stop and reveal location at the start
+        outcomeInstruction = `The game was stopped manually. Start your response by stating the game was stopped and revealing the location was \"${locationName}\". Then, continue with a simple, informative summary.`;
     } else {
-        outcomeContext = "Write a fun, informative summary for the location."; // Default
+        outcomeInstruction = `Write a fun, informative summary for the location \"${locationName}\".`; // Default
     }
 
-    const prompt = `You are the Geo-Game Reveal Generator. ${outcomeContext} The location was "${locationName}".${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
+    const prompt = `You are the Geo-Game Reveal Generator. ${outcomeInstruction}${mode === 'game' && gameTitle ? ` The location is from the video game \"${gameTitle}\". Use search if available to ensure accuracy.` : ''}
 - Include a few interesting facts or context about the location.
-- Make it engaging and suitable for a Twitch chat audience. Avoid starting with "Congrats" or similar if the reason was 'timeout' or 'stopped'.
-- Respond with a short paragraph (2-4 sentences).`;
+- Make it engaging and suitable for a Twitch chat audience.
+- Respond with a short paragraph (2-4 sentences). Do NOT use markdown formatting.`;
     const model = getGeminiClient();
     logger.debug({ locationName, mode, gameTitle, reason, prompt }, '[GeoClue] Generating final reveal');
     try {
