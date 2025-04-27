@@ -132,7 +132,7 @@ async function _transitionToEnding(gameState, reason = "guessed") {
         finalMessage = "An error occurred, and the final location couldn't be revealed."; // Fallback message
     } else {
         try {
-            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope);
+            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason);
             logger.debug(`[GeoGame][${gameState.channelName}] Reveal text generated: ${revealText?.substring(0, 50)}...`);
         } catch (error) {
             logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating final reveal.`);
@@ -393,12 +393,8 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
                     gameState.state = 'timeout';
                     logger.debug(`[GeoGame][${gameState.channelName}] Game state set to 'timeout'.`);
 
-                    const timeoutMessage = formatTimeoutMessage(gameState.targetLocation?.name || 'Unknown Location'); // Handle potential missing location
-                    logger.debug(`[GeoGame][${gameState.channelName}] Enqueuing timeout message: "${timeoutMessage}"`);
-                    enqueueMessage(`#${channelName}`, timeoutMessage);
-
                     logger.info(`[GeoGame][${gameState.channelName}] Transitioning to ending state due to timeout.`);
-                    await _transitionToEnding(gameState, "timeout"); // Use await if _transitionToEnding is async
+                    await _transitionToEnding(gameState, "timeout"); // Let this handle the final message
                     logger.info(`[GeoGame][${gameState.channelName}] Ending transition called after timeout.`);
 
                 } else {

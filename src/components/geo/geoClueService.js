@@ -82,19 +82,31 @@ export async function generateFollowUpClue(locationName, previousClues = [], mod
 }
 
 /**
- * Generates a fun, informative summary or reveal for the location.
+ * Generates a fun, informative summary or reveal for the location, tailored to the reason the game ended.
  * @param {string} locationName
  * @param {'real'|'game'} mode
  * @param {string|null} gameTitle
+ * @param {string} reason - Why the game ended ("guessed", "timeout", "stopped", etc)
  * @returns {Promise<string|null>}
  */
-export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null) {
-    const prompt = `You are the Geo-Game Reveal Generator. Write a fun, informative summary or reveal for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
+export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown") {
+    let outcomeContext = "";
+    if (reason === "guessed") {
+        outcomeContext = "The players successfully guessed the location! Write a fun, celebratory summary for the location.";
+    } else if (reason === "timeout") {
+        outcomeContext = "Time ran out before anyone guessed correctly. Write a fun, informative summary for the location.";
+    } else if (reason === "stopped") {
+        outcomeContext = "The game was stopped manually. Write a simple, informative summary for the location.";
+    } else {
+        outcomeContext = "Write a fun, informative summary for the location."; // Default
+    }
+
+    const prompt = `You are the Geo-Game Reveal Generator. ${outcomeContext} The location was "${locationName}".${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
 - Include a few interesting facts or context about the location.
-- Make it engaging and suitable for a Twitch chat audience.
+- Make it engaging and suitable for a Twitch chat audience. Avoid starting with "Congrats" or similar if the reason was 'timeout' or 'stopped'.
 - Respond with a short paragraph (2-4 sentences).`;
     const model = getGeminiClient();
-    logger.debug({ locationName, mode, gameTitle, prompt }, '[GeoClue] Generating final reveal');
+    logger.debug({ locationName, mode, gameTitle, reason, prompt }, '[GeoClue] Generating final reveal');
     try {
         const generateOptions = {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
