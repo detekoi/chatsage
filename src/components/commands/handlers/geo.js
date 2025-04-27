@@ -47,7 +47,7 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
 const geoHandler = {
     name: 'geo',
     description: 'Starts or manages the Geo-Game (!geo help for details).',
-    usage: '!geo [<game> [Game Title]] | stop | config | leaderboard | help',
+    usage: '!geo [<game> [Game Title]] | stop | config <options...> | resetconfig | leaderboard | help',
     permission: 'everyone', // Subcommand permissions handled inside
     execute: async (context) => {
         const { channel, user, args } = context;
@@ -110,6 +110,20 @@ const geoHandler = {
             enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
             return; // Action done
 
+        } else if (subCommand === 'resetconfig') {
+            if (!isModOrBroadcaster) {
+                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can reset the game configuration.`);
+                return;
+            }
+            try {
+                const result = await geoManager.resetChannelConfig(channelName);
+                enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, 'Error calling resetChannelConfig from command handler.');
+                enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred while trying to reset the configuration.`);
+            }
+            return; // Action done
+
         } else if (subCommand === 'leaderboard') {
             // !geo leaderboard
             try {
@@ -127,7 +141,7 @@ const geoHandler = {
             
         } else if (subCommand === 'help') {
             // !geo help
-            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game commands: !geo (real world), !geo game (current stream game), !geo game [Title], !geo stop (mods), !geo config (mods), !geo leaderboard, !geo help`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo (start real), !geo game [Title] (start game), !geo stop (mods), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo help`);
             return; // Action done
 
         } else if (subCommand === 'game') {

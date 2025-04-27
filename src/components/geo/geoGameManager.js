@@ -626,6 +626,28 @@ async function configureGame(channelName, options) {
     }
 }
 
+/**
+ * Resets the configuration for a channel back to the default settings.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {Promise<{success: boolean, message: string}>} Result object.
+ */
+async function resetChannelConfig(channelName) {
+    const gameState = await _getOrCreateGameState(channelName); // Ensure state exists
+    logger.info(`[GeoGame][${channelName}] Resetting configuration to defaults.`);
+    try {
+        // Create a fresh copy of the defaults to apply
+        const newConfig = { ...DEFAULT_CONFIG };
+        gameState.config = newConfig; // Overwrite the current config with defaults
+        // Persist the reset configuration
+        await saveChannelConfig(channelName, gameState.config);
+        logger.info(`[GeoGame][${channelName}] Configuration successfully reset and saved.`);
+        return { success: true, message: "Geo-Game configuration reset to defaults." };
+    } catch (error) {
+        logger.error({ err: error, channel: channelName }, `[GeoGame][${channelName}] Failed to save reset configuration.`);
+        // Config is reset in memory, but persistence failed
+        return { success: false, message: "Configuration reset in memory, but failed to save permanently. Please try again." };
+    }
+}
 
 /**
  * Gets the singleton GeoGame Manager instance/interface.
@@ -638,6 +660,7 @@ function getGeoGameManager() {
         stopGame,
         processPotentialGuess,
         configureGame,
+        resetChannelConfig,
         // Might add: getCurrentGameState(channelName) if needed for status commands
     };
 }
