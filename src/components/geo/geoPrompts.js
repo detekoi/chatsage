@@ -9,16 +9,23 @@ import logger from '../../lib/logger.js';
  * @param {GameConfig} config - Game configuration.
  * @param {string | null} gameTitleScope - Specific game title if applicable.
  * @param {string[]} excludedLocations - Locations to avoid selecting.
+ * @param {string | null} [sessionRegionScope=null] - Optional user-specified region for this session (real mode only).
  * @returns {string} The location selection prompt.
  */
-function getLocationSelectionPrompt(mode, config, gameTitleScope, excludedLocations = []) {
+function getLocationSelectionPrompt(mode, config, gameTitleScope, excludedLocations = [], sessionRegionScope = null) {
     const difficulty = config.difficulty || 'normal';
     let locationScope = 'anywhere in the world';
 
     if (mode === 'game') {
         locationScope = gameTitleScope ? `within the video game "${gameTitleScope}"` : 'within a popular video game';
-    } else if (config.regionRestrictions && config.regionRestrictions.length > 0) {
-        locationScope = `within the region(s): ${config.regionRestrictions.join(', ')}`;
+    } else {
+        // Real mode: Prioritize session scope, then channel config, then global
+        if (sessionRegionScope) {
+            locationScope = `within the specified region: ${sessionRegionScope}`;
+        } else if (config.regionRestrictions && config.regionRestrictions.length > 0) {
+            locationScope = `within the channel's configured region(s): ${config.regionRestrictions.join(', ')}`;
+        }
+        // If neither session nor config region is set, it remains 'anywhere in the world'
     }
 
     // Add exclusion instruction if list is not empty
@@ -36,7 +43,7 @@ The location should be recognizable but challenging according to the difficulty.
 Prioritize diversity: Include locations from all continents, significant indigenous sites (using native names alongside colonial ones if appropriate, e.g., "Uluru / Ayers Rock"), places culturally important to diverse communities, significant LGBTQIA+ historical locations (like Stonewall Inn or specific districts), and locations known for accessibility features.${exclusionInstruction}
 Return ONLY the single, most common name of the location. If relevant alternate or indigenous names exist, append them after a slash (/). Example: "Mount Denali / Mount McKinley" or "Mumbai / Bombay". Do not add any other text.`;
 
-    logger.debug({ mode, difficulty, scope: locationScope, excludedCount: excludedLocations.length }, "Generated location selection prompt.");
+    logger.debug({ mode, difficulty, scope: locationScope, sessionRegionScope, excludedCount: excludedLocations.length }, "Generated location selection prompt.");
     return prompt;
 }
 

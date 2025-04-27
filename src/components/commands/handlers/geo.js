@@ -58,25 +58,73 @@ const geoHandler = {
         const geoManager = getGeoGameManager(); // Get the manager instance
 
         let subCommand = args[0]?.toLowerCase();
-        let gameMode = 'real'; // Default to real world
-        let gameTitle = null;
-        let numberOfRounds = 1; // Default to 1 round
-        let argsOffset = 0; // How many args are consumed by command/rounds
+        let gameMode = 'real'; // Default mode
+        let scope = null; // Will hold gameTitle or regionScope
+        let numberOfRounds = 1; // Default rounds
+        let consumedArgsCount = 0; // Track processed args for start commands
 
         // Helper function to check if a string is a positive integer
         const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);
 
         // --- Subcommand Parsing ---
-        if (!subCommand || isPositiveInteger(subCommand)) {
-            // !geo [rounds] -> Start Real World Game
+        if (!subCommand) {
+            // !geo -> Start Real World Game (1 round, global scope)
             gameMode = 'real';
-            if (subCommand && isPositiveInteger(subCommand)) {
-                numberOfRounds = parseInt(subCommand, 10);
-                argsOffset = 1;
-            } else {
-                 // No subCommand or not a number, means !geo -> 1 round real
-                 argsOffset = 0;
+            scope = null;
+            numberOfRounds = 1;
+            consumedArgsCount = 0;
+            // Proceed to start game below
+        } else if (isPositiveInteger(subCommand)) {
+            // !geo <rounds> -> Start Real World Game (<rounds>, global scope)
+            gameMode = 'real';
+            scope = null;
+            numberOfRounds = parseInt(subCommand, 10);
+            consumedArgsCount = 1;
+             // Proceed to start game below
+        } else if (subCommand === 'game') {
+            // !geo game [Optional Title] [Optional Rounds]
+            gameMode = 'game';
+            consumedArgsCount = 1; // Consumed 'game'
+            let potentialScopeParts = [];
+            let potentialRoundsArg = null;
+            let remainingArgs = args.slice(1); // Args after 'game'
+
+            if (remainingArgs.length > 0) {
+                // Check if the last argument is a number
+                if (isPositiveInteger(remainingArgs[remainingArgs.length - 1])) {
+                    potentialRoundsArg = remainingArgs[remainingArgs.length - 1];
+                    potentialScopeParts = remainingArgs.slice(0, remainingArgs.length - 1);
+                } else {
+                    potentialScopeParts = remainingArgs;
+                }
             }
+
+            if (potentialScopeParts.length > 0) {
+                scope = potentialScopeParts.join(' '); // Specific game title provided
+            } else {
+                // No title parts, get title from stream context
+                try {
+                     const contextManager = getContextManager();
+                     const llmContext = contextManager.getContextForLLM(channelName, invokingDisplayName, "");
+                     scope = llmContext?.streamGame || null;
+                     if (!scope || scope === "N/A") {
+                         enqueueMessage(channel, `@${invokingDisplayName}, Could not detect the current game. Please specify one: !geo game <Game Title> [rounds]`);
+                         return;
+                     }
+                     logger.info(`[GeoGame] Using current stream game for !geo game: ${scope}`);
+                } catch (err) {
+                     logger.error({ err }, "Error getting stream context for !geo game");
+                     enqueueMessage(channel, `@${invokingDisplayName}, Error getting current stream game.`);
+                     return;
+                }
+            }
+            // Set rounds if provided
+            if (potentialRoundsArg) {
+                numberOfRounds = parseInt(potentialRoundsArg, 10);
+            }
+            consumedArgsCount = args.length; // All args consumed for this path
+             // Proceed to start game below
+
         } else if (subCommand === 'stop') {
             // !geo stop
             const currentGameInitiator = geoManager.getCurrentGameInitiator(channelName); // Get initiator
@@ -119,17 +167,17 @@ const geoHandler = {
                     const duration = parseInt(value, 10);
                     if (!isNaN(duration)) options.roundDurationMinutes = duration;
                 } else if (key === 'region' || key === 'regions') {
-                    // Allow comma-separated list
                     options.regionRestrictions = value.split(',').map(s => s.trim()).filter(Boolean);
                 } else if (key === 'game' || key === 'gametitle') {
                     options.gameTitlePreferences = value.split(',').map(s => s.trim()).filter(Boolean);
+                } else if (key === 'scoring' || key === 'scoretracking') { // Add score tracking config
+                    options.scoreTracking = value.toLowerCase() === 'true' || value === '1';
                 }
             }
             if (Object.keys(options).length === 0) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Usage: !geo config difficulty <easy|normal|hard> interval <seconds> duration <minutes> region <list> game <list>`);
-                return;
+                 enqueueMessage(channel, `@${invokingDisplayName}, Usage: !geo config difficulty <easy|normal|hard> interval <seconds> duration <minutes> region <list> game <list> scoring <true|false>`);
+                 return;
             }
-            // Use 'await' here as configureGame now involves async database operations
             const result = await geoManager.configureGame(channelName, options);
             enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
             return; // Action done
@@ -151,8 +199,6 @@ const geoHandler = {
         } else if (subCommand === 'leaderboard') {
             // !geo leaderboard
             try {
-                // Fetch channel-specific leaderboard data from storage
-                // Use channelName (without #)
                 const leaderboardData = await getLeaderboard(channelName, 5); // Get top 5
                 const message = formatLeaderboardMessage(leaderboardData, channelName);
                 enqueueMessage(channel, message);
@@ -162,83 +208,52 @@ const geoHandler = {
                 enqueueMessage(channel, `@${invokingDisplayName}, Sorry, couldn't fetch the leaderboard right now.`);
             }
             return; // Action done
-            
+
         } else if (subCommand === 'help') {
             // !geo help
-            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo help`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo help`);
             return; // Action done
 
-        } else if (subCommand === 'game') {
-            // !geo game [Optional Title] [Optional Rounds]
-            gameMode = 'game';
-            argsOffset = 1; // Consumed 'game'
-            let potentialTitleParts = [];
+        } else {
+            // Assume !geo <region text...> [Optional Rounds] -> Real World Game
+            gameMode = 'real';
+            let potentialScopeParts = [];
             let potentialRoundsArg = null;
 
-            if (args.length > 1) {
-                // Check if the last argument is a number
-                if (isPositiveInteger(args[args.length - 1])) {
-                    potentialRoundsArg = args[args.length - 1];
-                    potentialTitleParts = args.slice(1, args.length - 1);
-                } else {
-                    potentialTitleParts = args.slice(1);
-                }
+            // Check if the last argument is a number
+            if (args.length > 0 && isPositiveInteger(args[args.length - 1])) {
+                potentialRoundsArg = args[args.length - 1];
+                potentialScopeParts = args.slice(0, args.length - 1);
+            } else {
+                potentialScopeParts = args.slice(0); // All args are part of the scope
             }
 
-            if (potentialTitleParts.length > 0) {
-                gameTitle = potentialTitleParts.join(' '); // Specific title provided
+            if (potentialScopeParts.length > 0) {
+                 scope = potentialScopeParts.join(' '); // User-defined region scope
+                 logger.info(`[GeoGame] Interpreting '!geo ${args.join(' ')}' as starting real mode (Region: '${scope}') for ${numberOfRounds} round(s).`);
             } else {
-                // No title parts, get title from stream context
-                try {
-                     const contextManager = getContextManager();
-                     const llmContext = contextManager.getContextForLLM(channelName, invokingDisplayName, "");
-                     gameTitle = llmContext?.streamGame || null;
-                     if (!gameTitle || gameTitle === "N/A") {
-                         enqueueMessage(channel, `@${invokingDisplayName}, Could not detect the current game. Please specify one: !geo game [Game Title] [rounds]`);
-                         return;
-                     }
-                     logger.info(`[GeoGame] Using current stream game for !geo game: ${gameTitle}`);
-                } catch (err) {
-                     logger.error({ err }, "Error getting stream context for !geo game");
-                     enqueueMessage(channel, `@${invokingDisplayName}, Error getting current stream game.`);
-                     return;
-                }
+                 // Should not happen if args.length > 0 and first arg wasn't a number or known subcommand
+                 // but handle defensively. This implies `!geo` with no args, handled above.
+                 logger.warn(`[GeoGame] Parser reached real-world scope interpretation unexpectedly for args: ${args.join(' ')}`);
+                 scope = null; // Fallback to global scope
             }
-            // Set rounds if provided
+
             if (potentialRoundsArg) {
                 numberOfRounds = parseInt(potentialRoundsArg, 10);
             }
-             argsOffset = args.length; // Mark all args as processed for game mode start
-        } else {
-            // Assume !geo <some text possibly ending with rounds> - Treat as Video Game Mode start
-            gameMode = 'game';
-            let potentialTitleParts = [];
-            let potentialRoundsArg = null;
+            consumedArgsCount = args.length; // All args consumed
+            // Proceed to start game below
+        }
 
-            if (args.length > 0) {
-                 // Check if the last argument is a number
-                if (isPositiveInteger(args[args.length - 1])) {
-                    potentialRoundsArg = args[args.length - 1];
-                    potentialTitleParts = args.slice(0, args.length - 1);
-                } else {
-                    potentialTitleParts = args.slice(0);
-                }
-            }
 
-            if (potentialTitleParts.length === 0) {
-                 // This case should technically not happen if args.length > 0, but handle defensively
-                 logger.warn(`[GeoGame] Interpreting '!geo' with only a numeric argument as real-world mode, but parser reached game mode branch.`);
-                 gameMode = 'real'; // Fallback if somehow only number was provided but missed first check
-                 if(potentialRoundsArg) numberOfRounds = parseInt(potentialRoundsArg, 10);
-                 gameTitle = null;
-            } else {
-                gameTitle = potentialTitleParts.join(' ');
-                 if (potentialRoundsArg) {
-                    numberOfRounds = parseInt(potentialRoundsArg, 10);
-                }
-                logger.info(`[GeoGame] Interpreting '!geo ${args.join(' ')}' as starting game mode '${gameTitle}' for ${numberOfRounds} round(s).`);
-            }
-            argsOffset = args.length; // Mark all args as processed
+        // --- Start Game Section (Common for 'real' and 'game' modes determined above) ---
+
+        // If consumedArgsCount is less than args.length, it means some arguments were not processed by any logic path above,
+        // implying an unknown command format or subcommand was attempted after a valid start sequence initiator.
+        if (consumedArgsCount < args.length) {
+            logger.warn(`[GeoGame][${channelName}] Unknown arguments after primary command processing: ${args.slice(consumedArgsCount).join(' ')}`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Unknown command format or extra arguments provided. Use !geo help.`);
+            return;
         }
 
         // Validate number of rounds (e.g., max 10)
@@ -248,28 +263,16 @@ const geoHandler = {
              numberOfRounds = MAX_ROUNDS;
         }
 
-        // --- Start Game ---
-        // Check if argsOffset processed all arguments. If not, it implies an unknown subcommand/format.
-        if (argsOffset < args.length && !['game', 'real'].includes(gameMode)) {
-             // If gameMode was set to game/real by fallback/direct title, argsOffset covers all args
-             // This condition catches cases like `!geo unknownsubcommand arg1 arg2`
-            logger.warn(`[GeoGame][${channelName}] Unknown subcommand or arguments after parsing: ${args.slice(argsOffset).join(' ')}`);
-            enqueueMessage(channel, `@${invokingDisplayName}, Unknown command format. Use !geo help for options.`);
-            return;
-        }
-         
-        // If we reach here, it's a valid start game request (real or game)
+        // Now, call the startGame function with the determined parameters
         try {
-            logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Title: ${gameTitle || 'N/A'}, Rounds: ${numberOfRounds}, Initiator: ${invokingUsernameLower}`);
-            // Pass invokingUsernameLower as the initiator AND numberOfRounds
-            const result = await geoManager.startGame(channelName, gameMode, gameTitle, invokingUsernameLower, numberOfRounds);
+            logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Scope: ${scope || 'N/A'}, Rounds: ${numberOfRounds}, Initiator: ${invokingUsernameLower}`);
+            // Pass the determined scope (which is either gameTitle or regionScope)
+            const result = await geoManager.startGame(channelName, gameMode, scope, invokingUsernameLower, numberOfRounds);
 
-            // Handle success or failure appropriately
             if (!result.success) {
-                // Only on error, send the error message back to the user
                 enqueueMessage(channel, `@${invokingDisplayName}, ${result.error}`);
-            } 
-            // Success message is handled by the game manager's messages - no need for a third confirmation
+            }
+            // Success messages are handled by the game manager
         } catch (error) {
             logger.error({ err: error }, "Unhandled error starting game from command handler.");
             enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred trying to start the game.`);

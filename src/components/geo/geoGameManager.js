@@ -32,6 +32,7 @@ interface GameState {
     state: 'idle' | 'selecting' | 'started' | 'inProgress' | 'guessed' | 'timeout' | 'ending';
     targetLocation: { name: string, alternateNames?: string[] } | null; // Store main name + alternates
     gameTitleScope: string | null; // For video game mode
+    sessionRegionScope: string | null; // For user-specified region in 'real' mode for the session
     startTime: number | null; // timestamp ms
     clues: string[];
     currentClueIndex: number;
@@ -98,6 +99,7 @@ async function _getOrCreateGameState(channelName) {
             state: 'idle',
             targetLocation: null,
             gameTitleScope: null,
+            sessionRegionScope: null, // Initialize new field
             startTime: null, // Start time of the *current round*
             clues: [],
             currentClueIndex: -1,
@@ -137,6 +139,8 @@ async function _resetGameToIdle(gameState) {
     newState.state = 'idle'; // Ensure it's explicitly idle
     // Explicitly clear game-specific data
     newState.targetLocation = null;
+    newState.gameTitleScope = null; // Clear game scope
+    newState.sessionRegionScope = null; // Clear session region scope
     newState.startTime = null;
     newState.clues = [];
     newState.currentClueIndex = -1;
@@ -377,12 +381,23 @@ async function _startNextRound(gameState) {
     const excludedArray = Array.from(combinedExcludedLocations);
     logger.debug(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} exclusions: ${excludedArray.join(', ') || 'None'}`);
 
+    // Determine game title scope and session region scope for selectLocation
+    const gameTitleForSelect = gameState.mode === 'game' ? gameState.gameTitleScope : null;
+    const sessionRegionForSelect = gameState.mode === 'real' ? gameState.sessionRegionScope : null;
+
     while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
          if (retries > 0) {
             logger.warn(`[GeoGame][${gameState.channelName}] Retrying location selection for round ${gameState.currentRound} (Attempt ${retries + 1})...`);
             await new Promise(resolve => setTimeout(resolve, 500 * retries));
         }
-        const locationAttempt = await selectLocation(gameState.mode, gameState.config, gameState.gameTitleScope, excludedArray);
+        // Pass the appropriate scope to selectLocation
+        const locationAttempt = await selectLocation(
+            gameState.mode,
+            gameState.config,
+            gameTitleForSelect,
+            excludedArray,
+            sessionRegionForSelect // Pass session scope
+        );
         if (locationAttempt?.name && !combinedExcludedLocations.has(locationAttempt.name)) {
             selectedLocation = locationAttempt;
         } else if (locationAttempt?.name) {
@@ -406,7 +421,9 @@ async function _startNextRound(gameState) {
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} location selected: ${gameState.targetLocation.name}`);
 
     // 2. Generate Initial Clue
-    const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, gameState.mode, gameState.gameTitleScope);
+    // Pass the correct scope (game title for game mode, null for real mode as region is handled by selection)
+    const clueScope = gameState.mode === 'game' ? gameState.gameTitleScope : null;
+    const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, gameState.mode, clueScope);
     if (!firstClue) {
          logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
          enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`);
@@ -544,8 +561,8 @@ async function _scheduleNextClue(gameState) {
 
 const MAX_LOCATION_SELECT_RETRIES = 3;
 
-// Update signature to accept numberOfRounds
-async function _startGameProcess(channelName, mode, gameTitle = null, initiatorUsername = null, numberOfRounds = 1) {
+// Update signature to accept generic scope
+async function _startGameProcess(channelName, mode, scope = null, initiatorUsername = null, numberOfRounds = 1) {
     const gameState = await _getOrCreateGameState(channelName);
 
     if (gameState.state !== 'idle') {
@@ -560,7 +577,9 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
     // Reset core game fields before starting the FIRST round
     gameState.initiatorUsername = initiatorUsername?.toLowerCase() || null; // Store initiator for the whole game
     gameState.mode = mode;
-    gameState.gameTitleScope = gameTitle;
+    // Set scope based on mode
+    gameState.gameTitleScope = mode === 'game' ? scope : null;
+    gameState.sessionRegionScope = mode === 'real' ? scope : null; // Store user-provided region scope
     gameState.state = 'selecting'; // Initial state during setup
     gameState.targetLocation = null;
     gameState.startTime = null;
@@ -576,7 +595,8 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
     gameState.gameSessionExcludedLocations = new Set(); // Reset for the new game session
     _clearTimers(gameState); // Ensure no stray timers
 
-    logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, Game Scope: ${gameTitle || 'N/A'}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
+    const scopeLog = scope ? (mode === 'game' ? `Game Scope: ${scope}` : `Region Scope: ${scope}`) : 'Scope: N/A';
+    logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, ${scopeLog}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
 
     try {
         // --- Location Selection for Round 1 ---
@@ -590,12 +610,23 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
         }
         logger.debug(`[GeoGame][${channelName}] Round 1 Locations to exclude: ${excludedLocations.join(', ')}`);
 
+        // Determine scopes for selectLocation call
+        const gameTitleForSelect = gameState.mode === 'game' ? gameState.gameTitleScope : null;
+        const sessionRegionForSelect = gameState.mode === 'real' ? gameState.sessionRegionScope : null;
+
         while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
             if (retries > 0) {
                 logger.warn(`[GeoGame][${channelName}] Retrying location selection for Round 1 (Attempt ${retries + 1})...`);
                 await new Promise(resolve => setTimeout(resolve, 500 * retries));
             }
-            const locationAttempt = await selectLocation(mode, gameState.config, gameTitle, excludedLocations);
+            // Pass the appropriate scope to selectLocation
+            const locationAttempt = await selectLocation(
+                mode,
+                gameState.config,
+                gameTitleForSelect,
+                excludedLocations,
+                sessionRegionForSelect // Pass session scope
+            );
             if (locationAttempt?.name && !excludedLocations.includes(locationAttempt.name)) {
                 selectedLocation = locationAttempt;
             } else if (locationAttempt?.name) {
@@ -613,7 +644,9 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
         logger.info(`[GeoGame][${channelName}] Round 1 Location selected: ${gameState.targetLocation.name}`);
 
         // 2. Generate Initial Clue (Round 1)
-        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, gameTitle);
+        // Pass game title only if game mode
+        const clueScope = mode === 'game' ? gameState.gameTitleScope : null;
+        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, clueScope);
         if (!firstClue) {
             throw new Error("Failed to generate the initial clue for Round 1.");
         }
@@ -625,8 +658,8 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
         gameState.startTime = Date.now(); // Start time for Round 1
         gameState.state = 'started'; // Mark as formally started
 
-        // Adjust start message for multi-round games
-        const startMessage = formatStartMessage(mode, gameTitle, gameState.config.roundDurationMinutes, gameState.totalRounds);
+        // Adjust start message for multi-round games and pass region scope
+        const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
         enqueueMessage(`#${channelName}`, startMessage);
 
         // Small delay before sending the first clue
@@ -768,14 +801,14 @@ async function initializeGeoGameManager() {
  * Calls the internal _startGameProcess and returns its result.
  * @param {string} channelName - Channel name (without #).
  * @param {'real' | 'game'} mode - Game mode.
- * @param {string | null} [gameTitle=null] - Specific game title for 'game' mode.
+ * @param {string | null} [scope=null] - Specific game title for 'game' mode OR region scope for 'real' mode.
  * @param {string | null} [initiatorUsername=null] - Lowercase username of the game initiator.
  * @param {number} [numberOfRounds=1] - Number of rounds for the game session.
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  */
-async function startGame(channelName, mode, gameTitle = null, initiatorUsername = null, numberOfRounds = 1) {
-    // Directly call the internal process function with the number of rounds
-    return await _startGameProcess(channelName, mode, gameTitle, initiatorUsername, numberOfRounds);
+async function startGame(channelName, mode, scope = null, initiatorUsername = null, numberOfRounds = 1) {
+    // Directly call the internal process function with the generic scope and number of rounds
+    return await _startGameProcess(channelName, mode, scope, initiatorUsername, numberOfRounds);
 }
 
 /**

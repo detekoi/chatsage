@@ -4,18 +4,21 @@
 /**
  * Formats the start message for a new game session.
  * @param {'real'|'game'} mode
- * @param {string|null} gameTitle
+ * @param {string|null} gameTitle - Null if mode is 'real'.
  * @param {number} roundDurationMinutes
  * @param {number} totalRounds - The total number of rounds in this game session.
+ * @param {string|null} [regionScope=null] - User-specified region if mode is 'real'.
  * @returns {string}
  */
-export function formatStartMessage(mode, gameTitle = null, roundDurationMinutes = 5, totalRounds = 1) {
+export function formatStartMessage(mode, gameTitle = null, roundDurationMinutes = 5, totalRounds = 1, regionScope = null) {
     const roundInfo = totalRounds > 1 ? ` (${totalRounds} rounds)` : '';
     const durationInfo = `You have ⏱️ ${roundDurationMinutes} minutes per round.`;
     if (mode === 'game') {
         return `🎮 Geo-Game started!${roundInfo} Guess the location from the game${gameTitle ? ` "${gameTitle}"` : ''}! ${durationInfo} Type your guesses in chat!`;
     } else {
-        return `🌍 Geo-Game started!${roundInfo} Guess the real-world city, landmark, or place! ${durationInfo} Type your guesses in chat!`;
+        // Real mode
+        const regionInfo = regionScope ? ` (Region: ${regionScope})` : '';
+        return `🌍 Geo-Game started!${regionInfo}${roundInfo} Guess the real-world city, landmark, or place! ${durationInfo} Type your guesses in chat!`;
     }
 }
 

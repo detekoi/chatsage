@@ -49,12 +49,13 @@ const checkGuessTool = {
  * @param {object} config
  * @param {string|null} gameTitle
  * @param {string[]} excludedLocations - Array of location names to avoid.
+ * @param {string|null} [sessionRegionScope=null] - Optional user-specified region for this session (real mode only).
  * @returns {Promise<{name: string, alternateNames?: string[]}|null>}
  */
-export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = []) {
-    const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations);
+export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = [], sessionRegionScope = null) {
+    const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations, sessionRegionScope);
     const model = getGeminiClient();
-    logger.debug({ mode, gameTitle, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
+    logger.debug({ mode, gameTitle, sessionRegionScope, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const generateOptions = {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
