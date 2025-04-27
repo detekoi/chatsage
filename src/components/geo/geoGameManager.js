@@ -180,7 +180,7 @@ async function _transitionToEnding(gameState, reason = "guessed") {
             
             // Update winner score if there was a winner
             if (gameState.winner?.username) {
-                await updatePlayerScore(gameState.winner.username, 1, gameState.winner.displayName);
+                await updatePlayerScore(gameState.winner.username, gameState.channelName, 1, gameState.winner.displayName);
                 logger.debug(`[GeoGame][${gameState.channelName}] Updated score for winner: ${gameState.winner.username} (${gameState.winner.displayName})`);
             }
         } catch (storageError) {
