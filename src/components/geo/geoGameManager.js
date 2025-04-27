@@ -330,7 +330,7 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
             }
             let excludedLocations = [];
             try {
-                excludedLocations = await getRecentLocations(channelName, 25);
+                excludedLocations = await getRecentLocations(channelName, 35);
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent locations, proceeding with no exclusions.");
             }
@@ -542,11 +542,11 @@ function stopGame(channelName) {
     logger.info(`[GeoGame][${channelName}] Stop command received. Manually ending game from state: ${gameState.state}.`);
 
     // Store location name before potentially clearing timers/state changes affect it
-    const locationName = gameState.targetLocation?.name;
+    // const locationName = gameState.targetLocation?.name;
 
     // Send the stop message *before* transitioning, using the formatter
-    const stopMessage = formatStopMessage(locationName); // Pass location if available
-    enqueueMessage(`#${channelName}`, stopMessage);
+    // const stopMessage = formatStopMessage(locationName); // Pass location if available
+    // enqueueMessage(`#${channelName}`, stopMessage);
 
     // Transition to the ending sequence (clears timers, handles reveal/reset)
     // Pass "stopped" as the reason. _transitionToEnding handles state change and timers.

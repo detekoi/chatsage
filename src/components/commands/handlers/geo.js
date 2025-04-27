@@ -70,8 +70,7 @@ const geoHandler = {
                 enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop the game.`);
                 return;
             }
-            const result = geoManager.stopGame(channelName); // Call manager's stop function
-            enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+            geoManager.stopGame(channelName); // Call manager's stop function
             return; // Action done
 
         } else if (subCommand === 'config') {
