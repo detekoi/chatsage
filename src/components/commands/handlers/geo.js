@@ -105,7 +105,8 @@ const geoHandler = {
                 enqueueMessage(channel, `@${invokingDisplayName}, Usage: !geo config difficulty <easy|normal|hard> interval <seconds> duration <minutes> region <list> game <list>`);
                 return;
             }
-            const result = geoManager.configureGame(channelName, options); // Call manager's config function
+            // Use 'await' here as configureGame now involves async database operations
+            const result = await geoManager.configureGame(channelName, options);
             enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
             return; // Action done
 
