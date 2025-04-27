@@ -10,11 +10,13 @@ import logger from '../../lib/logger.js';
  * @returns {Promise<string|null>}
  */
 export async function generateInitialClue(locationName, difficulty = 'normal', mode = 'real', gameTitle = null) {
-    const prompt = `You are the Geo-Game Clue Generator. Generate the FIRST clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
+    const prompt = `You are the Geo-Game Clue Generator, creating evocative descriptions. Generate the FIRST clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
 - Difficulty: ${difficulty}
-- The clue should be accurate, not too obvious, and not too obscure for the chosen difficulty.
+- Focus on sensory details (sight, sound, smell, feeling) or the general atmosphere/impression of the place.
+- Hint subtly at the geographic region (continent, climate) or general context (real-world vs. game setting type) without being overly specific.
+- Sprinkle in a small factual detail if it fits naturally with the description.
 - Do NOT reveal the location name or any direct synonyms.
-- Respond with a single clue sentence.`;
+- Respond with a single, engaging clue sentence (around 200-350 characters).`;
     const model = getGeminiClient();
     logger.debug({ locationName, difficulty, mode, gameTitle, prompt }, '[GeoClue] Generating initial clue');
     try {
@@ -50,11 +52,13 @@ export async function generateInitialClue(locationName, difficulty = 'normal', m
  * @returns {Promise<string|null>}
  */
 export async function generateFollowUpClue(locationName, previousClues = [], mode = 'real', gameTitle = null, clueNumber = 2) {
-    const prompt = `You are the Geo-Game Clue Generator. Generate a NEW clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
+    const prompt = `You are the Geo-Game Clue Generator, creating evocative descriptions. Generate a NEW clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
 - Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i+1}) ${c}`).join(' | ') : 'None'}
-- The new clue must NOT repeat or closely paraphrase any previous clues.
-- Make the clue slightly more specific or revealing than the last one, but do NOT give away the answer.
-- Respond with a single clue sentence.`;
+- The new clue must NOT repeat or closely paraphrase information from previous clues.
+- Make the clue slightly more specific, focusing on a distinct sensory detail, a historical echo, a cultural element, or a unique environmental feature.
+- Weave in a helpful factual hint if possible, but prioritize the evocative description.
+- Do NOT give away the answer directly.
+- Respond with a single, engaging clue sentence (around 200-350 characters).`;
     const model = getGeminiClient();
     logger.debug({ locationName, previousClues, mode, gameTitle, clueNumber, prompt }, '[GeoClue] Generating follow-up clue');
     try {
