@@ -11,6 +11,17 @@ const STATS_COLLECTION = 'geoPlayerStats';
 const HISTORY_COLLECTION = 'geoGameHistory';
 
 /**
+ * Custom error class for storage operations.
+ */
+export class StorageError extends Error {
+    constructor(message, cause) {
+        super(message);
+        this.name = 'StorageError';
+        this.cause = cause;
+    }
+}
+
+/**
  * Initializes the Google Cloud Firestore client.
  * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
  */
@@ -83,11 +94,11 @@ export async function loadChannelConfig(channelName) {
             return docSnap.data();
         } else {
             logger.debug(`[GeoStorage-GCloud] No config found for channel ${channelName}`);
-            return null; // No config document exists for this channel
+            return null; // Not found is not an error
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `[GeoStorage-GCloud] Error loading config for channel ${channelName}`);
-        return null; // Return null on error
+        throw new StorageError(`Failed to load config for ${channelName}`, error);
     }
 }
 
@@ -101,13 +112,11 @@ export async function saveChannelConfig(channelName, config) {
     const db = _getDb();
     const docRef = db.collection(CONFIG_COLLECTION).doc(channelName.toLowerCase());
     try {
-        // Using set with merge: true allows partial updates if needed later
         await docRef.set(config, { merge: true });
         logger.debug(`[GeoStorage-GCloud] Saved config for channel ${channelName}`);
-        return true;
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `[GeoStorage-GCloud] Error saving config for channel ${channelName}`);
-        return false;
+        throw new StorageError(`Failed to save config for ${channelName}`, error);
     }
 }
 
@@ -120,17 +129,15 @@ export async function recordGameResult(gameResultDetails) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     try {
-        // Add server timestamp for reliable ordering/querying
         const dataToSave = {
             ...gameResultDetails,
             timestamp: FieldValue.serverTimestamp()
         };
         await colRef.add(dataToSave);
         logger.debug(`[GeoStorage-GCloud] Recorded game result.`);
-        return true;
     } catch (error) {
         logger.error({ err: error }, `[GeoStorage-GCloud] Error recording game result.`);
-        return false;
+        throw new StorageError('Failed to record game result', error);
     }
 }
 
@@ -147,16 +154,11 @@ export async function updatePlayerScore(username, channelName, points = 1, displ
     const lowerUsername = username.toLowerCase();
     const lowerChannel = channelName.toLowerCase();
     const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
-    
     try {
-        // Prepare base update data
         const updateData = {
-            // Global stats
             globalWins: FieldValue.increment(points),
             globalParticipation: FieldValue.increment(1),
             lastWinTimestamp: FieldValue.serverTimestamp(),
-            
-            // Channel-specific stats using nested objects
             channels: {
                 [lowerChannel]: {
                     wins: FieldValue.increment(points),
@@ -165,24 +167,14 @@ export async function updatePlayerScore(username, channelName, points = 1, displ
                 }
             }
         };
-        
-        // Add display name if provided
         if (displayName) {
             updateData.displayName = displayName;
         }
-        
-        // Use set with merge for atomic updates
         await docRef.set(updateData, { merge: true });
-
         logger.debug(`[GeoStorage-GCloud] Updated stats for player ${lowerUsername} in channel ${lowerChannel}`);
-        return true;
     } catch (error) {
-        logger.error({ 
-            err: error, 
-            player: lowerUsername, 
-            channel: lowerChannel 
-        }, `[GeoStorage-GCloud] Error updating player score for ${lowerUsername} in ${lowerChannel}`);
-        return false;
+        logger.error({ err: error, player: lowerUsername, channel: lowerChannel }, `[GeoStorage-GCloud] Error updating player score for ${lowerUsername} in ${lowerChannel}`);
+        throw new StorageError(`Failed to update player score for ${lowerUsername} in ${lowerChannel}`, error);
     }
 }
 
@@ -319,53 +311,43 @@ export async function getRecentLocations(channelName, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     const lowerChannelName = channelName.toLowerCase();
-    
+    let snapshot;
     try {
-        // Check if we're getting a Firestore index error
-        let snapshot;
         try {
-            // Try the ideal query first with ordering
             snapshot = await colRef
                 .where('channel', '==', lowerChannelName)
                 .orderBy('timestamp', 'desc')
                 .limit(limit)
                 .get();
         } catch (indexError) {
-            // If we get an index error, fall back to a simpler query without ordering
             if (indexError.code === 9 && indexError.message.includes('index')) {
                 logger.warn({ 
                     channel: lowerChannelName,
                     indexUrl: indexError.message.includes('https://') ? 
                         indexError.message.substring(indexError.message.indexOf('https://')) : 'not found'
                 }, `[GeoStorage-GCloud] Firestore index not created yet for channel+timestamp query. Using fallback query.`);
-                
-                // Fallback to just getting by channel without ordering
                 snapshot = await colRef
                     .where('channel', '==', lowerChannelName)
-                    .limit(limit * 2) // Get more since we won't be properly ordered
+                    .limit(limit * 2)
                     .get();
             } else {
-                // If it's not an index error, rethrow
                 throw indexError;
             }
         }
-        
         const recentLocations = [];
         snapshot.forEach(doc => {
             const data = doc.data();
             if (data.location) {
-                // Extract the primary name if it includes alternates (e.g., "Kyoto / Kyo")
                 const primaryName = data.location.split('/')[0].trim();
                 if (primaryName) {
                     recentLocations.push(primaryName);
                 }
             }
         });
-        
         logger.debug(`[GeoStorage-GCloud] Found ${recentLocations.length} recent locations for channel ${lowerChannelName}.`);
         return recentLocations;
     } catch (error) {
         logger.error({ err: error, channel: lowerChannelName }, `[GeoStorage-GCloud] Error getting recent locations for channel ${lowerChannelName}`);
-        return [];
+        throw new StorageError(`Failed to get recent locations for ${lowerChannelName}`, error);
     }
 }

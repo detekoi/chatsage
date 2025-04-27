@@ -61,20 +61,24 @@ const activeGames = new Map(); // channelName -> GameState
 async function _getOrCreateGameState(channelName) {
     if (!activeGames.has(channelName)) {
         logger.debug(`[GeoGame] Creating new game state for channel: ${channelName}`);
-        
-        // Load config from Firebase or use default
-        let loadedConfig = await loadChannelConfig(channelName);
+        let loadedConfig = null;
+        try {
+            loadedConfig = await loadChannelConfig(channelName);
+        } catch (error) {
+            logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to load channel config from storage, using defaults.");
+        }
         if (!loadedConfig) {
             logger.info(`[GeoGame][${channelName}] No saved config found, using default.`);
             loadedConfig = { ...DEFAULT_CONFIG };
-            // Optionally save the default config immediately
-            await saveChannelConfig(channelName, loadedConfig);
+            try {
+                await saveChannelConfig(channelName, loadedConfig);
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to save default config to storage.");
+            }
         } else {
             logger.info(`[GeoGame][${channelName}] Loaded saved config.`);
-            // Ensure loaded config has all default keys (in case defaults changed)
             loadedConfig = { ...DEFAULT_CONFIG, ...loadedConfig };
         }
-        
         activeGames.set(channelName, {
             channelName,
             mode: 'real', // Default mode
@@ -288,13 +292,18 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
                 logger.warn(`[GeoGame][${channelName}] Retrying location selection (Attempt ${retries + 1})...`);
                 await new Promise(resolve => setTimeout(resolve, 500 * retries));
             }
-            const excludedLocations = await getRecentLocations(channelName, 10);
+            let excludedLocations = [];
+            try {
+                excludedLocations = await getRecentLocations(channelName, 10);
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent locations, proceeding with no exclusions.");
+            }
             logger.debug(`[GeoGame][${channelName}] Locations to exclude: ${excludedLocations.join(', ')}`);
             const locationAttempt = await selectLocation(mode, gameState.config, gameTitle, excludedLocations);
             if (locationAttempt?.name && !excludedLocations.includes(locationAttempt.name)) {
                 selectedLocation = locationAttempt;
             } else if (locationAttempt?.name) {
-                logger.warn(`[GeoGame][${channelName}] selectLocation returned an excluded location ("${locationAttempt.name}"). Retrying.`);
+                logger.warn(`[GeoGame][${channelName}] selectLocation returned an excluded location (\"${locationAttempt.name}\"). Retrying.`);
             } else {
                 logger.warn(`[GeoGame][${channelName}] selectLocation returned null or invalid name. Retrying.`);
             }
@@ -527,9 +536,8 @@ function processPotentialGuess(channelName, username, displayName, message) {
  * @returns {{message: string}} Result message.
  */
 async function configureGame(channelName, options) {
-    const gameState = await _getOrCreateGameState(channelName); // Ensures state exists
+    const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[GeoGame][${channelName}] Configure command received with options: ${JSON.stringify(options)}`);
-
     let changesMade = [];
     let configChanged = false;
     
@@ -588,13 +596,12 @@ async function configureGame(channelName, options) {
     }
 
     if (configChanged) {
-        // Persist config changes using geoStorage.js
-        const success = await saveChannelConfig(channelName, gameState.config);
-        if (success) {
+        try {
+            await saveChannelConfig(channelName, gameState.config);
             logger.info(`[GeoGame][${channelName}] Configuration updated and saved: ${changesMade.join(', ')}`);
             return { message: `Geo-Game settings updated: ${changesMade.join('. ')}.` };
-        } else {
-            logger.error(`[GeoGame][${channelName}] Failed to save configuration changes.`);
+        } catch (error) {
+            logger.error({ err: error, channel: channelName }, `[GeoGame][${channelName}] Failed to save configuration changes.`);
             return { message: `Settings updated in memory, but failed to save them permanently.` };
         }
     } else if (changesMade.length > 0 && !configChanged) {
