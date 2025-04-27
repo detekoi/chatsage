@@ -319,12 +319,37 @@ export async function getRecentLocations(channelName, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     const lowerChannelName = channelName.toLowerCase();
+    
     try {
-        const snapshot = await colRef
-            .where('channel', '==', lowerChannelName)
-            .orderBy('timestamp', 'desc')
-            .limit(limit)
-            .get();
+        // Check if we're getting a Firestore index error
+        let snapshot;
+        try {
+            // Try the ideal query first with ordering
+            snapshot = await colRef
+                .where('channel', '==', lowerChannelName)
+                .orderBy('timestamp', 'desc')
+                .limit(limit)
+                .get();
+        } catch (indexError) {
+            // If we get an index error, fall back to a simpler query without ordering
+            if (indexError.code === 9 && indexError.message.includes('index')) {
+                logger.warn({ 
+                    channel: lowerChannelName,
+                    indexUrl: indexError.message.includes('https://') ? 
+                        indexError.message.substring(indexError.message.indexOf('https://')) : 'not found'
+                }, `[GeoStorage-GCloud] Firestore index not created yet for channel+timestamp query. Using fallback query.`);
+                
+                // Fallback to just getting by channel without ordering
+                snapshot = await colRef
+                    .where('channel', '==', lowerChannelName)
+                    .limit(limit * 2) // Get more since we won't be properly ordered
+                    .get();
+            } else {
+                // If it's not an index error, rethrow
+                throw indexError;
+            }
+        }
+        
         const recentLocations = [];
         snapshot.forEach(doc => {
             const data = doc.data();
@@ -336,6 +361,7 @@ export async function getRecentLocations(channelName, limit = 10) {
                 }
             }
         });
+        
         logger.debug(`[GeoStorage-GCloud] Found ${recentLocations.length} recent locations for channel ${lowerChannelName}.`);
         return recentLocations;
     } catch (error) {
