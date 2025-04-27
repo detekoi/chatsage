@@ -2,18 +2,31 @@
 // Produces consistently formatted chat messages for the Geo-Game
 
 /**
- * Formats the start message for a new game round.
+ * Formats the start message for a new game session.
  * @param {'real'|'game'} mode
  * @param {string|null} gameTitle
- * @param {number} [roundDurationMinutes]
+ * @param {number} roundDurationMinutes
+ * @param {number} totalRounds - The total number of rounds in this game session.
  * @returns {string}
  */
-export function formatStartMessage(mode, gameTitle = null, roundDurationMinutes = 5) {
+export function formatStartMessage(mode, gameTitle = null, roundDurationMinutes = 5, totalRounds = 1) {
+    const roundInfo = totalRounds > 1 ? ` (${totalRounds} rounds)` : '';
+    const durationInfo = `You have ⏱️ ${roundDurationMinutes} minutes per round.`;
     if (mode === 'game') {
-        return `🎮 Geo-Game started! Guess the location from the game${gameTitle ? ` "${gameTitle}"` : ''}! You have ⏱️ ${roundDurationMinutes} minutes. Type your guesses in chat!`;
+        return `🎮 Geo-Game started!${roundInfo} Guess the location from the game${gameTitle ? ` "${gameTitle}"` : ''}! ${durationInfo} Type your guesses in chat!`;
     } else {
-        return `🌍 Geo-Game started! Guess the real-world city, landmark, or place! You have ⏱️ ${roundDurationMinutes} minutes. Type your guesses in chat!`;
+        return `🌍 Geo-Game started!${roundInfo} Guess the real-world city, landmark, or place! ${durationInfo} Type your guesses in chat!`;
     }
+}
+
+/**
+ * Formats the message announcing the start of the next round in a multi-round game.
+ * @param {number} currentRound - The round number that is starting.
+ * @param {number} totalRounds - The total number of rounds.
+ * @returns {string}
+ */
+export function formatStartNextRoundMessage(currentRound, totalRounds) {
+    return `🏁 Round ${currentRound}/${totalRounds} starting now! Good luck!`;
 }
 
 /**
@@ -72,4 +85,33 @@ export function formatStopMessage(locationName = null) {
  */
 export function formatRevealMessage(locationName, revealText) {
     return `📢 The answer was: ${locationName}! ${revealText}`;
+}
+
+/**
+ * Formats the game session scores message.
+ * @param {Map<string, { displayName: string; score: number }>} gameSessionScores - Map of username -> { displayName, score }.
+ * @returns {string} Formatted score message, or empty string if no scores.
+ */
+export function formatGameSessionScoresMessage(gameSessionScores) {
+    if (!gameSessionScores || gameSessionScores.size === 0) {
+        return "No scores recorded for this session.";
+    }
+
+    // Convert map to array, sort by score descending
+    const sortedScores = Array.from(gameSessionScores.entries()).sort(([, a], [, b]) => b.score - a.score);
+
+    // Format top N players (e.g., top 3 or 5)
+    const topN = 5;
+    const listItems = sortedScores.slice(0, topN).map(([username, data], index) => {
+        const rank = index + 1;
+        const name = data.displayName || username;
+        const score = data.score;
+        return `${rank}. ${name} (${score} points)`;
+    });
+
+    if (listItems.length === 0) {
+         return "No scores recorded for this session."; // Should ideally not happen if size > 0, but safety check
+    }
+
+    return `Top Players: ${listItems.join(', ')}`;
 }
