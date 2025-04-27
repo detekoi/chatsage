@@ -26,9 +26,12 @@ function getLocationSelectionPrompt(mode, config, gameTitleScope, excludedLocati
       ? `\nIMPORTANT: Do NOT select any of the following recently used locations: ${excludedLocations.join(', ')}.`
       : '';
 
+    // Add search instruction for game mode
+    const searchInstruction = mode === 'game' ? '\nIf you have access to search, use it to verify the location is from the correct game and is accurate.' : '';
+
     // Enhanced prompt emphasizing diversity and inclusivity based on spec
     const prompt = `Select a location for a ${difficulty} difficulty geography guessing game.
-The location scope is: ${locationScope}.
+The location scope is: ${locationScope}.${searchInstruction}
 The location should be recognizable but challenging according to the difficulty.
 Prioritize diversity: Include locations from all continents, significant indigenous sites (using native names alongside colonial ones if appropriate, e.g., "Uluru / Ayers Rock"), places culturally important to diverse communities, significant LGBTQIA+ historical locations (like Stonewall Inn or specific districts), and locations known for accessibility features.${exclusionInstruction}
 Return ONLY the single, most common name of the location. If relevant alternate or indigenous names exist, append them after a slash (/). Example: "Mount Denali / Mount McKinley" or "Mumbai / Bombay". Do not add any other text.`;

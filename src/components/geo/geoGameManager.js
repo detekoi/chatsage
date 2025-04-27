@@ -4,6 +4,7 @@ import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage } from './geoMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations } from './geoStorage.js';
+import { summarizeText } from '../llm/geminiClient.js';
 
 // --- Game State & Config Interfaces (Conceptual) ---
 /*
@@ -52,6 +53,9 @@ const DEFAULT_CONFIG = {
     regionRestrictions: [],
     gameTitlePreferences: [],
 };
+
+const MAX_IRC_MESSAGE_LENGTH = 450; // Should match ircSender.js
+const SUMMARY_TARGET_LENGTH = 400; // Slightly less than max to allow for prefixes
 
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
@@ -128,31 +132,41 @@ async function _transitionToEnding(gameState, reason = "guessed") {
         finalMessage = "An error occurred, and the final location couldn't be revealed."; // Fallback message
     } else {
         try {
-            revealText = await generateFinalReveal(gameState.targetLocation.name);
+            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope);
             logger.debug(`[GeoGame][${gameState.channelName}] Reveal text generated: ${revealText?.substring(0, 50)}...`);
         } catch (error) {
             logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating final reveal.`);
             revealText = `(Could not generate final summary: ${error.message})`; // Include error in reveal if generation fails
         }
 
-        // Choose the final message format based on the reason for ending
-        switch (reason) {
-            case "guessed":
-                // Correct guess message was already sent by _handleGuess
-                // We just need to send the reveal info
-                finalMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
-                break;
-            case "timeout":
-                // Timeout message was already sent by the roundEndTimer
-                finalMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
-                break;
-            case "stopped":
-                // Stop message was already sent by stopGame
-                finalMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
-                break;
-            default:
-                logger.warn(`[GeoGame][${gameState.channelName}] Unknown ending reason: ${reason}. Using default reveal.`);
-                finalMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
+        // Get the initially formatted message (may be long)
+        let baseRevealMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
+
+        // Check if the base message is too long
+        if (baseRevealMessage.length > MAX_IRC_MESSAGE_LENGTH) {
+            logger.info(`[GeoGame][${gameState.channelName}] Reveal message too long (${baseRevealMessage.length} chars). Attempting summarization.`);
+            try {
+                // Estimate prefix length (e.g., "📢 The answer was: Location Name! ")
+                const prefixEstimateLength = `📢 The answer was: ${gameState.targetLocation.name}! `.length;
+                const targetSummaryLength = MAX_IRC_MESSAGE_LENGTH - prefixEstimateLength - 10; // Add buffer
+                // Summarize *only* the revealText content
+                const summary = await summarizeText(revealText, targetSummaryLength > 100 ? targetSummaryLength : SUMMARY_TARGET_LENGTH);
+                if (summary?.trim()) {
+                    // If summarization worked, reformat the message with the summary
+                    finalMessage = formatRevealMessage(gameState.targetLocation.name, summary.trim());
+                    logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${finalMessage.length} chars).`);
+                } else {
+                    // Summarization failed or returned empty
+                    logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed for reveal. Falling back to truncation (handled by ircSender).`);
+                    finalMessage = baseRevealMessage;
+                }
+            } catch (summaryError) {
+                logger.error({ err: summaryError }, `[GeoGame][${gameState.channelName}] Error during summarization attempt. Falling back to truncation.`);
+                finalMessage = baseRevealMessage;
+            }
+        } else {
+            // Message was not too long initially
+            finalMessage = baseRevealMessage;
         }
     }
 
@@ -235,7 +249,7 @@ async function _scheduleNextClue(gameState) {
 
         logger.info(`[GeoGame][${gameState.channelName}] Clue timer expired, generating clue ${gameState.currentClueIndex + 2}.`);
         try {
-            const nextClue = await generateFollowUpClue(gameState.targetLocation.name, gameState.clues);
+            const nextClue = await generateFollowUpClue(gameState.targetLocation.name, gameState.clues, gameState.mode, gameState.gameTitleScope, gameState.currentClueIndex + 2);
             if (nextClue) {
                 // Check state again *after* await, just in case it changed during generation
                 if (gameState.state !== 'inProgress') {
@@ -316,7 +330,7 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
         logger.info(`[GeoGame][${channelName}] Location selected: ${gameState.targetLocation.name}`);
 
         // 2. Generate Initial Clue
-        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty);
+        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, gameTitle);
         if (!firstClue) {
             throw new Error("Failed to generate the initial clue.");
         }

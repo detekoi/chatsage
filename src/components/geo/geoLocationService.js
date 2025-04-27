@@ -56,10 +56,15 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
     const model = getGeminiClient();
     logger.debug({ mode, gameTitle, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
-        const result = await model.generateContent({
+        const generateOptions = {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             systemInstruction: { parts: [{ text: 'Respond ONLY with the location name, and if relevant, a slash (/) separated list of alternate names. No commentary.' }] }
-        });
+        };
+        if (mode === 'game') {
+            logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
+            generateOptions.tools = [{ googleSearch: {} }];
+        }
+        const result = await model.generateContent(generateOptions);
         const response = result.response;
         if (!response.candidates?.length || !response.candidates[0].content) {
             logger.warn('[GeoLocation] No candidates/content in location selection response');
