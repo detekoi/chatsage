@@ -42,6 +42,7 @@ interface GameState {
     initiatorUsername: string | null; // Store the lowercase username of the initiator
     config: GameConfig; // Channel-specific config
     lastMessageTimestamp: number; // To help throttle guesses if needed
+    incorrectGuessReasons: string[]; // Added to store reasons for incorrect guesses
 }
 */
 
@@ -100,6 +101,7 @@ async function _getOrCreateGameState(channelName) {
             initiatorUsername: null, // Initialize initiator
             config: loadedConfig, // Use loaded config
             lastMessageTimestamp: 0,
+            incorrectGuessReasons: [], // Added to store reasons for incorrect guesses
         });
     }
     return activeGames.get(channelName);
@@ -237,6 +239,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         newState.currentClueIndex = -1;
         newState.guesses = [];
         newState.winner = null;
+        newState.incorrectGuessReasons = []; // Ensure reasons are cleared on reset
         _clearTimers(newState); // Clear timers again just in case
     }, 7000); // 7 second delay before full reset (increased slightly)
 }
@@ -268,7 +271,15 @@ async function _scheduleNextClue(gameState) {
 
         logger.info(`[GeoGame][${gameState.channelName}] Clue timer expired, generating clue ${gameState.currentClueIndex + 2}.`);
         try {
-            const nextClue = await generateFollowUpClue(gameState.targetLocation.name, gameState.clues, gameState.mode, gameState.gameTitleScope, gameState.currentClueIndex + 2);
+            // Pass incorrect guess reasons to the clue generator
+            const nextClue = await generateFollowUpClue(
+                gameState.targetLocation.name,
+                gameState.clues,
+                gameState.mode,
+                gameState.gameTitleScope,
+                gameState.currentClueIndex + 2,
+                gameState.incorrectGuessReasons // Pass the stored reasons
+            );
             if (nextClue) {
                 // Check state again *after* await, just in case it changed during generation
                 if (gameState.state !== 'inProgress') {
@@ -319,6 +330,7 @@ async function _startGameProcess(channelName, mode, gameTitle = null, initiatorU
     gameState.currentClueIndex = -1;
     gameState.guesses = [];
     gameState.winner = null;
+    gameState.incorrectGuessReasons = []; // Reset reasons for the new game
     _clearTimers(gameState); // Ensure no stray timers from a previous errored state
 
     logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, Game Scope: ${gameTitle || 'N/A'}`);
@@ -491,7 +503,21 @@ async function _handleGuess(channelName, username, displayName, guess) {
             // No separate congrats message; pass timeTakenMs to ending
             _transitionToEnding(gameState, "guessed", timeTakenMs);
         } else {
-            logger.debug(`[GeoGame][${channelName}] Incorrect guess by ${username}. Reason: ${validationResult?.reasoning || 'Validation inconclusive'}`);
+            // Store reasoning for incorrect guess
+            const reason = validationResult?.reasoning?.trim();
+            if (reason) {
+                 // Add reason only if it's not already the last one and not empty
+                 if (!gameState.incorrectGuessReasons.includes(reason)) {
+                    gameState.incorrectGuessReasons.push(reason);
+                    // Keep only the last 5 unique reasons
+                    if (gameState.incorrectGuessReasons.length > 5) {
+                        gameState.incorrectGuessReasons.shift(); // Remove the oldest
+                    }
+                    logger.debug(`[GeoGame][${channelName}] Stored incorrect guess reason: "${reason}". Current reasons: [${gameState.incorrectGuessReasons.join(', ')}]`);
+                 }
+            } else {
+                 logger.debug(`[GeoGame][${channelName}] Incorrect guess by ${username}. Reason: ${validationResult?.reasoning || 'Validation inconclusive'}`);
+            }
         }
     } catch (error) {
         logger.error({ err: error }, `[GeoGame][${channelName}] Error validating guess "${trimmedGuess}" from ${username}.`);

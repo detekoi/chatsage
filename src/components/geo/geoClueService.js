@@ -49,18 +49,29 @@ export async function generateInitialClue(locationName, difficulty = 'normal', m
  * @param {'real'|'game'} mode
  * @param {string|null} gameTitle
  * @param {number} clueNumber
+ * @param {string[]} [incorrectGuessReasons=[]] - Optional array of reasons for recent incorrect guesses.
  * @returns {Promise<string|null>}
  */
-export async function generateFollowUpClue(locationName, previousClues = [], mode = 'real', gameTitle = null, clueNumber = 2) {
+export async function generateFollowUpClue(locationName, previousClues = [], mode = 'real', gameTitle = null, clueNumber = 2, incorrectGuessReasons = []) {
+    let reasonGuidance = '';
+    if (incorrectGuessReasons && incorrectGuessReasons.length > 0) {
+        // Simple summary of reasons
+        const uniqueReasons = [...new Set(incorrectGuessReasons)].filter(r => r.trim() !== '');
+        if (uniqueReasons.length > 0) {
+             reasonGuidance = `
+- Recent incorrect guesses suggest confusion about: ${uniqueReasons.join('; ')}. Use this insight subtly to guide players towards the correct location without being obvious.`;
+        }
+    }
+
     const prompt = `You are the Geo-Game Clue Generator, creating evocative descriptions. Generate a NEW clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
-- Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i+1}) ${c}`).join(' | ') : 'None'}
+- Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i+1}) ${c}`).join(' | ') : 'None'}${reasonGuidance}
 - The new clue must NOT repeat or closely paraphrase information from previous clues.
 - Make the clue slightly more specific, focusing on a distinct sensory detail, a historical echo, a cultural element, or a unique environmental feature.
 - Weave in a helpful factual hint if possible, but prioritize the evocative description.
 - Do NOT give away the answer directly.
 - Respond with a single, engaging clue sentence (around 200-350 characters).`;
     const model = getGeminiClient();
-    logger.debug({ locationName, previousClues, mode, gameTitle, clueNumber, prompt }, '[GeoClue] Generating follow-up clue');
+    logger.debug({ locationName, previousClues, mode, gameTitle, clueNumber, incorrectGuessReasons, prompt }, '[GeoClue] Generating follow-up clue');
     try {
         const generateOptions = {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
