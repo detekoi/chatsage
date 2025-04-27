@@ -189,11 +189,12 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         // b) Update Persistent Score (if enabled)
         if (gameState.config.scoreTracking) {
             try {
-                // Always award 1 point for the round win in persistent stats
+                logger.debug(`[GeoGame][${gameState.channelName}] Calling updatePlayerScore for ${winnerUsername}.`);
                 await updatePlayerScore(winnerUsername, gameState.channelName, 1, winnerDisplayName);
-                logger.debug(`[GeoGame][${gameState.channelName}] Updated persistent score for round winner: ${winnerUsername} (${winnerDisplayName})`);
-            } catch (storageError) {
-                logger.error({ err: storageError }, `[GeoGame][${gameState.channelName}] Error updating persistent player score.`);
+                logger.debug(`[GeoGame][${gameState.channelName}] Successfully awaited updatePlayerScore for ${winnerUsername}.`);
+            } catch(scoreError) {
+                logger.error({ err: scoreError }, `[GeoGame][${gameState.channelName}] Error explicitly caught from updatePlayerScore call.`);
+                // Continue to record history even if score update fails
             }
         }
     }
@@ -266,7 +267,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     logger.debug(`[GeoGame][${gameState.channelName}] Round end message sent.`);
 
     // --- 3. Record Game History (Always record each round) ---
-    if (gameState.config.scoreTracking && gameState.targetLocation?.name && previousState === 'inProgress') { // Only record if round was properly in progress
+    if (gameState.config.scoreTracking && gameState.targetLocation?.name && (previousState === 'inProgress' || reason === 'guessed')) { // Only record if round was properly in progress or guessed
         try {
             const gameDetails = {
                 channel: gameState.channelName,
@@ -283,10 +284,15 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 roundNumber: gameState.currentRound, // Add round info
                 totalRounds: gameState.totalRounds,   // Add total rounds info
             };
+            logger.debug(`[GeoGame][${gameState.channelName}] Calling recordGameResult for round ${gameState.currentRound}.`);
             await recordGameResult(gameDetails);
+            logger.debug(`[GeoGame][${gameState.channelName}] Successfully awaited recordGameResult call for round ${gameState.currentRound}.`);
         } catch (storageError) {
-            logger.error({ err: storageError }, `[GeoGame][${gameState.channelName}] Error saving game history for round ${gameState.currentRound}.`);
+            logger.error({ err: storageError }, `[GeoGame][${gameState.channelName}] Error explicitly caught from recordGameResult call for round ${gameState.currentRound}.`);
         }
+    } else {
+        // Log why it was skipped, including the reason
+        logger.debug(`[GeoGame][${gameState.channelName}] Skipping recordGameResult call. Conditions: scoreTracking=${gameState.config.scoreTracking}, targetLocation=${!!gameState.targetLocation?.name}, previousState=${previousState}, reason=${reason}`);
     }
 
     // --- 4. Determine Next Step (Next Round, Game Over, or Stop) ---
@@ -604,6 +610,9 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         let retries = 0;
         let excludedLocations = []; // For the first round, just use global recent
         try {
+            logger.debug(`[GeoGame][${channelName}] Adding brief delay before fetching recent locations...`);
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
+            logger.debug(`[GeoGame][${channelName}] Delay complete, fetching recent locations...`);
             excludedLocations = await getRecentLocations(channelName, 35);
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent locations for Round 1, proceeding with no exclusions.");

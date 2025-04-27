@@ -128,15 +128,17 @@ export async function saveChannelConfig(channelName, config) {
 export async function recordGameResult(gameResultDetails) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
+    // Use console.log for maximum visibility
+    console.log(`RECORD GAME RESULT START: Attempting to save details:`, JSON.stringify(gameResultDetails, null, 2));
     try {
         const dataToSave = {
             ...gameResultDetails,
             timestamp: FieldValue.serverTimestamp()
         };
         await colRef.add(dataToSave);
-        logger.debug(`[GeoStorage-GCloud] Recorded game result.`);
+        console.log(`RECORD GAME RESULT SUCCESS: Document added for channel ${gameResultDetails?.channel}, location ${gameResultDetails?.location}.`);
     } catch (error) {
-        logger.error({ err: error }, `[GeoStorage-GCloud] Error recording game result.`);
+        console.error(`RECORD GAME RESULT ERROR: Error adding document for channel ${gameResultDetails?.channel}. Error:`, error);
         throw new StorageError('Failed to record game result', error);
     }
 }
