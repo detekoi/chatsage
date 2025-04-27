@@ -39,6 +39,7 @@ interface GameState {
     roundEndTimer: NodeJS.Timeout | null;
     guesses: PlayerGuess[];
     winner: { username: string, displayName: string } | null;
+    initiatorUsername: string | null; // Store the lowercase username of the initiator
     config: GameConfig; // Channel-specific config
     lastMessageTimestamp: number; // To help throttle guesses if needed
 }
@@ -96,6 +97,7 @@ async function _getOrCreateGameState(channelName) {
             roundEndTimer: null,
             guesses: [],
             winner: null,
+            initiatorUsername: null, // Initialize initiator
             config: loadedConfig, // Use loaded config
             lastMessageTimestamp: 0,
         });
@@ -298,8 +300,9 @@ async function _scheduleNextClue(gameState) {
 
 const MAX_LOCATION_SELECT_RETRIES = 3;
 
-async function _startGameProcess(channelName, mode, gameTitle = null) {
+async function _startGameProcess(channelName, mode, gameTitle = null, initiatorUsername = null) {
     const gameState = await _getOrCreateGameState(channelName);
+    gameState.initiatorUsername = initiatorUsername?.toLowerCase() || null; // Store initiator
 
     if (gameState.state !== 'idle') {
         logger.warn(`[GeoGame][${channelName}] Attempted to start game while state is ${gameState.state}`);
@@ -517,11 +520,12 @@ async function initializeGeoGameManager() {
  * @param {string} channelName - Channel name (without #).
  * @param {'real' | 'game'} mode - Game mode.
  * @param {string | null} [gameTitle=null] - Specific game title for 'game' mode.
+ * @param {string | null} [initiatorUsername=null] - Lowercase username of the game initiator.
  * @returns {Promise<{success: boolean, message?: string, error?: string}>}
  */
-async function startGame(channelName, mode, gameTitle = null) {
+async function startGame(channelName, mode, gameTitle = null, initiatorUsername = null) {
     // Directly call the internal process function
-    return await _startGameProcess(channelName, mode, gameTitle);
+    return await _startGameProcess(channelName, mode, gameTitle, initiatorUsername);
 }
 
 /**
@@ -666,7 +670,7 @@ async function configureGame(channelName, options) {
  * @returns {Promise<{success: boolean, message: string}>} Result object.
  */
 async function resetChannelConfig(channelName) {
-    const gameState = await _getOrCreateGameState(channelName); // Ensure state exists
+    const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[GeoGame][${channelName}] Resetting configuration to defaults.`);
     try {
         // Create a fresh copy of the defaults to apply
@@ -683,6 +687,14 @@ async function resetChannelConfig(channelName) {
     }
 }
 
+function getCurrentGameInitiator(channelName) {
+    const gameState = activeGames.get(channelName);
+    if (gameState && (gameState.state === 'inProgress' || gameState.state === 'started')) {
+        return gameState.initiatorUsername;
+    }
+    return null;
+}
+
 /**
  * Gets the singleton GeoGame Manager instance/interface.
  */
@@ -695,7 +707,7 @@ function getGeoGameManager() {
         processPotentialGuess,
         configureGame,
         resetChannelConfig,
-        // Might add: getCurrentGameState(channelName) if needed for status commands
+        getCurrentGameInitiator, // Export the new function
     };
 }
 

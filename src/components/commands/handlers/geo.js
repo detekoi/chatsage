@@ -52,6 +52,7 @@ const geoHandler = {
     execute: async (context) => {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
+        const invokingUsernameLower = user.username; // Get lowercase username
         const invokingDisplayName = user['display-name'] || user.username;
         const isModOrBroadcaster = isPrivilegedUser(user, channelName);
         const geoManager = getGeoGameManager(); // Get the manager instance
@@ -66,11 +67,23 @@ const geoHandler = {
             gameMode = 'real';
         } else if (subCommand === 'stop') {
             // !geo stop
-            if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop the game.`);
+            const currentGameInitiator = geoManager.getCurrentGameInitiator(channelName); // Get initiator
+
+            if (!currentGameInitiator) {
+                // No active game to stop
+                enqueueMessage(channel, `@${invokingDisplayName}, There is no active Geo-Game round to stop.`);
                 return;
             }
-            geoManager.stopGame(channelName); // Call manager's stop function
+
+            // Check permissions
+            if (isModOrBroadcaster || invokingUsernameLower === currentGameInitiator) {
+                // Allow if user is mod/broadcaster OR if they are the initiator
+                geoManager.stopGame(channelName); // Call manager's stop function; manager will send the final message
+                logger.info(`[GeoGame] Stop requested by ${invokingDisplayName}, handled by manager.`);
+            } else {
+                // Deny if not mod/broadcaster AND not the initiator
+                enqueueMessage(channel, `@${invokingDisplayName}, Only the game initiator, mods, or the broadcaster can stop the current game.`);
+            }
             return; // Action done
 
         } else if (subCommand === 'config') {
@@ -177,8 +190,9 @@ const geoHandler = {
         // --- Start Game ---
         // If we reach here, it's a start game request (real or game)
         try {
-            logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Title: ${gameTitle || 'N/A'}`);
-            const result = await geoManager.startGame(channelName, gameMode, gameTitle);
+            logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Title: ${gameTitle || 'N/A'}, Initiator: ${invokingUsernameLower}`);
+            // Pass invokingUsernameLower as the initiator
+            const result = await geoManager.startGame(channelName, gameMode, gameTitle, invokingUsernameLower);
             
             // Handle success or failure appropriately
             if (!result.success) {
