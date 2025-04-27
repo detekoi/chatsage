@@ -3,6 +3,8 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getGeoGameManager } from '../../geo/geoGameManager.js';
 // Need context manager to get current game for !geo game
 import { getContextManager } from '../../context/contextManager.js';
+// Need geoStorage to fetch the leaderboard
+import { getLeaderboard } from '../../geo/geoStorage.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
@@ -12,12 +14,40 @@ function isPrivilegedUser(tags, channelName) {
 }
 
 /**
+ * Helper function to format the leaderboard message.
+ * @param {Array<{id: string, data: object}>} leaderboardData - Data from getLeaderboard.
+ * @param {string} channelName - The channel name for context.
+ * @returns {string} Formatted leaderboard message.
+ */
+function formatLeaderboardMessage(leaderboardData, channelName) {
+    if (!leaderboardData || leaderboardData.length === 0) {
+        return `No Geo-Game stats found for this channel (${channelName}) yet!`;
+    }
+
+    // Sort by channel wins specifically, just in case the storage layer didn't
+    // (though it should have)
+    leaderboardData.sort((a, b) => (b.data?.channelWins || 0) - (a.data?.channelWins || 0));
+
+    const topPlayers = leaderboardData.slice(0, 5); // Show top 5
+
+    const listItems = topPlayers.map((player, index) => {
+        const rank = index + 1;
+        const name = player.data?.displayName || player.id;
+        const wins = player.data?.channelWins || 0;
+        // Optional: Add participation - const participation = player.data?.channelParticipation || 0;
+        return `${rank}. ${name} (${wins} wins)`;
+    });
+
+    return `🏆 Geo-Game Top Players in #${channelName}: ${listItems.join(', ')}`;
+}
+
+/**
  * Handler for the !geo command and its subcommands.
  */
 const geoHandler = {
     name: 'geo',
     description: 'Starts or manages the Geo-Game (!geo help for details).',
-    usage: '!geo [<game> [Game Title]] | stop | config | help',
+    usage: '!geo [<game> [Game Title]] | stop | config | leaderboard | help',
     permission: 'everyone', // Subcommand permissions handled inside
     execute: async (context) => {
         const { channel, user, args } = context;
@@ -79,9 +109,24 @@ const geoHandler = {
             enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
             return; // Action done
 
+        } else if (subCommand === 'leaderboard') {
+            // !geo leaderboard
+            try {
+                // Fetch channel-specific leaderboard data from storage
+                // Use channelName (without #)
+                const leaderboardData = await getLeaderboard(channelName, 5); // Get top 5
+                const message = formatLeaderboardMessage(leaderboardData, channelName);
+                enqueueMessage(channel, message);
+                logger.info(`[GeoGame] Displayed leaderboard for channel ${channelName}`);
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, 'Error fetching or formatting leaderboard.');
+                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, couldn't fetch the leaderboard right now.`);
+            }
+            return; // Action done
+            
         } else if (subCommand === 'help') {
             // !geo help
-            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game commands: !geo (real world), !geo game (current stream game), !geo game [Title], !geo stop (mods), !geo config (mods), !geo help`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game commands: !geo (real world), !geo game (current stream game), !geo game [Title], !geo stop (mods), !geo config (mods), !geo leaderboard, !geo help`);
             return; // Action done
 
         } else if (subCommand === 'game') {
