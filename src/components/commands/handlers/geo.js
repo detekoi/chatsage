@@ -180,8 +180,13 @@ const geoHandler = {
         try {
             logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Title: ${gameTitle || 'N/A'}`);
             const result = await geoManager.startGame(channelName, gameMode, gameTitle);
-            // Send result message (success or failure reason)
-            enqueueMessage(channel, `@${invokingDisplayName}, ${result.message || result.error}`);
+            
+            // Handle success or failure appropriately
+            if (!result.success) {
+                // Only on error, send the error message back to the user
+                enqueueMessage(channel, `@${invokingDisplayName}, ${result.error}`);
+            } 
+            // Success message is handled by the game manager's messages - no need for a third confirmation
         } catch (error) {
             logger.error({ err: error }, "Unhandled error starting game from command handler.");
             enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred trying to start the game.`);
