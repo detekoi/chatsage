@@ -110,7 +110,7 @@ function _clearTimers(gameState) {
     gameState.roundEndTimer = null;
 }
 
-async function _transitionToEnding(gameState, reason = "guessed") {
+async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = null) {
     _clearTimers(gameState);
 
     // Prevent multiple endings/resets if already ending
@@ -134,39 +134,52 @@ async function _transitionToEnding(gameState, reason = "guessed") {
         try {
             revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason);
             logger.debug(`[GeoGame][${gameState.channelName}] Reveal text generated: ${revealText?.substring(0, 50)}...`);
-        } catch (error) {
-            logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating final reveal.`);
-            revealText = `(Could not generate final summary: ${error.message})`; // Include error in reveal if generation fails
-        }
 
-        // Get the initially formatted message (may be long)
-        let baseRevealMessage = formatRevealMessage(gameState.targetLocation.name, revealText);
-
-        // Check if the base message is too long
-        if (baseRevealMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-            logger.info(`[GeoGame][${gameState.channelName}] Reveal message too long (${baseRevealMessage.length} chars). Attempting summarization.`);
-            try {
-                // Estimate prefix length (e.g., "📢 The answer was: Location Name! ")
-                const prefixEstimateLength = `📢 The answer was: ${gameState.targetLocation.name}! `.length;
-                const targetSummaryLength = MAX_IRC_MESSAGE_LENGTH - prefixEstimateLength - 10; // Add buffer
-                // Summarize *only* the revealText content
-                const summary = await summarizeText(revealText, targetSummaryLength > 100 ? targetSummaryLength : SUMMARY_TARGET_LENGTH);
-                if (summary?.trim()) {
-                    // If summarization worked, reformat the message with the summary
-                    finalMessage = formatRevealMessage(gameState.targetLocation.name, summary.trim());
-                    logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${finalMessage.length} chars).`);
-                } else {
-                    // Summarization failed or returned empty
-                    logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed for reveal. Falling back to truncation (handled by ircSender).`);
-                    finalMessage = baseRevealMessage;
-                }
-            } catch (summaryError) {
-                logger.error({ err: summaryError }, `[GeoGame][${gameState.channelName}] Error during summarization attempt. Falling back to truncation.`);
-                finalMessage = baseRevealMessage;
+            let baseMessageContent = "";
+            if (reason === "guessed" && gameState.winner) {
+                const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
+                const timeString = seconds !== null ? ` in ${seconds}s` : '';
+                baseMessageContent = `✅ Congrats @${gameState.winner.displayName}! You correctly guessed: ${gameState.targetLocation.name}${timeString}! ${revealText || '(Summary unavailable)'}`;
+            } else if (reason === "timeout") {
+                baseMessageContent = `⏱️ Time's up! The answer was: ${gameState.targetLocation.name}. ${revealText || '(Summary unavailable)'}`;
+            } else if (reason === "stopped") {
+                baseMessageContent = `🛑 Game stopped. The answer was: ${gameState.targetLocation.name}. ${revealText || '(Summary unavailable)'}`;
+            } else {
+                baseMessageContent = `📢 The answer was: ${gameState.targetLocation.name}! ${revealText || '(Summary unavailable)'}`;
             }
-        } else {
-            // Message was not too long initially
-            finalMessage = baseRevealMessage;
+
+            finalMessage = baseMessageContent;
+
+            if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
+                logger.info(`[GeoGame][${gameState.channelName}] Final message too long (${finalMessage.length} chars). Attempting summarization.`);
+                try {
+                    const summaryInput = revealText || baseMessageContent;
+                    const summary = await summarizeText(summaryInput, SUMMARY_TARGET_LENGTH);
+                    if (summary?.trim()) {
+                        if (reason === "guessed" && gameState.winner) {
+                            const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
+                            const timeString = seconds !== null ? ` in ${seconds}s` : '';
+                            finalMessage = `✅ Congrats @${gameState.winner.displayName}! You correctly guessed: ${gameState.targetLocation.name}${timeString}! ${summary.trim()}`;
+                        } else if (reason === "timeout") {
+                            finalMessage = `⏱️ Time's up! The answer was: ${gameState.targetLocation.name}. ${summary.trim()}`;
+                        } else if (reason === "stopped") {
+                            finalMessage = `🛑 Game stopped. The answer was: ${gameState.targetLocation.name}. ${summary.trim()}`;
+                        } else {
+                            finalMessage = `📢 The answer was: ${gameState.targetLocation.name}! ${summary.trim()}`;
+                        }
+                        logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${finalMessage.length} chars).`);
+                    } else {
+                        logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed. Falling back to truncation (handled by ircSender).`);
+                        finalMessage = baseMessageContent;
+                    }
+                } catch (summaryError) {
+                    logger.error({ err: summaryError }, `[GeoGame][${gameState.channelName}] Error during summarization attempt. Falling back to truncation.`);
+                    finalMessage = baseMessageContent;
+                }
+            }
+        } catch (error) {
+            logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating final reveal or formatting message.`);
+            finalMessage = `An error occurred, and the final location couldn't be revealed.`;
         }
     }
 
@@ -440,58 +453,44 @@ async function _handleGuess(channelName, username, displayName, guess) {
 
     // Only process guesses if a game is actively in progress
     if (!gameState || gameState.state !== 'inProgress') {
-        // logger.trace(`[GeoGame][${channelName}] Ignoring guess from ${username} - game state is ${gameState?.state || 'inactive'}.`);
         return;
     }
 
     // Basic throttling check (e.g., 1 guess per user per 3 seconds) - Optional but recommended
-    // Could also store last guess timestamp per user in gameState.guesses if needed
     const now = Date.now();
-    if (now - gameState.lastMessageTimestamp < 1000) { // Simple global throttle (1s)
+    if (now - gameState.lastMessageTimestamp < 1000) {
         logger.trace(`[GeoGame][${channelName}] Throttling guess from ${username}.`);
-         return;
+        return;
     }
-    gameState.lastMessageTimestamp = now; // Update last message time
+    gameState.lastMessageTimestamp = now;
 
     const trimmedGuess = guess.trim();
-    if (!trimmedGuess) return; // Ignore empty messages
+    if (!trimmedGuess) return;
 
     logger.debug(`[GeoGame][${channelName}] Processing guess: "${trimmedGuess}" from ${username}`);
     gameState.guesses.push({ username, displayName, guess: trimmedGuess, timestamp: new Date() });
 
     try {
-        // Validate guess using the location service (which uses LLM)
         const validationResult = await validateGuess(gameState.targetLocation.name, trimmedGuess, gameState.targetLocation.alternateNames);
 
-        // Check state *again* after await, in case it changed (e.g., timed out) while validating
         if (gameState.state !== 'inProgress') {
-             logger.debug(`[GeoGame][${channelName}] Game state changed to ${gameState.state} while validating guess from ${username}. Ignoring result.`);
-             return;
+            logger.debug(`[GeoGame][${channelName}] Game state changed to ${gameState.state} while validating guess from ${username}. Ignoring result.`);
+            return;
         }
 
         if (validationResult && validationResult.is_correct) {
             logger.info(`[GeoGame][${channelName}] Correct guess "${trimmedGuess}" by ${username} for ${gameState.targetLocation.name}. Confidence: ${validationResult.confidence || 'N/A'}`);
             gameState.winner = { username, displayName };
-            gameState.state = 'guessed'; // Update state *before* sending message/transitioning
+            gameState.state = 'guessed';
 
             const timeTakenMs = Date.now() - gameState.startTime;
-            const correctMessage = formatCorrectGuessMessage(displayName, gameState.targetLocation.name, timeTakenMs);
-            enqueueMessage(`#${channelName}`, correctMessage);
-
-            // Transition to ending state (clears timers, reveals info, resets)
-            _transitionToEnding(gameState, "guessed");
-
+            // No separate congrats message; pass timeTakenMs to ending
+            _transitionToEnding(gameState, "guessed", timeTakenMs);
         } else {
-             // Log incorrect guess reason if available from LLM
-             logger.debug(`[GeoGame][${channelName}] Incorrect guess by ${username}. Reason: ${validationResult?.reasoning || 'Validation inconclusive'}`);
-             // Optional: Provide feedback for near misses based on confidence or keywords?
-             // Example: if (validationResult?.reasoning?.toLowerCase().includes("close")) { ... }
+            logger.debug(`[GeoGame][${channelName}] Incorrect guess by ${username}. Reason: ${validationResult?.reasoning || 'Validation inconclusive'}`);
         }
     } catch (error) {
-        // Log error but don't crash the game
         logger.error({ err: error }, `[GeoGame][${channelName}] Error validating guess "${trimmedGuess}" from ${username}.`);
-        // Optionally inform the user? Could be noisy.
-        // enqueueMessage(`#${channelName}`, `@${displayName}, sorry, there was an error checking your guess.`);
     }
 }
 
