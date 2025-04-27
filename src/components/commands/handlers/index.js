@@ -18,7 +18,7 @@ import askHandler from './ask.js'; // !ask command with function calling
 import search from './search.js';
 // import explain from './explain.js';
 import translate from './translate.js';
-
+import geo from './geo.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -57,6 +57,7 @@ const commandHandlers = {
     // wiki: search,   // !wiki alias (if desired)
     // explain: explain,
     translate: translate,
+    geo: geo,
 
 
     // --- Context Management Commands ---

@@ -8,6 +8,8 @@ import { initializeCommandProcessor, processMessage as processCommand } from './
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
 import { initializeIrcSender, enqueueMessage, clearMessageQueue } from './lib/ircSender.js';
 import { handleStandardLlmQuery } from './components/llm/llmUtils.js';
+import { initializeGeoGameManager, getGeoGameManager } from './components/geo/geoGameManager.js';
+import { initializeStorage } from './components/geo/geoStorage.js';
 
 let streamInfoIntervalId = null;
 const MAX_IRC_MESSAGE_LENGTH = 450; // Define globally for reuse
@@ -51,6 +53,9 @@ async function main() {
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
         // --- Initialize Core Components ---
+        logger.info('Initializing Firebase Storage...');
+        await initializeStorage();
+
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);
 
@@ -66,9 +71,13 @@ async function main() {
         logger.info('Initializing IRC Sender...');
         initializeIrcSender();
 
+        logger.info('Initializing GeoGame Manager...');
+        await initializeGeoGameManager();
+
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
         const helixClient = getHelixClient();
+        const geoManager = getGeoGameManager();
         // Get gemini client instance early if needed, or get inside async IIFE
         // const geminiClient = getGeminiClient();
 
@@ -186,8 +195,6 @@ async function main() {
                 return; // Stop processing this message further
             }
 
-            // --- Continue with normal message processing ---
-
             // 1. Add message to context
             contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
@@ -195,10 +202,37 @@ async function main() {
 
             // 2. Process commands (but !translate stop was handled above)
             let wasTranslateCommand = message.trim().toLowerCase().startsWith('!translate '); // Keep this simple check
-            if (!isStopRequest) { // Don't re-process stop commands
-                processCommand(cleanChannel, tags, message).catch(err => {
-                    logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error processing command');
-                });
+            
+            // Check if it was a geo command - prevents processing as guess
+            let wasGeoCommand = message.trim().toLowerCase().startsWith('!geo');
+            
+            // Debug log for geo command
+            if (wasGeoCommand) {
+                logger.debug({ 
+                    message, 
+                    channel: cleanChannel, 
+                    user: lowerUsername 
+                }, '!geo command detected in message handler');
+            }
+            
+            processCommand(cleanChannel, tags, message).catch(err => {
+                logger.error({ 
+                    err, 
+                    details: err.message, 
+                    stack: err.stack, 
+                    channel: cleanChannel, 
+                    user: lowerUsername, 
+                    commandAttempt: message 
+                }, 'Error caught directly from processCommand call');
+            });
+
+            // --- Check for Geo-Game Guess FIRST ---
+            // Only if it wasn't a command and wasn't handled by stop/translate
+            if (!message.startsWith('!') && !isStopRequest) {
+                // Pass potential guess to the GeoGame Manager
+                geoManager.processPotentialGuess(cleanChannel, lowerUsername, displayName, message);
+                // We don't necessarily 'return' here, as a guess might *also* mention the bot
+                // but let's assume a guess isn't usually also a mention query. Refine if needed.
             }
 
             // --- Automatic Translation Logic ---

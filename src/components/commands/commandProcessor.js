@@ -85,23 +85,33 @@ function hasPermission(handler, tags, channelName) {
  * @returns {Promise<boolean>} True if a command was successfully found and executed (or attempted), false otherwise.
  */
 async function processMessage(channelName, tags, message) {
+    // Add debugging for incoming message
+    logger.debug({ channelName, user: tags.username, message }, 'processMessage called');
+    
     const parsed = parseCommand(message);
 
     if (!parsed) {
+        logger.debug('Message not a command or just prefix');
         return false; // Not a command or just the prefix
     }
 
     const { command, args } = parsed;
+    logger.debug({ command, args }, 'Parsed command');
+    
     const handler = commandHandlers[command];
+    logger.debug({ command, handlerExists: !!handler }, 'Command handler lookup result');
 
     if (!handler || typeof handler.execute !== 'function') {
-        // Optional: Respond if command doesn't exist? Maybe only if mentioned? Avoid spam.
-        // logger.debug(`Command prefix used, but no handler found for: ${command}`);
+        logger.debug(`Command prefix used, but no handler found for: ${command}`);
         return false;
     }
 
     // --- Permission Check ---
-    if (!hasPermission(handler, tags, channelName)) {
+    logger.debug(`Checking permission for command !${command}`);
+    const permitted = hasPermission(handler, tags, channelName);
+    logger.debug({ permitted }, 'Permission check result');
+    
+    if (!permitted) {
         logger.debug(`User ${tags.username} lacks permission for command !${command} in #${channelName}`);
         // Optional: Send a whisper or message indicating lack of permission? Be careful about spam.
         return false;
