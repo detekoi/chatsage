@@ -229,7 +229,9 @@ async function _transitionToEnding(gameState, reason = "guessed") {
 // --- Core Game Logic ---
 
 async function _scheduleNextClue(gameState) {
-    _clearTimers(gameState); // Clear previous timer before setting a new one
+    // Do NOT clear all timers here; only clear the next clue timer
+    if (gameState.nextClueTimer) clearTimeout(gameState.nextClueTimer);
+    gameState.nextClueTimer = null;
 
     // Maximum clues reached (e.g., 5 clues total, index 0-4)
     if (gameState.currentClueIndex >= 4) {
@@ -241,6 +243,7 @@ async function _scheduleNextClue(gameState) {
     logger.debug(`[GeoGame][${gameState.channelName}] Scheduling clue ${gameState.currentClueIndex + 2} in ${delaySeconds} seconds.`);
 
     gameState.nextClueTimer = setTimeout(async () => {
+        logger.debug(`[GeoGame][${gameState.channelName}] nextClueTimer fired. State: ${gameState.state}`);
         // Check if the game state is still valid for sending a clue
         if (gameState.state !== 'inProgress') {
             logger.debug(`[GeoGame][${gameState.channelName}] Game state changed to ${gameState.state} before next clue timer fired. Aborting clue generation.`);
@@ -253,23 +256,28 @@ async function _scheduleNextClue(gameState) {
             if (nextClue) {
                 // Check state again *after* await, just in case it changed during generation
                 if (gameState.state !== 'inProgress') {
-                     logger.debug(`[GeoGame][${gameState.channelName}] Game state changed during clue generation. Aborting clue send.`);
-                     return;
+                    logger.debug(`[GeoGame][${gameState.channelName}] Game state changed during clue generation. Aborting clue send.`);
+                    return;
                 }
                 gameState.clues.push(nextClue);
                 gameState.currentClueIndex++;
                 const clueMessage = formatClueMessage(gameState.currentClueIndex + 1, nextClue);
                 enqueueMessage(`#${gameState.channelName}`, clueMessage);
 
-                // Schedule the *next* clue after this one is sent
-                _scheduleNextClue(gameState);
+                // Only schedule the next clue if still in progress
+                if (gameState.state === 'inProgress') {
+                    logger.debug(`[GeoGame][${gameState.channelName}] Rescheduling next clue. State: ${gameState.state}`);
+                    _scheduleNextClue(gameState);
+                } else {
+                    logger.debug(`[GeoGame][${gameState.channelName}] Not rescheduling next clue. State: ${gameState.state}`);
+                }
             } else {
-                 logger.warn(`[GeoGame][${gameState.channelName}] Failed to generate follow-up clue ${gameState.currentClueIndex + 2}.`);
-                 // Consider ending early or just let the round timer handle it. Current: let round timer handle.
+                logger.warn(`[GeoGame][${gameState.channelName}] Failed to generate follow-up clue ${gameState.currentClueIndex + 2}.`);
+                // Consider ending early or just let the round timer handle it. Current: let round timer handle.
             }
         } catch (error) {
-             logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating or sending follow-up clue ${gameState.currentClueIndex + 2}.`);
-             // Consider notifying the channel or ending the game? For now, just log.
+            logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating or sending follow-up clue ${gameState.currentClueIndex + 2}.`);
+            // Consider notifying the channel or ending the game? For now, just log.
         }
     }, delaySeconds * 1000);
 }
@@ -381,7 +389,8 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
                 // Only trigger timeout logic if the game is still actively in progress
                 if (gameState.state === 'inProgress') {
                     logger.info(`[GeoGame][${gameState.channelName}] Game state is 'inProgress'. Proceeding with timeout.`);
-                    gameState.state = 'timeout'; // Mark state *before* sending message/transitioning
+                    // Set state to 'timeout' immediately to prevent further clues
+                    gameState.state = 'timeout';
                     logger.debug(`[GeoGame][${gameState.channelName}] Game state set to 'timeout'.`);
 
                     const timeoutMessage = formatTimeoutMessage(gameState.targetLocation?.name || 'Unknown Location'); // Handle potential missing location
