@@ -12,6 +12,7 @@ import { initializeGeoGameManager, getGeoGameManager } from './components/geo/ge
 import { initializeStorage } from './components/geo/geoStorage.js';
 
 let streamInfoIntervalId = null;
+let ircClient = null;
 const MAX_IRC_MESSAGE_LENGTH = 450; // Define globally for reuse
 const SUMMARY_TARGET_LENGTH = 400;  // Define globally for reuse
 
@@ -27,20 +28,42 @@ function isPrivilegedUser(tags, channelName) {
  */
 async function gracefulShutdown(signal) {
     logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
-    stopStreamInfoPolling(streamInfoIntervalId);
-    clearMessageQueue(); // Clear the message queue before disconnecting
     
-    const ircClient = getIrcClient();
-    if (ircClient && ircClient.readyState() === 'OPEN') {
-        try {
-            logger.info('Disconnecting from Twitch IRC...');
-            await ircClient.disconnect();
-            logger.info('Disconnected from Twitch IRC.');
-        } catch (err) {
-            logger.error({ err }, 'Error during IRC disconnect.');
-        }
+    const shutdownTasks = [];
+    
+    // Clear polling interval immediately
+    if (streamInfoIntervalId) {
+        stopStreamInfoPolling(streamInfoIntervalId);
+        logger.info('Stream info polling stopped.');
     }
+    
+    // Clear message queue before disconnecting
+    clearMessageQueue();
+    logger.info('Message queue cleared.');
+    
+    // Disconnect from Twitch IRC
+    const client = ircClient || getIrcClient();
+    if (client && client.readyState() === 'OPEN') {
+        shutdownTasks.push(
+            client.disconnect().then(() => {
+                logger.info('Disconnected from Twitch IRC.');
+            }).catch(err => {
+                logger.error({ err }, 'Error during IRC disconnect.');
+            })
+        );
+    }
+    
+    // Run all shutdown tasks in parallel and wait for them to finish
+    await Promise.allSettled(shutdownTasks);
+    
+    // Safety timeout in case something hangs
+    const forceExitTimeout = setTimeout(() => {
+        logger.error('Force exiting after timeout...');
+        process.exit(1);
+    }, 5000);
+    
     logger.info('StreamSage shutdown complete.');
+    clearTimeout(forceExitTimeout);
     process.exit(0);
 }
 
@@ -83,7 +106,7 @@ async function main() {
 
         // --- Create IRC Client Instance ---
         logger.info('Creating Twitch IRC Client instance...');
-        const ircClient = createIrcClient(config.twitch);
+        ircClient = createIrcClient(config.twitch);
 
         // --- Setup IRC Event Listeners BEFORE Connecting ---
         logger.debug('Attaching IRC event listeners...');
@@ -297,14 +320,19 @@ async function main() {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Add uncaught exception handler for graceful shutdown on critical errors
+process.on('uncaughtException', (error) => {
+    logger.fatal({ err: error }, 'Uncaught Exception thrown - initiating graceful shutdown');
+    gracefulShutdown('UNCAUGHT_EXCEPTION').catch(err => {
+        logger.error({ err }, 'Error during graceful shutdown from uncaught exception');
+        process.exit(1);
+    });
+});
+
 // --- Start the Application ---
 main();
 
-// --- Optional: Unhandled Rejection/Exception Handling ---
+// --- Optional: Unhandled Rejection Handling ---
 process.on('unhandledRejection', (reason, promise) => {
     logger.error({ reason, promise }, 'Unhandled Rejection at Promise');
-});
-process.on('uncaughtException', (error) => {
-    logger.fatal({ err: error }, 'Uncaught Exception thrown');
-    process.exit(1);
 });

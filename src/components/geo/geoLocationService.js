@@ -1,5 +1,6 @@
 import { getGeminiClient } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
+import { getLocationSelectionPrompt } from './geoPrompts.js';
 
 // --- Prompt Templates ---
 // (Can be moved to geoPrompts.js later)
@@ -43,20 +44,21 @@ const checkGuessTool = {
 };
 
 /**
- * Selects a location for the Geo-Game (real or game mode).
+ * Selects a location for the Geo-Game, avoiding recently used ones.
  * @param {'real'|'game'} mode
  * @param {object} config
  * @param {string|null} gameTitle
+ * @param {string[]} excludedLocations - Array of location names to avoid.
  * @returns {Promise<{name: string, alternateNames?: string[]}|null>}
  */
-export async function selectLocation(mode, config = {}, gameTitle = null) {
-    const prompt = buildLocationSelectionPrompt(mode, config, gameTitle);
+export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = []) {
+    const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations);
     const model = getGeminiClient();
-    logger.debug({ mode, gameTitle, prompt }, '[GeoLocation] Selecting location');
+    logger.debug({ mode, gameTitle, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: 'Respond ONLY with the location name, and if relevant, a pipe (|) separated list of alternate names. No commentary.' }] }
+            systemInstruction: { parts: [{ text: 'Respond ONLY with the location name, and if relevant, a slash (/) separated list of alternate names. No commentary.' }] }
         });
         const response = result.response;
         if (!response.candidates?.length || !response.candidates[0].content) {
@@ -64,11 +66,15 @@ export async function selectLocation(mode, config = {}, gameTitle = null) {
             return null;
         }
         const text = response.candidates[0].content.parts.map(part => part.text).join('').trim();
-        // Parse: "Location Name|Alt1|Alt2"
-        const [name, ...alts] = text.split('|').map(s => s.trim()).filter(Boolean);
+        // Parse: "Location Name/Alt1/Alt2"
+        const [name, ...alts] = text.split('/').map(s => s.trim()).filter(Boolean);
         if (!name) {
             logger.warn('[GeoLocation] No valid location name parsed from response', { text });
             return null;
+        }
+        // Optional: Double-check if LLM ignored exclusion instruction (basic check)
+        if (excludedLocations.includes(name)) {
+            logger.warn(`[GeoLocation] LLM selected an excluded location ("${name}"). Will likely be retried by manager.`);
         }
         return alts.length ? { name, alternateNames: alts } : { name };
     } catch (error) {

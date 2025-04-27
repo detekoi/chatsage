@@ -209,3 +209,38 @@ export async function getLeaderboard(limit = 10) {
     }
     return leaderboard;
 }
+
+/**
+ * Retrieves a list of recently played target locations for a channel.
+ * @param {string} channelName - Lowercase channel name.
+ * @param {number} [limit=10] - How many recent locations to retrieve.
+ * @returns {Promise<string[]>} An array of recent location names.
+ */
+export async function getRecentLocations(channelName, limit = 10) {
+    const db = _getDb();
+    const colRef = db.collection(HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+    try {
+        const snapshot = await colRef
+            .where('channel', '==', lowerChannelName)
+            .orderBy('timestamp', 'desc')
+            .limit(limit)
+            .get();
+        const recentLocations = [];
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.location) {
+                // Extract the primary name if it includes alternates (e.g., "Kyoto / Kyo")
+                const primaryName = data.location.split('/')[0].trim();
+                if (primaryName) {
+                    recentLocations.push(primaryName);
+                }
+            }
+        });
+        logger.debug(`[GeoStorage-GCloud] Found ${recentLocations.length} recent locations for channel ${lowerChannelName}.`);
+        return recentLocations;
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName }, `[GeoStorage-GCloud] Error getting recent locations for channel ${lowerChannelName}`);
+        return [];
+    }
+}

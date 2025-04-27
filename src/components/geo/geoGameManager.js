@@ -3,7 +3,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage } from './geoMessageFormatter.js';
-import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore } from './geoStorage.js';
+import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations } from './geoStorage.js';
 
 // --- Game State & Config Interfaces (Conceptual) ---
 /*
@@ -256,6 +256,8 @@ async function _scheduleNextClue(gameState) {
     }, delaySeconds * 1000);
 }
 
+const MAX_LOCATION_SELECT_RETRIES = 3;
+
 async function _startGameProcess(channelName, mode, gameTitle = null) {
     const gameState = await _getOrCreateGameState(channelName);
 
@@ -279,12 +281,29 @@ async function _startGameProcess(channelName, mode, gameTitle = null) {
     logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, Game Scope: ${gameTitle || 'N/A'}`);
 
     try {
-        // 1. Select Location
-        const location = await selectLocation(mode, gameState.config, gameTitle);
-        if (!location || !location.name) {
-            throw new Error("Failed to select a valid location from the service.");
+        let selectedLocation = null;
+        let retries = 0;
+        while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
+            if (retries > 0) {
+                logger.warn(`[GeoGame][${channelName}] Retrying location selection (Attempt ${retries + 1})...`);
+                await new Promise(resolve => setTimeout(resolve, 500 * retries));
+            }
+            const excludedLocations = await getRecentLocations(channelName, 10);
+            logger.debug(`[GeoGame][${channelName}] Locations to exclude: ${excludedLocations.join(', ')}`);
+            const locationAttempt = await selectLocation(mode, gameState.config, gameTitle, excludedLocations);
+            if (locationAttempt?.name && !excludedLocations.includes(locationAttempt.name)) {
+                selectedLocation = locationAttempt;
+            } else if (locationAttempt?.name) {
+                logger.warn(`[GeoGame][${channelName}] selectLocation returned an excluded location ("${locationAttempt.name}"). Retrying.`);
+            } else {
+                logger.warn(`[GeoGame][${channelName}] selectLocation returned null or invalid name. Retrying.`);
+            }
+            retries++;
         }
-        gameState.targetLocation = { name: location.name, alternateNames: location.alternateNames || [] };
+        if (!selectedLocation) {
+            throw new Error(`Failed to select a valid, non-repeated location after ${MAX_LOCATION_SELECT_RETRIES} attempts.`);
+        }
+        gameState.targetLocation = { name: selectedLocation.name, alternateNames: selectedLocation.alternateNames || [] };
         logger.info(`[GeoGame][${channelName}] Location selected: ${gameState.targetLocation.name}`);
 
         // 2. Generate Initial Clue
