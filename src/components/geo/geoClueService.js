@@ -96,8 +96,8 @@ export async function generateFollowUpClue(locationName, previousClues = [], mod
 export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown") {
     let outcomeInstruction = "";
     if (reason === "guessed") {
-        // Keep the instruction for guessed relatively simple, as the congrats part is handled in geoGameManager
-        outcomeInstruction = `The players successfully guessed the location! Write a fun, celebratory summary for \"${locationName}\".`;
+        // Tell the LLM the win is already announced and ask ONLY for the fun facts/summary.
+        outcomeInstruction = `The win has already been announced. Provide ONLY a fun, informative summary with interesting facts about "${locationName}". Do not repeat the winner's name. Do not repeat ${locationName}.`;
     } else if (reason === "timeout") {
         // Explicitly instruct LLM to announce timeout and reveal location at the start
         outcomeInstruction = `Time ran out before anyone guessed correctly. Start your response by announcing the timeout and revealing the location was \"${locationName}\". Then, continue with a fun, informative summary.`;
