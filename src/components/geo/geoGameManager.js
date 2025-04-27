@@ -3,7 +3,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
-import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard } from './geoStorage.js';
+import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData } from './geoStorage.js';
 import { summarizeText } from '../llm/geminiClient.js';
 
 // --- Game State & Config Interfaces (Conceptual) ---
@@ -986,6 +986,24 @@ function getCurrentGameInitiator(channelName) {
     return null;
 }
 
+/**
+ * Clears the leaderboard data for the specified channel.
+ * Calls the storage layer function to perform the operation.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {Promise<{success: boolean, message: string}>} Result object.
+ */
+async function clearLeaderboard(channelName) {
+    logger.info(`[GeoGame][${channelName}] Received request to clear leaderboard data.`);
+    try {
+        const result = await clearChannelLeaderboardData(channelName.toLowerCase());
+        logger.info(`[GeoGame][${channelName}] Leaderboard clear result: ${result.message}`);
+        return { success: result.success, message: result.message };
+    } catch (error) {
+        logger.error({ err: error, channel: channelName }, `[GeoGame][${channelName}] Unexpected error calling clearChannelLeaderboardData.`);
+        const errorMessage = error.message || 'An unexpected error occurred while trying to clear the leaderboard.';
+        return { success: false, message: errorMessage };
+    }
+}
 
 /**
  * Gets the singleton GeoGame Manager instance/interface.
@@ -1000,6 +1018,7 @@ function getGeoGameManager() {
         configureGame,
         resetChannelConfig,
         getCurrentGameInitiator,
+        clearLeaderboard
     };
 }
 

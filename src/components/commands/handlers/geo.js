@@ -47,7 +47,7 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
 const geoHandler = {
     name: 'geo',
     description: 'Starts or manages the Geo-Game (!geo help for details).',
-    usage: '!geo [<rounds>] | stop | config <options...> | resetconfig | leaderboard | help',
+    usage: '!geo [<rounds>] | stop | config <options...> | resetconfig | leaderboard | clearleaderboard | help',
     permission: 'everyone', // Subcommand permissions handled inside
     execute: async (context) => {
         const { channel, user, args } = context;
@@ -209,9 +209,24 @@ const geoHandler = {
             }
             return; // Action done
 
+        } else if (subCommand === 'clearleaderboard' || subCommand === 'resetstats') {
+            if (!isModOrBroadcaster) {
+                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can clear the leaderboard.`);
+                return;
+            }
+            enqueueMessage(channel, `@${invokingDisplayName}, Attempting to clear Geo-Game leaderboard data for this channel. This may take a moment...`);
+            try {
+                const result = await geoManager.clearLeaderboard(channelName);
+                enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, 'Error calling clearLeaderboard from command handler.');
+                enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred while trying to clear the leaderboard.`);
+            }
+            return; // Action done
+
         } else if (subCommand === 'help') {
             // !geo help
-            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo help`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo help`);
             return; // Action done
 
         } else {

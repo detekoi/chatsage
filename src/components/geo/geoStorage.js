@@ -353,3 +353,64 @@ export async function getRecentLocations(channelName, limit = 10) {
         throw new StorageError(`Failed to get recent locations for ${lowerChannelName}`, error);
     }
 }
+
+/**
+ * Clears leaderboard data (wins, participation) for a specific channel
+ * by updating relevant player documents in Firestore.
+ * WARNING: This iterates through player documents and can be resource-intensive
+ * if many players have participated in the channel.
+ * @param {string} channelName - Lowercase channel name.
+ * @returns {Promise<{success: boolean, message: string, clearedCount: number}>}
+ */
+export async function clearChannelLeaderboardData(channelName) {
+    const db = _getDb();
+    const lowerChannel = channelName.toLowerCase();
+    const statsCollection = db.collection(STATS_COLLECTION);
+    let clearedCount = 0;
+    const batchSize = 100; // Process in batches
+    let lastVisible = null; // For pagination
+
+    logger.info(`[GeoStorage-GCloud] Starting leaderboard clear process for channel: ${lowerChannel}`);
+
+    try {
+        // Construct the query to find players with data for this channel
+        const fieldPath = `channels.${lowerChannel}`;
+        let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
+
+        while (true) {
+            const snapshot = await query.get();
+            if (snapshot.empty) {
+                break; // No more documents found
+            }
+
+            const batch = db.batch();
+            snapshot.docs.forEach(doc => {
+                // Prepare update to remove the channel's data from the 'channels' map
+                const updateData = {
+                    [`channels.${lowerChannel}`]: FieldValue.delete()
+                };
+                batch.update(doc.ref, updateData);
+                clearedCount++;
+            });
+
+            await batch.commit();
+            logger.debug(`[GeoStorage-GCloud] Cleared leaderboard data batch for ${snapshot.size} players in channel ${lowerChannel}. Total cleared: ${clearedCount}`);
+
+            // Prepare next query page
+            if (snapshot.size < batchSize) {
+                break; // Last page processed
+            }
+            lastVisible = snapshot.docs[snapshot.docs.length - 1];
+            query = statsCollection.where(fieldPath, '!=', null).startAfter(lastVisible).limit(batchSize);
+
+            // Add a small delay between batches to avoid hitting rate limits aggressively
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        logger.info(`[GeoStorage-GCloud] Successfully cleared leaderboard data for ${clearedCount} players in channel ${lowerChannel}.`);
+        return { success: true, message: `Successfully cleared leaderboard data for ${clearedCount} players.`, clearedCount };
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannel }, `[GeoStorage-GCloud] Error clearing leaderboard data for channel ${lowerChannel}. Partial data may remain.`);
+        return { success: false, message: `An error occurred while clearing leaderboard data. ${clearedCount} records might have been cleared before the error. Check logs.`, clearedCount };
+    }
+}
