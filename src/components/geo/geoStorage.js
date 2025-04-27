@@ -137,19 +137,33 @@ export async function recordGameResult(gameResultDetails) {
 /**
  * Updates player scores/stats using Firestore atomic increments.
  * @param {string} username - Lowercase username.
+ * @param {string} channelName - Lowercase channel name.
  * @param {number} points - Points to add for a win (typically 1).
  * @param {string} [displayName] - Optional display name to store with the player record.
  * @returns {Promise<boolean>} True on success, false on failure.
  */
-export async function updatePlayerScore(username, points = 1, displayName = null) {
+export async function updatePlayerScore(username, channelName, points = 1, displayName = null) {
     const db = _getDb();
-    const docRef = db.collection(STATS_COLLECTION).doc(username.toLowerCase());
+    const lowerUsername = username.toLowerCase();
+    const lowerChannel = channelName.toLowerCase();
+    const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
+    
     try {
-        // Prepare update data with atomic increments
+        // Prepare base update data
         const updateData = {
-            wins: FieldValue.increment(points),
-            participation: FieldValue.increment(1),
-            lastWinTimestamp: FieldValue.serverTimestamp()
+            // Global stats
+            globalWins: FieldValue.increment(points),
+            globalParticipation: FieldValue.increment(1),
+            lastWinTimestamp: FieldValue.serverTimestamp(),
+            
+            // Channel-specific stats using nested objects
+            channels: {
+                [lowerChannel]: {
+                    wins: FieldValue.increment(points),
+                    participation: FieldValue.increment(1),
+                    lastWinTimestamp: FieldValue.serverTimestamp()
+                }
+            }
         };
         
         // Add display name if provided
@@ -160,10 +174,14 @@ export async function updatePlayerScore(username, points = 1, displayName = null
         // Use set with merge for atomic updates
         await docRef.set(updateData, { merge: true });
 
-        logger.debug(`[GeoStorage-GCloud] Updated stats for player ${username}`);
+        logger.debug(`[GeoStorage-GCloud] Updated stats for player ${lowerUsername} in channel ${lowerChannel}`);
         return true;
     } catch (error) {
-        logger.error({ err: error, player: username }, `[GeoStorage-GCloud] Error updating player score for ${username}`);
+        logger.error({ 
+            err: error, 
+            player: lowerUsername, 
+            channel: lowerChannel 
+        }, `[GeoStorage-GCloud] Error updating player score for ${lowerUsername} in ${lowerChannel}`);
         return false;
     }
 }
@@ -171,43 +189,124 @@ export async function updatePlayerScore(username, points = 1, displayName = null
 /**
  * Retrieves stats for a specific player.
  * @param {string} username - Lowercase username.
+ * @param {string} [channelName] - Optional channel name to get channel-specific stats.
  * @returns {Promise<object|null>} Player stats object or null if not found/error.
  */
-export async function getPlayerStats(username) {
+export async function getPlayerStats(username, channelName = null) {
     const db = _getDb();
-    const docRef = db.collection(STATS_COLLECTION).doc(username.toLowerCase());
-     try {
+    const lowerUsername = username.toLowerCase();
+    const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
+    
+    try {
         const docSnap = await docRef.get();
         if (docSnap.exists) {
-            return docSnap.data();
+            const data = docSnap.data();
+            
+            // If channelName is provided, include channel-specific stats if available
+            if (channelName) {
+                const lowerChannel = channelName.toLowerCase();
+                
+                // Restructure the response to include global stats and channel-specific stats
+                return {
+                    ...data,
+                    channelStats: data.channels?.[lowerChannel] || null,
+                    wins: data.globalWins || data.wins || 0, // Backwards compatibility
+                    participation: data.globalParticipation || data.participation || 0, // Backwards compatibility
+                };
+            }
+            
+            return data;
         } else {
             return null; // Player has no stats yet
         }
     } catch (error) {
-        logger.error({ err: error, player: username }, `[GeoStorage-GCloud] Error getting player stats for ${username}`);
+        logger.error({ 
+            err: error, 
+            player: lowerUsername,
+            channel: channelName
+        }, `[GeoStorage-GCloud] Error getting player stats for ${lowerUsername}`);
         return null;
     }
 }
 
 /**
  * Retrieves the top N players based on wins.
+ * @param {string} [channelName=null] - Optional channel name for channel-specific leaderboard.
  * @param {number} [limit=10] - Number of top players to retrieve.
  * @returns {Promise<Array<{id: string, data: object}>>} Array of player objects {id: username, data: {wins, participation, ...}}.
  */
-export async function getLeaderboard(limit = 10) {
+export async function getLeaderboard(channelName = null, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(STATS_COLLECTION);
     const leaderboard = [];
+    
     try {
-        const snapshot = await colRef.orderBy('wins', 'desc').limit(limit).get();
-        snapshot.forEach(doc => {
-            leaderboard.push({ id: doc.id, data: doc.data() });
-        });
-        logger.debug(`[GeoStorage-GCloud] Retrieved leaderboard with ${leaderboard.length} players.`);
+        let snapshot;
+        
+        if (channelName) {
+            const lowerChannel = channelName.toLowerCase();
+            logger.debug(`[GeoStorage-GCloud] Retrieving channel-specific leaderboard for ${lowerChannel}`);
+            
+            // For channel-specific leaderboard, we need to query differently
+            // Firestore doesn't support ordering by nested fields directly, so we need to extract the data differently
+            
+            // First, get all players who have participated in this channel
+            // We limit to a larger number initially to account for filtering
+            const allSnapshot = await colRef
+                .where(`channels.${lowerChannel}`, '!=', null)
+                .limit(limit * 3) // Get more than needed to ensure we have enough after sorting
+                .get();
+                
+            // Extract and sort manually
+            const players = [];
+            allSnapshot.forEach(doc => {
+                const data = doc.data();
+                const channelData = data.channels?.[lowerChannel];
+                
+                if (channelData) {
+                    players.push({
+                        id: doc.id,
+                        data: {
+                            ...data,
+                            channelWins: channelData.wins || 0,
+                            channelParticipation: channelData.participation || 0,
+                            displayName: data.displayName || doc.id
+                        }
+                    });
+                }
+            });
+            
+            // Sort by channel-specific wins
+            players.sort((a, b) => b.data.channelWins - a.data.channelWins);
+            
+            // Take only the top N
+            return players.slice(0, limit);
+        } else {
+            // Global leaderboard - sort by globalWins (or wins for backward compatibility)
+            snapshot = await colRef.orderBy('globalWins', 'desc').limit(limit).get();
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                leaderboard.push({ 
+                    id: doc.id, 
+                    data: {
+                        ...data,
+                        // Ensure consistent field naming for clients
+                        wins: data.globalWins || data.wins || 0,
+                        participation: data.globalParticipation || data.participation || 0
+                    }
+                });
+            });
+            
+            logger.debug(`[GeoStorage-GCloud] Retrieved global leaderboard with ${leaderboard.length} players.`);
+            return leaderboard;
+        }
     } catch (error) {
-         logger.error({ err: error }, `[GeoStorage-GCloud] Error retrieving leaderboard.`);
+        logger.error({ 
+            err: error,
+            channel: channelName || 'global' 
+        }, `[GeoStorage-GCloud] Error retrieving leaderboard.`);
+        return [];
     }
-    return leaderboard;
 }
 
 /**
