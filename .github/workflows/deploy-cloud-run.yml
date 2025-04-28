@@ -36,7 +36,8 @@ jobs:
         with:
           workload_identity_provider: 'projects/streamsage-bot/locations/global/workloadIdentityPools/github-pool/providers/ghactions-provider'
           service_account: 'cloud-run-deployer@streamsage-bot.iam.gserviceaccount.com'
-          audience: 'https://iam.googleapis.com'
+          audience: 'projects/streamsage-bot/locations/global/workloadIdentityPo
+  ols/github-pool/providers/ghactions-provider'
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
