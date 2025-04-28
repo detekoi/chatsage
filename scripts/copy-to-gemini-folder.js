@@ -41,7 +41,7 @@ function copyRecursive(source, target) {
         const basename = path.basename(source);
         
         // Skip excluded directories
-        if (EXCLUDED_DIRS.includes(basename) || basename.startsWith('.')) {
+        if (EXCLUDED_DIRS.includes(basename) || (basename.startsWith('.') && basename !== '.github')) {
             return;
         }
         

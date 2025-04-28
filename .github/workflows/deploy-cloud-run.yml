@@ -63,10 +63,10 @@ jobs:
           source: .
           env_vars_file: .env.yaml
           secrets: |
-            TWITCH_BOT_OAUTH_TOKEN=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN/latest
-            GEMINI_API_KEY=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_GEMINI_API_KEY/latest
-            TWITCH_CLIENT_ID=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_ID/latest
-            TWITCH_CLIENT_SECRET=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_SECRET/latest
+            TWITCH_BOT_OAUTH_TOKEN=STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN:latest
+            GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest
+            TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest
+            TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest
 
       - name: Show Deployment URL
         run: |
