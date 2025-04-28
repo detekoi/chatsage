@@ -67,6 +67,7 @@ jobs:
             GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest
             TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest
             TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest
+          flags: '--no-startup-probe'
 
       - name: Show Deployment URL
         run: |
