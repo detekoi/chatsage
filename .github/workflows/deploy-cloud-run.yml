@@ -42,26 +42,31 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Create env file
+        run: |
+          cat > .env.yaml << EOF
+          NODE_ENV: ${{ env.NODE_ENV }}
+          LOG_LEVEL: ${{ env.LOG_LEVEL }}
+          PINO_PRETTY_LOGGING: ${{ env.PINO_PRETTY_LOGGING }}
+          TWITCH_BOT_USERNAME: ${{ env.TWITCH_BOT_USERNAME }}
+          TWITCH_CHANNELS: parfaitfair,parfaittest
+          GEMINI_MODEL_ID: ${{ env.GEMINI_MODEL_ID }}
+          STREAM_INFO_FETCH_INTERVAL_SECONDS: ${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }}
+          EOF
+
       - name: Deploy to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.CLOUD_RUN_SERVICE_NAME }}
           region: ${{ env.GCP_REGION }}
-          env_vars: |
-            NODE_ENV=${{ env.NODE_ENV }}
-            LOG_LEVEL=${{ env.LOG_LEVEL }}
-            PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }}
-            TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }}
-            TWITCH_CHANNELS=${{ env.TWITCH_CHANNELS }}
-            GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }}
-            STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }}
+          source: .
+          env_vars_file: .env.yaml
           secrets: |
             TWITCH_BOT_OAUTH_TOKEN=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN/latest
             GEMINI_API_KEY=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_GEMINI_API_KEY/latest
             TWITCH_CLIENT_ID=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_ID/latest
             TWITCH_CLIENT_SECRET=sm://${{ env.GCP_PROJECT_ID }}/STREAM_SAGE_TWITCH_CLIENT_SECRET/latest
-          source: .
 
       - name: Show Deployment URL
         run: |
