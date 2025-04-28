@@ -1,0 +1,28 @@
+# service.yaml
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: chatsage # Match your service name
+spec:
+  template:
+    spec:
+      containers:
+      - image: placeholder # This will be overridden by the action's image/source input
+        ports:
+          - containerPort: 8080 # Default port Cloud Run checks
+        # Add an empty startupProbe section:
+        startupProbe: {}
+        # You might need to add env vars and secrets here too
+        # if the action doesn't merge them correctly with metadata
+        # env:
+        #   - name: NODE_ENV
+        #     value: "production"
+        #   - name: LOG_LEVEL
+        #     value: "info"
+        #   ... etc ...
+        #   - name: TWITCH_BOT_OAUTH_TOKEN
+        #     valueFrom:
+        #       secretKeyRef:
+        #         name: STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN
+        #         key: latest
+        #   ... etc ...

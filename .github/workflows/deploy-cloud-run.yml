@@ -61,13 +61,7 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE_NAME }}
           region: ${{ env.GCP_REGION }}
           source: .
-          env_vars_file: .env.yaml
-          secrets: |
-            TWITCH_BOT_OAUTH_TOKEN=STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN:latest
-            GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest
-            TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest
-            TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest
-          flags: '--no-startup-probe'
+          metadata: ./service.yaml
 
       - name: Show Deployment URL
         run: |
