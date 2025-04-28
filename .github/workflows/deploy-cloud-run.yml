@@ -58,10 +58,25 @@ jobs:
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
-          service: ${{ env.CLOUD_RUN_SERVICE_NAME }}
-          region: ${{ env.GCP_REGION }}
-          source: .
-          metadata: ./service.yaml
+          service: 'chatsage'
+          region: 'us-central1'
+          source: '.'
+          env_vars: |-
+            NODE_ENV=production
+            LOG_LEVEL=info
+            PINO_PRETTY_LOGGING=false
+            TWITCH_BOT_USERNAME=StreamSageTheBot
+            TWITCH_CHANNELS=parfaitfair,parfaittest
+            GEMINI_MODEL_ID=gemini-2.0-flash-001
+            STREAM_INFO_FETCH_INTERVAL_SECONDS=120
+          secrets: |-
+            TWITCH_BOT_OAUTH_TOKEN=STREAM_SAGE_TWITCH_BOT_OAUTH_TOKEN:latest
+            GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest
+            TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest
+            TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest
+          labels: |-
+            managed-by=github-actions
+            commit-sha=${{ github.sha }}
 
       - name: Show Deployment URL
         run: |
