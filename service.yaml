@@ -10,8 +10,6 @@ spec:
       - image: placeholder # This will be overridden by the action's image/source input
         ports:
           - containerPort: 8080 # Default port Cloud Run checks
-        # Add an empty startupProbe section:
-        startupProbe: {}
         # You might need to add env vars and secrets here too
         # if the action doesn't merge them correctly with metadata
         # env:
