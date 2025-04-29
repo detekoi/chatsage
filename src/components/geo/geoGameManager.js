@@ -267,7 +267,10 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     logger.debug(`[GeoGame][${gameState.channelName}] Round end message sent.`);
 
     // --- 3. Record Game History (Always record each round) ---
-    if (gameState.config.scoreTracking && gameState.targetLocation?.name && (previousState === 'inProgress' || reason === 'guessed')) { // Only record if round was properly in progress or guessed
+    // Determine if the reason for ending warrants recording the result
+    const validEndReasonForRecording = ['guessed', 'timeout', 'stopped'].includes(reason);
+
+    if (gameState.config.scoreTracking && gameState.targetLocation?.name && validEndReasonForRecording) {
         try {
             const gameDetails = {
                 channel: gameState.channelName,
@@ -291,8 +294,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             logger.error({ err: storageError }, `[GeoGame][${gameState.channelName}] Error explicitly caught from recordGameResult call for round ${gameState.currentRound}.`);
         }
     } else {
-        // Log why it was skipped, including the reason
-        logger.debug(`[GeoGame][${gameState.channelName}] Skipping recordGameResult call. Conditions: scoreTracking=${gameState.config.scoreTracking}, targetLocation=${!!gameState.targetLocation?.name}, previousState=${previousState}, reason=${reason}`);
+        // Log why recording was skipped, including all relevant conditions
+        logger.debug(`[GeoGame][${gameState.channelName}] Skipping recordGameResult call. Conditions: scoreTracking=${gameState.config.scoreTracking}, targetLocation=${!!gameState.targetLocation?.name}, reason=${reason}, validEndReason=${validEndReasonForRecording}`);
     }
 
     // --- 4. Determine Next Step (Next Round, Game Over, or Stop) ---
