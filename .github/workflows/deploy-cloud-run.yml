@@ -6,7 +6,7 @@ env:
   GCP_REGION: 'us-central1'
   CLOUD_RUN_SERVICE_NAME: 'chatsage'
   TWITCH_BOT_USERNAME: 'StreamSageTheBot'
-  TWITCH_CHANNELS: parfaitfair,parfaittest,pedromarvarez
+  TWITCH_CHANNELS: "parfaitfair,parfaittest,pedromarvarez"
   GEMINI_MODEL_ID: 'gemini-2.0-flash-001'
   LOG_LEVEL: 'info'
   STREAM_INFO_FETCH_INTERVAL_SECONDS: '120'
@@ -54,7 +54,7 @@ jobs:
             LOG_LEVEL=info
             PINO_PRETTY_LOGGING=false
             TWITCH_BOT_USERNAME=StreamSageTheBot
-            TWITCH_CHANNELS=parfaitfair,parfaittest,pedromarvarez
+            TWITCH_CHANNELS="parfaitfair,parfaittest,pedromarvarez"
             GEMINI_MODEL_ID=gemini-2.0-flash-001
             STREAM_INFO_FETCH_INTERVAL_SECONDS=120
           secrets: |-
