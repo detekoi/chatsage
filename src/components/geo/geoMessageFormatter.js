@@ -14,11 +14,11 @@ export function formatStartMessage(mode, gameTitle = null, roundDurationMinutes 
     const roundInfo = totalRounds > 1 ? ` (${totalRounds} rounds)` : '';
     const durationInfo = `You have ⏱️ ${roundDurationMinutes} minutes per round.`;
     if (mode === 'game') {
-        return `🎮 Geo-Game started!${roundInfo} Guess the location from the game${gameTitle ? ` "${gameTitle}"` : ''}! ${durationInfo} Type your guesses in chat!`;
+        return `🎮 Geo-Game started!${roundInfo} Guess the location from the game${gameTitle ? ` "${gameTitle}"` : ''}! ${durationInfo} Type your guesses in chat! First clue incoming...`;
     } else {
         // Real mode
         const regionInfo = regionScope ? ` (Region: ${regionScope})` : '';
-        return `🌍 Geo-Game started!${regionInfo}${roundInfo} Guess the real-world city, landmark, or place! ${durationInfo} Type your guesses in chat!`;
+        return `🌍 Geo-Game started!${regionInfo}${roundInfo} Guess the real-world city, landmark, or place! ${durationInfo} Type your guesses in chat! First clue incoming...`;
     }
 }
 
