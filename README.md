@@ -83,7 +83,7 @@ A `Dockerfile` is provided for building a container image of the application.
 
 ## Contributing
 
-Contributions are welcome. Please open an issue or submit a pull request. (Further contribution guidelines can be added here).
+Contributions are welcome. Please open an issue or submit a pull request.
 
 ## License
 
