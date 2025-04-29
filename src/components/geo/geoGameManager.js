@@ -284,8 +284,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 durationMs: gameState.startTime ? (Date.now() - gameState.startTime) : null,
                 reasonEnded: reason,
                 cluesGiven: gameState.clues.length,
-                roundNumber: gameState.currentRound, // Add round info
-                totalRounds: gameState.totalRounds,   // Add total rounds info
+                roundNumber: gameState.currentRound,
+                totalRounds: gameState.totalRounds,
             };
             logger.debug(`[GeoGame][${gameState.channelName}] Calling recordGameResult for round ${gameState.currentRound}.`);
             await recordGameResult(gameDetails);
@@ -607,15 +607,17 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     const scopeLog = scope ? (mode === 'game' ? `Game Scope: ${scope}` : `Region Scope: ${scope}`) : 'Scope: N/A';
     logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, ${scopeLog}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
 
+    // --- Send Game Start Announcement Immediately ---
+    const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
+    enqueueMessage(`#${channelName}`, startMessage);
+
     try {
         // --- Location Selection for Round 1 ---
         let selectedLocation = null;
         let retries = 0;
         let excludedLocations = []; // For the first round, just use global recent
         try {
-            logger.debug(`[GeoGame][${channelName}] Adding brief delay before fetching recent locations...`);
-            await new Promise(resolve => setTimeout(resolve, 1500)); // Wait 1.5 seconds
-            logger.debug(`[GeoGame][${channelName}] Delay complete, fetching recent locations...`);
+            logger.debug(`[GeoGame][${channelName}] Fetching recent locations...`);
             excludedLocations = await getRecentLocations(channelName, 35);
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent locations for Round 1, proceeding with no exclusions.");
@@ -666,18 +668,11 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         gameState.currentClueIndex = 0;
         logger.info(`[GeoGame][${channelName}] Round 1 First clue generated.`);
 
-        // 3. Start Game Timers & Send Messages (Round 1)
+        // 3. Start Game Timers & Send First Clue (Round 1)
         gameState.startTime = Date.now(); // Start time for Round 1
         gameState.state = 'started'; // Mark as formally started
 
-        // Adjust start message for multi-round games and pass region scope
-        const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
-        enqueueMessage(`#${channelName}`, startMessage);
-
-        // Small delay before sending the first clue
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // Check if state changed during the delay
+        // Check if state changed during location/clue generation
         if (gameState.state !== 'started') {
             logger.warn(`[GeoGame][${channelName}] Game state changed to ${gameState.state} before first clue of Round 1 could be sent. Aborting start.`);
              if(gameState.state !== 'ending') {
