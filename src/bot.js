@@ -1,5 +1,6 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
+import http from 'http';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
@@ -30,6 +31,18 @@ async function gracefulShutdown(signal) {
     logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
     
     const shutdownTasks = [];
+    
+    // Close health check server if it exists
+    if (global.healthServer) {
+        shutdownTasks.push(
+            new Promise((resolve) => {
+                global.healthServer.close(() => {
+                    logger.info('Health check server closed.');
+                    resolve();
+                });
+            })
+        );
+    }
     
     // Clear polling interval immediately
     if (streamInfoIntervalId) {
@@ -305,6 +318,23 @@ async function main() {
         // --- Connect IRC Client ---
         logger.info('Connecting Twitch IRC Client...');
         await connectIrcClient(); // Use connectIrcClient
+
+        // --- Setup Health Check Server ---
+        const PORT = process.env.PORT || 8080;
+        global.healthServer = http.createServer((req, res) => {
+            // Basic health check endpoint
+            if (req.url === '/healthz' || req.url === '/') {
+                res.writeHead(200, { 'Content-Type': 'text/plain' });
+                res.end('OK');
+            } else {
+                res.writeHead(404);
+                res.end();
+            }
+        });
+
+        global.healthServer.listen(PORT, () => {
+            logger.info(`Health check server listening on port ${PORT}`);
+        });
 
         // --- Post-Connection Logging ---
         logger.info('StreamSage components initialized and event listeners attached.');
