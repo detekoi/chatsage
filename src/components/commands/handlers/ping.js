@@ -13,13 +13,21 @@ const pingHandler = {
     permission: 'everyone', // Anyone can use this command
     execute: async (context) => {
         const { channel, user } = context;
+        const response = `Pong! @${user['display-name'] || user.username}`;
+
+        logger.info({ channel, user: user.username }, `[PingCommand] PRE-ENQUEUE: Preparing ping response for ${user.username}`);
+        
         try {
-            const response = `Pong! @${user['display-name'] || user.username}`;
             enqueueMessage(channel, response);
+            logger.info({ channel, user: user.username }, `[PingCommand] POST-ENQUEUE: Successfully called enqueueMessage`);
+            
             logger.info(`Executed !ping command in ${channel} for ${user.username}`);
         } catch (error) {
-            logger.error({ err: error, channel: channel, user: user.username }, `Failed to send Pong response for !ping command.`);
-            // Don't try to send another message if the first one failed
+            logger.error(
+                { err: error, channel: channel, user: user.username },
+                `[PingCommand] CRITICAL ERROR: Failed to send Pong response`
+            );
+            throw error;
         }
     },
 };

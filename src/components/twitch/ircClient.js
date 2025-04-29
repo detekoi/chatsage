@@ -36,6 +36,21 @@ function createIrcClient(twitchConfig) { // Renamed from initializeIrcClient
 
     client = new tmi.Client(clientOptions);
     logger.info('IRC Client instance created.');
+
+    // Add error and notice event listeners
+    client.on('notice', (channel, msgid, message) => {
+        // Logs notices sent from the server, might contain reasons for failure
+        logger.warn(
+            { channel: channel || 'N/A', msgid: msgid || 'N/A', notice: message || '' },
+            '[TMI Server Notice]'
+        );
+    });
+
+    client.on('error', (error) => {
+        // Logs more general connection or client errors
+        logger.error({ err: error }, '[TMI Client Error]');
+    });
+
     return client;
 }
 
