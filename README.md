@@ -56,14 +56,42 @@ StreamSage is an AI-powered chatbot designed for Twitch chat environments. It pr
 
 StreamSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
 
-*   `TWITCH_BOT_USERNAME`, `TWITCH_BOT_OAUTH_TOKEN`: Credentials for the bot's Twitch account.
+*   `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
 *   `TWITCH_CHANNELS`: Comma-separated list of channels to join.
 *   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
+*   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
 *   `STREAM_INFO_FETCH_INTERVAL_SECONDS`: How often to refresh stream context data.
 *   `LOG_LEVEL`: Controls the verbosity of logs.
 
 Ensure all required variables are set in your environment or `.env` file before running the bot.
+
+## Twitch Token Management
+
+StreamSage uses a secure token refresh mechanism to maintain authentication with Twitch:
+
+1. **Initial Setup**:
+   - Go to [Twitch Token Generator](https://twitchtokengenerator.com)
+   - Select the required scopes: `chat:read`, `chat:edit`
+   - Generate the token
+   - Copy the **Refresh Token** (not the Access Token)
+   - Store this Refresh Token securely in Google Secret Manager
+
+2. **Google Secret Manager Setup**:
+   - Create a Google Cloud Project if you don't have one
+   - Enable the Secret Manager API
+   - Create a new secret to store your refresh token
+   - Note the resource name: `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`
+   - Set this resource name as `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` in your `.env` file
+   - Ensure the service account running your application has the "Secret Manager Secret Accessor" role
+
+3. **Authentication Flow**:
+   - On startup, StreamSage will fetch the refresh token from Secret Manager
+   - It will use this refresh token to obtain a fresh access token from Twitch
+   - If the access token expires, it will be automatically refreshed
+   - If the refresh token itself becomes invalid, the application will log an error requiring manual intervention
+
+This approach provides better security by not storing the OAuth token directly in configuration files and ensures the bot can maintain connectivity for longer periods.
 
 ## Docker
 

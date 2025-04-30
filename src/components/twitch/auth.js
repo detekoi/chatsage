@@ -49,6 +49,26 @@ async function fetchNewAppAccessToken() {
 
     } catch (error) {
         let errorMessage = 'Failed to fetch Twitch App Access Token.';
+        
+        // Enhanced detailed logging for debugging
+        logger.error({
+            err: {
+                message: error.message,
+                code: error.code,
+                name: error.name,
+                status: error.response?.status,
+                responseData: error.response?.data,
+                stack: error.stack,
+            },
+            request: {
+                url: TWITCH_TOKEN_URL,
+                method: 'POST',
+                headers: error.config?.headers,
+            },
+            clientIdUsed: clientId ? `${clientId.substring(0, 4)}...` : 'MISSING',
+            timestamp: new Date().toISOString(),
+        }, `Detailed error during fetchNewAppAccessToken: ${errorMessage}`);
+
         if (error.response) {
             // Request made and server responded with a status code out of 2xx range
             errorMessage = `${errorMessage} Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
@@ -97,8 +117,18 @@ async function getAppAccessToken() {
     }
 }
 
-// Export the primary function needed by other modules
-export { getAppAccessToken };
+/**
+ * Clears the cached App Access Token, forcing a refresh on the next request.
+ * Intended to be called externally when a 401 error is detected.
+ */
+function clearCachedAppAccessToken() {
+    logger.warn('Clearing cached Twitch App Access Token due to external trigger (e.g., 401 error).');
+    cachedToken = null;
+    tokenExpiryTime = null;
+}
+
+// Export the primary functions needed by other modules
+export { getAppAccessToken, clearCachedAppAccessToken };
 
 // Optionally, you could add an explicit initialization function if you wanted
 // to fetch the first token during startup in bot.js, but the lazy-loading

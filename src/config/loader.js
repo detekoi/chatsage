@@ -14,11 +14,12 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 function loadConfig() {
     const requiredEnvVars = [
         'TWITCH_BOT_USERNAME',
-        'TWITCH_BOT_OAUTH_TOKEN',
+        // 'TWITCH_BOT_OAUTH_TOKEN', // REMOVED - No longer directly needed from env
         'TWITCH_CHANNELS',
         'GEMINI_API_KEY',
         'TWITCH_CLIENT_ID',
         'TWITCH_CLIENT_SECRET',
+        'TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME', // ADDED - New required secret name
         // GEMINI_MODEL_ID has a default, so not strictly required here
     ];
 
@@ -30,21 +31,14 @@ function loadConfig() {
         );
     }
 
-    // Validate OAuth token format
-    if (!process.env.TWITCH_BOT_OAUTH_TOKEN?.startsWith('oauth:')) {
-        console.warn(
-            'TWITCH_BOT_OAUTH_TOKEN does not seem to start with "oauth:", ensure it is formatted correctly.'
-        );
-        // Note: We allow proceeding but warn, as twitchtokengenerator sometimes omits it initially.
-        // The `tmi.js` library might handle it, but correct format is preferred.
-    }
+    // REMOVED OAuth token validation - No longer loaded directly
 
 
     const config = {
         // Twitch Bot Account
         twitch: {
             username: process.env.TWITCH_BOT_USERNAME,
-            oauthToken: process.env.TWITCH_BOT_OAUTH_TOKEN,
+            // oauthToken: process.env.TWITCH_BOT_OAUTH_TOKEN, // REMOVED
             // Split channels string into an array, trim whitespace, and filter empty strings
             channels: process.env.TWITCH_CHANNELS
                 .split(',')
@@ -67,6 +61,12 @@ function loadConfig() {
             prettyLog: process.env.PINO_PRETTY_LOGGING === 'true',
             nodeEnv: process.env.NODE_ENV || 'development',
         },
+
+        // Secret Manager Configuration
+        secrets: {
+            twitchBotRefreshTokenName: process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME,
+            // Add other secret names here if needed later
+        }
     };
 
     // Validate interval is a positive number

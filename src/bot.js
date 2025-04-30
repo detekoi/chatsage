@@ -1,6 +1,8 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
 import http from 'http';
+// Import Secret Manager initializer
+import { initializeSecretManager } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
@@ -54,11 +56,17 @@ async function gracefulShutdown(signal) {
     clearMessageQueue();
     logger.info('Message queue cleared.');
     
-    // Disconnect from Twitch IRC
-    const client = ircClient || getIrcClient();
-    if (client && client.readyState() === 'OPEN') {
+    // Disconnect from Twitch IRC - get clientInstance safely
+    let clientInstance = null;
+    try {
+        clientInstance = ircClient || getIrcClient(); // Try to get existing client instance
+    } catch (e) {
+        logger.warn('IRC client not initialized, skipping disconnect.');
+    }
+
+    if (clientInstance && clientInstance.readyState() === 'OPEN') {
         shutdownTasks.push(
-            client.disconnect().then(() => {
+            clientInstance.disconnect().then(() => {
                 logger.info('Disconnected from Twitch IRC.');
             }).catch(err => {
                 logger.error({ err }, 'Error during IRC disconnect.');
@@ -88,7 +96,13 @@ async function main() {
         logger.info(`Starting StreamSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
-        // --- Initialize Core Components ---
+        // --- Initialize Core Components (Order matters) ---
+        
+        // 1. Initialize Secret Manager FIRST
+        logger.info('Initializing Secret Manager...');
+        initializeSecretManager(); // Initialize the client
+
+        // 2. Other initializations that might need secrets
         logger.info('Initializing Firebase Storage...');
         await initializeStorage();
 
@@ -117,9 +131,9 @@ async function main() {
         // Get gemini client instance early if needed, or get inside async IIFE
         // const geminiClient = getGeminiClient();
 
-        // --- Create IRC Client Instance ---
-        logger.info('Creating Twitch IRC Client instance...');
-        ircClient = createIrcClient(config.twitch);
+        // --- Create IRC Client Instance (now asynchronous) ---
+        logger.info('Creating Twitch IRC Client instance (will fetch token)...');
+        ircClient = await createIrcClient(config.twitch);
 
         // --- Setup IRC Event Listeners BEFORE Connecting ---
         logger.debug('Attaching IRC event listeners...');

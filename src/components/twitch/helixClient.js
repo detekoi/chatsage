@@ -1,7 +1,7 @@
 import axios from 'axios';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
-import { getAppAccessToken } from './auth.js'; // Import the token getter
+import { getAppAccessToken, clearCachedAppAccessToken } from './auth.js'; // Import both functions
 
 const TWITCH_HELIX_URL = 'https://api.twitch.tv/helix';
 
@@ -96,9 +96,9 @@ async function initializeHelixClient() {
 
                 // Specific handling/logging based on status code can be added here
                  if (error.response.status === 401) {
-                    // Unauthorized - token might be invalid. Our auth module handles fetching
-                    // a new one on the *next* call, but we log this occurrence.
-                    logger.warn('Received 401 Unauthorized from Helix. Token may need refresh.');
+                    // Unauthorized - token might be invalid. Clear the cached token and log this occurrence.
+                    logger.warn('Received 401 Unauthorized from Helix. Clearing cached App Access Token.');
+                    clearCachedAppAccessToken();
                  } else if (error.response.status === 429) {
                     // Rate limit exceeded
                     const resetTime = error.response.headers['ratelimit-reset'];
