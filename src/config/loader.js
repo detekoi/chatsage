@@ -14,12 +14,10 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 function loadConfig() {
     const requiredEnvVars = [
         'TWITCH_BOT_USERNAME',
-        // 'TWITCH_BOT_OAUTH_TOKEN', // REMOVED - No longer directly needed from env
-        'TWITCH_CHANNELS',
         'GEMINI_API_KEY',
         'TWITCH_CLIENT_ID',
         'TWITCH_CLIENT_SECRET',
-        'TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME', // ADDED - New required secret name
+        'TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME',
         // GEMINI_MODEL_ID has a default, so not strictly required here
     ];
 
@@ -30,6 +28,10 @@ function loadConfig() {
             `Missing required environment variables: ${missingEnvVars.join(', ')}`
         );
     }
+    // Ensure at least one channel source is provided
+    if (!('TWITCH_CHANNELS' in process.env) && !('TWITCH_CHANNELS_SECRET_NAME' in process.env)) {
+        throw new Error('Missing channel configuration: set TWITCH_CHANNELS or TWITCH_CHANNELS_SECRET_NAME');
+    }
 
     // REMOVED OAuth token validation - No longer loaded directly
 
@@ -38,12 +40,10 @@ function loadConfig() {
         // Twitch Bot Account
         twitch: {
             username: process.env.TWITCH_BOT_USERNAME,
-            // oauthToken: process.env.TWITCH_BOT_OAUTH_TOKEN, // REMOVED
-            // Split channels string into an array, trim whitespace, and filter empty strings
+            // Channels list: can be provided via TWITCH_CHANNELS env for local dev
             channels: process.env.TWITCH_CHANNELS
-                .split(',')
-                .map(ch => ch.trim())
-                .filter(ch => ch.length > 0),
+                ? process.env.TWITCH_CHANNELS.split(',').map(ch => ch.trim()).filter(ch => ch)
+                : [],
             clientId: process.env.TWITCH_CLIENT_ID,
             clientSecret: process.env.TWITCH_CLIENT_SECRET,
         },
@@ -65,7 +65,8 @@ function loadConfig() {
         // Secret Manager Configuration
         secrets: {
             twitchBotRefreshTokenName: process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME,
-            // Add other secret names here if needed later
+            // Optional: resource name for channels list in Secret Manager
+            twitchChannelsSecretName: process.env.TWITCH_CHANNELS_SECRET_NAME || null,
         }
     };
 
@@ -75,10 +76,10 @@ function loadConfig() {
          config.app.streamInfoFetchIntervalMs = 120 * 1000;
     }
 
-    // Basic check for channel list
-    if (config.twitch.channels.length === 0) {
-         throw new Error('TWITCH_CHANNELS environment variable is empty or invalid.');
-    }
+    // REMOVED - Channel validation since channels will be populated later
+    // if (config.twitch.channels.length === 0) {
+    //     throw new Error('TWITCH_CHANNELS environment variable is empty or invalid.');
+    // }
 
 
     return config;

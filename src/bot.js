@@ -1,8 +1,8 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
 import http from 'http';
-// Import Secret Manager initializer
-import { initializeSecretManager } from './lib/secretManager.js';
+// Import Secret Manager initializer and getSecretValue
+import { initializeSecretManager, getSecretValue } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
@@ -30,7 +30,7 @@ function isPrivilegedUser(tags, channelName) {
  * Gracefully shuts down the application.
  */
 async function gracefulShutdown(signal) {
-    logger.info(`Received ${signal}. Shutting down StreamSage gracefully...`);
+    logger.info(`Received ${signal}. Shutting down ChatSage gracefully...`);
     
     const shutdownTasks = [];
     
@@ -83,7 +83,7 @@ async function gracefulShutdown(signal) {
         process.exit(1);
     }, 5000);
     
-    logger.info('StreamSage shutdown complete.');
+    logger.info('ChatSage shutdown complete.');
     clearTimeout(forceExitTimeout);
     process.exit(0);
 }
@@ -93,16 +93,42 @@ async function gracefulShutdown(signal) {
  */
 async function main() {
     try {
-        logger.info(`Starting StreamSage v${process.env.npm_package_version || '1.0.0'}...`);
+        logger.info(`Starting ChatSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
         // --- Initialize Core Components (Order matters) ---
         
         // 1. Initialize Secret Manager FIRST
         logger.info('Initializing Secret Manager...');
-        initializeSecretManager(); // Initialize the client
+        initializeSecretManager();
 
-        // 2. Other initializations that might need secrets
+        // 2. Load Twitch channels from environment or Secret Manager
+        if (process.env.TWITCH_CHANNELS) {
+            logger.info('Loading Twitch channels from TWITCH_CHANNELS environment variable...');
+            config.twitch.channels = process.env.TWITCH_CHANNELS
+                .split(',')
+                .map(ch => ch.trim())
+                .filter(ch => ch);
+            logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
+        } else if (config.secrets.twitchChannelsSecretName) {
+            logger.info('Loading Twitch channels from Secret Manager...');
+            const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
+            if (channelsString) {
+                config.twitch.channels = channelsString
+                    .split(',')
+                    .map(ch => ch.trim())
+                    .filter(ch => ch);
+                logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
+            } else {
+                logger.error('Failed to load Twitch channels from Secret Manager.');
+                process.exit(1);
+            }
+        } else {
+            logger.error('No channel configuration found. Set TWITCH_CHANNELS or TWITCH_CHANNELS_SECRET_NAME.');
+            process.exit(1);
+        }
+
+        // 3. Other initializations that might need secrets
         logger.info('Initializing Firebase Storage...');
         await initializeStorage();
 
@@ -351,11 +377,11 @@ async function main() {
         });
 
         // --- Post-Connection Logging ---
-        logger.info('StreamSage components initialized and event listeners attached.');
+        logger.info('ChatSage components initialized and event listeners attached.');
         logger.info(`Ready and listening to channels: ${config.twitch.channels.join(', ')}`);
 
     } catch (error) {
-        logger.fatal({ err: error }, 'Fatal error during StreamSage initialization.');
+        logger.fatal({ err: error }, 'Fatal error during ChatSage initialization.');
         process.exit(1);
     }
 }
