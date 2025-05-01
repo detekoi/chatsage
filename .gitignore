@@ -39,6 +39,9 @@ Thumbs.db
 # Optional npm cache directory
 .npm
 
+# Python virtual environment
+.venv/
+
 # Optional Yarn cache directory
 .yarn/cache
 .yarn/unplugged
