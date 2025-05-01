@@ -72,8 +72,8 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 ChatSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
 
 *   `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
-*   `TWITCH_CHANNELS`: (Optional) Comma-separated list of channels to join for local development. If set, these channels will be used instead of loading from Secret Manager.
-*   `TWITCH_CHANNELS_SECRET_NAME`: (Optional) Resource name for the channels list in Google Secret Manager (e.g., `projects/YOUR_PROJECT_ID/secrets/twitch-channels/versions/latest`). Required in production if `TWITCH_CHANNELS` is not set.
+*   `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used for local development.
+*   `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager (e.g., `projects/YOUR_PROJECT_ID/secrets/twitch-channels/versions/latest`). Used in production.
 *   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
 *   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
