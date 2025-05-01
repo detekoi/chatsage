@@ -1,6 +1,21 @@
 # ChatSage
 
+[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
+
 ChatSage is an AI-powered chatbot designed for Twitch chat environments. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
+
+## Table of Contents
+
+- [Features (Core Capabilities)](#features-core-capabilities)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Running the Bot](#running-the-bot)
+- [Configuration](#configuration)
+- [Twitch Token Management](#twitch-token-management)
+- [Docker](#docker)
+- [Usage Examples](#usage-examples)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features (Core Capabilities)
 
@@ -109,7 +124,18 @@ A `Dockerfile` is provided for building a container image of the application.
     ```
     *(Ensure your `.env` file is populated correctly)*
 
+## Usage Examples
 
-## License
+### Chat Commands
 
-This project is licensed under the BSD 2-Clause License. See the [LICENSE.md](LICENSE.md) file for details.
+For a complete list of available commands and their usage, please visit [Bot Commands Documentation](https://detekoi.github.io/botcommands.html).
+
+### Sample Log Output
+
+```bash
+$ npm run dev
+[INFO] Pretty logging enabled for development.
+[INFO] Connected to channels: #channel1, #channel2
+[INFO] Chat | user123: !help
+[INFO] Response | Provided commands list to user123
+```
