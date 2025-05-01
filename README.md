@@ -1,6 +1,6 @@
-# StreamSage
+# ChatSage
 
-StreamSage is an AI-powered chatbot designed for Twitch chat environments. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
+ChatSage is an AI-powered chatbot designed for Twitch chat environments. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
 
 ## Features (Core Capabilities)
 
@@ -54,7 +54,7 @@ StreamSage is an AI-powered chatbot designed for Twitch chat environments. It pr
 
 ## Configuration
 
-StreamSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
+ChatSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
 
 *   `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
 *   `TWITCH_CHANNELS`: Comma-separated list of channels to join.
@@ -68,7 +68,7 @@ Ensure all required variables are set in your environment or `.env` file before 
 
 ## Twitch Token Management
 
-StreamSage uses a secure token refresh mechanism to maintain authentication with Twitch:
+ChatSage uses a secure token refresh mechanism to maintain authentication with Twitch:
 
 1. **Initial Setup**:
    - Go to [Twitch Token Generator](https://twitchtokengenerator.com)
@@ -86,7 +86,7 @@ StreamSage uses a secure token refresh mechanism to maintain authentication with
    - Ensure the service account running your application has the "Secret Manager Secret Accessor" role
 
 3. **Authentication Flow**:
-   - On startup, StreamSage will fetch the refresh token from Secret Manager
+   - On startup, ChatSage will fetch the refresh token from Secret Manager
    - It will use this refresh token to obtain a fresh access token from Twitch
    - If the access token expires, it will be automatically refreshed
    - If the refresh token itself becomes invalid, the application will log an error requiring manual intervention
