@@ -21,8 +21,8 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/streamsage.git
-    cd streamsage
+    git clone https://github.com/your-username/chatsage.git
+    cd chatsage
     ```
 
 2.  **Install dependencies:**
@@ -99,19 +99,16 @@ A `Dockerfile` is provided for building a container image of the application.
 
 1.  **Build the image:**
     ```bash
-    docker build -t streamsage:latest .
+    docker build -t chatsage:latest .
     ```
 
 2.  **Run the container:**
     You need to pass the environment variables to the container. One way is using an environment file:
     ```bash
-    docker run --rm --env-file ./.env -it streamsage:latest
+    docker run --rm --env-file ./.env -it chatsage:latest
     ```
     *(Ensure your `.env` file is populated correctly)*
 
-## Contributing
-
-Contributions are welcome. Please open an issue or submit a pull request.
 
 ## License
 

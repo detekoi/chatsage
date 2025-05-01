@@ -1,4 +1,4 @@
-name: Deploy StreamSage to Cloud Run
+name: Deploy ChatSage to Cloud Run
 on: push
 
 env:

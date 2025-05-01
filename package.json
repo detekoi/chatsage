@@ -1,5 +1,5 @@
 {
-    "name": "streamsage",
+    "name": "chatsage",
     "version": "1.0.0",
     "description": "An AI-powered chatbot for Twitch chat, providing contextually relevant responses.",
     "main": "src/bot.js",
@@ -16,7 +16,7 @@
         "ai",
         "llm",
         "gemini",
-        "streamsage"
+        "chatsage"
     ],
     "author": "Henry Manes",
     "license": "BSD-2-Clause",

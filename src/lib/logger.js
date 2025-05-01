@@ -48,7 +48,7 @@ const jsonOptions = {
   base: {
     pid: process.pid,
     // hostname: pino.stdTimeFunctions.hostname(), // Optional: can make logs verbose
-    serviceContext: { service: 'streamsage' } // Useful for GCP Error Reporting/Logging grouping
+    serviceContext: { service: 'chatsage' } // Useful for GCP Error Reporting/Logging grouping
   },
 };
 
