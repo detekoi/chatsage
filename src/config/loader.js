@@ -1,12 +1,19 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'fs'; // Import fs to check if file exists
 
-// Load .env file if it exists in the project root
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// Go up two levels from src/config to the project root
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Assume the process runs from the project root (where package.json is)
+const projectRoot = process.cwd();
+const envPath = path.resolve(projectRoot, '.env');
+
+// Check if the .env file actually exists at that path before trying to load it
+if (fs.existsSync(envPath)) {
+  console.log(`[ConfigLoader] Loading .env file from: ${envPath}`); // Optional: for debugging
+  dotenv.config({ path: envPath });
+} else {
+  // Optional: Log if not found, relying on environment variables instead
+  // console.warn(`[ConfigLoader] .env file not found at ${envPath}. Relying on system environment variables.`);
+}
 
 /**
  * Loads, validates, and exports application configuration.

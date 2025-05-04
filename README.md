@@ -14,8 +14,6 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 - [Twitch Token Management](#twitch-token-management)
 - [Docker](#docker)
 - [Usage Examples](#usage-examples)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Features (Core Capabilities)
 

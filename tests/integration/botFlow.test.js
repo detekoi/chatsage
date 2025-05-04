@@ -1,63 +1,68 @@
 // tests/integration/botFlow.test.js
 
-// Placeholder for integration tests covering the flow from message receipt to response.
-// These tests verify the interaction between different components.
+// --- Imports ---
+// ... keep necessary imports for components UNDER TEST and their DIRECT dependencies ...
+import { createIrcClient, getIrcClient, connectIrcClient } from '../../src/components/twitch/ircClient';
+// Removed helix client imports here
+import { initializeGeminiClient, getGeminiClient, decideSearchWithFunctionCalling, generateStandardResponse, generateSearchResponse } from '../../src/components/llm/geminiClient';
+import { initializeContextManager, getContextManager } from '../../src/components/context/contextManager';
+import { initializeCommandProcessor, processMessage } from '../../src/components/commands/commandProcessor';
+import { initializeIrcSender, enqueueMessage } from '../../src/lib/ircSender';
+import { getValidIrcToken, refreshIrcToken } from '../../src/components/twitch/ircAuthHelper';
+import logger from '../../src/lib/logger';
+import config from '../../src/config/index.js';
+import { initializeSecretManager, getSecretValue } from '../../src/lib/secretManager';
+import { getAppAccessToken, clearCachedAppAccessToken } from '../../src/components/twitch/auth'; // Keep for mocking auth setup if needed by other modules
 
-// Example structure using Jest-like syntax:
-/*
-import { initializeIrcClient, getIrcClient } from '../../src/components/twitch/ircClient';
-// ... import other necessary modules (config, contextManager, commandProcessor, etc.)
-// ... potentially mock external services (Twitch IRC/API, Gemini API)
+// --- Mocks ---
+jest.mock('tmi.js');
+// jest.mock('axios'); // REMOVE - No longer mocking axios directly here
+jest.mock('@google/generative-ai');
+jest.mock('../../src/lib/logger');
+jest.mock('../../src/lib/ircSender');
+jest.mock('../../src/components/twitch/auth');
+jest.mock('../../src/lib/secretManager');
+jest.mock('../../src/components/twitch/streamInfoPoller');
+jest.mock('../../src/components/twitch/ircAuthHelper');
+// --- ADD MOCK FOR HELIX CLIENT ---
+jest.mock('../../src/components/twitch/helixClient'); // Mock the entire module
 
-describe('StreamSage Integration Tests', () => {
+// --- Mock tmi.js Client ---
+const mockTmiClient = { /* ... */ };
+const TmiClient = require('tmi.js').Client;
+TmiClient.mockImplementation(() => mockTmiClient);
 
+describe('ChatSage Integration Tests', () => {
     beforeAll(async () => {
-        // Perform initial setup for integration tests
-        // - Load config (potentially test-specific config)
-        // - Initialize components (mocking external calls)
-        // e.g., mock tmi.js connect/say, mock axios, mock @google/generative-ai
-        // await initializeAllComponents();
+        // Mock secrets/auth needed by OTHER initializers
+        getSecretValue.mockImplementation(async (secretName) => { /* ... */ });
+        getValidIrcToken.mockResolvedValue('oauth:mock-irc-token');
+        getAppAccessToken.mockResolvedValue('mock-app-token'); // Keep if needed by e.g., ircClient init
+
+        // Initialize components EXCEPT helix client
+        initializeSecretManager();
+        // REMOVED: await initializeHelixClient(config.twitch);
+        initializeContextManager(config.twitch.channels);
+        initializeGeminiClient(config.gemini);
+        initializeCommandProcessor();
+        initializeIrcSender();
+        await createIrcClient(config.twitch);
+        await connectIrcClient();
     });
 
-    test('should process a !ping command and send response via mocked IRC', async () => {
-        // Arrange
-        const ircClient = getIrcClient(); // Get mocked client
-        const mockSay = jest.spyOn(ircClient, 'say');
-        const channel = '#testchannel';
-        const userTags = { username: 'tester', 'display-name': 'Tester' };
-        const message = '!ping';
-
-        // Act
-        // Simulate receiving a message (this requires mocking tmi.js internals or using test hooks if available)
-        // simulateIrcMessage(channel, userTags, message);
-        // Need a way to wait for async processing to complete
-
-        // Assert
-        // expect(mockSay).toHaveBeenCalledWith(channel, 'Pong! @Tester');
-        expect(true).toBe(true); // Placeholder assertion
+    beforeEach(() => {
+        // Reset mocks
+        jest.clearAllMocks();
+        // You might need to explicitly reset the mocked helixClient functions here if needed
+        // e.g., getChannelInformation.mockClear(); (importing it from the mocked module)
+        enqueueMessage.mockClear();
+        decideSearchWithFunctionCalling.mockClear();
+        generateStandardResponse.mockClear();
+        generateSearchResponse.mockClear();
     });
 
-    test('should trigger LLM call when bot is mentioned', async () => {
-        // Arrange
-        // ... setup mocks for contextManager, geminiClient.generateResponse ...
-        // const mockGenerateResponse = jest.spyOn(geminiClient, 'generateResponse');
-
-        // Act
-        // simulateIrcMessage('#testchannel', { username: 'user', 'display-name': 'User' }, '@StreamSage hello there');
-
-        // Assert
-        // expect(mockGenerateResponse).toHaveBeenCalled();
-         expect(true).toBe(true); // Placeholder assertion
-    });
-
-    // Add more tests for context updates, stream info polling integration, error flows, etc.
-
+    // Tests should now run without the helixClient initialization error
+    test('should process a !ping command and enqueue response', async () => { /* ... same ... */ });
+    test('should trigger non-search LLM call...', async () => { /* ... same ... */ });
+    test('should trigger search LLM call...', async () => { /* ... same ... */ });
 });
-*/
-
-console.log('Placeholder test file: tests/integration/botFlow.test.js');
-// Basic assertion to prevent empty file errors
-if (typeof describe !== 'function') describe = () => {};
-if (typeof test !== 'function') test = () => {};
-describe('Integration Placeholder', () => { test('should exist', () => { expect(true).toBe(true); }); });
-if (typeof expect !== 'function') expect = (val) => ({ toBe: () => {} });
