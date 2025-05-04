@@ -46,16 +46,19 @@ export function formatClueMessage(clueNumber, clueText) {
  * Formats the message for a correct guess.
  * @param {string} displayName
  * @param {string} locationName
- * @param {number} [timeTakenMs]
+ * @param {number|null} [timeTakenMs]
+ * @param {string} [streakInfo=''] - Formatted streak info (e.g., " 🔥x3")
+ * @param {string} [pointsInfo=''] - Formatted points info (e.g., " (+25 pts)")
  * @returns {string}
  */
-export function formatCorrectGuessMessage(displayName, locationName, timeTakenMs = null) {
+export function formatCorrectGuessMessage(displayName, locationName, timeTakenMs = null, streakInfo = '', pointsInfo = '') {
     let timeMsg = '';
     if (typeof timeTakenMs === 'number' && timeTakenMs > 0) {
         const seconds = Math.round(timeTakenMs / 1000);
         timeMsg = ` in ${seconds}s`;
     }
-    return `✅ Congrats @${displayName}! You correctly guessed: ${locationName}${timeMsg}!`;
+    // Include streak and points info
+    return `✅ Congrats @${displayName}! You guessed: ${locationName}${timeMsg}${streakInfo}${pointsInfo}!`;
 }
 
 /**
@@ -92,7 +95,7 @@ export function formatRevealMessage(locationName, revealText) {
 
 /**
  * Formats the game session scores message.
- * @param {Map<string, { displayName: string; score: number }>} gameSessionScores - Map of username -> { displayName, score }.
+ * @param {Map<string, { displayName: string; score: number }>} gameSessionScores - Map of username -> { displayName, score (points) }.
  * @returns {string} Formatted score message, or empty string if no scores.
  */
 export function formatGameSessionScoresMessage(gameSessionScores) {
@@ -103,17 +106,17 @@ export function formatGameSessionScoresMessage(gameSessionScores) {
     // Convert map to array, sort by score descending
     const sortedScores = Array.from(gameSessionScores.entries()).sort(([, a], [, b]) => b.score - a.score);
 
-    // Format top N players (e.g., top 3 or 5)
+    // Format top N players (e.g., top 5)
     const topN = 5;
     const listItems = sortedScores.slice(0, topN).map(([username, data], index) => {
         const rank = index + 1;
         const name = data.displayName || username;
-        const score = data.score;
-        return `${rank}. ${name} (${score} points)`;
+        const score = data.score; // score now represents points
+        return `${rank}. ${name} (${score} pts)`; // Label as 'pts'
     });
 
     if (listItems.length === 0) {
-         return "No scores recorded for this session."; // Should ideally not happen if size > 0, but safety check
+         return "No scores recorded for this session.";
     }
 
     return `Top Players: ${listItems.join(', ')}`;

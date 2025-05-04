@@ -13,6 +13,11 @@ interface GameConfig {
     clueIntervalSeconds: number; // 30-300
     roundDurationMinutes: number; // 5-15
     scoreTracking: boolean;
+    // Scoring Additions
+    pointsBase?: number; // Base points for a correct guess
+    pointsTimeBonus?: boolean; // Whether to give bonus points for fast answers
+    pointsDifficultyMultiplier?: boolean; // Whether to multiply points by difficulty
+    // --- End Scoring Additions ---
     // Real World Mode specific
     regionRestrictions?: string[]; // Continents, countries
     // Video Game Mode specific
@@ -53,6 +58,9 @@ interface GameState {
     currentRound: number; // Current round number (1-based)
     gameSessionScores: Map<string, { displayName: string; score: number }>; // username -> { displayName, score } for the current multi-round game
     gameSessionExcludedLocations: Set<string>; // Locations used in the current multi-round session
+
+    // --- NEW FIELDS ---
+    streakMap: Map<string, number>; // username -> consecutive correct guesses
 }
 */
 
@@ -62,6 +70,11 @@ const DEFAULT_CONFIG = {
     clueIntervalSeconds: 60,
     roundDurationMinutes: 5,
     scoreTracking: true,
+    // Scoring defaults
+    pointsBase: 15,
+    pointsTimeBonus: true,
+    pointsDifficultyMultiplier: true,
+    // --- End Scoring defaults ---
     regionRestrictions: [],
     gameTitlePreferences: [],
 };
@@ -84,44 +97,37 @@ async function _getOrCreateGameState(channelName) {
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to load channel config from storage, using defaults.");
         }
-        if (!loadedConfig) {
-            logger.info(`[GeoGame][${channelName}] No saved config found, using default.`);
-            loadedConfig = { ...DEFAULT_CONFIG };
-            try {
-                await saveChannelConfig(channelName, loadedConfig);
-            } catch (error) {
-                logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to save default config to storage.");
-            }
-        } else {
-            logger.info(`[GeoGame][${channelName}] Loaded saved config.`);
-            loadedConfig = { ...DEFAULT_CONFIG, ...loadedConfig };
-        }
+        const finalConfig = { ...DEFAULT_CONFIG, ...(loadedConfig || {}) };
         activeGames.set(channelName, {
             channelName,
-            mode: 'real', // Default mode
+            mode: 'real',
             state: 'idle',
             targetLocation: null,
             gameTitleScope: null,
-            sessionRegionScope: null, // Initialize new field
-            startTime: null, // Start time of the *current round*
+            sessionRegionScope: null,
+            startTime: null,
             clues: [],
             currentClueIndex: -1,
             nextClueTimer: null,
             roundEndTimer: null,
             guesses: [],
-            winner: null, // Winner of the *current round*
+            winner: null,
             initiatorUsername: null,
-            config: loadedConfig,
+            config: finalConfig,
             lastMessageTimestamp: 0,
             incorrectGuessReasons: [],
-            // --- INITIALIZE NEW FIELD ---
-            lastPlayedLocation: null, // Initialize as null
-            // Multi-Round Fields
+            lastPlayedLocation: null,
+            streakMap: new Map(),
             totalRounds: 1,
             currentRound: 1,
             gameSessionScores: new Map(),
             gameSessionExcludedLocations: new Set(),
         });
+    } else {
+        const state = activeGames.get(channelName);
+        if (!state.streakMap) state.streakMap = new Map();
+        if (state.lastPlayedLocation === undefined) state.lastPlayedLocation = null;
+        state.config = { ...DEFAULT_CONFIG, ...state.config };
     }
     return activeGames.get(channelName);
 }
@@ -137,26 +143,21 @@ function _clearTimers(gameState) {
 async function _resetGameToIdle(gameState) {
     logger.info(`[GeoGame][${gameState.channelName}] Resetting game state fully to idle.`);
     _clearTimers(gameState);
-    const config = gameState.config; // Preserve config
-    // Use _getOrCreateGameState to get a fresh structure, then overwrite with persisted config
-    const newState = await _getOrCreateGameState(gameState.channelName); // Gets initial structure & sets it in map
-    newState.config = config; // Restore preserved config
-    newState.state = 'idle'; // Ensure it's explicitly idle
-    // Explicitly clear game-specific data
+    const config = gameState.config;
+    const newState = await _getOrCreateGameState(gameState.channelName);
+    newState.config = config;
+    newState.state = 'idle';
     newState.targetLocation = null;
-    newState.gameTitleScope = null; // Clear game scope
-    newState.sessionRegionScope = null; // Clear session region scope
+    newState.gameTitleScope = null;
+    newState.sessionRegionScope = null;
     newState.startTime = null;
     newState.clues = [];
     newState.currentClueIndex = -1;
     newState.guesses = [];
-    newState.winner = null; // Clear round winner
+    newState.winner = null;
     newState.incorrectGuessReasons = [];
-    newState.initiatorUsername = null; // Clear initiator for the next game
-    // --- DO NOT CLEAR lastPlayedLocation here ---
-    // Keep it so it can be reported after the game ends
-    // newState.lastPlayedLocation = null;
-    // Reset multi-round fields
+    newState.initiatorUsername = null;
+    newState.streakMap = new Map();
     newState.totalRounds = 1;
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
@@ -164,113 +165,114 @@ async function _resetGameToIdle(gameState) {
 }
 
 async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = null) {
-    // --- ADD THIS AT THE BEGINNING of the function ---
-    // Store the location before potentially clearing it
     if (gameState.targetLocation?.name) {
         gameState.lastPlayedLocation = gameState.targetLocation.name;
         logger.debug(`[GeoGame][${gameState.channelName}] Storing last played location: ${gameState.lastPlayedLocation}`);
     }
-    // --- END ADDITION ---
-
     _clearTimers(gameState);
-
-    // If already ending/idle, do nothing further to prevent loops/errors
     if (gameState.state === 'ending' || gameState.state === 'idle') {
         logger.warn(`[GeoGame][${gameState.channelName}] Game state is already '${gameState.state}'. Ignoring transition request (Reason: ${reason}).`);
         return;
     }
-
-    const previousState = gameState.state; // Record previous state for logic
-    gameState.state = 'ending'; // Set state to ending to prevent other actions
+    const previousState = gameState.state;
+    gameState.state = 'ending';
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound}/${gameState.totalRounds} ending. Reason: ${reason}`);
-
     const isMultiRound = gameState.totalRounds > 1;
     const isLastRound = gameState.currentRound === gameState.totalRounds;
-
-    // --- 1. Handle Scoring (Both Session and Persistent) ---
+    let points = 0;
     if (reason === "guessed" && gameState.winner?.username) {
         const winnerUsername = gameState.winner.username;
         const winnerDisplayName = gameState.winner.displayName;
-
-        // a) Update Multi-Round Session Score
+        points = _calculatePoints(gameState, timeTakenMs || 0);
+        logger.info(`[GeoGame][${gameState.channelName}] Awarding ${points} points to ${winnerUsername} for round ${gameState.currentRound}.`);
+        const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
+        gameState.streakMap.set(winnerUsername, currentStreak + 1);
+        logger.debug(`[GeoGame][${gameState.channelName}] Updated streak for ${winnerUsername} to ${currentStreak + 1}`);
         if (isMultiRound) {
             const currentSessionScore = gameState.gameSessionScores.get(winnerUsername)?.score || 0;
             gameState.gameSessionScores.set(winnerUsername, {
                 displayName: winnerDisplayName,
-                score: currentSessionScore + 1
+                score: currentSessionScore + points
             });
-            logger.debug(`[GeoGame][${gameState.channelName}] Updated session score for ${winnerUsername}: ${currentSessionScore + 1}`);
+            logger.debug(`[GeoGame][${gameState.channelName}] Updated session score for ${winnerUsername}: ${currentSessionScore + points}`);
         }
-
-        // b) Update Persistent Score (if enabled)
         if (gameState.config.scoreTracking) {
             try {
-                logger.debug(`[GeoGame][${gameState.channelName}] Calling updatePlayerScore for ${winnerUsername}.`);
-                await updatePlayerScore(winnerUsername, gameState.channelName, 1, winnerDisplayName);
+                logger.debug(`[GeoGame][${gameState.channelName}] Calling updatePlayerScore for ${winnerUsername} with ${points} points.`);
+                await updatePlayerScore(winnerUsername, gameState.channelName, points, winnerDisplayName);
                 logger.debug(`[GeoGame][${gameState.channelName}] Successfully awaited updatePlayerScore for ${winnerUsername}.`);
-            } catch(scoreError) {
-                logger.error({ err: scoreError }, `[GeoGame][${gameState.channelName}] Error explicitly caught from updatePlayerScore call.`);
-                // Continue to record history even if score update fails
+            } catch (scoreError) {
+                logger.error({ err: scoreError }, `[GeoGame][${gameState.channelName}] Error caught from updatePlayerScore call.`);
             }
         }
+    } else {
+        if (gameState.streakMap && gameState.streakMap.size > 0) {
+            logger.debug(`[GeoGame][${gameState.channelName}] Resetting streaks due to round end reason: ${reason}`);
+            gameState.streakMap.clear();
+        }
     }
-
-    // --- 2. Generate and Send Round Reveal Message ---
     let revealText = null;
     let roundEndMessage = "";
-
     if (!gameState.targetLocation?.name) {
         logger.error(`[GeoGame][${gameState.channelName}] Cannot generate round reveal: targetLocation is missing.`);
         roundEndMessage = "An error occurred, and the round's location couldn't be revealed.";
     } else {
         try {
             revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason);
-            logger.debug(`[GeoGame][${gameState.channelName}] Round reveal text generated: ${revealText?.substring(0, 50)}...`);
-
             let baseMessageContent = "";
             const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
-
             if (reason === "guessed" && gameState.winner) {
                 const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
                 const timeString = seconds !== null ? ` in ${seconds}s` : '';
-                baseMessageContent = `${roundPrefix}✅ @${gameState.winner.displayName} guessed: ${gameState.targetLocation.name}${timeString}! ${revealText || '(Summary unavailable)'}`;
+                const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
+                const streakInfo = currentStreak > 1 ? ` 🔥x${currentStreak}` : '';
+                const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
+                baseMessageContent = formatCorrectGuessMessage(
+                    gameState.winner.displayName,
+                    gameState.targetLocation.name,
+                    timeTakenMs,
+                    streakInfo,
+                    pointsInfo
+                );
+                baseMessageContent = `${roundPrefix}${baseMessageContent} ${revealText || '(Summary unavailable)'}`;
             } else if (reason === "timeout") {
-                baseMessageContent = `${roundPrefix}⏱️ ${revealText || `Time's up! The location was ${gameState.targetLocation.name}. (Summary unavailable)`}`;
+                baseMessageContent = `${roundPrefix}${formatTimeoutMessage(gameState.targetLocation.name)} ${revealText || '(Summary unavailable)'}`;
             } else if (reason === "stopped") {
-                baseMessageContent = `${roundPrefix}🛑 ${revealText || `Game stopped. The location was ${gameState.targetLocation.name}. (Summary unavailable)`}`;
-            } else { // timer_error or other unknown
-                 baseMessageContent = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! ${revealText || '(Summary unavailable)'}`;
+                baseMessageContent = `${roundPrefix}${formatStopMessage(gameState.targetLocation.name)} ${revealText || '(Summary unavailable)'}`;
+            } else {
+                baseMessageContent = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! ${revealText || '(Summary unavailable)'}`;
             }
-
             roundEndMessage = baseMessageContent;
-
-            // Summarize if necessary (same logic as before)
             if (roundEndMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-                 logger.info(`[GeoGame][${gameState.channelName}] Round end message too long (${roundEndMessage.length} chars). Attempting summarization.`);
-                 try {
-                    const summaryInput = revealText || baseMessageContent; // Prioritize reveal text for summary
+                logger.info(`[GeoGame][${gameState.channelName}] Round end message too long (${roundEndMessage.length} chars). Attempting summarization.`);
+                let prefix = "";
+                if (reason === "guessed" && gameState.winner) {
+                    const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
+                    const timeString = seconds !== null ? ` in ${seconds}s` : '';
+                    const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
+                    const streakInfo = currentStreak > 1 ? ` 🔥x${currentStreak}` : '';
+                    const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
+                    prefix = `${roundPrefix}✅ @${gameState.winner.displayName} guessed: ${gameState.targetLocation.name}${timeString}${streakInfo}${pointsInfo}! `;
+                } else if (reason === "timeout") {
+                    prefix = `${roundPrefix}⏱️ Time's up! The location was ${gameState.targetLocation.name}. `;
+                } else if (reason === "stopped") {
+                    prefix = `${roundPrefix}🛑 Game stopped. The location was ${gameState.targetLocation.name}. `;
+                } else {
+                    prefix = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! `;
+                }
+                try {
+                    const summaryInput = revealText || baseMessageContent;
                     const summary = await summarizeText(summaryInput, SUMMARY_TARGET_LENGTH);
-                     if (summary?.trim()) {
-                         const summaryText = summary.trim();
-                         if (reason === "guessed" && gameState.winner) {
-                            const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
-                            const timeString = seconds !== null ? ` in ${seconds}s` : '';
-                            roundEndMessage = `${roundPrefix}✅ @${gameState.winner.displayName} guessed: ${gameState.targetLocation.name}${timeString}! ${summaryText}`;
-                         } else if (reason === "timeout") {
-                            roundEndMessage = `${roundPrefix}⏱️ ${summaryText}`;
-                         } else if (reason === "stopped") {
-                            roundEndMessage = `${roundPrefix}🛑 ${summaryText}`;
-                         } else {
-                            roundEndMessage = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! ${summaryText}`;
-                         }
-                         logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${roundEndMessage.length} chars).`);
+                    if (summary?.trim()) {
+                        roundEndMessage = prefix + summary.trim();
+                        logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${roundEndMessage.length} chars).`);
                     } else {
-                         logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed. Falling back to original (potentially truncated by IRC).`);
-                         roundEndMessage = baseMessageContent; // Fallback
+                        logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed. Falling back to original (potentially truncated by IRC).`);
+                        roundEndMessage = baseMessageContent;
                     }
                 } catch (summaryError) {
-                     logger.error({ err: summaryError }, `[GeoGame][${gameState.channelName}] Error during summarization. Falling back to original.`);
-                     roundEndMessage = baseMessageContent; // Fallback
+                    logger.error({ err: summaryError }, `[GeoGame][${gameState.channelName}] Error during summarization. Falling back to original.`);
+                    roundEndMessage = baseMessageContent;
                 }
             }
         } catch (error) {
@@ -278,15 +280,9 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             roundEndMessage = `An error occurred revealing the answer for round ${gameState.currentRound}.`;
         }
     }
-
     enqueueMessage(`#${gameState.channelName}`, roundEndMessage || "The round has ended.");
     logger.debug(`[GeoGame][${gameState.channelName}] Round end message sent.`);
-
-    // --- 3. Record Game History (Always record each round) ---
-    // Determine if the reason for ending warrants recording the result
-    const validEndReasonForRecording = ['guessed', 'timeout', 'stopped'].includes(reason);
-
-    if (gameState.config.scoreTracking && gameState.targetLocation?.name && validEndReasonForRecording) {
+    if (gameState.config.scoreTracking && gameState.targetLocation?.name && ['guessed', 'timeout', 'stopped'].includes(reason)) {
         try {
             const gameDetails = {
                 channel: gameState.channelName,
@@ -302,37 +298,25 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 cluesGiven: gameState.clues.length,
                 roundNumber: gameState.currentRound,
                 totalRounds: gameState.totalRounds,
+                pointsAwarded: points,
             };
-            logger.debug(`[GeoGame][${gameState.channelName}] Calling recordGameResult for round ${gameState.currentRound}.`);
             await recordGameResult(gameDetails);
-            logger.debug(`[GeoGame][${gameState.channelName}] Successfully awaited recordGameResult call for round ${gameState.currentRound}.`);
         } catch (storageError) {
             logger.error({ err: storageError }, `[GeoGame][${gameState.channelName}] Error explicitly caught from recordGameResult call for round ${gameState.currentRound}.`);
         }
     } else {
-        // Log why recording was skipped, including all relevant conditions
-        logger.debug(`[GeoGame][${gameState.channelName}] Skipping recordGameResult call. Conditions: scoreTracking=${gameState.config.scoreTracking}, targetLocation=${!!gameState.targetLocation?.name}, reason=${reason}, validEndReason=${validEndReasonForRecording}`);
+        logger.debug(`[GeoGame][${gameState.channelName}] Skipping recordGameResult call. Conditions: scoreTracking=${gameState.config.scoreTracking}, targetLocation=${!!gameState.targetLocation?.name}, reason=${reason}, validEndReason=${['guessed', 'timeout', 'stopped'].includes(reason)}`);
     }
-
-    // --- 4. Determine Next Step (Next Round, Game Over, or Stop) ---
-    if (reason === "stopped" || reason === "timer_error") {
-        // Manual stop or critical timer error ends the whole game immediately
-        logger.info(`[GeoGame][${gameState.channelName}] Game session ended prematurely (stop/error). Reporting final scores if multi-round.`);
+    if (reason === "stopped" || reason === "timer_error" || reason === "location_error" || reason === "clue_error") {
+        logger.info(`[GeoGame][${gameState.channelName}] Game session ended prematurely (${reason}). Reporting final scores if multi-round.`);
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
-            // Report session scores if it was multi-round and scores exist
             const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Game stopped. Final Session Scores: ${sessionScoresMessage}`);
-        } else {
-            // Optionally send a message that the game was stopped before scores could be tallied if single round/no scores
+            enqueueMessage(`#${gameState.channelName}`, `🏁 Game ended. Final Session Scores: ${sessionScoresMessage}`);
         }
-        // Full reset after a delay
         setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
-
     } else if (isMultiRound && !isLastRound) {
-        // --- Start Next Round ---
         logger.info(`[GeoGame][${gameState.channelName}] Proceeding to round ${gameState.currentRound + 1}.`);
         gameState.currentRound++;
-        // Reset round-specific state *before* starting next round
         gameState.targetLocation = null;
         gameState.startTime = null;
         gameState.clues = [];
@@ -340,38 +324,27 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.guesses = [];
         gameState.winner = null;
         gameState.incorrectGuessReasons = [];
-        // Keep gameSessionScores, totalRounds, currentRound, gameSessionExcludedLocations
-
-        // Start next round after a delay
         setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
-
     } else {
-        // --- Game Over (Last Round Completed or Single Round Game) ---
         logger.info(`[GeoGame][${gameState.channelName}] Game session finished. Reporting final results.`);
-
-        // a) Report Session Scores (if multi-round)
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
             enqueueMessage(`#${gameState.channelName}`, `🏁 Final Session Scores: ${sessionScoresMessage}`);
-             await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay before leaderboard
+            await new Promise(resolve => setTimeout(resolve, 1000));
         } else if (isMultiRound) {
-             enqueueMessage(`#${gameState.channelName}`, `🏁 Game finished. No scores recorded in this session.`);
-             await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay
+            enqueueMessage(`#${gameState.channelName}`, `🏁 Game finished. No scores recorded in this session.`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
-
-        // b) Report Overall Channel Leaderboard (if score tracking enabled)
         if (gameState.config.scoreTracking) {
             try {
                 const leaderboardData = await getLeaderboard(gameState.channelName, 5);
-                // Need the formatter from geo.js - let's re-implement a simple version here or import if possible
-                // Re-implementing for simplicity now:
                 let leaderboardMessage = `🏆 Overall Top Players in #${gameState.channelName}: `;
                 if (!leaderboardData || leaderboardData.length === 0) {
                     leaderboardMessage += `No stats yet!`;
                 } else {
-                    const sortedData = leaderboardData.sort((a, b) => (b.data?.channelWins || 0) - (a.data?.channelWins || 0));
+                    const sortedData = leaderboardData.sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0));
                     const topPlayers = sortedData.slice(0, 5);
-                    leaderboardMessage += topPlayers.map((p, i) => `${i + 1}. ${p.data?.displayName || p.id} (${p.data?.channelWins || 0} wins)`).join(', ');
+                    leaderboardMessage += topPlayers.map((p, i) => `${i + 1}. ${p.data?.displayName || p.id} (${p.data?.channelPoints || 0} pts)`).join(', ');
                 }
                 enqueueMessage(`#${gameState.channelName}`, leaderboardMessage);
             } catch (error) {
@@ -379,8 +352,6 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 enqueueMessage(`#${gameState.channelName}`, `Could not fetch the overall channel leaderboard.`);
             }
         }
-
-        // c) Full Reset after delay
         setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     }
 }
@@ -616,6 +587,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     // --- Initialize Multi-Round State ---
     gameState.totalRounds = Math.max(1, numberOfRounds); // Ensure at least 1 round
     gameState.currentRound = 1;
+    gameState.streakMap = new Map();
     gameState.gameSessionScores = new Map();
     gameState.gameSessionExcludedLocations = new Set(); // Reset for the new game session
     _clearTimers(gameState); // Ensure no stray timers
@@ -953,6 +925,35 @@ async function configureGame(channelName, options) {
         configChanged = true;
     }
 
+    // --- Add handling for new scoring options ---
+    if (options.pointsBase !== undefined) {
+        const points = parseInt(options.pointsBase, 10);
+        if (!isNaN(points) && points >= 1 && points <= 100) {
+            if (gameState.config.pointsBase !== points) {
+                gameState.config.pointsBase = points;
+                changesMade.push(`Base points set to ${points}`);
+                configChanged = true;
+            }
+        } else {
+            changesMade.push(`Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
+        }
+    }
+    if (options.pointsTimeBonus !== undefined) {
+        const enableTimeBonus = options.pointsTimeBonus === 'true' || options.pointsTimeBonus === true;
+        if (gameState.config.pointsTimeBonus !== enableTimeBonus) {
+            gameState.config.pointsTimeBonus = enableTimeBonus;
+            changesMade.push(`Time bonus scoring ${enableTimeBonus ? 'enabled' : 'disabled'}`);
+            configChanged = true;
+        }
+    }
+    if (options.pointsDifficultyMultiplier !== undefined) {
+        const enableMultiplier = options.pointsDifficultyMultiplier === 'true' || options.pointsDifficultyMultiplier === true;
+        if (gameState.config.pointsDifficultyMultiplier !== enableMultiplier) {
+            gameState.config.pointsDifficultyMultiplier = enableMultiplier;
+            changesMade.push(`Difficulty multiplier scoring ${enableMultiplier ? 'enabled' : 'disabled'}`);
+            configChanged = true;
+        }
+    }
 
     if (configChanged) {
         try {
@@ -1048,3 +1049,46 @@ function getGeoGameManager() {
 }
 
 export { initializeGeoGameManager, getGeoGameManager };
+
+/**
+ * Calculates points for a correct guess based on game config.
+ * @param {GameState} gameState - Game state object.
+ * @param {number} timeElapsedMs - Time elapsed in milliseconds.
+ * @returns {number} Points earned.
+ */
+function _calculatePoints(gameState, timeElapsedMs) {
+    if (!gameState.config.scoreTracking) return 0;
+    let points = gameState.config.pointsBase ?? DEFAULT_CONFIG.pointsBase;
+    if (gameState.config.pointsDifficultyMultiplier) {
+        switch ((gameState.config.difficulty || 'normal').toLowerCase()) {
+            case 'easy':
+                points *= 1;
+                break;
+            case 'normal':
+                points *= 1.5;
+                break;
+            case 'hard':
+                points *= 2;
+                break;
+        }
+    }
+    if (gameState.config.pointsTimeBonus) {
+        const totalTimeSeconds = (gameState.config.roundDurationMinutes ?? DEFAULT_CONFIG.roundDurationMinutes) * 60;
+        const totalTimeMs = totalTimeSeconds * 1000;
+        if (totalTimeMs > 0) {
+            const timeRemainingRatio = Math.max(0, (totalTimeMs - timeElapsedMs) / totalTimeMs);
+            const timeBonus = Math.floor((gameState.config.pointsBase ?? DEFAULT_CONFIG.pointsBase) * 0.5 * timeRemainingRatio);
+            points += timeBonus;
+        }
+    }
+    const winnerUsername = gameState.winner?.username;
+    if (winnerUsername) {
+        const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
+        if (currentStreak > 0) {
+            const streakMultiplier = 1 + (currentStreak * 0.1);
+            points = Math.floor(points * streakMultiplier);
+            logger.debug(`[GeoGame][${gameState.channelName}] Applying streak bonus x${streakMultiplier.toFixed(1)} for ${winnerUsername} (Streak: ${currentStreak + 1})`);
+        }
+    }
+    return Math.max(1, Math.floor(points));
+}

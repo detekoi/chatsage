@@ -147,25 +147,28 @@ export async function recordGameResult(gameResultDetails) {
  * Updates player scores/stats using Firestore atomic increments.
  * @param {string} username - Lowercase username.
  * @param {string} channelName - Lowercase channel name.
- * @param {number} points - Points to add for a win (typically 1).
+ * @param {number} points - Points to add for the correct guess.
  * @param {string} [displayName] - Optional display name to store with the player record.
- * @returns {Promise<boolean>} True on success, false on failure.
+ * @returns {Promise<void>}
+ * @throws {StorageError} On failure to update.
  */
-export async function updatePlayerScore(username, channelName, points = 1, displayName = null) {
+export async function updatePlayerScore(username, channelName, points = 0, displayName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const lowerChannel = channelName.toLowerCase();
     const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
     try {
         const updateData = {
-            globalWins: FieldValue.increment(points),
+            globalPoints: FieldValue.increment(points),
+            globalWins: FieldValue.increment(points > 0 ? 1 : 0),
             globalParticipation: FieldValue.increment(1),
-            lastWinTimestamp: FieldValue.serverTimestamp(),
+            ...(points > 0 && { lastWinTimestamp: FieldValue.serverTimestamp() }),
             channels: {
                 [lowerChannel]: {
-                    wins: FieldValue.increment(points),
+                    points: FieldValue.increment(points),
+                    wins: FieldValue.increment(points > 0 ? 1 : 0),
                     participation: FieldValue.increment(1),
-                    lastWinTimestamp: FieldValue.serverTimestamp()
+                    ...(points > 0 && { lastWinTimestamp: FieldValue.serverTimestamp() })
                 }
             }
         };
@@ -173,7 +176,7 @@ export async function updatePlayerScore(username, channelName, points = 1, displ
             updateData.displayName = displayName;
         }
         await docRef.set(updateData, { merge: true });
-        logger.debug(`[GeoStorage-GCloud] Updated stats for player ${lowerUsername} in channel ${lowerChannel}`);
+        logger.debug(`[GeoStorage-GCloud] Updated stats for player ${lowerUsername} in channel ${lowerChannel}. Points added: ${points}`);
     } catch (error) {
         logger.error({ err: error, player: lowerUsername, channel: lowerChannel }, `[GeoStorage-GCloud] Error updating player score for ${lowerUsername} in ${lowerChannel}`);
         throw new StorageError(`Failed to update player score for ${lowerUsername} in ${lowerChannel}`, error);
@@ -190,116 +193,142 @@ export async function getPlayerStats(username, channelName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
-    
+
     try {
         const docSnap = await docRef.get();
         if (docSnap.exists) {
             const data = docSnap.data();
-            
-            // If channelName is provided, include channel-specific stats if available
+            const globalStats = {
+                points: data.globalPoints ?? data.globalWins ?? 0,
+                wins: data.globalWins ?? data.wins ?? 0,
+                participation: data.globalParticipation ?? data.participation ?? 0,
+                displayName: data.displayName || lowerUsername,
+                lastWinTimestamp: data.lastWinTimestamp || null,
+                channelsData: data.channels || {}
+            };
+
             if (channelName) {
                 const lowerChannel = channelName.toLowerCase();
-                
-                // Restructure the response to include global stats and channel-specific stats
+                const channelData = data.channels?.[lowerChannel];
+                const channelStats = channelData ? {
+                    points: channelData.points ?? channelData.wins ?? 0,
+                    wins: channelData.wins ?? 0,
+                    participation: channelData.participation ?? 0,
+                    lastWinTimestamp: channelData.lastWinTimestamp || null
+                } : { points: 0, wins: 0, participation: 0, lastWinTimestamp: null };
+
                 return {
-                    ...data,
-                    channelStats: data.channels?.[lowerChannel] || null,
-                    wins: data.globalWins || data.wins || 0, // Backwards compatibility
-                    participation: data.globalParticipation || data.participation || 0, // Backwards compatibility
+                    ...globalStats,
+                    channelStats: channelStats,
                 };
             }
-            
-            return data;
+
+            return globalStats;
         } else {
             return null; // Player has no stats yet
         }
     } catch (error) {
-        logger.error({ 
-            err: error, 
+        logger.error({
+            err: error,
             player: lowerUsername,
             channel: channelName
         }, `[GeoStorage-GCloud] Error getting player stats for ${lowerUsername}`);
-        return null;
+        throw new StorageError(`Failed to get player stats for ${lowerUsername}`, error);
     }
 }
 
 /**
- * Retrieves the top N players based on wins.
+ * Retrieves the top N players based on points.
  * @param {string} [channelName=null] - Optional channel name for channel-specific leaderboard.
  * @param {number} [limit=10] - Number of top players to retrieve.
- * @returns {Promise<Array<{id: string, data: object}>>} Array of player objects {id: username, data: {wins, participation, ...}}.
+ * @returns {Promise<Array<{id: string, data: object}>>} Array of player objects {id: username, data: {points, wins, participation, ...}}.
  */
 export async function getLeaderboard(channelName = null, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(STATS_COLLECTION);
     const leaderboard = [];
-    
+
     try {
         let snapshot;
-        
+
         if (channelName) {
             const lowerChannel = channelName.toLowerCase();
-            logger.debug(`[GeoStorage-GCloud] Retrieving channel-specific leaderboard for ${lowerChannel}`);
-            
-            // For channel-specific leaderboard, we need to query differently
-            // Firestore doesn't support ordering by nested fields directly, so we need to extract the data differently
-            
-            // First, get all players who have participated in this channel
-            // We limit to a larger number initially to account for filtering
-            const allSnapshot = await colRef
-                .where(`channels.${lowerChannel}`, '!=', null)
-                .limit(limit * 3) // Get more than needed to ensure we have enough after sorting
-                .get();
-                
-            // Extract and sort manually
-            const players = [];
-            allSnapshot.forEach(doc => {
-                const data = doc.data();
-                const channelData = data.channels?.[lowerChannel];
-                
-                if (channelData) {
-                    players.push({
-                        id: doc.id,
-                        data: {
-                            ...data,
-                            channelWins: channelData.wins || 0,
-                            channelParticipation: channelData.participation || 0,
-                            displayName: data.displayName || doc.id
-                        }
-                    });
-                }
-            });
-            
-            // Sort by channel-specific wins
-            players.sort((a, b) => b.data.channelWins - a.data.channelWins);
-            
-            // Take only the top N
-            return players.slice(0, limit);
-        } else {
-            // Global leaderboard - sort by globalWins (or wins for backward compatibility)
-            snapshot = await colRef.orderBy('globalWins', 'desc').limit(limit).get();
+            logger.debug(`[GeoStorage-GCloud] Retrieving channel-specific leaderboard (points) for ${lowerChannel}`);
+            const fieldPath = `channels.${lowerChannel}.points`;
+
+            try {
+                snapshot = await colRef
+                    .orderBy(fieldPath, 'desc')
+                    .limit(limit)
+                    .get();
+            } catch (indexError) {
+                logger.warn({ err: indexError, channel: lowerChannel }, `[GeoStorage-GCloud] Index likely missing for direct channel points sort. Falling back to manual sort.`);
+                const participationFieldPath = `channels.${lowerChannel}.participation`;
+                const allSnapshot = await colRef
+                    .where(participationFieldPath, '>', 0)
+                    .limit(limit * 5)
+                    .get();
+
+                const players = [];
+                allSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const channelData = data.channels?.[lowerChannel];
+                    if (channelData) {
+                        players.push({
+                            id: doc.id,
+                            data: {
+                                displayName: data.displayName || doc.id,
+                                channelPoints: channelData.points ?? channelData.wins ?? 0,
+                                channelWins: channelData.wins ?? 0,
+                                channelParticipation: channelData.participation ?? 0,
+                            }
+                        });
+                    }
+                });
+                players.sort((a, b) => b.data.channelPoints - a.data.channelPoints);
+                return players.slice(0, limit);
+            }
+
             snapshot.forEach(doc => {
                 const data = doc.data();
-                leaderboard.push({ 
-                    id: doc.id, 
+                const channelData = data.channels?.[lowerChannel];
+                leaderboard.push({
+                    id: doc.id,
                     data: {
-                        ...data,
-                        // Ensure consistent field naming for clients
-                        wins: data.globalWins || data.wins || 0,
-                        participation: data.globalParticipation || data.participation || 0
+                        displayName: data.displayName || doc.id,
+                        channelPoints: channelData?.points ?? channelData?.wins ?? 0,
+                        channelWins: channelData?.wins ?? 0,
+                        channelParticipation: channelData?.participation ?? 0,
                     }
                 });
             });
-            
-            logger.debug(`[GeoStorage-GCloud] Retrieved global leaderboard with ${leaderboard.length} players.`);
+            logger.debug(`[GeoStorage-GCloud] Retrieved channel leaderboard (points) with ${leaderboard.length} players for ${lowerChannel}.`);
+            return leaderboard;
+
+        } else {
+            snapshot = await colRef.orderBy('globalPoints', 'desc').limit(limit).get();
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                leaderboard.push({
+                    id: doc.id,
+                    data: {
+                        displayName: data.displayName || doc.id,
+                        points: data.globalPoints ?? data.globalWins ?? 0,
+                        wins: data.globalWins ?? data.wins ?? 0,
+                        participation: data.globalParticipation ?? data.participation ?? 0
+                    }
+                });
+            });
+
+            logger.debug(`[GeoStorage-GCloud] Retrieved global leaderboard (points) with ${leaderboard.length} players.`);
             return leaderboard;
         }
     } catch (error) {
-        logger.error({ 
+        logger.error({
             err: error,
-            channel: channelName || 'global' 
+            channel: channelName || 'global'
         }, `[GeoStorage-GCloud] Error retrieving leaderboard.`);
-        return [];
+        throw new StorageError(`Failed to retrieve leaderboard for ${channelName || 'global'}`, error);
     }
 }
 
@@ -373,7 +402,6 @@ export async function clearChannelLeaderboardData(channelName) {
     logger.info(`[GeoStorage-GCloud] Starting leaderboard clear process for channel: ${lowerChannel}`);
 
     try {
-        // Construct the query to find players with data for this channel
         const fieldPath = `channels.${lowerChannel}`;
         let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
 
@@ -385,7 +413,6 @@ export async function clearChannelLeaderboardData(channelName) {
 
             const batch = db.batch();
             snapshot.docs.forEach(doc => {
-                // Prepare update to remove the channel's data from the 'channels' map
                 const updateData = {
                     [`channels.${lowerChannel}`]: FieldValue.delete()
                 };
@@ -396,14 +423,12 @@ export async function clearChannelLeaderboardData(channelName) {
             await batch.commit();
             logger.debug(`[GeoStorage-GCloud] Cleared leaderboard data batch for ${snapshot.size} players in channel ${lowerChannel}. Total cleared: ${clearedCount}`);
 
-            // Prepare next query page
             if (snapshot.size < batchSize) {
                 break; // Last page processed
             }
             lastVisible = snapshot.docs[snapshot.docs.length - 1];
             query = statsCollection.where(fieldPath, '!=', null).startAfter(lastVisible).limit(batchSize);
 
-            // Add a small delay between batches to avoid hitting rate limits aggressively
             await new Promise(resolve => setTimeout(resolve, 50));
         }
 
@@ -431,10 +456,9 @@ export async function reportProblemLocation(locationName, reason, channelName) {
     logger.info(`[GeoStorage-GCloud] Attempting to report problem for location "${primaryLocationName}" in channel ${lowerChannel}. Reason: ${reason}`);
 
     try {
-        // Find the most recent game history entry for this location in this channel
         const querySnapshot = await historyCollection
             .where('channel', '==', lowerChannel)
-            .where('location', '==', primaryLocationName) // Match the primary location name
+            .where('location', '==', primaryLocationName)
             .orderBy('timestamp', 'desc')
             .limit(1)
             .get();
@@ -444,10 +468,8 @@ export async function reportProblemLocation(locationName, reason, channelName) {
             return { success: false, message: `Couldn't find a recent game record for "${primaryLocationName}" to report.` };
         }
 
-        // Get the document reference from the first (and only) result
         const docRef = querySnapshot.docs[0].ref;
 
-        // Update the document to flag it
         await docRef.update({
             flaggedAsProblem: true,
             problemReason: reason,

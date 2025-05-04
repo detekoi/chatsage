@@ -24,18 +24,19 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
         return `No Geo-Game stats found for this channel (${channelName}) yet!`;
     }
 
-    // Sort by channel wins specifically, just in case the storage layer didn't
-    // (though it should have)
-    leaderboardData.sort((a, b) => (b.data?.channelWins || 0) - (a.data?.channelWins || 0));
+    // Sort by channel points (getLeaderboard should already do this, but double-check)
+    leaderboardData.sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0));
 
     const topPlayers = leaderboardData.slice(0, 5); // Show top 5
 
     const listItems = topPlayers.map((player, index) => {
         const rank = index + 1;
         const name = player.data?.displayName || player.id;
+        // Use points field
+        const points = player.data?.channelPoints || 0;
+        // Optionally show wins too?
         const wins = player.data?.channelWins || 0;
-        // Optional: Add participation - const participation = player.data?.channelParticipation || 0;
-        return `${rank}. ${name} (${wins} wins)`;
+        return `${rank}. ${name} (${points} pts, ${wins} wins)`; // Display points
     });
 
     return `🏆 Geo-Game Top Players in #${channelName}: ${listItems.join(', ')}`;
@@ -152,12 +153,13 @@ const geoHandler = {
                 enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can configure the game.`);
                 return;
             }
-            // Parse config args (e.g., !geo config difficulty hard, !geo config interval 90, !geo config duration 10)
             const options = {};
             for (let i = 1; i < args.length; i += 2) {
                 const key = args[i]?.toLowerCase();
                 const value = args[i + 1];
                 if (!key || !value) continue;
+
+                // --- Existing Options ---
                 if (key === 'difficulty' && ['easy', 'normal', 'hard'].includes(value.toLowerCase())) {
                     options.difficulty = value.toLowerCase();
                 } else if (['interval', 'clueinterval', 'clueintervalseconds'].includes(key)) {
@@ -170,12 +172,23 @@ const geoHandler = {
                     options.regionRestrictions = value.split(',').map(s => s.trim()).filter(Boolean);
                 } else if (key === 'game' || key === 'gametitle') {
                     options.gameTitlePreferences = value.split(',').map(s => s.trim()).filter(Boolean);
-                } else if (key === 'scoring' || key === 'scoretracking') { // Add score tracking config
+                } else if (key === 'scoring' || key === 'scoretracking') {
                     options.scoreTracking = value.toLowerCase() === 'true' || value === '1';
                 }
+                // --- NEW Scoring Options ---
+                else if (key === 'points' || key === 'basepoints') {
+                     const points = parseInt(value, 10);
+                     if (!isNaN(points)) options.pointsBase = points;
+                 } else if (key === 'timebonus') {
+                     options.pointsTimeBonus = value.toLowerCase() === 'true' || value === '1';
+                 } else if (key === 'difficultymultiplier') {
+                     options.pointsDifficultyMultiplier = value.toLowerCase() === 'true' || value === '1';
+                 }
+                 // --- End NEW Scoring Options ---
             }
             if (Object.keys(options).length === 0) {
-                 enqueueMessage(channel, `@${invokingDisplayName}, Usage: !geo config difficulty <easy|normal|hard> interval <seconds> duration <minutes> region <list> game <list> scoring <true|false>`);
+                 // Update usage message
+                 enqueueMessage(channel, `@${invokingDisplayName}, Usage: !geo config difficulty <easy|normal|hard> interval <secs> duration <mins> region <list> game <list> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>`);
                  return;
             }
             const result = await geoManager.configureGame(channelName, options);
