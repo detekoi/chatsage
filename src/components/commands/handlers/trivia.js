@@ -191,14 +191,19 @@ const trivia = {
             }
             return;
         } else if (subCommand === 'report' || subCommand === 'flag') {
-            // Get most recent question from game state or history
+            // !trivia report [reason...]
+            // Extract the reason from the arguments following "report" or "flag"
+            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; // Default if no reason provided
+
             try {
                 const recentQuestions = await getRecentQuestions(channelName, null, 1);
                 if (recentQuestions && recentQuestions.length > 0) {
                     const question = recentQuestions[0];
+                    // Dynamically import reportProblemQuestion if not already loaded
                     const { reportProblemQuestion } = await import('../../trivia/triviaStorage.js');
-                    await reportProblemQuestion(question, "reported by user");
-                    enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the question. We'll review it to improve the trivia quality.`);
+                    // Pass the extracted or default reason to the storage function
+                    await reportProblemQuestion(question, reason);
+                    enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the question (Reason: ${reason}). We'll review it.`);
                 } else {
                     enqueueMessage(channel, `@${invokingDisplayName}, No recent trivia questions found to report.`);
                 }
@@ -206,7 +211,7 @@ const trivia = {
                 logger.error({ err: error }, 'Error reporting problem question');
                 enqueueMessage(channel, `@${invokingDisplayName}, Error processing your report. Please try again later.`);
             }
-            return;
+            return; // Action complete
         } else if (subCommand === 'help') {
             // !trivia help -> Show help information
             const helpMessage = formatHelpMessage(isModOrBroadcaster);
