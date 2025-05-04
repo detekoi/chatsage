@@ -4,7 +4,7 @@ import { getGeoGameManager } from '../../geo/geoGameManager.js';
 // Need context manager to get current game for !geo game
 import { getContextManager } from '../../context/contextManager.js';
 // Need geoStorage to fetch the leaderboard
-import { getLeaderboard } from '../../geo/geoStorage.js';
+import { getLeaderboard, reportProblemLocation } from '../../geo/geoStorage.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
@@ -47,7 +47,7 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
 const geoHandler = {
     name: 'geo',
     description: 'Starts or manages the Geo-Game (!geo help for details).',
-    usage: '!geo [<rounds>] | stop | config <options...> | resetconfig | leaderboard | clearleaderboard | help',
+    usage: '!geo [<rounds>] | stop | config <options...> | resetconfig | leaderboard | clearleaderboard | report <reason...> | help',
     permission: 'everyone', // Subcommand permissions handled inside
     execute: async (context) => {
         const { channel, user, args } = context;
@@ -224,9 +224,36 @@ const geoHandler = {
             }
             return; // Action done
 
+        } else if (subCommand === 'report' || subCommand === 'flag') {
+            // !geo report [reason...]
+            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; // Default if no reason provided
+
+            try {
+                // Get the last played location from the manager
+                const lastLocation = geoManager.getLastPlayedLocation(channelName);
+
+                if (lastLocation) {
+                    // Call the storage function to report the problem
+                    const reportResult = await reportProblemLocation(lastLocation, reason, channelName);
+
+                    if (reportResult.success) {
+                        enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the location "${lastLocation}" (Reason: ${reason}). We'll review it.`);
+                    } else {
+                        // Inform user if reporting failed (e.g., history not found)
+                        enqueueMessage(channel, `@${invokingDisplayName}, ${reportResult.message || 'Could not process your report for the last location.'}`);
+                    }
+                } else {
+                    enqueueMessage(channel, `@${invokingDisplayName}, I don't have a record of the last location played in this channel to report.`);
+                }
+            } catch (error) {
+                logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error processing !geo report command');
+                enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while trying to process your report.`);
+            }
+            return; // Action complete
+
         } else if (subCommand === 'help') {
             // !geo help
-            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo help`);
+            enqueueMessage(channel, `@${invokingDisplayName}, Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help`);
             return; // Action done
 
         } else {

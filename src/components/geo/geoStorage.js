@@ -414,3 +414,51 @@ export async function clearChannelLeaderboardData(channelName) {
         return { success: false, message: `An error occurred while clearing leaderboard data. ${clearedCount} records might have been cleared before the error. Check logs.`, clearedCount };
     }
 }
+
+/**
+ * Flags the most recent game history record for a location in a channel as problematic.
+ * @param {string} locationName - The primary name of the location to report.
+ * @param {string} reason - The reason provided for the report.
+ * @param {string} channelName - The channel where the report was made.
+ * @returns {Promise<{success: boolean, message: string}>} Result object indicating success or failure.
+ */
+export async function reportProblemLocation(locationName, reason, channelName) {
+    const db = _getDb();
+    const historyCollection = db.collection(HISTORY_COLLECTION);
+    const lowerChannel = channelName.toLowerCase();
+    const primaryLocationName = locationName.split('/')[0].trim(); // Ensure we use the primary name if alternates exist
+
+    logger.info(`[GeoStorage-GCloud] Attempting to report problem for location "${primaryLocationName}" in channel ${lowerChannel}. Reason: ${reason}`);
+
+    try {
+        // Find the most recent game history entry for this location in this channel
+        const querySnapshot = await historyCollection
+            .where('channel', '==', lowerChannel)
+            .where('location', '==', primaryLocationName) // Match the primary location name
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (querySnapshot.empty) {
+            logger.warn(`[GeoStorage-GCloud] No game history found for location "${primaryLocationName}" in channel ${lowerChannel} to report.`);
+            return { success: false, message: `Couldn't find a recent game record for "${primaryLocationName}" to report.` };
+        }
+
+        // Get the document reference from the first (and only) result
+        const docRef = querySnapshot.docs[0].ref;
+
+        // Update the document to flag it
+        await docRef.update({
+            flaggedAsProblem: true,
+            problemReason: reason,
+            flaggedTimestamp: FieldValue.serverTimestamp()
+        });
+
+        logger.info(`[GeoStorage-GCloud] Successfully flagged location "${primaryLocationName}" in channel ${lowerChannel}.`);
+        return { success: true, message: `Successfully reported location "${primaryLocationName}".` };
+
+    } catch (error) {
+        logger.error({ err: error, location: primaryLocationName, channel: lowerChannel, reason }, `[GeoStorage-GCloud] Error reporting problem location.`);
+        return { success: false, message: `An error occurred while reporting "${primaryLocationName}".` };
+    }
+}

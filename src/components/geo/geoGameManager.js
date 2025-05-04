@@ -3,7 +3,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
-import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData } from './geoStorage.js';
+import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation } from './geoStorage.js';
 import { summarizeText } from '../llm/geminiClient.js';
 
 // --- Game State & Config Interfaces (Conceptual) ---
@@ -44,6 +44,9 @@ interface GameState {
     config: GameConfig; // Channel-specific config
     lastMessageTimestamp: number; // To help throttle guesses if needed
     incorrectGuessReasons: string[]; // Added to store reasons for incorrect guesses
+
+    // --- NEW FIELD ---
+    lastPlayedLocation: string | null; // Stores the name of the most recently finished location
 
     // --- Multi-Round Fields ---
     totalRounds: number; // Total number of rounds requested
@@ -111,11 +114,13 @@ async function _getOrCreateGameState(channelName) {
             config: loadedConfig,
             lastMessageTimestamp: 0,
             incorrectGuessReasons: [],
+            // --- INITIALIZE NEW FIELD ---
+            lastPlayedLocation: null, // Initialize as null
             // Multi-Round Fields
             totalRounds: 1,
             currentRound: 1,
             gameSessionScores: new Map(),
-            gameSessionExcludedLocations: new Set(), // Initialize exclusion set
+            gameSessionExcludedLocations: new Set(),
         });
     }
     return activeGames.get(channelName);
@@ -148,6 +153,9 @@ async function _resetGameToIdle(gameState) {
     newState.winner = null; // Clear round winner
     newState.incorrectGuessReasons = [];
     newState.initiatorUsername = null; // Clear initiator for the next game
+    // --- DO NOT CLEAR lastPlayedLocation here ---
+    // Keep it so it can be reported after the game ends
+    // newState.lastPlayedLocation = null;
     // Reset multi-round fields
     newState.totalRounds = 1;
     newState.currentRound = 1;
@@ -156,6 +164,14 @@ async function _resetGameToIdle(gameState) {
 }
 
 async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = null) {
+    // --- ADD THIS AT THE BEGINNING of the function ---
+    // Store the location before potentially clearing it
+    if (gameState.targetLocation?.name) {
+        gameState.lastPlayedLocation = gameState.targetLocation.name;
+        logger.debug(`[GeoGame][${gameState.channelName}] Storing last played location: ${gameState.lastPlayedLocation}`);
+    }
+    // --- END ADDITION ---
+
     _clearTimers(gameState);
 
     // If already ending/idle, do nothing further to prevent loops/errors
@@ -1004,6 +1020,16 @@ async function clearLeaderboard(channelName) {
 }
 
 /**
+ * Gets the name of the last location played in the channel.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {string | null} The name of the last location, or null if none recorded.
+ */
+function getLastPlayedLocation(channelName) {
+    const gameState = activeGames.get(channelName);
+    return gameState?.lastPlayedLocation || null;
+}
+
+/**
  * Gets the singleton GeoGame Manager instance/interface.
  */
 function getGeoGameManager() {
@@ -1016,7 +1042,8 @@ function getGeoGameManager() {
         configureGame,
         resetChannelConfig,
         getCurrentGameInitiator,
-        clearLeaderboard
+        clearLeaderboard,
+        getLastPlayedLocation
     };
 }
 
