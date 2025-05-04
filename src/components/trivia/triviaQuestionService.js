@@ -401,29 +401,34 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
             };
         }
     }
-    // 3. For non-exact matches, use a dedicated search call
-    const searchPrompt = `Compare these answers for a trivia question:\nQuestion: ${question}\nCorrect answer: ${correctAnswer}\nUser's answer: ${userAnswer}\n\nSearch for information to determine if the user's answer is essentially correct, even if worded differently. Focus on checking whether both answers refer to the same thing or are semantically equivalent.`;
+    // 3. More rigorous verification for non-exact matches
+    const searchPrompt = `Verify if the user's answer is correct for this trivia question:\n\nQuestion: ${question}\nCorrect answer: ${correctAnswer}\nUser's answer: ${userAnswer}\n\nPlease answer with ONLY ONE of these exact words: "CORRECT" or "INCORRECT". \nThen provide a brief explanation on a new line.`;
+
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: searchPrompt }] }],
-            tools: [{ googleSearch: {} }]
+            generationConfig: {
+                temperature: 0.3 // Low temperature for more deterministic response
+            }
         });
         const responseText = result.response.candidates[0].content.parts[0].text;
-        const isCorrect = responseText.toLowerCase().includes("correct") ||
-            responseText.toLowerCase().includes("equivalent") ||
-            responseText.toLowerCase().includes("same thing");
+        // Check for the exact verdict at the beginning of the response
+        const isCorrect = responseText.trim().toUpperCase().startsWith("CORRECT");
+        // Extract the explanation part (after the first line)
+        const explanation = responseText.split("\n").slice(1).join(" ").trim();
         return {
             is_correct: isCorrect,
-            confidence: isCorrect ? 0.85 : 0.7,
-            reasoning: responseText.substring(0, 100),
-            search_used: true
+            confidence: 0.95,
+            reasoning: explanation || (isCorrect ? "The answers match conceptually." : "The answers are different."),
+            search_used: false
         };
     } catch (error) {
-        logger.error({ err: error }, 'Error verifying answer with search');
-        // Fall back to fuzzy string matching
+        logger.error({ err: error }, 'Error verifying answer with structured response');
+        // Fall back to strict matching as a last resort
         const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
+        const isVeryClose = similarity > 0.9; // Require very high similarity
         return {
-            is_correct: similarity > 0.8,
+            is_correct: isVeryClose,
             confidence: similarity,
             reasoning: `String similarity: ${Math.round(similarity * 100)}%`,
             search_used: false
