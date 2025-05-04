@@ -13,6 +13,8 @@ import { initializeIrcSender, enqueueMessage, clearMessageQueue } from './lib/ir
 import { handleStandardLlmQuery } from './components/llm/llmUtils.js';
 import { initializeGeoGameManager, getGeoGameManager } from './components/geo/geoGameManager.js';
 import { initializeStorage } from './components/geo/geoStorage.js';
+import { initializeTriviaGameManager, getTriviaGameManager } from './components/trivia/triviaGameManager.js';
+import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 
 let streamInfoIntervalId = null;
 let ircClient = null;
@@ -132,6 +134,9 @@ async function main() {
         logger.info('Initializing Firebase Storage...');
         await initializeStorage();
 
+        logger.info('Initializing Trivia Storage...');
+        await initializeTriviaStorage();
+
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);
 
@@ -149,6 +154,9 @@ async function main() {
 
         logger.info('Initializing GeoGame Manager...');
         await initializeGeoGameManager();
+
+        logger.info('Initializing Trivia Game Manager...');
+        await initializeTriviaGameManager();
 
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
@@ -307,8 +315,10 @@ async function main() {
             if (!message.startsWith('!') && !isStopRequest) {
                 // Pass potential guess to the GeoGame Manager
                 geoManager.processPotentialGuess(cleanChannel, lowerUsername, displayName, message);
-                // We don't necessarily 'return' here, as a guess might *also* mention the bot
-                // but let's assume a guess isn't usually also a mention query. Refine if needed.
+                // Also pass potential answer to the Trivia Game Manager
+                const triviaManager = getTriviaGameManager();
+                triviaManager.processPotentialAnswer(cleanChannel, lowerUsername, displayName, message);
+                // We don't necessarily 'return' here, as a guess or answer might *also* mention the bot
             }
 
             // --- Automatic Translation Logic ---
