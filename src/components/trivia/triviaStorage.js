@@ -14,7 +14,7 @@ let db = null;
 /**
  * Custom error class for storage operations.
  */
-export class StorageError extends Error {
+class StorageError extends Error {
     constructor(message, cause) {
         super(message);
         this.name = 'StorageError';
@@ -26,7 +26,7 @@ export class StorageError extends Error {
  * Initializes the Firestore client.
  * Uses Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS.
  */
-export async function initializeStorage() {
+async function initializeStorage() {
     logger.info("[TriviaStorage] Initializing Firestore client...");
     try {
         logger.debug("[TriviaStorage] Creating new Firestore client instance...");
@@ -79,7 +79,7 @@ function _getDb() {
  * @param {string} channelName - The channel name.
  * @returns {Promise<object|null>} Config object or null if not found.
  */
-export async function loadChannelConfig(channelName) {
+async function loadChannelConfig(channelName) {
     const db = _getDb();
     const docRef = db.collection(CONFIG_COLLECTION).doc(channelName.toLowerCase());
     
@@ -104,7 +104,7 @@ export async function loadChannelConfig(channelName) {
  * @param {object} config - Config object to save.
  * @returns {Promise<void>}
  */
-export async function saveChannelConfig(channelName, config) {
+async function saveChannelConfig(channelName, config) {
     const db = _getDb();
     const docRef = db.collection(CONFIG_COLLECTION).doc(channelName.toLowerCase());
     
@@ -124,7 +124,7 @@ export async function saveChannelConfig(channelName, config) {
  * @param {object} gameDetails - Game result details.
  * @returns {Promise<void>}
  */
-export async function recordGameResult(gameDetails) {
+async function recordGameResult(gameDetails) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     
@@ -228,7 +228,7 @@ async function _saveQuestionToBank(question, answer, topic = 'general', difficul
  * @param {string} reason - Reason for flagging (default: hallucination).
  * @returns {Promise<void>}
  */
-export async function reportProblemQuestion(questionText, reason = "hallucination") {
+async function reportProblemQuestion(questionText, reason = "hallucination") {
     const db = _getDb();
     const questionHash = Buffer.from(questionText).toString('base64').substring(0, 40);
     const docRef = db.collection(QUESTIONS_COLLECTION).doc(questionHash);
@@ -254,7 +254,7 @@ export async function reportProblemQuestion(questionText, reason = "hallucinatio
  * @param {string} displayName - Player's display name.
  * @returns {Promise<void>}
  */
-export async function updatePlayerScore(username, channelName, points = 1, displayName = null) {
+async function updatePlayerScore(username, channelName, points = 1, displayName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const lowerChannel = channelName.toLowerCase();
@@ -294,7 +294,7 @@ export async function updatePlayerScore(username, channelName, points = 1, displ
  * @param {string} channelName - Channel name.
  * @returns {Promise<object|null>} Player stats or null.
  */
-export async function getPlayerStats(username, channelName = null) {
+async function getPlayerStats(username, channelName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
@@ -336,7 +336,7 @@ export async function getPlayerStats(username, channelName = null) {
  * @param {number} limit - Number of players to return.
  * @returns {Promise<Array<{id: string, data: object}>>} Leaderboard data.
  */
-export async function getLeaderboard(channelName = null, limit = 10) {
+async function getLeaderboard(channelName = null, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(STATS_COLLECTION);
     const leaderboard = [];
@@ -413,7 +413,7 @@ export async function getLeaderboard(channelName = null, limit = 10) {
  * @param {number} limit - Number of questions to return.
  * @returns {Promise<string[]>} Array of recent question texts.
  */
-export async function getRecentQuestions(channelName, topic = null, limit = 30) {
+async function getRecentQuestions(channelName, topic = null, limit = 30) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     const lowerChannelName = channelName.toLowerCase();
@@ -448,7 +448,7 @@ export async function getRecentQuestions(channelName, topic = null, limit = 30) 
  * @param {string} channelName - Channel name.
  * @returns {Promise<{success: boolean, message: string, clearedCount: number}>} Result.
  */
-export async function clearChannelLeaderboardData(channelName) {
+async function clearChannelLeaderboardData(channelName) {
     const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const statsCollection = db.collection(STATS_COLLECTION);
@@ -508,3 +508,70 @@ export async function clearChannelLeaderboardData(channelName) {
         };
     }
 }
+
+/**
+ * Gets recent unique answers given in a channel, optionally filtered by topic.
+ * Used to prevent answer repetition.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string|null} topic - Topic filter (optional).
+ * @param {number} limit - Number of recent game results to check.
+ * @returns {Promise<string[]>} Array of unique recent answer strings (lowercase).
+ */
+async function getRecentAnswers(channelName, topic = null, limit = 50) {
+    const db = _getDb();
+    const colRef = db.collection(HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+    const recentAnswers = new Set(); // Use a Set for automatic uniqueness
+
+    try {
+        let query = colRef.where('channel', '==', lowerChannelName);
+
+        // Optional topic filtering
+        if (topic && topic !== 'general') {
+            query = query.where('topic', '==', topic);
+        }
+
+        // Order by timestamp and limit
+        const snapshot = await query.orderBy('timestamp', 'desc').limit(limit).get();
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.answer && typeof data.answer === 'string') {
+                // Add the lowercase version of the answer to the set
+                recentAnswers.add(data.answer.toLowerCase());
+            }
+        });
+
+        logger.debug(`[TriviaStorage] Found ${recentAnswers.size} unique recent answers for channel ${lowerChannelName}${topic ? ` and topic ${topic}` : ''} within last ${limit} results.`);
+        return Array.from(recentAnswers); // Convert Set back to Array
+    } catch (error) {
+        // Log specific index errors if possible
+        if (error.code === 5 && error.message.includes('index')) { // Firestore 'Failed Precondition' for missing index
+             logger.warn({
+                 channel: lowerChannelName,
+                 topic: topic,
+                 indexError: error.message // Log the specific index needed
+             }, `[TriviaStorage] Firestore index likely missing for getRecentAnswers query. Performance may be impacted or query might fail.`);
+             // Potentially fall back to a less specific query if absolutely needed,
+             // but it's better to create the index. For now, just return empty on error.
+             return [];
+        }
+        logger.error({ err: error, channel: lowerChannelName, topic }, `[TriviaStorage] Error getting recent answers`);
+        return []; // Return empty array on error
+    }
+}
+
+export {
+    initializeStorage,
+    StorageError,
+    loadChannelConfig,
+    saveChannelConfig,
+    recordGameResult,
+    reportProblemQuestion,
+    updatePlayerScore,
+    getPlayerStats,
+    getLeaderboard,
+    getRecentQuestions,
+    clearChannelLeaderboardData,
+    getRecentAnswers
+};

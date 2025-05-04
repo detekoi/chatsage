@@ -232,13 +232,14 @@ function formatTriviaParts(questionText, factualInfo, topic, difficulty) {
 /**
  * Generates a trivia question based on topic and difficulty.
  * Uses a two-step approach: (1) search for facts if needed, (2) generate the question using those facts or standard prompt.
+ * Now includes logic to exclude specific answers.
  * @param {string} topic
  * @param {string} difficulty
- * @param {string[]} excludedQuestions
- * @param {string} channelName
+ * @param {string[]} excludedAnswers - Array of lowercase answers to avoid.
+ * @param {string|null} channelName
  * @returns {Promise<object|null>}
  */
-export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null) {
+export async function generateQuestion(topic, difficulty, excludedAnswers = [], channelName = null) {
     const model = getGeminiClient();
     
     // Get actual game title if topic is 'game'
@@ -248,7 +249,6 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
     }
     
     // Determine if we should use search based on config
-    // Check if this is a game topic and TRIVIA_ALWAYS_SEARCH_GAMES is enabled
     const isGameTopic = topic === 'game' || specificTopic?.toLowerCase().includes('game');
     const useSearchForGames = process.env.TRIVIA_ALWAYS_SEARCH_GAMES === 'true';
     const shouldUseSearch = isGameTopic && useSearchForGames;
@@ -277,15 +277,22 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
     
     // STEP 2: Generate the question with a standard API call (no tools)
     let prompt = '';
+    // --- Add exclusion instruction to the prompt ---
+    const exclusionInstruction = excludedAnswers.length > 0
+        ? `\nIMPORTANT: The CORRECT ANSWER for the question you generate MUST NOT be any of the following (case-insensitive): ${excludedAnswers.join(', ')}.`
+        : '';
+    // --- End exclusion instruction ---
+
     if (factualInfo) {
         // Use the search results to create a factually accurate question
-        prompt = `Create a trivia question using these facts about ${specificTopic}:\n\n${factualInfo}\n\nRequirements:\n- Difficulty: ${difficulty}\n- Make the question clear and specific\n- Provide the correct answer based on the facts above\n- Include alternate acceptable answers if applicable\n- Add a brief explanation\n\nFormat your response exactly like this:\nQuestion: [your question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+        prompt = `Create a trivia question using these facts about ${specificTopic}:\n\n${factualInfo}\n\nRequirements:\n- Difficulty: ${difficulty}\n- Make the question clear and specific\n- Provide the correct answer based on the facts above\n- Include alternate acceptable answers if applicable\n- Add a brief explanation${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
     } else {
         // Standard question generation without search data
-        prompt = `Create a trivia question about ${specificTopic || 'general knowledge'}.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+        prompt = `Create a trivia question about ${specificTopic || 'general knowledge'}.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
     }
     
     try {
+        logger.debug(`[TriviaService] Generating question. Prompt includes exclusion instruction: ${!!exclusionInstruction}`);
         // Standard content generation - NO tools or function calling
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -309,35 +316,41 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         };
         
         // Extract question (your existing parsing code)
-        const questionMatch = text.match(/Question:\s*(.*?)(?=Answer:|$)/s);
+        const questionMatch = text.match(/Question:\s*(.*?)(?=Answer:|$)/si);
         if (questionMatch && questionMatch[1].trim()) {
             questionObj.question = questionMatch[1].trim();
         }
         
         // Extract answer
-        const answerMatch = text.match(/Answer:\s*(.*?)(?=Alternate|Explanation|$)/s);
+        const answerMatch = text.match(/Answer:\s*(.*?)(?=Alternate|Explanation|$)/si);
         if (answerMatch && answerMatch[1].trim()) {
             questionObj.answer = answerMatch[1].trim();
         }
         
         // Extract alternate answers
-        const altMatch = text.match(/Alternate Answers:\s*(.*?)(?=Explanation|$)/s);
+        const altMatch = text.match(/Alternate Answers:\s*(.*?)(?=Explanation|$)/si);
         if (altMatch && altMatch[1].trim()) {
             questionObj.alternateAnswers = altMatch[1].split(',')
                 .map(alt => alt.trim())
-                .filter(alt => alt.length > 0);
+                .filter(alt => alt.length > 0 && alt.toLowerCase() !== questionObj.answer.toLowerCase());
         }
         
         // Extract explanation
-        const explMatch = text.match(/Explanation:\s*(.*?)(?=$)/s);
+        const explMatch = text.match(/Explanation:\s*(.*?)(?=$)/si);
         if (explMatch && explMatch[1].trim()) {
             questionObj.explanation = explMatch[1].trim();
         }
         
         // Validate the question
         if (!questionObj.question || questionObj.question.length < 10 || !questionObj.answer) {
-            logger.warn('Generated invalid question: ' + text.substring(0, 100));
+            logger.warn(`[TriviaService] Generated invalid question structure: ${text.substring(0, 100)}...`);
             return null;
+        }
+        
+        // Final check: Ensure the generated answer isn't in the excluded list (LLM might ignore instructions)
+        if (excludedAnswers.includes(questionObj.answer.toLowerCase())) {
+            logger.warn(`[TriviaService] LLM generated a question with an excluded answer despite instructions: "${questionObj.answer}". Returning null.`);
+            return null; // Reject the question
         }
         
         // STEP 3: Verify factuality if enabled and needed (for game topics without search)
@@ -362,7 +375,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         
         return questionObj;
     } catch (error) {
-        logger.error({ err: error }, 'Error generating trivia question');
+        logger.error({ err: error }, '[TriviaService] Error generating trivia question');
         return null;
     }
 }
