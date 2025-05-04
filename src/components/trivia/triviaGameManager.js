@@ -326,7 +326,9 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 roundNumber: gameState.currentRound,
                 totalRounds: gameState.totalRounds,
                 difficulty: gameState.currentQuestion.difficulty,
-                pointsAwarded: points
+                pointsAwarded: points,
+                searchUsed: gameState.currentQuestion.searchUsed || false,
+                verified: typeof gameState.currentQuestion.verified === 'boolean' ? gameState.currentQuestion.verified : undefined
             };
             
             await recordGameResult(gameDetails);
@@ -448,6 +450,15 @@ async function _startNextRound(gameState) {
         enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`);
         await _transitionToEnding(gameState, "question_error");
         return;
+    }
+    
+    // Add basic validation to ensure we have a complete question
+    if (!gameState.currentQuestion.question || 
+        gameState.currentQuestion.question.length < 10 || 
+        !gameState.currentQuestion.answer) {
+        
+        logger.error(`[TriviaGame][${gameState.channelName}] Generated question is invalid: ${JSON.stringify(gameState.currentQuestion)}`);
+        throw new Error("Generated question was incomplete or invalid. Please try again.");
     }
     
     // 2. Start Round
@@ -651,6 +662,15 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         
         if (!questionGenerated) {
             throw new Error(`Failed to generate a valid question after ${MAX_QUESTION_RETRIES} attempts.`);
+        }
+        
+        // Add basic validation to ensure we have a complete question
+        if (!gameState.currentQuestion.question || 
+            gameState.currentQuestion.question.length < 10 || 
+            !gameState.currentQuestion.answer) {
+            
+            logger.error(`[TriviaGame][${channelName}] Generated question is invalid: ${JSON.stringify(gameState.currentQuestion)}`);
+            throw new Error("Generated question was incomplete or invalid. Please try again.");
         }
         
         // Starting the round

@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
 import { getContextManager } from '../../context/contextManager.js';
-import { getLeaderboard } from '../../trivia/triviaStorage.js';
+import { getLeaderboard, getRecentQuestions } from '../../trivia/triviaStorage.js';
 import { formatHelpMessage, formatGameSessionScoresMessage } from '../../trivia/triviaMessageFormatter.js';
 
 // Helper function to check mod/broadcaster status
@@ -188,6 +188,23 @@ const trivia = {
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error calling clearLeaderboard from trivia handler.');
                 enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred while trying to clear the leaderboard.`);
+            }
+            return;
+        } else if (subCommand === 'report' || subCommand === 'flag') {
+            // Get most recent question from game state or history
+            try {
+                const recentQuestions = await getRecentQuestions(channelName, null, 1);
+                if (recentQuestions && recentQuestions.length > 0) {
+                    const question = recentQuestions[0];
+                    const { reportProblemQuestion } = await import('../../trivia/triviaStorage.js');
+                    await reportProblemQuestion(question, "reported by user");
+                    enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the question. We'll review it to improve the trivia quality.`);
+                } else {
+                    enqueueMessage(channel, `@${invokingDisplayName}, No recent trivia questions found to report.`);
+                }
+            } catch (error) {
+                logger.error({ err: error }, 'Error reporting problem question');
+                enqueueMessage(channel, `@${invokingDisplayName}, Error processing your report. Please try again later.`);
             }
             return;
         } else if (subCommand === 'help') {

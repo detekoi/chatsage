@@ -129,23 +129,36 @@ export async function recordGameResult(gameDetails) {
     const colRef = db.collection(HISTORY_COLLECTION);
     
     try {
-        const dataToSave = {
-            ...gameDetails,
+        // Create a sanitized copy with default values for all fields
+        const sanitizedDetails = {
+            channel: gameDetails.channel || 'unknown',
+            topic: gameDetails.topic || 'general',
+            question: gameDetails.question || 'Unknown question',
+            answer: gameDetails.answer || 'Unknown',
+            winner: gameDetails.winner || null,
+            winnerDisplay: gameDetails.winnerDisplay || null,
+            startTime: gameDetails.startTime || null,
+            endTime: gameDetails.endTime || new Date().toISOString(),
+            durationMs: gameDetails.durationMs || 0,
+            reasonEnded: gameDetails.reasonEnded || 'unknown',
+            roundNumber: gameDetails.roundNumber || 1,
+            totalRounds: gameDetails.totalRounds || 1,
+            difficulty: gameDetails.difficulty || 'normal',
             timestamp: FieldValue.serverTimestamp()
         };
         
         // Save to history collection
-        await colRef.add(dataToSave);
-        logger.debug(`[TriviaStorage] Recorded game result for channel ${gameDetails?.channel}`);
+        await colRef.add(sanitizedDetails);
+        logger.debug(`[TriviaStorage] Recorded game result for channel ${sanitizedDetails.channel}`);
         
-        // Optionally save the question to the questions collection for future reference
-        if (gameDetails.question && gameDetails.answer) {
+        // Optionally save the question to the bank if valid
+        if (sanitizedDetails.question && sanitizedDetails.question !== 'Unknown question') {
             try {
                 await _saveQuestionToBank(
-                    gameDetails.question,
-                    gameDetails.answer,
-                    gameDetails.topic || 'general',
-                    gameDetails.difficulty || 'normal'
+                    sanitizedDetails.question,
+                    sanitizedDetails.answer,
+                    sanitizedDetails.topic,
+                    sanitizedDetails.difficulty
                 );
             } catch (questionError) {
                 logger.warn({ err: questionError }, `[TriviaStorage] Error saving question to bank, but game result was saved.`);
@@ -163,45 +176,71 @@ export async function recordGameResult(gameDetails) {
  * @param {string} answer - The answer text.
  * @param {string} topic - The topic.
  * @param {string} difficulty - The difficulty.
+ * @param {boolean} searchUsed - Whether search was used to generate the question.
+ * @param {boolean} verified - Whether the question was verified as factual.
  * @returns {Promise<void>}
  * @private
  */
-async function _saveQuestionToBank(question, answer, topic = 'general', difficulty = 'normal') {
+async function _saveQuestionToBank(question, answer, topic = 'general', difficulty = 'normal', searchUsed = false, verified = false) {
     const db = _getDb();
-    
-    // Create a unique-ish ID based on the question text
-    const questionHash = Buffer.from(question).toString('base64').substring(0, 40);
+    const questionHash = Buffer.from(question || 'Unknown question').toString('base64').substring(0, 40);
     const docRef = db.collection(QUESTIONS_COLLECTION).doc(questionHash);
     
     try {
         const docSnap = await docRef.get();
         
         if (docSnap.exists) {
-            // Update existing question
+            // Update existing question - explicitly define all fields
             await docRef.update({
-                answer: answer,
-                topic: topic,
-                difficulty: difficulty,
+                answer: answer || 'Unknown',
+                topic: topic || 'general',
+                difficulty: difficulty || 'normal',
                 lastUsed: FieldValue.serverTimestamp(),
-                usageCount: FieldValue.increment(1)
+                usageCount: FieldValue.increment(1),
+                searchUsed: searchUsed || false,
+                verified: (docSnap.data().verified !== undefined ? docSnap.data().verified : false)
             });
-            logger.debug(`[TriviaStorage] Updated existing question in bank: "${question.substring(0, 30)}..."`);
         } else {
-            // Create new question
+            // Create new question - explicitly define all fields
             await docRef.set({
-                question: question,
-                answer: answer,
-                topic: topic,
-                difficulty: difficulty,
+                question: question || 'Unknown question',
+                answer: answer || 'Unknown',
+                topic: topic || 'general',
+                difficulty: difficulty || 'normal',
                 created: FieldValue.serverTimestamp(),
                 lastUsed: FieldValue.serverTimestamp(),
-                usageCount: 1
+                usageCount: 1,
+                searchUsed: searchUsed || false,
+                verified: false
             });
-            logger.debug(`[TriviaStorage] Added new question to bank: "${question.substring(0, 30)}..."`);
         }
+        
+        logger.debug(`[TriviaStorage] ${docSnap.exists ? 'Updated' : 'Added'} question to bank: "${(question || 'Unknown question').substring(0, 30)}..."`);
     } catch (error) {
-        logger.error({ err: error }, `[TriviaStorage] Error saving question to bank: "${question.substring(0, 30)}..."`);
-        throw error; // Let caller handle
+        logger.error({ err: error }, `[TriviaStorage] Error saving question to bank`);
+        throw error;
+    }
+}
+
+/**
+ * Flags a question as problematic (e.g., hallucinated or reported by user).
+ * @param {string} questionText - The question text to flag.
+ * @param {string} reason - Reason for flagging (default: hallucination).
+ * @returns {Promise<void>}
+ */
+export async function reportProblemQuestion(questionText, reason = "hallucination") {
+    const db = _getDb();
+    const questionHash = Buffer.from(questionText).toString('base64').substring(0, 40);
+    const docRef = db.collection(QUESTIONS_COLLECTION).doc(questionHash);
+    try {
+        await docRef.update({
+            flaggedAsProblem: true,
+            problemReason: reason,
+            flaggedTimestamp: FieldValue.serverTimestamp()
+        });
+        logger.info(`[TriviaStorage] Flagged problematic question: ${questionText.substring(0, 30)}... (${reason})`);
+    } catch (error) {
+        logger.error({ err: error }, `[TriviaStorage] Error flagging problem question`);
     }
 }
 

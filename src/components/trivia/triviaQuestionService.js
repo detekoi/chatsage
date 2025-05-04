@@ -74,117 +74,293 @@ const triviaVerificationTool = {
     }]
 };
 
+// --- Helper: Validate Question Factuality ---
+async function validateQuestionFactuality(question, answer, topic) {
+    // Skip validation for general knowledge questions
+    if (!topic || topic === 'general') return { valid: true };
+    const model = getGeminiClient();
+    const prompt = `Verify if this trivia question and answer are factually accurate:\n\nQuestion: ${question}\nAnswer: ${answer}\nTopic: ${topic}\n\nUse search to verify if this contains accurate information. If this appears to be about a fictional entity or contains made-up details that don't exist, flag it as potentially hallucinated.\n\nReturn only a JSON object with: \n{ \"valid\": boolean, \"confidence\": number, \"reason\": string }`;
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ googleSearch: {} }]
+        });
+        const text = result.response.candidates[0].content.parts[0].text;
+        try {
+            const validation = JSON.parse(text);
+            return validation;
+        } catch (e) {
+            return { valid: false, confidence: 0, reason: "Could not validate question factuality" };
+        }
+    } catch (error) {
+        logger.error({ err: error }, 'Error validating question factuality');
+        return { valid: true }; // Default to valid on error
+    }
+}
+
+// --- Helper: Fallback to Explicit Search ---
+async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], channelName = null) {
+    const model = getGeminiClient();
+    const prompt = `I need you to generate a trivia question about ${topic} that is FACTUALLY ACCURATE.\n\nCRITICAL: YOU MUST FOLLOW THESE STEPS IN ORDER:\n1. FIRST, use Google Search to find verified facts about ${topic}\n2. Choose a specific, verifiable fact from search results\n3. Formulate a clear question based ONLY on information you found through search\n4. Include the exact answer as found in search results\n5. Include any common alternate forms of the answer\n6. Cite the source of your information in the explanation\n\nDO NOT generate a question based on your internal knowledge. ONLY use facts that you can verify through search.\n\nDifficulty level: ${difficulty}\n\nONLY respond by calling the generate_trivia_question function with a question that is 100% verified by search.`;
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ googleSearch: {} }, triviaQuestionTool],
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: "ANY"
+                }
+            }
+        });
+        const functionCall = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+        if (functionCall?.name === 'generate_trivia_question') {
+            const args = functionCall.args;
+            const questionObject = {
+                question: args.question,
+                answer: args.correct_answer,
+                alternateAnswers: args.alternate_answers || [],
+                explanation: args.explanation || "No explanation provided.",
+                difficulty: args.difficulty || difficulty,
+                searchUsed: true, // Force to true
+                topic: topic
+            };
+            return questionObject;
+        }
+        return null;
+    } catch (error) {
+        logger.error({ err: error }, 'Error generating fallback question');
+        return null;
+    }
+}
+
+// --- Helper: Extract current game from context ---
+function getGameFromContext(channelName) {
+    if (!channelName) return "video games";
+    try {
+        const contextManager = getContextManager();
+        const llmContext = contextManager.getContextForLLM(channelName, "trivia-system", "");
+        const currentGame = llmContext?.streamGame;
+        return currentGame && currentGame !== "N/A" ? currentGame : "video games";
+    } catch (error) {
+        logger.error({ err: error }, 'Error getting game from context');
+        return "video games";
+    }
+}
+
+// --- Helper: Parse question text into parts (very basic, can be improved) ---
+function parseQuestionText(text) {
+    // Try to extract Q/A/Explanation from a block of text
+    // Look for lines like: Question: ... Answer: ... Explanation: ...
+    const parts = { question: '', answer: '', alternateAnswers: [], explanation: '' };
+    const qMatch = text.match(/Question:\s*(.*)/i);
+    const aMatch = text.match(/Answer:\s*(.*)/i);
+    const eMatch = text.match(/Explanation:\s*(.*)/i);
+    if (qMatch) parts.question = qMatch[1].trim();
+    if (aMatch) parts.answer = aMatch[1].trim();
+    if (eMatch) parts.explanation = eMatch[1].trim();
+    // Try to find alternate answers
+    const altMatch = text.match(/Alternate Answers?:\s*(.*)/i);
+    if (altMatch) {
+        parts.alternateAnswers = altMatch[1].split(/,|\bor\b/).map(s => s.trim()).filter(Boolean);
+    }
+    // Fallback: if no explicit fields, treat first line as question, second as answer
+    if (!parts.question && text) {
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 0) parts.question = lines[0];
+        if (lines.length > 1) parts.answer = lines[1];
+    }
+    return parts;
+}
+
+// --- Helper: Enhance question with factual info ---
+function enhanceWithFactualInfo(parts, factualInfo, topic, difficulty) {
+    // If factualInfo contains a Q/A, prefer it
+    const factParts = parseQuestionText(factualInfo);
+    return {
+        question: factParts.question || parts.question,
+        answer: factParts.answer || parts.answer,
+        alternateAnswers: factParts.alternateAnswers.length ? factParts.alternateAnswers : parts.alternateAnswers,
+        explanation: factParts.explanation || parts.explanation || "No explanation provided.",
+        difficulty,
+        searchUsed: true,
+        topic
+    };
+}
+
+// --- Helper: String similarity (Levenshtein) ---
+function calculateStringSimilarity(str1, str2) {
+    const s1 = str1.toLowerCase();
+    const s2 = str2.toLowerCase();
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const maxLen = Math.max(len1, len2);
+    if (maxLen === 0) return 1.0;
+    // Levenshtein distance
+    const dp = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+    for (let i = 0; i <= len1; i++) dp[i][0] = i;
+    for (let j = 0; j <= len2; j++) dp[0][j] = j;
+    for (let i = 1; i <= len1; i++) {
+        for (let j = 1; j <= len2; j++) {
+            if (s1[i - 1] === s2[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1];
+            } else {
+                dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+            }
+        }
+    }
+    const distance = dp[len1][len2];
+    return 1 - (distance / maxLen);
+}
+
+// --- Helper: Format question parts ---
+function formatTriviaParts(questionText, factualInfo, topic, difficulty) {
+    const parts = parseQuestionText(questionText);
+    if (factualInfo) {
+        return enhanceWithFactualInfo(parts, factualInfo, topic, difficulty);
+    }
+    return {
+        question: parts.question || questionText,
+        answer: parts.answer || "Unknown",
+        alternateAnswers: parts.alternateAnswers || [],
+        explanation: parts.explanation || "No explanation provided.",
+        difficulty,
+        searchUsed: !!factualInfo,
+        topic
+    };
+}
+
 /**
  * Generates a trivia question based on topic and difficulty.
- * Uses LLM function calling and optional Google Search.
- * 
- * @param {string} topic - The topic for the question (can be "general", a game title, or specific topic)
- * @param {string} difficulty - Difficulty level (easy, normal, hard)
- * @param {string[]} excludedQuestions - Array of recently used questions to avoid repetition
- * @param {string} channelName - Channel name for context
- * @returns {Promise<object|null>} Question object or null on failure
+ * Uses a two-step approach: (1) search for facts if needed, (2) generate the question using those facts or standard prompt.
+ * @param {string} topic
+ * @param {string} difficulty
+ * @param {string[]} excludedQuestions
+ * @param {string} channelName
+ * @returns {Promise<object|null>}
  */
 export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null) {
     const model = getGeminiClient();
     
-    // Build topic guidance based on the input
-    let topicGuidance = "";
-    if (!topic || topic.toLowerCase() === "general") {
-        topicGuidance = "Create a general knowledge trivia question on any interesting topic.";
-    } else if (topic.toLowerCase() === "game" && channelName) {
-        // Get current game from context if available
-        const contextManager = getContextManager();
-        const llmContext = contextManager.getContextForLLM(channelName, "trivia-system", "");
-        const currentGame = llmContext?.streamGame || null;
-        
-        if (currentGame && currentGame !== "N/A") {
-            topicGuidance = `Create a trivia question about the video game "${currentGame}".`;
-        } else {
-            topicGuidance = "Create a video game related trivia question.";
-        }
-    } else {
-        topicGuidance = `Create a trivia question about ${topic}.`;
+    // Get actual game title if topic is 'game'
+    let specificTopic = topic;
+    if (topic === 'game' && channelName) {
+        specificTopic = getGameFromContext(channelName);
     }
     
-    // Construct the full prompt
-    const prompt = `Generate a high-quality, factually accurate trivia question.
+    // Determine if we should use search based on config
+    // Check if this is a game topic and TRIVIA_ALWAYS_SEARCH_GAMES is enabled
+    const isGameTopic = topic === 'game' || specificTopic?.toLowerCase().includes('game');
+    const useSearchForGames = process.env.TRIVIA_ALWAYS_SEARCH_GAMES === 'true';
+    const shouldUseSearch = isGameTopic && useSearchForGames;
+    
+    // STEP 1: If search should be used, do a search-only call first
+    let factualInfo = null;
+    if (shouldUseSearch) {
+        try {
+            const searchPrompt = `Find factual information about the game "${specificTopic}" for creating a trivia question.\nInclude details that would make good trivia questions at ${difficulty} difficulty level.\nFocus on verifiable facts about gameplay, characters, story, or development.`;
 
-${topicGuidance}
-
-Difficulty level: ${difficulty}
-
-Requirements:
-- The question should be clear, concise and have a definitive answer
-- For easy questions, focus on well-known facts that most people would know
-- For hard questions, focus on more obscure but still factual information
-- Include alternate acceptable answers where appropriate
-- Provide a brief explanation about the answer
-- Use search if needed to ensure accuracy
-- Do NOT use any of these recently used questions: ${excludedQuestions.join(", ")}
-
-ONLY respond by calling the generate_trivia_question function.`;
-
-    logger.debug({
-        topic,
-        difficulty,
-        excludedCount: excludedQuestions.length
-    }, 'Generating trivia question');
-
+            // Make a search-only API call - similar to generateSearchResponse
+            const searchResult = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: searchPrompt }] }],
+                tools: [{ googleSearch: {} }] // ONLY search tool, no function calling
+            });
+            
+            if (searchResult?.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                factualInfo = searchResult.response.candidates[0].content.parts[0].text;
+                logger.info(`Search used to gather facts about ${specificTopic} for trivia question`);
+            }
+        } catch (error) {
+            logger.error({ err: error }, 'Error performing search for game information');
+            // Continue without search if it fails
+        }
+    }
+    
+    // STEP 2: Generate the question with a standard API call (no tools)
+    let prompt = '';
+    if (factualInfo) {
+        // Use the search results to create a factually accurate question
+        prompt = `Create a trivia question using these facts about ${specificTopic}:\n\n${factualInfo}\n\nRequirements:\n- Difficulty: ${difficulty}\n- Make the question clear and specific\n- Provide the correct answer based on the facts above\n- Include alternate acceptable answers if applicable\n- Add a brief explanation\n\nFormat your response exactly like this:\nQuestion: [your question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+    } else {
+        // Standard question generation without search data
+        prompt = `Create a trivia question about ${specificTopic || 'general knowledge'}.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+    }
+    
     try {
-        // Make the API call with function calling
+        // Standard content generation - NO tools or function calling
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: triviaQuestionTool,
-            toolConfig: {
-                functionCallingConfig: {
-                    mode: "ANY" // Force function calling
-                }
+            generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 350
             }
         });
-
-        // Process the result
-        const response = result.response;
-        const candidate = response?.candidates?.[0];
-
-        // Extract function call data
-        if (candidate?.content?.parts?.[0]?.functionCall) {
-            const functionCall = candidate.content.parts[0].functionCall;
-            
-            if (functionCall.name === 'generate_trivia_question') {
-                const args = functionCall.args;
-                
-                // Validate required fields
-                if (!args.question || !args.correct_answer) {
-                    logger.warn('Generated trivia question missing required fields');
-                    return null;
-                }
-                
-                // Build the question object
-                const questionObject = {
-                    question: args.question,
-                    answer: args.correct_answer,
-                    alternateAnswers: args.alternate_answers || [],
-                    explanation: args.explanation || "No explanation provided.",
-                    difficulty: args.difficulty || difficulty,
-                    searchUsed: args.search_used || false,
-                    topic: topic
-                };
-                
-                logger.info({
-                    questionLength: questionObject.question.length,
-                    topicUsed: topic,
-                    difficultyAssigned: questionObject.difficulty
-                }, 'Successfully generated trivia question');
-                
-                return questionObject;
-            } else {
-                logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for question generation.");
-            }
-        } else {
-            logger.warn("Model did not make expected function call for question generation.");
+        
+        const text = result.response.candidates[0].content.parts[0].text;
+        
+        // Parse the response into components (using your existing code)
+        const questionObj = {
+            question: '',
+            answer: '',
+            alternateAnswers: [],
+            explanation: 'No explanation provided.',
+            difficulty: difficulty,
+            searchUsed: !!factualInfo, // Track if search was used
+            topic: specificTopic
+        };
+        
+        // Extract question (your existing parsing code)
+        const questionMatch = text.match(/Question:\s*(.*?)(?=Answer:|$)/s);
+        if (questionMatch && questionMatch[1].trim()) {
+            questionObj.question = questionMatch[1].trim();
         }
         
-        return null;
+        // Extract answer
+        const answerMatch = text.match(/Answer:\s*(.*?)(?=Alternate|Explanation|$)/s);
+        if (answerMatch && answerMatch[1].trim()) {
+            questionObj.answer = answerMatch[1].trim();
+        }
+        
+        // Extract alternate answers
+        const altMatch = text.match(/Alternate Answers:\s*(.*?)(?=Explanation|$)/s);
+        if (altMatch && altMatch[1].trim()) {
+            questionObj.alternateAnswers = altMatch[1].split(',')
+                .map(alt => alt.trim())
+                .filter(alt => alt.length > 0);
+        }
+        
+        // Extract explanation
+        const explMatch = text.match(/Explanation:\s*(.*?)(?=$)/s);
+        if (explMatch && explMatch[1].trim()) {
+            questionObj.explanation = explMatch[1].trim();
+        }
+        
+        // Validate the question
+        if (!questionObj.question || questionObj.question.length < 10 || !questionObj.answer) {
+            logger.warn('Generated invalid question: ' + text.substring(0, 100));
+            return null;
+        }
+        
+        // STEP 3: Verify factuality if enabled and needed (for game topics without search)
+        const verifyFactuality = process.env.TRIVIA_SEARCH_VERIFICATION === 'true';
+        if (isGameTopic && !factualInfo && verifyFactuality) {
+            try {
+                const validation = await validateQuestionFactuality(
+                    questionObj.question, 
+                    questionObj.answer,
+                    specificTopic
+                );
+                
+                if (!validation.valid && validation.confidence > 0.7) {
+                    logger.warn(`Potentially hallucinated question detected: ${validation.reason}`);
+                    // Fall back to basic question if high confidence of hallucination
+                    return null;
+                }
+            } catch (error) {
+                logger.error({ err: error }, 'Error validating question factuality');
+            }
+        }
+        
+        return questionObj;
     } catch (error) {
         logger.error({ err: error }, 'Error generating trivia question');
         return null;
@@ -193,108 +369,63 @@ ONLY respond by calling the generate_trivia_question function.`;
 
 /**
  * Verifies if a user's answer matches the expected answer.
- * Uses LLM function calling and optional Google Search for verification.
- * 
- * @param {string} correctAnswer - The known correct answer
- * @param {string} userAnswer - The user's submitted answer
- * @param {string[]} alternateAnswers - Array of acceptable alternate answers
- * @param {string} question - The original question for context
- * @returns {Promise<object>} Verification result
+ * Uses a two-step approach: (1) basic string/alternate match, (2) if needed, do a separate search call for semantic equivalence.
+ * @param {string} correctAnswer
+ * @param {string} userAnswer
+ * @param {string[]} alternateAnswers
+ * @param {string} question
+ * @returns {Promise<object>}
  */
 export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers = [], question = "") {
+    const model = getGeminiClient();
     if (!correctAnswer || !userAnswer) {
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
-    
-    const model = getGeminiClient();
-    
-    // Construct the verification prompt
-    const prompt = `You are verifying a trivia answer. Determine if the user's answer is correct.
-
-Question: ${question}
-Correct answer: ${correctAnswer}
-Alternative acceptable answers: ${alternateAnswers.join(", ")}
-User's answer: ${userAnswer}
-
-Requirements:
-- Be flexible with spelling, punctuation, and minor variations
-- Consider both semantic meaning and exact matching
-- For non-exact matches, use search if necessary to verify correctness
-- For numeric answers, allow reasonable rounding
-- For names, accept common variations (e.g., "Bill Gates" vs "William Gates")
-- Do not be overly strict - valid answers can be phrased differently
-
-ONLY respond by calling the verify_trivia_answer function with your assessment.`;
-
-    logger.debug({
-        userAnswerLength: userAnswer.length,
-        correctAnswerLength: correctAnswer.length,
-        alternateCount: alternateAnswers.length
-    }, 'Verifying trivia answer');
-
-    try {
-        // Make the API call with function calling
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: triviaVerificationTool,
-            toolConfig: {
-                functionCallingConfig: {
-                    mode: "ANY" // Force function calling
-                }
-            }
-        });
-
-        // Process the result
-        const response = result.response;
-        const candidate = response?.candidates?.[0];
-
-        // Extract function call data
-        if (candidate?.content?.parts?.[0]?.functionCall) {
-            const functionCall = candidate.content.parts[0].functionCall;
-            
-            if (functionCall.name === 'verify_trivia_answer') {
-                const args = functionCall.args;
-                
-                // Validate boolean field
-                const isCorrect = args.is_correct === true;
-                
-                // Build verification result
-                const verificationResult = {
-                    is_correct: isCorrect,
-                    confidence: typeof args.confidence === 'number' ? args.confidence : (isCorrect ? 1.0 : 0.0),
-                    reasoning: args.reasoning || (isCorrect ? "Answer matches expected answer." : "Answer does not match expected answer."),
-                    search_used: args.search_used || false
-                };
-                
-                logger.info({
-                    is_correct: verificationResult.is_correct,
-                    confidence: verificationResult.confidence,
-                    search_used: verificationResult.search_used
-                }, 'Successfully verified trivia answer');
-                
-                return verificationResult;
-            } else {
-                logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for answer verification.");
-            }
-        } else {
-            logger.warn("Model did not make expected function call for answer verification.");
-        }
-        
-        // Default return if function call failed
+    // 1. Basic string comparison
+    if (userAnswer.toLowerCase() === correctAnswer.toLowerCase()) {
         return {
-            is_correct: userAnswer.toLowerCase() === correctAnswer.toLowerCase(),
-            confidence: 0.8,
-            reasoning: "Basic string comparison (fallback method).",
+            is_correct: true,
+            confidence: 1.0,
+            reasoning: "Exact match with correct answer",
             search_used: false
         };
-    } catch (error) {
-        logger.error({ err: error }, 'Error verifying trivia answer');
-        
-        // Fallback to simple string comparison
+    }
+    // 2. Check alternate answers
+    for (const alt of alternateAnswers) {
+        if (alt.toLowerCase() === userAnswer.toLowerCase()) {
+            return {
+                is_correct: true,
+                confidence: 1.0,
+                reasoning: "Exact match with alternate answer",
+                search_used: false
+            };
+        }
+    }
+    // 3. For non-exact matches, use a dedicated search call
+    const searchPrompt = `Compare these answers for a trivia question:\nQuestion: ${question}\nCorrect answer: ${correctAnswer}\nUser's answer: ${userAnswer}\n\nSearch for information to determine if the user's answer is essentially correct, even if worded differently. Focus on checking whether both answers refer to the same thing or are semantically equivalent.`;
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: searchPrompt }] }],
+            tools: [{ googleSearch: {} }]
+        });
+        const responseText = result.response.candidates[0].content.parts[0].text;
+        const isCorrect = responseText.toLowerCase().includes("correct") ||
+            responseText.toLowerCase().includes("equivalent") ||
+            responseText.toLowerCase().includes("same thing");
         return {
-            is_correct: userAnswer.toLowerCase() === correctAnswer.toLowerCase(),
-            confidence: 0.7,
-            reasoning: "Basic string comparison (error fallback).",
+            is_correct: isCorrect,
+            confidence: isCorrect ? 0.85 : 0.7,
+            reasoning: responseText.substring(0, 100),
+            search_used: true
+        };
+    } catch (error) {
+        logger.error({ err: error }, 'Error verifying answer with search');
+        // Fall back to fuzzy string matching
+        const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
+        return {
+            is_correct: similarity > 0.8,
+            confidence: similarity,
+            reasoning: `String similarity: ${Math.round(similarity * 100)}%`,
             search_used: false
         };
     }
