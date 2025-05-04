@@ -3,6 +3,7 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/ge
 
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
+import { getCurrentTime } from '../../lib/timeUtils.js';
 
 // --- Define the System Instruction ---
 const CHAT_SAGE_SYSTEM_INSTRUCTION = "You are ChatSage, a wise and helpful AI assistant in a Twitch chat. Be concise and engaging like a chatbot. Avoid repeating the user's name in the beginning of your response. This is Twitch, so it is populated with 'cool kids' who may be skeptical of overly bubbly AI responses. Do not use markdown in your responses.";
@@ -10,8 +11,8 @@ const CHAT_SAGE_SYSTEM_INSTRUCTION = "You are ChatSage, a wise and helpful AI as
 let genAI = null;
 let generativeModel = null;
 
-// --- NEW: Function Declaration for Search Decision ---
-const checkSearchNeededTool = {
+// --- Tool Declarations ---
+const toolDeclarations = {
     functionDeclarations: [
         {
             name: "decide_if_search_needed",
@@ -33,6 +34,20 @@ const checkSearchNeededTool = {
                      }
                 },
                 required: ["user_query", "reasoning", "search_required"]
+            }
+        },
+        {
+            name: "getCurrentTime",
+            description: "Get the current date and time for a specified timezone. Defaults to UTC if no timezone is provided.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    timezone: {
+                        type: "STRING",
+                        description: "Optional. The IANA timezone name (e.g., 'Europe/London', 'America/New_York', 'UTC', 'GMT')."
+                    }
+                },
+                required: []
             }
         }
     ]
@@ -138,12 +153,53 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
     try {
+        // 1. Initial call with tool declarations
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+            tools: toolDeclarations,
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
         });
-        
         const response = result.response;
+        const candidate = response.candidates?.[0];
+
+        // 2. Check for function call (e.g., getCurrentTime)
+        if (candidate?.content?.parts?.[0]?.functionCall) {
+            const functionCall = candidate.content.parts[0].functionCall;
+            logger.info({ functionCall }, 'Gemini requested a function call');
+            const functionResult = await handleFunctionCall(functionCall);
+            if (functionResult) {
+                // 3. Send function result back to Gemini
+                const history = [
+                    { role: "user", parts: [{ text: fullPrompt }] }, // Original User Prompt
+                    { role: "model", parts: candidate.content.parts }, // Model's function call as a model message
+                    {
+                        role: "function",
+                        parts: [{
+                            functionResponse: {
+                                name: functionCall.name,
+                                response: functionResult // The object returned by your local function {currentTime: ...} or {error: ...}
+                            }
+                        }]
+                    }
+                ];
+                const followup = await model.generateContent({
+                    contents: history,
+                    tools: toolDeclarations,
+                    systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
+                });
+                const followupResponse = followup.response;
+                const followupCandidate = followupResponse.candidates?.[0];
+                if (followupCandidate?.content?.parts?.length) {
+                    const text = followupCandidate.content.parts.map(part => part.text).join('');
+                    logger.info({ responseLength: text.length }, 'Successfully generated function-call response.');
+                    return text.trim();
+                }
+                logger.warn('No content in followup function-call response.');
+                return null;
+            }
+        }
+
+        // 4. Standard text response (no function call)
         if (response.promptFeedback?.blockReason) {
             logger.warn({
                 blockReason: response.promptFeedback.blockReason,
@@ -152,25 +208,8 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             return null;
         }
 
-        if (!response.candidates?.length || !response.candidates[0].content) {
+        if (!candidate?.content?.parts?.length) {
             logger.warn({ response }, 'Gemini response missing candidates or content.');
-            return null;
-        }
-
-        const candidate = response.candidates[0];
-        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
-            logger.warn({
-                finishReason: candidate.finishReason,
-                safetyRatings: candidate.safetyRatings,
-            }, `Gemini generation finished unexpectedly: ${candidate.finishReason}`);
-            if (candidate.finishReason === 'SAFETY') {
-                logger.warn('Gemini response content blocked due to safety settings.');
-            }
-            return null;
-        }
-
-        if (!candidate.content.parts || candidate.content.parts.length === 0) {
-            logger.warn({ candidate }, 'Gemini response candidate missing content parts.');
             return null;
         }
 
@@ -260,7 +299,7 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            tools: checkSearchNeededTool,
+            tools: toolDeclarations,
             // Explicitly configure the function calling mode
             toolConfig: {
                 functionCallingConfig: {
@@ -422,4 +461,20 @@ Translation:`;
         logger.error({ err: error, prompt: "[translation prompt omitted]" }, 'Error during translation Gemini API call');
         return null;
     }
+}
+
+/**
+ * Handles Gemini function calls for tools (e.g., getCurrentTime).
+ * @param {object} functionCall - The functionCall object from Gemini response.
+ * @returns {object|null} The function result object or null if not handled.
+ */
+async function handleFunctionCall(functionCall) {
+    if (!functionCall || !functionCall.name) return null;
+    if (functionCall.name === 'getCurrentTime') {
+        const args = functionCall.args || {};
+        // getCurrentTime is synchronous, but wrap in Promise.resolve for uniformity
+        return Promise.resolve(getCurrentTime(args));
+    }
+    // Add more tool handlers here as needed
+    return null;
 }
