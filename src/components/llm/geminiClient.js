@@ -11,8 +11,8 @@ const CHAT_SAGE_SYSTEM_INSTRUCTION = "You are ChatSage, a wise and helpful AI as
 let genAI = null;
 let generativeModel = null;
 
-// --- Tool Declarations ---
-const toolDeclarations = {
+// --- Tool Definitions (Keep the structure) ---
+const decideSearchTool = {
     functionDeclarations: [
         {
             name: "decide_if_search_needed",
@@ -35,7 +35,12 @@ const toolDeclarations = {
                 },
                 required: ["user_query", "reasoning", "search_required"]
             }
-        },
+        }
+    ]
+};
+
+const standardAnswerTools = {
+    functionDeclarations: [
         {
             name: "getCurrentTime",
             description: "Get the current date and time for a specified timezone. Defaults to UTC if no timezone is provided.",
@@ -50,8 +55,11 @@ const toolDeclarations = {
                 required: []
             }
         }
+        // Add other answer-generating tools here later if needed
     ]
 };
+
+const searchTool = [{ googleSearch: {} }]; // Gemini specific format for search
 
 /**
  * Initializes the GoogleGenerativeAI client and the specific model.
@@ -153,10 +161,10 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
     try {
-        // 1. Initial call with tool declarations
+        // 1. Initial call with only answer tools
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-            tools: toolDeclarations,
+            tools: standardAnswerTools,
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
         });
         const response = result.response;
@@ -184,7 +192,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                 ];
                 const followup = await model.generateContent({
                     contents: history,
-                    tools: toolDeclarations,
+                    tools: standardAnswerTools,
                     systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
                 });
                 const followupResponse = followup.response;
@@ -238,7 +246,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-            tools: [{ googleSearch: {} }],
+            tools: searchTool,
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
         });
 
@@ -292,14 +300,14 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     const model = getGeminiClient();
 
     // Updated prompt: More direct instruction to CALL the function ONLY.
-    const decisionPrompt = `${contextPrompt}\n\n**User Query:** "${userQuery}"\n\n**CRITICAL TASK:** Your ONLY task is to determine if Google Search is absolutely essential to answer the User Query accurately, considering the provided context. Call the 'decide_if_search_needed' function with your decision. Do NOT answer the user's query directly in this step. Base your decision on whether the query involves real-time data, video game guidance, recent events (after late 2024), specific obscure facts, or rapidly changing topics not likely covered by general knowledge or the provided context.`;
+    const decisionPrompt = `${contextPrompt}\n\n**User Query:** "${userQuery}"\n\n**CRITICAL TASK:** Your ONLY task is to determine if Google Search is absolutely essential to answer the User Query accurately, considering the provided context. Call the 'decide_if_search_needed' function with your decision. Do NOT answer the user's query directly in this step.\n\n**IMPORTANT:** If the user's query is asking ONLY for the current time OR DATE in a specific location (e.g., 'what time is it?', 'what's the date today?', 'time in London'), then search is NOT needed. Set search_required: false because the getCurrentTime tool can handle this directly.\n\nSearch IS needed for other real-time information (such as weather, news, stock prices), video game guidance, complex questions, or topics outside general knowledge or the provided context. Base your decision on whether the query involves real-time data, recent events (after late 2024), specific obscure facts, or rapidly changing topics not likely covered by general knowledge or the provided context.`;
 
     logger.debug({ promptLength: decisionPrompt.length }, 'Attempting function calling decision for search');
 
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            tools: toolDeclarations,
+            tools: decideSearchTool, // <-- Use specific tool
             // Explicitly configure the function calling mode
             toolConfig: {
                 functionCallingConfig: {
