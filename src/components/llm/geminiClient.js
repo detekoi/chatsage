@@ -157,15 +157,20 @@ ${history}`;
  */
 export async function generateStandardResponse(contextPrompt, userQuery) {
     const model = getGeminiClient();
+
+    // --- Add CRITICAL INSTRUCTION to systemInstruction ---
+    const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
+
     const fullPrompt = `${contextPrompt}\n\n**User Query:** ${userQuery}\n\n**ChatSage Response:**`;
+
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
     try {
-        // 1. Initial call with only answer tools
+        // 1. Initial call with only answer tools AND the CRITICAL INSTRUCTION
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: standardAnswerTools,
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
+            systemInstruction: { parts: [{ text: standardSystemInstruction }] }
         });
         const response = result.response;
         const candidate = response.candidates?.[0];
@@ -173,41 +178,57 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
         // 2. Check for function call (e.g., getCurrentTime)
         if (candidate?.content?.parts?.[0]?.functionCall) {
             const functionCall = candidate.content.parts[0].functionCall;
-            logger.info({ functionCall }, 'Gemini requested a function call');
-            const functionResult = await handleFunctionCall(functionCall);
-            if (functionResult) {
-                // 3. Send function result back to Gemini
-                const history = [
-                    { role: "user", parts: [{ text: fullPrompt }] }, // Original User Prompt
-                    { role: "model", parts: candidate.content.parts }, // Model's function call as a model message
-                    {
-                        role: "function",
-                        parts: [{
-                            functionResponse: {
-                                name: functionCall.name,
-                                response: functionResult // The object returned by your local function {currentTime: ...} or {error: ...}
-                            }
-                        }]
+            if (functionCall.name === 'getCurrentTime') {
+                logger.info({ functionCall }, 'Gemini requested getCurrentTime function call');
+                const functionResult = await handleFunctionCall(functionCall);
+                if (functionResult) {
+                    // 3. Send function result back to Gemini
+                    const history = [
+                        { role: "user", parts: [{ text: fullPrompt }] },
+                        { role: "model", parts: candidate.content.parts },
+                        {
+                            role: "function",
+                            parts: [{
+                                functionResponse: {
+                                    name: functionCall.name,
+                                    response: functionResult
+                                }
+                            }]
+                        }
+                    ];
+                    logger.debug({ history }, "Sending function call result back to model.");
+                    const followup = await model.generateContent({
+                        contents: history,
+                        tools: standardAnswerTools,
+                        systemInstruction: { parts: [{ text: standardSystemInstruction }] }
+                    });
+                    const followupResponse = followup.response;
+                    const followupCandidate = followupResponse.candidates?.[0];
+                    if (followupCandidate?.content?.parts?.length) {
+                        const text = followupCandidate.content.parts.map(part => part.text).join('');
+                        logger.info({ responseLength: text.length }, 'Successfully generated function-call response.');
+                        return text.trim();
                     }
-                ];
-                const followup = await model.generateContent({
-                    contents: history,
-                    tools: standardAnswerTools,
-                    systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
-                });
-                const followupResponse = followup.response;
-                const followupCandidate = followupResponse.candidates?.[0];
-                if (followupCandidate?.content?.parts?.length) {
-                    const text = followupCandidate.content.parts.map(part => part.text).join('');
-                    logger.info({ responseLength: text.length }, 'Successfully generated function-call response.');
-                    return text.trim();
+                    logger.warn('No content in followup function-call response.');
+                    return null;
+                } else {
+                    logger.warn({ functionCall }, 'handleFunctionCall did not return a valid result.');
+                    return null;
                 }
-                logger.warn('No content in followup function-call response.');
+            } else {
+                logger.warn({ functionCall }, 'Gemini requested an unexpected function call during standard response generation.');
                 return null;
             }
         }
 
-        // 4. Standard text response (no function call)
+        // 4. Standard text response (no function call - this is where the hallucination happened)
+        // Check if it TRIED to answer a time query without the function
+        if (/\b(time|date)\b/i.test(userQuery) && !candidate?.content?.parts?.[0]?.functionCall) {
+            logger.warn({query: userQuery, responseText: candidate?.content?.parts?.[0]?.text}, "LLM attempted to answer time/date query without function call. This response is likely incorrect.");
+            // Optionally return a specific message here instead of the hallucinated text
+            // return "Sorry, I had trouble fetching the exact time. Please try again.";
+        }
+
         if (response.promptFeedback?.blockReason) {
             logger.warn({
                 blockReason: response.promptFeedback.blockReason,
@@ -222,7 +243,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
         }
 
         const text = candidate.content.parts.map(part => part.text).join('');
-        logger.info({ responseLength: text.length }, 'Successfully generated standard response.');
+        logger.info({ responseLength: text.length }, 'Successfully generated standard text response (no function call).');
         return text.trim();
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
