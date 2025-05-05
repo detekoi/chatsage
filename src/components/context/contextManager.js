@@ -37,7 +37,7 @@ interface ChannelState {
 */
 
 // --- Constants ---
-const MAX_CHAT_HISTORY_LENGTH = 100; // Max messages to keep before summarizing
+const MAX_CHAT_HISTORY_LENGTH = 50; // Max messages to keep before summarizing
 const CHAT_HISTORY_PRUNE_LENGTH = 10; // Keep N most recent messages after summarizing
 
 // --- State ---
