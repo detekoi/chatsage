@@ -6,6 +6,14 @@ import { generateStandardResponse as generateLlmResponse, buildContextPrompt, su
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
 
+export function removeMarkdownAsterisks(text) {
+  // Remove **bold**
+  text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
+  // Remove *italics*
+  text = text.replace(/\*([^\*]+)\*/g, '$1');
+  return text;
+}
+
 /**
  * Handles getting context, calling the standard LLM, summarizing/truncating, and replying.
  * @param {string} channel - Channel name with '#'.
@@ -42,7 +50,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
         // d. Check length and Summarize if needed
         let replyPrefix = `@${displayName} `; // Simple prefix
-        let finalReplyText = initialResponseText;
+        let finalReplyText = removeMarkdownAsterisks(initialResponseText);
 
         if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
@@ -50,7 +58,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
             const summary = await summarizeText(initialResponseText, SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
-                finalReplyText = summary;
+                finalReplyText = removeMarkdownAsterisks(summary);
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to truncation.`);

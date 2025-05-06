@@ -1,5 +1,6 @@
 // src/components/trivia/triviaMessageFormatter.js
 import logger from '../../lib/logger.js';
+import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
 
 /**
  * Formats the game start announcement message.
@@ -26,7 +27,11 @@ export function formatQuestionMessage(roundNumber, totalRounds, question, diffic
     const roundPrefix = totalRounds > 1 ? `[Round ${roundNumber}/${totalRounds}] ` : '';
     const difficultyEmoji = getDifficultyEmoji(difficulty);
     
-    return `${roundPrefix}${difficultyEmoji} TRIVIA: ${question} (${timeSeconds}s)`;
+    logger.debug(`[TriviaFormatter] Original question from gameState: "${question}"`);
+    const cleanQuestion = removeMarkdownAsterisks(question);
+    logger.debug(`[TriviaFormatter] Question after removeMarkdownAsterisks: "${cleanQuestion}"`);
+
+    return `${roundPrefix}${difficultyEmoji} TRIVIA: ${cleanQuestion} (${timeSeconds}s)`;
 }
 
 /**
@@ -41,7 +46,8 @@ export function formatQuestionMessage(roundNumber, totalRounds, question, diffic
  * @returns {string} Formatted message.
  */
 export function formatCorrectAnswerMessage(roundPrefix, displayName, answer, explanation, timeString, streakInfo, pointsInfo) {
-    return `${roundPrefix}✅ @${displayName} got it right${timeString}${streakInfo}${pointsInfo}! The answer is: ${answer}. ${explanation}`;
+    const cleanExplanation = removeMarkdownAsterisks(explanation);
+    return `${roundPrefix}✅ @${displayName} got it right${timeString}${streakInfo}${pointsInfo}! The answer is: ${answer}. ${cleanExplanation}`;
 }
 
 /**
@@ -52,7 +58,8 @@ export function formatCorrectAnswerMessage(roundPrefix, displayName, answer, exp
  * @returns {string} Formatted message.
  */
 export function formatTimeoutMessage(roundPrefix, answer, explanation) {
-    return `${roundPrefix}⏱️ Time's up! The answer is: ${answer}. ${explanation}`;
+    const cleanExplanation = removeMarkdownAsterisks(explanation);
+    return `${roundPrefix}⏱️ Time's up! The answer is: ${answer}. ${cleanExplanation}`;
 }
 
 /**
