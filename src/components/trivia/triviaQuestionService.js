@@ -16,19 +16,19 @@ const triviaQuestionTool = {
                     description: "The trivia question to ask."
                 },
                 correct_answer: {
-                    type: "STRING", 
-                    description: "The single, most accurate answer to the question."
+                    type: "STRING",
+                    description: "The single, most accurate, AND VERY CONCISE answer (ideally a proper noun, specific term, or 1-3 key words). Avoid full sentences or overly descriptive phrases; these belong in the 'explanation'."
                 },
                 alternate_answers: {
                     type: "ARRAY",
-                    description: "Alternative correct answers or acceptable variations.",
+                    description: "Alternative correct and VERY CONCISE answers or common, acceptable variations (each ideally 1-3 key words).",
                     items: {
                         type: "STRING"
                     }
                 },
                 explanation: {
                     type: "STRING",
-                    description: "Brief explanation of why the answer is correct."
+                    description: "Brief explanation of why the answer is correct, can include more descriptive details that are not part of the concise answer."
                 },
                 difficulty: {
                     type: "STRING",
@@ -106,14 +106,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         : '';
 
     // STEP 1: Search for facts about the topic - MODIFIED PROMPT
-    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. 
-Focus on:
-- Key characters, items, or locations and their unique attributes or significance.
-- Notable plot points, events, or in-world lore details.
-- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).
-- Unique mechanics, abilities, or concepts specific to the topic.
-${exclusionInstruction}
-Return a collection of diverse facts as a text block. Do not call any functions in this step.`;
+    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. \nFocus on:\n- Key characters, items, or locations and their unique attributes or significance.\n- Notable plot points, events, or in-world lore details.\n- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).\n- Unique mechanics, abilities, or concepts specific to the topic.\n${exclusionInstruction}\nReturn a collection of diverse facts as a text block. Do not call any functions in this step.`;
     let factualInfoText = "";
 
     try {
@@ -136,10 +129,10 @@ Return a collection of diverse facts as a text block. Do not call any functions 
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - MODIFIED PROMPT
-    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates (like premiere or end dates), unless the date itself is a highly significant and interesting piece of trivia for a unique reason.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- Ensure the 'search_used' field is true.\n- For 'alternate_answers': If the 'correct_answer' is a descriptive phrase (e.g., "Italian-inspired", "colors like yellow and blue"), INCLUDE THE CORE NOUN OR CONCEPT (e.g., "Italy", "yellow and blue") as an alternate_answer if it's a common, understandable shorthand in a trivia context. For instance, if the answer is "Spanish-inspired architecture", add "Spain" AND "Spanish architecture" as alternates. If the answer is "the colors red and green", add "red and green" as an alternate.\n`;
+    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'correct_answer' should be "Lion". If the question asks for a concept like "when Gems combine their forms", the 'correct_answer' should be "Fusion", not "The process by which Gems combine their physical forms".\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is true.\n`;
 
     try {
-        logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" using retrieved facts. Prompt includes alternate answer guidance.`);
+        logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: generateQuestionPrompt }] }],
             tools: [triviaQuestionTool], // Only the function tool for this call
@@ -153,22 +146,26 @@ Return a collection of diverse facts as a text block. Do not call any functions 
         const functionCall = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
         if (functionCall?.name === 'generate_trivia_question') {
             const args = functionCall.args;
-            const question = args.question || "";
-            const correctAnswer = args.correct_answer || "";
-            const explanation = args.explanation || "No explanation provided.";
+            const questionText = args.question || "";
+            const correctAnswerText = args.correct_answer || "";
+            const explanationText = args.explanation || "No explanation provided.";
             const actualDifficulty = args.difficulty || difficulty;
-            const alternateAnswers = args.alternate_answers || [];
+            const alternateAnswersList = args.alternate_answers || [];
 
-            if (!question || !correctAnswer) {
-                logger.warn(`[TriviaService-ExplicitSearch] Step 2: Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);
+            if (!questionText || !correctAnswerText) {
+                logger.warn(`[TriviaService-ExplicitSearch] Step 2: Func call 'generate_trivia_question' missing Q or A. Args: ${JSON.stringify(args)}`);
                 return null;
+            }
+            // Heuristic: Warn if answer is too long
+            if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) { 
+                logger.warn(`[TriviaService-ExplicitSearch] Step 2: Generated 'correct_answer' may be too long: "${correctAnswerText}". Length: ${correctAnswerText.length}, Words: ${correctAnswerText.split(' ').length}`);
             }
             
             const questionObject = {
-                question: question,
-                answer: correctAnswer,
-                alternateAnswers: alternateAnswers,
-                explanation: explanation,
+                question: questionText,
+                answer: correctAnswerText,
+                alternateAnswers: alternateAnswersList,
+                explanation: explanationText,
                 difficulty: actualDifficulty,
                 searchUsed: true, 
                 verified: true,   // Mark as verified since it is search-based
@@ -179,18 +176,13 @@ Return a collection of diverse facts as a text block. Do not call any functions 
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: LLM generated an excluded question: "${questionObject.question}". Returning null.`);
                 return null;
             }
-            logger.info(`[TriviaService-ExplicitSearch] Step 2: Successfully generated question for topic "${topic}". Answer: "${correctAnswer}", Alternates: "${alternateAnswers.join(', ')}"`);
+            logger.info(`[TriviaService-ExplicitSearch] Step 2: Successfully generated question for topic "${topic}". Answer: "${correctAnswerText}", Alternates: "${alternateAnswersList.join(', ')}"`);
             return questionObject;
         }
-        logger.warn(`[TriviaService-ExplicitSearch] Step 2: Model did not call 'generate_trivia_question' function as expected for topic "${topic}". Response: ${JSON.stringify(result.response)}`);
+        logger.warn(`[TriviaService-ExplicitSearch] Step 2: Model did not call 'generate_trivia_question' for topic "${topic}". Resp: ${JSON.stringify(result.response)}`);
         return null;
     } catch (error) {
         logger.error({ err: error, topic }, `[TriviaService-ExplicitSearch] Step 2: Error generating structured question for topic "${topic}".`);
-        if (error.message && error.message.includes("Unsupported MimeType")) {
-             logger.error("[TriviaService-ExplicitSearch] Detected 'Unsupported MimeType' error. This might indicate an issue with the API request structure or the content being processed.");
-        } else if (error.message && error.message.includes("function calling is unsupported")) {
-             logger.error("[TriviaService-ExplicitSearch] Detected 'function calling is unsupported' error. This suggests an issue with how the function tool is configured or used with the current model/API version for this specific call.");
-        }
         return null;
     }
 }
@@ -320,20 +312,16 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
     }
     // MODIFICATION END
 
-    // Fallback to standard generation for general knowledge or if search path fails (though generateQuestionWithExplicitSearch has its own retry)
     let prompt = '';
     const exclusionInstruction = excludedQuestions.length > 0
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
         : '';
 
-    // MODIFIED PROMPT for general knowledge
-    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.
-Avoid overly obscure or simple date-based questions (like premiere or release dates) unless the date itself is exceptionally significant for a unique reason.
-Focus on interesting facts, characters, plot points, lore, or unique details.
-\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+    // MODIFIED PROMPT for general knowledge - ensuring concise answer guidance
+    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific.\n- The 'Answer' field in your response MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for the 'Answer'; such details belong in the 'Explanation' field. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'Answer' should be "Lion".\n- Provide the correct answer.\n- For 'Alternate Answers':\n    - If the 'Answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'Answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'Answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Add a brief explanation about the answer.${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the concise correct answer]\nAlternate Answers: [concise alternate answers, comma separated]\nExplanation: [brief explanation of the answer, can include more detail]`;
     
     try {
-        logger.debug(`[TriviaService] Generating general knowledge question. Prompt includes exclusion instruction: ${!!exclusionInstruction}`);
+        logger.debug(`[TriviaService] Generating general knowledge question with concise answer guidance.`);
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: {
@@ -348,63 +336,51 @@ Focus on interesting facts, characters, plot points, lore, or unique details.
              return null;
         }
         
-        const questionObj = {
-            question: '',
-            answer: '',
-            alternateAnswers: [],
-            explanation: 'No explanation provided.',
+        const questionObjParsed = parseQuestionText(text);
+        
+        const questionObject = {
+            question: questionObjParsed.question,
+            answer: questionObjParsed.answer, 
+            alternateAnswers: questionObjParsed.alternateAnswers,
+            explanation: questionObjParsed.explanation || 'No explanation provided.',
             difficulty: difficulty,
-            searchUsed: false, // General knowledge path
-            verified: false, // Not explicitly verified by search in this path
+            searchUsed: false, 
+            verified: false, 
             topic: specificTopic || 'general'
         };
         
-        const questionMatch = text.match(/Question:\s*(.*?)(?=Answer:|$)/si);
-        if (questionMatch && questionMatch[1].trim()) questionObj.question = questionMatch[1].trim();
-        
-        const answerMatch = text.match(/Answer:\s*(.*?)(?=Alternate|Explanation|$)/si);
-        if (answerMatch && answerMatch[1].trim()) questionObj.answer = answerMatch[1].trim();
-        
-        const altMatch = text.match(/Alternate Answers?:\s*(.*?)(?=Explanation|$)/si);
-        if (altMatch && altMatch[1].trim()) {
-            questionObj.alternateAnswers = altMatch[1].split(',')
-                .map(alt => alt.trim())
-                .filter(alt => alt.length > 0 && alt.toLowerCase() !== questionObj.answer.toLowerCase());
-        }
-        
-        const explMatch = text.match(/Explanation:\s*(.*?)(?=$)/si);
-        if (explMatch && explMatch[1].trim()) questionObj.explanation = explMatch[1].trim();
-        
-        if (!questionObj.question || !questionObj.answer) {
+        if (!questionObject.question || !questionObject.answer) {
             logger.warn(`[TriviaService] Generated invalid question structure (general knowledge): ${text.substring(0, 100)}...`);
             return null;
         }
+        if (questionObject.answer.split(' ').length > 7 && questionObject.answer.length > 40) {
+            logger.warn(`[TriviaService] General knowledge answer may be too long: "${questionObject.answer}". Length: ${questionObject.answer.length}, Words: ${questionObject.answer.split(' ').length}`);
+        }
         
-        if (excludedQuestions.includes(questionObj.question)) {
-            logger.warn(`[TriviaService] LLM generated an excluded question despite instructions (general knowledge): "${questionObj.question}". Returning null.`);
+        if (excludedQuestions.includes(questionObject.question)) {
+            logger.warn(`[TriviaService] LLM generated an excluded question (general knowledge): "${questionObject.question}". Returning null.`);
             return null; 
         }
         
-        // For general knowledge, factuality check might still be useful if enabled
         const verifyFactualityEnv = process.env.TRIVIA_SEARCH_VERIFICATION === 'true';
-        if (isGeneralTopic && verifyFactualityEnv) { // Check only if it's general and verification is on
+        if (isGeneralTopic && verifyFactualityEnv) { 
             try {
                 const validation = await validateQuestionFactuality(
-                    questionObj.question,
-                    questionObj.answer,
+                    questionObject.question,
+                    questionObject.answer,
                     specificTopic || 'general'
                 );
-                questionObj.verified = validation.valid;
+                questionObject.verified = validation.valid;
                 if (!validation.valid && validation.confidence > 0.7) {
-                    logger.warn(`[TriviaService] General knowledge question flagged by validation: ${validation.reason}. Question: "${questionObj.question}"`);
+                    logger.warn(`[TriviaService] General knowledge question flagged by validation: ${validation.reason}. Question: "${questionObject.question}"`);
                 }
             } catch (error) {
-                logger.error({ err: error }, `[TriviaService] Error validating general knowledge question factuality for "${questionObj.question}"`);
-                questionObj.verified = false;
+                logger.error({ err: error }, `[TriviaService] Error validating general knowledge question factuality for "${questionObject.question}"`);
+                questionObject.verified = false;
             }
         }
         
-        return questionObj;
+        return questionObject;
     } catch (error) {
         logger.error({ err: error }, '[TriviaService] Error generating general knowledge trivia question API call');
         return null;
@@ -431,53 +407,31 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
 
     if (lowerUserAnswer === lowerCorrectAnswer) {
         logger.debug(`[TriviaService] Exact match: User "${lowerUserAnswer}" vs Correct "${lowerCorrectAnswer}"`);
-        return {
-            is_correct: true,
-            confidence: 1.0,
-            reasoning: "Exact match with correct answer.",
-            search_used: false
-        };
+        return { is_correct: true, confidence: 1.0, reasoning: "Exact match with correct answer.", search_used: false };
     }
-    if (alternateAnswers && alternateAnswers.some(alt => alt.toLowerCase().trim() === lowerUserAnswer)) {
+    // Ensure alternateAnswers is an array and then check
+    if (Array.isArray(alternateAnswers) && alternateAnswers.some(alt => alt.toLowerCase().trim() === lowerUserAnswer)) {
         logger.debug(`[TriviaService] Alternate match: User "${lowerUserAnswer}" vs Alternates "${alternateAnswers.join(',')}"`);
-        return {
-            is_correct: true,
-            confidence: 1.0,
-            reasoning: "Exact match with an alternate answer.",
-            search_used: false
-        };
+        return { is_correct: true, confidence: 1.0, reasoning: "Exact match with an alternate answer.", search_used: false };
     }
 
-    const questionExpectsDate = /date|when|year|premiered|released|concluded/i.test(question);
-    const userAnswerLooksLikeDate = /\d/.test(userAnswer) || /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(lowerUserAnswer);
-    
-    if (questionExpectsDate && !userAnswerLooksLikeDate) {
-        logger.debug(`[TriviaService] Heuristic: Question expects date, user answer "${userAnswer}" does not appear to be a date. Marking as incorrect.`);
-        return {
-            is_correct: false,
-            confidence: 0.8, 
-            reasoning: "Answer format does not match expected (e.g., a date was expected).",
-            search_used: false
-        };
-    }
-
-    // Refined prompt for LLM verification
+    // Refined prompt for LLM verification (remains same as previous good version which is quite robust)
     const verificationPrompt = `Your task is to determine if the "Player's Input" is a correct and acceptable answer to the "Trivia Question", given the "Official Correct Answer" and any "Alternate Official Answers".
 
 Trivia Question: "${question}"
 Official Correct Answer: "${correctAnswer}"
-Alternate Official Answers: ${alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
+Alternate Official Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Input: "${userAnswer}"
 
 Instructions for your decision:
 1.  **Direct Match:** If "Player's Input" exactly matches (case-insensitive) the "Official Correct Answer" or any "Alternate Official Answers", it is CORRECT.
-2.  **Core Essence/Synonym:** If "Player's Input" captures the fundamental core essence or is a very close synonym of the "Official Correct Answer", it can be considered CORRECT. For example, if the official answer is "Italian-inspired architecture" and the question is about inspiration, "Italy" or "Italian architecture" could be acceptable. If the official answer is "The Eiffel Tower", then "Eiffel Tower" is CORRECT. If the official answer is "The colors red and green", "red and green" is correct, but "red" alone is INCORRECT.
+2.  **Core Essence/Synonym:** If "Player's Input" captures the fundamental core essence or is a very close synonym of the "Official Correct Answer", it can be considered CORRECT. For example, if the official answer is "Italian-inspired architecture" and the question is about inspiration, "Italy" or "Italian architecture" could be acceptable. If the official answer is "The Eiffel Tower", then "Eiffel Tower" is CORRECT. If the official answer is "The colors red and green", "red and green" is correct, but "red" alone is INCORRECT. If the official answer is "Fusion Instability", an input like "Instability" or "Unstable" should be considered CORRECT if it conveys the core concept in context of the question.
 3.  **Partial but Insufficient:** If "Player's Input" is only a small part of a multi-part "Official Correct Answer" and misses other key components (e.g., Player says "Europe" when answer is "Paris, France"), or if it's a broader category when a specific item is expected (e.g., Player says "a dog" when answer is "Golden Retriever"), it is INCORRECT.
 4.  **Substantially Different/Unrelated:** If "Player's Input" is factually incorrect, refers to something entirely different, or is merely a comment about the question/game and not an attempt to answer, it is INCORRECT.
 5.  **Format Match (Less Strict if Core Essence Met):** If the "Official Correct Answer" is a specific format (e.g., a date, a number), the "Player's Input" should ideally match that format. However, if the core essence is met (Point 2), slight format variations might be acceptable.
 
 Respond with ONLY the word "CORRECT" or "INCORRECT".
-On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above. Example: "Player's input 'Italy' captures the core essence of 'Italian-inspired'." or "Player's input is a different concept."
+On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above. Example: "Player's input 'Italy' captures the core essence of 'Italian-inspired'." or "Player's input is a different concept." or "Player's input 'Unstable' is an acceptable variation of 'Fusion Instability'."
 `;
 
     try {
@@ -498,7 +452,7 @@ On a new line, provide a VERY BRIEF (1 short sentence) justification for your de
         }
 
         const similarityToCorrect = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
-        const bestAlternateSimilarity = alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+        const bestAlternateSimilarity = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
 
         // If LLM says CORRECT, but no direct/alternate match was found earlier,
         // and string similarity is very low, this is a high-risk acceptance.
@@ -520,7 +474,7 @@ On a new line, provide a VERY BRIEF (1 short sentence) justification for your de
         const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
         let isFallbackCorrect = similarity > 0.7; 
 
-        if (!isFallbackCorrect && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.7)) {
+        if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.7)) {
             isFallbackCorrect = true;
         }
 
