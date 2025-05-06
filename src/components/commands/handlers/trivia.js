@@ -76,7 +76,7 @@ const trivia = {
             // Proceed to start game below
         } else if (subCommand === 'game') {
             // !trivia game [rounds] -> Start a game based on current stream game
-            topic = 'game';
+            topic = 'game'; // Special keyword, will be resolved by game manager
             
             // Check if there's a rounds parameter
             if (args.length > 1 && isPositiveInteger(args[1])) {
@@ -97,6 +97,7 @@ const trivia = {
             if (isModOrBroadcaster || invokingUsernameLower === currentGameInitiator) {
                 const result = triviaManager.stopGame(channelName);
                 logger.info(`[Trivia] Stop requested by ${invokingDisplayName}, result: ${result.message}`);
+                // Message to chat is handled by stopGame/transitionToEnding
             } else {
                 enqueueMessage(channel, `@${invokingDisplayName}, Only the game initiator, mods, or the broadcaster can stop the current game.`);
             }
@@ -192,17 +193,16 @@ const trivia = {
             return;
         } else if (subCommand === 'report' || subCommand === 'flag') {
             // !trivia report [reason...]
-            // Extract the reason from the arguments following "report" or "flag"
-            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; // Default if no reason provided
+            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; 
 
             try {
                 const recentQuestions = await getRecentQuestions(channelName, null, 1);
                 if (recentQuestions && recentQuestions.length > 0) {
-                    const question = recentQuestions[0];
-                    // Dynamically import reportProblemQuestion if not already loaded
+                    const question = recentQuestions[0]; // This is just the question text
+                    // Import reportProblemQuestion dynamically as it's part of triviaStorage
                     const { reportProblemQuestion } = await import('../../trivia/triviaStorage.js');
-                    // Pass the extracted or default reason to the storage function
-                    await reportProblemQuestion(question, reason);
+                    // The reportProblemQuestion function in storage expects the question text.
+                    await reportProblemQuestion(question, reason); 
                     enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the question (Reason: ${reason}). We'll review it.`);
                 } else {
                     enqueueMessage(channel, `@${invokingDisplayName}, No recent trivia questions found to report.`);
@@ -211,7 +211,7 @@ const trivia = {
                 logger.error({ err: error }, 'Error reporting problem question');
                 enqueueMessage(channel, `@${invokingDisplayName}, Error processing your report. Please try again later.`);
             }
-            return; // Action complete
+            return; 
         } else if (subCommand === 'help') {
             // !trivia help -> Show help information
             const helpMessage = formatHelpMessage(isModOrBroadcaster);
@@ -219,28 +219,31 @@ const trivia = {
             return;
         } else {
             // !trivia <topic> [rounds] -> Start a topic-specific game
-            topic = subCommand;
+            topic = subCommand; // args[0]
             
-            // Check if there's a rounds parameter at the end
             if (args.length > 1 && isPositiveInteger(args[args.length - 1])) {
                 numberOfRounds = parseInt(args[args.length - 1], 10);
-                
-                // If there are args in between, they're part of the topic
-                if (args.length > 2) {
+                if (args.length > 2) { // Topic has multiple words
                     topic = args.slice(0, args.length - 1).join(' ');
                 }
-            } else if (args.length > 1) {
-                // Multiple words for topic, no rounds
+                // If args.length is 2 (e.g. topic 3), topic remains args[0]
+            } else if (args.length > 1) { // All remaining args are part of the topic
                 topic = args.join(' ');
             }
-            
             // Proceed to start game below
         }
 
         // --- Game Start Logic (Common for all start variations) ---
         
+        // MODIFICATION: Clean topic string by removing leading/trailing quotes
+        if (topic && typeof topic === 'string') {
+            topic = topic.replace(/^"|"$/g, '');
+            logger.debug(`Cleaned topic to: "${topic}"`);
+        }
+        // END MODIFICATION
+        
         // Validate number of rounds
-        const MAX_ROUNDS = 10;
+        const MAX_ROUNDS = 10; // Example max
         if (numberOfRounds > MAX_ROUNDS) {
             enqueueMessage(channel, `@${invokingDisplayName}, Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`);
             numberOfRounds = MAX_ROUNDS;
@@ -255,7 +258,7 @@ const trivia = {
             if (!result.success) {
                 enqueueMessage(channel, `@${invokingDisplayName}, ${result.error}`);
             }
-            // Success messages are handled by the game manager
+            // Success messages are handled by the game manager through its own enqueueMessage calls
         } catch (error) {
             logger.error({ err: error }, "Unhandled error starting trivia game from command handler.");
             enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred trying to start the game.`);
