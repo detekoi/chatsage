@@ -31,12 +31,17 @@ async function createIrcClient(twitchConfig) {
         logger.info('Fetching initial IRC token via Auth Helper...');
         ircPassword = await getValidIrcToken(); // Use the helper
         if (!ircPassword) {
-            throw new Error('Failed to obtain initial valid IRC token. Check logs and secret configuration.');
+            // THIS IS A CRITICAL FAILURE POINT
+            logger.fatal('CRITICAL: Failed to obtain initial valid IRC token. Check logs for errors from ircAuthHelper (secret access, refresh token validity, Twitch API client_id/secret). Bot cannot connect.');
+            // Depending on your deployment, you might want to exit or throw a more specific error
+            // that your process manager can handle. Forcing an exit might be appropriate
+            // if running in a container that will be restarted.
+            process.exit(1); // Or throw new Error('Fatal: No IRC token');
         }
         logger.info('Successfully obtained initial IRC token.');
     } catch (error) {
-        logger.fatal({ err: error }, 'Fatal error obtaining initial IRC token during client creation.');
-        throw error; // Prevent client creation if token fetch fails critically
+        logger.fatal({ err: error }, 'Fatal error during getValidIrcToken call in client creation.');
+        throw error;
     }
 
     const channelsToJoin = twitchConfig.channels.map(ch => ch.startsWith('#') ? ch : `#${ch}`);

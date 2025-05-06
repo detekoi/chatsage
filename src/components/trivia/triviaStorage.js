@@ -406,10 +406,12 @@ async function getLeaderboard(channelName = null, limit = 10) {
     }
 }
 
+// --- Recent Question Retrieval ---
 /**
- * Gets recent questions.
- * @param {string} channelName - Channel name.
- * @param {string} topic - Topic filter.
+ * Gets recent questions asked in a channel, optionally filtered by topic.
+ * Fetches from the history collection.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string|null} topic - Topic filter (optional).
  * @param {number} limit - Number of questions to return.
  * @returns {Promise<string[]>} Array of recent question texts.
  */
@@ -417,29 +419,57 @@ async function getRecentQuestions(channelName, topic = null, limit = 30) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     const lowerChannelName = channelName.toLowerCase();
-    
+    const recentQuestions = new Set(); // Use Set to avoid duplicates within the fetch limit
+
     try {
         let query = colRef.where('channel', '==', lowerChannelName);
-        
+
+        // Optional topic filtering
         if (topic && topic !== 'general') {
             query = query.where('topic', '==', topic);
         }
-        
-        const snapshot = await query.orderBy('timestamp', 'desc').limit(limit).get();
-        const recentQuestions = [];
-        
+
+        // Order by timestamp and limit
+        let snapshot;
+        try {
+            snapshot = await query.orderBy('timestamp', 'desc').limit(limit).get();
+        } catch (indexError) {
+            // Handle potential missing index error gracefully
+            if (indexError.code === 5 && indexError.message.includes('index')) { // Firestore 'Failed Precondition' for missing index
+                logger.warn({ channel: lowerChannelName, topic, indexError: indexError.message }, `[TriviaStorage] Firestore index likely missing for getRecentQuestions query. Performance may be impacted.`);
+                // Fallback: Query without topic filter if topic was specified, or just fetch more and filter manually
+                if (topic && topic !== 'general') {
+                    logger.warn(`[TriviaStorage] Retrying getRecentQuestions without topic filter for ${lowerChannelName}.`);
+                    query = colRef.where('channel', '==', lowerChannelName).orderBy('timestamp', 'desc').limit(limit * 2); // Fetch more to filter later
+                    snapshot = await query.get();
+                } else {
+                    // If no topic or index error on basic query, rethrow
+                    throw indexError;
+                }
+            } else {
+                // Rethrow unexpected errors
+                throw indexError;
+            }
+        }
+
         snapshot.forEach(doc => {
             const data = doc.data();
-            if (data.question) {
-                recentQuestions.push(data.question);
+            // Add the question text to the set
+            if (data.question && typeof data.question === 'string') {
+                // Filter by topic here if we fell back due to index error
+                if (topic && topic !== 'general' && data.topic !== topic) {
+                    // Skip if topic doesn't match in fallback scenario
+                } else {
+                    recentQuestions.add(data.question);
+                }
             }
         });
-        
-        logger.debug(`[TriviaStorage] Found ${recentQuestions.length} recent questions for channel ${lowerChannelName}${topic ? ` and topic ${topic}` : ''}.`);
-        return recentQuestions;
+
+        logger.debug(`[TriviaStorage] Found ${recentQuestions.size} unique recent questions for channel ${lowerChannelName}${topic ? ` and topic ${topic}` : ''} within last ${limit} results.`);
+        return Array.from(recentQuestions); // Convert Set back to Array
     } catch (error) {
         logger.error({ err: error, channel: lowerChannelName, topic }, `[TriviaStorage] Error getting recent questions`);
-        return [];
+        throw new StorageError(`Failed to get recent questions for ${lowerChannelName}`, error); // Throw error for manager to handle
     }
 }
 
@@ -509,58 +539,6 @@ async function clearChannelLeaderboardData(channelName) {
     }
 }
 
-/**
- * Gets recent unique answers given in a channel, optionally filtered by topic.
- * Used to prevent answer repetition.
- * @param {string} channelName - Channel name (without #).
- * @param {string|null} topic - Topic filter (optional).
- * @param {number} limit - Number of recent game results to check.
- * @returns {Promise<string[]>} Array of unique recent answer strings (lowercase).
- */
-async function getRecentAnswers(channelName, topic = null, limit = 50) {
-    const db = _getDb();
-    const colRef = db.collection(HISTORY_COLLECTION);
-    const lowerChannelName = channelName.toLowerCase();
-    const recentAnswers = new Set(); // Use a Set for automatic uniqueness
-
-    try {
-        let query = colRef.where('channel', '==', lowerChannelName);
-
-        // Optional topic filtering
-        if (topic && topic !== 'general') {
-            query = query.where('topic', '==', topic);
-        }
-
-        // Order by timestamp and limit
-        const snapshot = await query.orderBy('timestamp', 'desc').limit(limit).get();
-
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.answer && typeof data.answer === 'string') {
-                // Add the lowercase version of the answer to the set
-                recentAnswers.add(data.answer.toLowerCase());
-            }
-        });
-
-        logger.debug(`[TriviaStorage] Found ${recentAnswers.size} unique recent answers for channel ${lowerChannelName}${topic ? ` and topic ${topic}` : ''} within last ${limit} results.`);
-        return Array.from(recentAnswers); // Convert Set back to Array
-    } catch (error) {
-        // Log specific index errors if possible
-        if (error.code === 5 && error.message.includes('index')) { // Firestore 'Failed Precondition' for missing index
-             logger.warn({
-                 channel: lowerChannelName,
-                 topic: topic,
-                 indexError: error.message // Log the specific index needed
-             }, `[TriviaStorage] Firestore index likely missing for getRecentAnswers query. Performance may be impacted or query might fail.`);
-             // Potentially fall back to a less specific query if absolutely needed,
-             // but it's better to create the index. For now, just return empty on error.
-             return [];
-        }
-        logger.error({ err: error, channel: lowerChannelName, topic }, `[TriviaStorage] Error getting recent answers`);
-        return []; // Return empty array on error
-    }
-}
-
 export {
     initializeStorage,
     StorageError,
@@ -572,6 +550,5 @@ export {
     getPlayerStats,
     getLeaderboard,
     getRecentQuestions,
-    clearChannelLeaderboardData,
-    getRecentAnswers
+    clearChannelLeaderboardData
 };

@@ -5,8 +5,7 @@ import { generateQuestion, verifyAnswer, generateExplanation } from './triviaQue
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, 
-         updatePlayerScore, getRecentQuestions, getLeaderboard, clearChannelLeaderboardData,
-         getRecentAnswers } from './triviaStorage.js';
+         updatePlayerScore, getRecentQuestions, getLeaderboard, clearChannelLeaderboardData } from './triviaStorage.js';
 
 // --- Default Configuration ---
 const DEFAULT_CONFIG = {
@@ -23,6 +22,7 @@ const DEFAULT_CONFIG = {
 const MAX_IRC_MESSAGE_LENGTH = 450; // Should match ircSender.js
 const MULTI_ROUND_DELAY_MS = 5000; // Delay between rounds
 const MAX_QUESTION_RETRIES = 3; // Maximum number of retries for question generation
+const RECENT_QUESTION_FETCH_LIMIT = 25; // How many recent questions to fetch for exclusion
 
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
@@ -55,7 +55,6 @@ GameState structure:
     currentRound: number,
     gameSessionScores: Map<string, {displayName: string, score: number}>,
     gameSessionExcludedQuestions: Set<string>,
-    gameSessionExcludedAnswers: Set<string>,
     streakMap: Map<string, number> // username -> consecutive correct answers
 }
 */
@@ -106,14 +105,13 @@ async function _getOrCreateGameState(channelName) {
             currentRound: 1,
             gameSessionScores: new Map(),
             gameSessionExcludedQuestions: new Set(),
-            gameSessionExcludedAnswers: new Set(),
             streakMap: new Map()
         });
     } else {
         // Ensure new fields exist on potentially older state objects
         const state = activeGames.get(channelName);
-        if (!state.gameSessionExcludedAnswers) {
-            state.gameSessionExcludedAnswers = new Set();
+        if (!state.gameSessionExcludedQuestions) {
+            state.gameSessionExcludedQuestions = new Set();
         }
         if (!state.streakMap) {
             state.streakMap = new Map();
@@ -160,7 +158,6 @@ async function _resetGameToIdle(gameState) {
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
     newState.gameSessionExcludedQuestions = new Set();
-    newState.gameSessionExcludedAnswers = new Set();
     newState.streakMap = new Map();
 }
 
@@ -233,11 +230,10 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     const isMultiRound = gameState.totalRounds > 1;
     const isLastRound = gameState.currentRound === gameState.totalRounds;
     
-    // --- Add current answer to session exclusion set (if valid) ---
-    if (gameState.currentQuestion?.answer) {
-        const answerLower = gameState.currentQuestion.answer.toLowerCase();
-        gameState.gameSessionExcludedAnswers.add(answerLower);
-        logger.debug(`[TriviaGame][${gameState.channelName}] Added "${answerLower}" to session exclusion set. Size: ${gameState.gameSessionExcludedAnswers.size}`);
+    // --- Add current question to session exclusion set (if valid) ---
+    if (gameState.currentQuestion?.question) {
+        gameState.gameSessionExcludedQuestions.add(gameState.currentQuestion.question);
+        logger.debug(`[TriviaGame][${gameState.channelName}] Added question to session exclusion set. Size: ${gameState.gameSessionExcludedQuestions.size}`);
     }
     // --- End answer exclusion update ---
 
@@ -438,33 +434,32 @@ async function _startNextRound(gameState) {
     // 1. Generate Question
     let questionGenerated = false;
     let retries = 0;
-    let excludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
-    // Fetch recent answers (globally for the channel, beyond the current session)
-    let recentChannelAnswers = [];
+    let recentChannelQuestions = [];
+    // Fetch recent questions (globally for the channel, beyond the current session)
     try {
-        recentChannelAnswers = await getRecentAnswers(gameState.channelName, gameState.topic, 50); // Fetch last 50 answers
-        logger.debug(`[TriviaGame][${gameState.channelName}] Retrieved ${recentChannelAnswers.length} recent channel answers to potentially exclude.`);
+        recentChannelQuestions = await getRecentQuestions(gameState.channelName, gameState.topic, RECENT_QUESTION_FETCH_LIMIT); // Fetch last N questions
+        logger.debug(`[TriviaGame][${gameState.channelName}] Retrieved ${recentChannelQuestions.length} recent channel questions to potentially exclude.`);
     } catch (error) {
-        logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel answers for exclusion.`);
+        logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel questions for exclusion.`);
     }
     // Combine session exclusions with recent channel exclusions
-    const combinedExcludedAnswers = new Set([...excludedAnswersArray, ...recentChannelAnswers]);
-    const finalExcludedAnswersArray = Array.from(combinedExcludedAnswers);
+    const combinedExcludedQuestions = new Set([...gameState.gameSessionExcludedQuestions, ...recentChannelQuestions]);
+    const finalExcludedQuestionsArray = Array.from(combinedExcludedQuestions);
     
     while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
         try {
-            // --- Pass excluded answers to generateQuestion ---
+            // --- Pass excluded questions to generateQuestion ---
             const question = await generateQuestion(
                 gameState.topic,
                 gameState.config.difficulty,
-                finalExcludedAnswersArray, // Pass the combined list
+                finalExcludedQuestionsArray, // Pass the combined list
                 gameState.channelName
             );
             // --- End modification ---
             if (question && question.question && question.answer) {
-                // Double-check if the generated answer is somehow still excluded
-                if (combinedExcludedAnswers.has(question.answer.toLowerCase())) {
-                     logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded answer "${question.answer}" (attempt ${retries + 1}). Retrying.`);
+                // Double-check if the generated question is somehow still excluded
+                if (combinedExcludedQuestions.has(question.question)) {
+                     logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded question (attempt ${retries + 1}). Retrying.`);
                      retries++;
                      await new Promise(resolve => setTimeout(resolve, 500));
                 } else {
@@ -646,7 +641,6 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.currentRound = 1;
     gameState.gameSessionScores = new Map();
     gameState.gameSessionExcludedQuestions = new Set();
-    gameState.gameSessionExcludedAnswers = new Set(); // <-- Reset excluded answers
     gameState.streakMap = new Map();
     _clearTimers(gameState);
     
@@ -665,31 +659,32 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         // Generate first question
         let retries = 0;
         let questionGenerated = false;
-        let excludedAnswersArray = [];
-        // Fetch recent answers for the first round
+        let recentChannelQuestions = [];
+        // Fetch recent questions for the first round
         try {
-            excludedAnswersArray = await getRecentAnswers(channelName, topic, 50); // Fetch last 50
-            gameState.gameSessionExcludedAnswers = new Set(excludedAnswersArray); // Initialize session set
-            logger.debug(`[TriviaGame][${channelName}] Retrieved ${excludedAnswersArray.length} recent answers to exclude for Round 1.`);
+            recentChannelQuestions = await getRecentQuestions(channelName, topic, RECENT_QUESTION_FETCH_LIMIT); // Fetch last N
+            gameState.gameSessionExcludedQuestions = new Set(recentChannelQuestions); // Initialize session set
+            logger.debug(`[TriviaGame][${channelName}] Retrieved ${recentChannelQuestions.length} recent questions to exclude for Round 1.`);
         } catch (error) {
-            logger.error({ err: error }, `[TriviaGame][${channelName}] Error fetching recent answers for Round 1 exclusion.`);
+            logger.error({ err: error }, `[TriviaGame][${channelName}] Error fetching recent questions for Round 1 exclusion.`);
             // Continue with empty exclusion list if fetching fails
-            gameState.gameSessionExcludedAnswers = new Set();
+            gameState.gameSessionExcludedQuestions = new Set();
         }
+        const finalExcludedQuestionsArray = Array.from(gameState.gameSessionExcludedQuestions);
         while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
             try {
-                 // --- Pass excluded answers to generateQuestion ---
+                 // --- Pass excluded questions to generateQuestion ---
                 const question = await generateQuestion(
                     topic,
                     gameState.config.difficulty,
-                    Array.from(gameState.gameSessionExcludedAnswers), // Pass current exclusion set
+                    finalExcludedQuestionsArray, // Pass current exclusion set
                     channelName
                 );
                  // --- End modification ---
                 if (question && question.question && question.answer) {
-                     // Double-check if the generated answer is somehow still excluded
-                    if (gameState.gameSessionExcludedAnswers.has(question.answer.toLowerCase())) {
-                         logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded answer "${question.answer}" for Round 1 (attempt ${retries + 1}). Retrying.`);
+                     // Double-check if the generated question is somehow still excluded
+                    if (finalExcludedQuestionsArray.includes(question.question)) {
+                         logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded question for Round 1 (attempt ${retries + 1}). Retrying.`);
                          retries++;
                          await new Promise(resolve => setTimeout(resolve, 500));
                     } else {
