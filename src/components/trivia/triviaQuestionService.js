@@ -136,10 +136,10 @@ Return a collection of diverse facts as a text block. Do not call any functions 
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - MODIFIED PROMPT
-    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates (like premiere or end dates), unless the date itself is a highly significant and interesting piece of trivia for a unique reason.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. Ensure the 'search_used' field in the function call is true.`;
+    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates (like premiere or end dates), unless the date itself is a highly significant and interesting piece of trivia for a unique reason.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- Ensure the 'search_used' field is true.\n- For 'alternate_answers': If the 'correct_answer' is a descriptive phrase (e.g., "Italian-inspired", "colors like yellow and blue"), INCLUDE THE CORE NOUN OR CONCEPT (e.g., "Italy", "yellow and blue") as an alternate_answer if it's a common, understandable shorthand in a trivia context. For instance, if the answer is "Spanish-inspired architecture", add "Spain" AND "Spanish architecture" as alternates. If the answer is "the colors red and green", add "red and green" as an alternate.\n`;
 
     try {
-        logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" using retrieved facts.`);
+        logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" using retrieved facts. Prompt includes alternate answer guidance.`);
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: generateQuestionPrompt }] }],
             tools: [triviaQuestionTool], // Only the function tool for this call
@@ -157,6 +157,7 @@ Return a collection of diverse facts as a text block. Do not call any functions 
             const correctAnswer = args.correct_answer || "";
             const explanation = args.explanation || "No explanation provided.";
             const actualDifficulty = args.difficulty || difficulty;
+            const alternateAnswers = args.alternate_answers || [];
 
             if (!question || !correctAnswer) {
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);
@@ -166,7 +167,7 @@ Return a collection of diverse facts as a text block. Do not call any functions 
             const questionObject = {
                 question: question,
                 answer: correctAnswer,
-                alternateAnswers: args.alternate_answers || [],
+                alternateAnswers: alternateAnswers,
                 explanation: explanation,
                 difficulty: actualDifficulty,
                 searchUsed: true, 
@@ -178,7 +179,7 @@ Return a collection of diverse facts as a text block. Do not call any functions 
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: LLM generated an excluded question: "${questionObject.question}". Returning null.`);
                 return null;
             }
-            logger.info(`[TriviaService-ExplicitSearch] Step 2: Successfully generated question for topic "${topic}"`);
+            logger.info(`[TriviaService-ExplicitSearch] Step 2: Successfully generated question for topic "${topic}". Answer: "${correctAnswer}", Alternates: "${alternateAnswers.join(', ')}"`);
             return questionObject;
         }
         logger.warn(`[TriviaService-ExplicitSearch] Step 2: Model did not call 'generate_trivia_question' function as expected for topic "${topic}". Response: ${JSON.stringify(result.response)}`);
@@ -425,105 +426,106 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
 
-    const lowerUserAnswer = userAnswer.toLowerCase();
-    const lowerCorrectAnswer = correctAnswer.toLowerCase();
+    const lowerUserAnswer = userAnswer.toLowerCase().trim();
+    const lowerCorrectAnswer = correctAnswer.toLowerCase().trim();
 
     if (lowerUserAnswer === lowerCorrectAnswer) {
+        logger.debug(`[TriviaService] Exact match: User "${lowerUserAnswer}" vs Correct "${lowerCorrectAnswer}"`);
         return {
             is_correct: true,
             confidence: 1.0,
-            reasoning: "Exact match with correct answer",
+            reasoning: "Exact match with correct answer.",
             search_used: false
         };
     }
-    if (alternateAnswers && alternateAnswers.some(alt => alt.toLowerCase() === lowerUserAnswer)) {
+    if (alternateAnswers && alternateAnswers.some(alt => alt.toLowerCase().trim() === lowerUserAnswer)) {
+        logger.debug(`[TriviaService] Alternate match: User "${lowerUserAnswer}" vs Alternates "${alternateAnswers.join(',')}"`);
         return {
             is_correct: true,
             confidence: 1.0,
-            reasoning: "Exact match with alternate answer",
+            reasoning: "Exact match with an alternate answer.",
             search_used: false
         };
     }
 
-    // If the question implies a date, and the user's answer doesn't look like a date,
-    // it's likely incorrect. This is a heuristic.
     const questionExpectsDate = /date|when|year|premiered|released|concluded/i.test(question);
     const userAnswerLooksLikeDate = /\d/.test(userAnswer) || /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(lowerUserAnswer);
     
     if (questionExpectsDate && !userAnswerLooksLikeDate) {
-        // If a date is expected but not provided, and it's not an exact/alternate match, assume incorrect.
-        // Only apply this if it's not already an exact/alternate match.
-        logger.debug(`[TriviaService] Question expects date, user answer "${userAnswer}" does not appear to be a date. Marking as incorrect.`);
+        logger.debug(`[TriviaService] Heuristic: Question expects date, user answer "${userAnswer}" does not appear to be a date. Marking as incorrect.`);
         return {
             is_correct: false,
-            confidence: 0.8, // Fairly confident it's wrong if format is way off
+            confidence: 0.8, 
             reasoning: "Answer format does not match expected (e.g., a date was expected).",
             search_used: false
         };
     }
 
-
     // Refined prompt for LLM verification
-    const verificationPrompt = `Your task is to STRICTLY determine if the "Player's Input" is a correct answer to the "Trivia Question".
-The "Official Correct Answer" is provided.
+    const verificationPrompt = `Your task is to determine if the "Player's Input" is a correct and acceptable answer to the "Trivia Question", given the "Official Correct Answer" and any "Alternate Official Answers".
 
 Trivia Question: "${question}"
 Official Correct Answer: "${correctAnswer}"
+Alternate Official Answers: ${alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Input: "${userAnswer}"
 
-Instructions for you:
-1. Directly compare the "Player's Input" against the "Official Correct Answer".
-2. Consider common spelling variations or very minor phrasing differences as potentially correct.
-3. If the "Player's Input" is substantially different, unrelated to the "Official Correct Answer", or is a comment ABOUT the question/game rather than an attempt to answer, it is INCORRECT.
-4. If the "Official Correct Answer" is a date or number, the "Player's Input" must also be a recognizable date or number that matches.
+Instructions for your decision:
+1.  **Direct Match:** If "Player's Input" exactly matches (case-insensitive) the "Official Correct Answer" or any "Alternate Official Answers", it is CORRECT.
+2.  **Core Essence/Synonym:** If "Player's Input" captures the fundamental core essence or is a very close synonym of the "Official Correct Answer", it can be considered CORRECT. For example, if the official answer is "Italian-inspired architecture" and the question is about inspiration, "Italy" or "Italian architecture" could be acceptable. If the official answer is "The Eiffel Tower", then "Eiffel Tower" is CORRECT. If the official answer is "The colors red and green", "red and green" is correct, but "red" alone is INCORRECT.
+3.  **Partial but Insufficient:** If "Player's Input" is only a small part of a multi-part "Official Correct Answer" and misses other key components (e.g., Player says "Europe" when answer is "Paris, France"), or if it's a broader category when a specific item is expected (e.g., Player says "a dog" when answer is "Golden Retriever"), it is INCORRECT.
+4.  **Substantially Different/Unrelated:** If "Player's Input" is factually incorrect, refers to something entirely different, or is merely a comment about the question/game and not an attempt to answer, it is INCORRECT.
+5.  **Format Match (Less Strict if Core Essence Met):** If the "Official Correct Answer" is a specific format (e.g., a date, a number), the "Player's Input" should ideally match that format. However, if the core essence is met (Point 2), slight format variations might be acceptable.
 
 Respond with ONLY the word "CORRECT" or "INCORRECT".
-On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on the factual comparison. Example: "Player's input matches official answer." or "Player's input is a different date."
+On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above. Example: "Player's input 'Italy' captures the core essence of 'Italian-inspired'." or "Player's input is a different concept."
 `;
 
     try {
-        logger.debug(`[TriviaService] Sending to LLM for verification. Correct: "${correctAnswer}", User: "${userAnswer}"`);
+        logger.debug(`[TriviaService] Sending to LLM for verification. Correct: "${correctAnswer}", User: "${userAnswer}", Alts: "${alternateAnswers.join(',')}"`);
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: verificationPrompt }] }],
             generationConfig: {
-                temperature: 0.1, // Very low temperature for deterministic verification
-                maxOutputTokens: 50,
+                temperature: 0.1, // Very low for high determinism in verification
+                maxOutputTokens: 60,
             }
         });
         const responseText = result.response.candidates[0].content.parts[0].text.trim();
         
-        const isCorrect = responseText.toUpperCase().startsWith("CORRECT");
-        let reasoning = responseText.split("\n").slice(1).join(" ").trim();
-        if (!reasoning) {
-            reasoning = isCorrect ? "The answer is considered correct." : "The answer is considered incorrect.";
+        const isCorrectByLLM = responseText.toUpperCase().startsWith("CORRECT");
+        let reasoningFromLLM = responseText.split("\n").slice(1).join(" ").trim();
+        if (!reasoningFromLLM) {
+            reasoningFromLLM = isCorrectByLLM ? "The answer is considered correct by the LLM." : "The answer is considered incorrect by the LLM.";
         }
 
-        // Additional sanity check: if LLM says CORRECT but similarity is very low, override.
-        const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
-        if (isCorrect && similarity < 0.5 && !alternateAnswers.some(alt => calculateStringSimilarity(alt, userAnswer) > 0.8)) {
-             logger.warn(`[TriviaService] LLM verified as CORRECT, but similarity is low (${similarity.toFixed(2)}) and no strong alternate match. Overriding to INCORRECT. User: "${userAnswer}", Correct: "${correctAnswer}"`);
-             return {
-                 is_correct: false,
-                 confidence: 0.75, // Moderate confidence in override
-                 reasoning: `Answer significantly differs from the correct answer. (${reasoning})`,
-                 search_used: false
-             };
+        const similarityToCorrect = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+        const bestAlternateSimilarity = alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+
+        // If LLM says CORRECT, but no direct/alternate match was found earlier,
+        // and string similarity is very low, this is a high-risk acceptance.
+        // We log it but trust the LLM's reasoning based on the improved prompt.
+        if (isCorrectByLLM && similarityToCorrect < 0.4 && bestAlternateSimilarity < 0.7) { 
+             logger.warn(`[TriviaService] LLM verified as CORRECT, but string similarity to official answer is low (${similarityToCorrect.toFixed(2)}) and no strong alternate string match. User: "${userAnswer}", Correct: "${correctAnswer}". Trusting LLM reasoning: "${reasoningFromLLM}"`);
         }
-
-
-        logger.info(`[TriviaService] LLM Verification - Input: "${userAnswer}", Expected: "${correctAnswer}", LLM Verdict: ${isCorrect}, Reasoning: ${reasoning}`);
+        
+        logger.info(`[TriviaService] LLM Verification - Input: "${userAnswer}", Expected: "${correctAnswer}", LLM Verdict: ${isCorrectByLLM}, Reasoning: ${reasoningFromLLM}, Similarity: ${similarityToCorrect.toFixed(2)}`);
         return {
-            is_correct: isCorrect,
-            confidence: isCorrect ? (similarity > 0.85 ? 0.98 : 0.9) : (1.0 - similarity), // Crude confidence adjustment
-            reasoning: reasoning,
+            is_correct: isCorrectByLLM,
+            confidence: isCorrectByLLM ? (similarityToCorrect > 0.85 || bestAlternateSimilarity > 0.85 ? 0.98 : 0.9) : (1.0 - Math.max(similarityToCorrect, bestAlternateSimilarity)),
+            reasoning: reasoningFromLLM,
             search_used: false 
         };
+
     } catch (error) {
-        logger.error({ err: error }, '[TriviaService] Error verifying answer with LLM. Falling back to similarity.');
-        const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
-        const isVeryClose = similarity > 0.9; 
+        logger.error({ err: error }, '[TriviaService] Error verifying answer with LLM. Falling back to basic similarity.');
+        const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+        let isFallbackCorrect = similarity > 0.7; 
+
+        if (!isFallbackCorrect && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.7)) {
+            isFallbackCorrect = true;
+        }
+
         return {
-            is_correct: isVeryClose,
+            is_correct: isFallbackCorrect,
             confidence: similarity,
             reasoning: `Similarity check: ${Math.round(similarity * 100)}% (LLM fallback).`,
             search_used: false
