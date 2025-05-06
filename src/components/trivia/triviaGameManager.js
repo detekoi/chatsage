@@ -440,10 +440,6 @@ async function _startNextRound(gameState) {
     logger.info(`[TriviaGame][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
     gameState.state = 'selecting';
     
-    // Announce next round
-    const roundMessage = `🎮 Starting Round ${gameState.currentRound}/${gameState.totalRounds}...`;
-    enqueueMessage(`#${gameState.channelName}`, roundMessage);
-    
     // 1. Generate Question
     let questionGenerated = false;
     let retries = 0;
