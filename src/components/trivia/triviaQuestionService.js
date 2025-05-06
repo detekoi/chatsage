@@ -105,8 +105,15 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
         : '';
 
-    // STEP 1: Search for facts about the topic
-    const searchFactsPrompt = `First, find verified factual information about "${topic}" that can be used to create a ${difficulty} trivia question. Focus on specific, verifiable details. ${exclusionInstruction}\n\nReturn the gathered facts as a text block. Do not call any functions in this step.`;
+    // STEP 1: Search for facts about the topic - MODIFIED PROMPT
+    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. 
+Focus on:
+- Key characters, items, or locations and their unique attributes or significance.
+- Notable plot points, events, or in-world lore details.
+- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).
+- Unique mechanics, abilities, or concepts specific to the topic.
+${exclusionInstruction}
+Return a collection of diverse facts as a text block. Do not call any functions in this step.`;
     let factualInfoText = "";
 
     try {
@@ -128,8 +135,8 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         return null; 
     }
 
-    // STEP 2: Use the gathered facts to generate a structured question via function call
-    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate a trivia question based SOLELY on these facts.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. Ensure the 'search_used' field in the function call is true.`;
+    // STEP 2: Use the gathered facts to generate a structured question via function call - MODIFIED PROMPT
+    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates (like premiere or end dates), unless the date itself is a highly significant and interesting piece of trivia for a unique reason.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. Ensure the 'search_used' field in the function call is true.`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" using retrieved facts.`);
@@ -318,7 +325,11 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
         : '';
 
-    prompt = `Create a trivia question about ${specificTopic || 'general knowledge'}.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
+    // MODIFIED PROMPT for general knowledge
+    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.
+Avoid overly obscure or simple date-based questions (like premiere or release dates) unless the date itself is exceptionally significant for a unique reason.
+Focus on interesting facts, characters, plot points, lore, or unique details.
+\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific\n- Provide the correct answer\n- Include alternate acceptable answers if applicable\n- Add a brief explanation about the answer${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the correct answer]\nAlternate Answers: [other acceptable answers, comma separated]\nExplanation: [brief explanation of the answer]`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge question. Prompt includes exclusion instruction: ${!!exclusionInstruction}`);
@@ -413,8 +424,11 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
     if (!correctAnswer || !userAnswer) {
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
-    // 1. Basic string comparison
-    if (userAnswer.toLowerCase() === correctAnswer.toLowerCase()) {
+
+    const lowerUserAnswer = userAnswer.toLowerCase();
+    const lowerCorrectAnswer = correctAnswer.toLowerCase();
+
+    if (lowerUserAnswer === lowerCorrectAnswer) {
         return {
             is_correct: true,
             confidence: 1.0,
@@ -422,47 +436,96 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
             search_used: false
         };
     }
-    // 2. Check alternate answers
-    for (const alt of alternateAnswers) {
-        if (alt.toLowerCase() === userAnswer.toLowerCase()) {
-            return {
-                is_correct: true,
-                confidence: 1.0,
-                reasoning: "Exact match with alternate answer",
-                search_used: false
-            };
-        }
-    }
-    // 3. More rigorous verification for non-exact matches
-    const searchPrompt = `Verify if the user's answer is correct for this trivia question:\n\nQuestion: ${question}\nCorrect answer: ${correctAnswer}\nUser's answer: ${userAnswer}\n\nPlease answer with ONLY ONE of these exact words: "CORRECT" or "INCORRECT". \nThen provide a brief explanation on a new line.`;
-
-    try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: searchPrompt }] }],
-            generationConfig: {
-                temperature: 0.3 // Low temperature for more deterministic response
-            }
-        });
-        const responseText = result.response.candidates[0].content.parts[0].text;
-        // Check for the exact verdict at the beginning of the response
-        const isCorrect = responseText.trim().toUpperCase().startsWith("CORRECT");
-        // Extract the explanation part (after the first line)
-        const explanation = responseText.split("\n").slice(1).join(" ").trim();
+    if (alternateAnswers && alternateAnswers.some(alt => alt.toLowerCase() === lowerUserAnswer)) {
         return {
-            is_correct: isCorrect,
-            confidence: 0.95,
-            reasoning: explanation || (isCorrect ? "The answers match conceptually." : "The answers are different."),
+            is_correct: true,
+            confidence: 1.0,
+            reasoning: "Exact match with alternate answer",
             search_used: false
         };
-    } catch (error) {
-        logger.error({ err: error }, 'Error verifying answer with structured response');
-        // Fall back to strict matching as a last resort
+    }
+
+    // If the question implies a date, and the user's answer doesn't look like a date,
+    // it's likely incorrect. This is a heuristic.
+    const questionExpectsDate = /date|when|year|premiered|released|concluded/i.test(question);
+    const userAnswerLooksLikeDate = /\d/.test(userAnswer) || /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(lowerUserAnswer);
+    
+    if (questionExpectsDate && !userAnswerLooksLikeDate) {
+        // If a date is expected but not provided, and it's not an exact/alternate match, assume incorrect.
+        // Only apply this if it's not already an exact/alternate match.
+        logger.debug(`[TriviaService] Question expects date, user answer "${userAnswer}" does not appear to be a date. Marking as incorrect.`);
+        return {
+            is_correct: false,
+            confidence: 0.8, // Fairly confident it's wrong if format is way off
+            reasoning: "Answer format does not match expected (e.g., a date was expected).",
+            search_used: false
+        };
+    }
+
+
+    // Refined prompt for LLM verification
+    const verificationPrompt = `Your task is to STRICTLY determine if the "Player's Input" is a correct answer to the "Trivia Question".
+The "Official Correct Answer" is provided.
+
+Trivia Question: "${question}"
+Official Correct Answer: "${correctAnswer}"
+Player's Input: "${userAnswer}"
+
+Instructions for you:
+1. Directly compare the "Player's Input" against the "Official Correct Answer".
+2. Consider common spelling variations or very minor phrasing differences as potentially correct.
+3. If the "Player's Input" is substantially different, unrelated to the "Official Correct Answer", or is a comment ABOUT the question/game rather than an attempt to answer, it is INCORRECT.
+4. If the "Official Correct Answer" is a date or number, the "Player's Input" must also be a recognizable date or number that matches.
+
+Respond with ONLY the word "CORRECT" or "INCORRECT".
+On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on the factual comparison. Example: "Player's input matches official answer." or "Player's input is a different date."
+`;
+
+    try {
+        logger.debug(`[TriviaService] Sending to LLM for verification. Correct: "${correctAnswer}", User: "${userAnswer}"`);
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: verificationPrompt }] }],
+            generationConfig: {
+                temperature: 0.1, // Very low temperature for deterministic verification
+                maxOutputTokens: 50,
+            }
+        });
+        const responseText = result.response.candidates[0].content.parts[0].text.trim();
+        
+        const isCorrect = responseText.toUpperCase().startsWith("CORRECT");
+        let reasoning = responseText.split("\n").slice(1).join(" ").trim();
+        if (!reasoning) {
+            reasoning = isCorrect ? "The answer is considered correct." : "The answer is considered incorrect.";
+        }
+
+        // Additional sanity check: if LLM says CORRECT but similarity is very low, override.
         const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
-        const isVeryClose = similarity > 0.9; // Require very high similarity
+        if (isCorrect && similarity < 0.5 && !alternateAnswers.some(alt => calculateStringSimilarity(alt, userAnswer) > 0.8)) {
+             logger.warn(`[TriviaService] LLM verified as CORRECT, but similarity is low (${similarity.toFixed(2)}) and no strong alternate match. Overriding to INCORRECT. User: "${userAnswer}", Correct: "${correctAnswer}"`);
+             return {
+                 is_correct: false,
+                 confidence: 0.75, // Moderate confidence in override
+                 reasoning: `Answer significantly differs from the correct answer. (${reasoning})`,
+                 search_used: false
+             };
+        }
+
+
+        logger.info(`[TriviaService] LLM Verification - Input: "${userAnswer}", Expected: "${correctAnswer}", LLM Verdict: ${isCorrect}, Reasoning: ${reasoning}`);
+        return {
+            is_correct: isCorrect,
+            confidence: isCorrect ? (similarity > 0.85 ? 0.98 : 0.9) : (1.0 - similarity), // Crude confidence adjustment
+            reasoning: reasoning,
+            search_used: false 
+        };
+    } catch (error) {
+        logger.error({ err: error }, '[TriviaService] Error verifying answer with LLM. Falling back to similarity.');
+        const similarity = calculateStringSimilarity(correctAnswer, userAnswer);
+        const isVeryClose = similarity > 0.9; 
         return {
             is_correct: isVeryClose,
             confidence: similarity,
-            reasoning: `String similarity: ${Math.round(similarity * 100)}%`,
+            reasoning: `Similarity check: ${Math.round(similarity * 100)}% (LLM fallback).`,
             search_used: false
         };
     }
