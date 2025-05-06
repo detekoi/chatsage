@@ -49,3 +49,5 @@ Thumbs.db
 .yarn/install-state.gz
 .pnp.*
 .aider*
+
+scripts/copy-to-gemini-folder.js # 

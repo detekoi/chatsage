@@ -1,11 +1,16 @@
 #!/usr/bin/env node
+// Copies the latest version of the code to a folder that can be dragged into Gemini or other LLM chat.
 
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
-const SOURCE_DIR = '/Users/henry/Dev/twitch-knowledge-bot';
-const TARGET_DIR = '/Users/henry/Dev/gemini';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const SOURCE_DIR = path.resolve(__dirname, '..');
+const TARGET_DIR = path.resolve(__dirname, '../../gemini');
 
 // Directories to exclude (hidden folders and large directories)
 const EXCLUDED_DIRS = [
@@ -13,7 +18,8 @@ const EXCLUDED_DIRS = [
     'node_modules',
     '.vscode',
     '.idea',
-    '.DS_Store'
+    '.DS_Store',
+    '.env'
 ];
 
 // Ensure target directory exists
@@ -64,4 +70,4 @@ function copyRecursive(source, target) {
 console.log(`Copying from ${SOURCE_DIR} to ${TARGET_DIR}`);
 copyRecursive(SOURCE_DIR, TARGET_DIR);
 
-console.log('Migration complete!');
+console.log('Copy complete!');
