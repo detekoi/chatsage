@@ -55,6 +55,7 @@ GameState structure:
     currentRound: number,
     gameSessionScores: Map<string, {displayName: string, score: number}>,
     gameSessionExcludedQuestions: Set<string>,
+    gameSessionExcludedAnswers: Set<string>,
     streakMap: Map<string, number> // username -> consecutive correct answers
 }
 */
@@ -105,6 +106,7 @@ async function _getOrCreateGameState(channelName) {
             currentRound: 1,
             gameSessionScores: new Map(),
             gameSessionExcludedQuestions: new Set(),
+            gameSessionExcludedAnswers: new Set(),
             streakMap: new Map()
         });
     } else {
@@ -112,6 +114,9 @@ async function _getOrCreateGameState(channelName) {
         const state = activeGames.get(channelName);
         if (!state.gameSessionExcludedQuestions) {
             state.gameSessionExcludedQuestions = new Set();
+        }
+        if (!state.gameSessionExcludedAnswers) {
+            state.gameSessionExcludedAnswers = new Set();
         }
         if (!state.streakMap) {
             state.streakMap = new Map();
@@ -158,6 +163,7 @@ async function _resetGameToIdle(gameState) {
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
     newState.gameSessionExcludedQuestions = new Set();
+    newState.gameSessionExcludedAnswers = new Set();
     newState.streakMap = new Map();
 }
 
@@ -233,7 +239,14 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     // --- Add current question to session exclusion set (if valid) ---
     if (gameState.currentQuestion?.question) {
         gameState.gameSessionExcludedQuestions.add(gameState.currentQuestion.question);
-        logger.debug(`[TriviaGame][${gameState.channelName}] Added question to session exclusion set. Size: ${gameState.gameSessionExcludedQuestions.size}`);
+        // NEW: Add current answer and alternates to session excluded answers
+        if (gameState.currentQuestion.answer) {
+            gameState.gameSessionExcludedAnswers.add(gameState.currentQuestion.answer.toLowerCase());
+            if (gameState.currentQuestion.alternateAnswers && gameState.currentQuestion.alternateAnswers.length > 0) {
+                gameState.currentQuestion.alternateAnswers.forEach(alt => gameState.gameSessionExcludedAnswers.add(alt.toLowerCase()));
+            }
+        }
+        logger.debug(`[TriviaGame][${gameState.channelName}] Excluded Qs: ${gameState.gameSessionExcludedQuestions.size}, Excluded As: ${gameState.gameSessionExcludedAnswers.size}`);
     }
     // --- End answer exclusion update ---
 
@@ -445,15 +458,17 @@ async function _startNextRound(gameState) {
     // Combine session exclusions with recent channel exclusions
     const combinedExcludedQuestions = new Set([...gameState.gameSessionExcludedQuestions, ...recentChannelQuestions]);
     const finalExcludedQuestionsArray = Array.from(combinedExcludedQuestions);
+    const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
     
     while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
         try {
-            // --- Pass excluded questions to generateQuestion ---
+            // --- Pass excluded questions and answers to generateQuestion ---
             const question = await generateQuestion(
                 gameState.topic,
                 gameState.config.difficulty,
                 finalExcludedQuestionsArray, // Pass the combined list
-                gameState.channelName
+                gameState.channelName,
+                finalExcludedAnswersArray // Pass excluded answers
             );
             // --- End modification ---
             if (question && question.question && question.answer) {
@@ -641,6 +656,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.currentRound = 1;
     gameState.gameSessionScores = new Map();
     gameState.gameSessionExcludedQuestions = new Set();
+    gameState.gameSessionExcludedAnswers = new Set();
     gameState.streakMap = new Map();
     _clearTimers(gameState);
     
@@ -671,14 +687,16 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.gameSessionExcludedQuestions = new Set();
         }
         const finalExcludedQuestionsArray = Array.from(gameState.gameSessionExcludedQuestions);
+        const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
         while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
             try {
-                 // --- Pass excluded questions to generateQuestion ---
+                 // --- Pass excluded questions and answers to generateQuestion ---
                 const question = await generateQuestion(
                     topic,
                     gameState.config.difficulty,
                     finalExcludedQuestionsArray, // Pass current exclusion set
-                    channelName
+                    channelName,
+                    finalExcludedAnswersArray // Pass excluded answers
                 );
                  // --- End modification ---
                 if (question && question.question && question.answer) {

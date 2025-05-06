@@ -99,14 +99,17 @@ async function validateQuestionFactuality(question, answer, topic) {
 }
 
 // --- Helper: Fallback to Explicit Search ---
-async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], channelName = null) {
+async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = []) {
     const model = getGeminiClient();
-    const exclusionInstruction = excludedQuestions.length > 0
+    const exclusionInstructionQuestions = excludedQuestions.length > 0
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
+        : '';
+    const exclusionInstructionAnswers = excludedAnswers.length > 0
+        ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
     // STEP 1: Search for facts about the topic - MODIFIED PROMPT
-    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. \nFocus on:\n- Key characters, items, or locations and their unique attributes or significance.\n- Notable plot points, events, or in-world lore details.\n- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).\n- Unique mechanics, abilities, or concepts specific to the topic.\n${exclusionInstruction}\nReturn a collection of diverse facts as a text block. Do not call any functions in this step.`;
+    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. \nFocus on:\n- Key characters, items, or locations and their unique attributes or significance.\n- Notable plot points, events, or in-world lore details.\n- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).\n- Unique mechanics, abilities, or concepts specific to the topic.\n${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn a collection of diverse facts as a text block. Do not call any functions in this step.`;
     let factualInfoText = "";
 
     try {
@@ -129,7 +132,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - MODIFIED PROMPT
-    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates.\nDifficulty level: ${difficulty}.${exclusionInstruction}\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'correct_answer' should be "Lion". If the question asks for a concept like "when Gems combine their forms", the 'correct_answer' should be "Fusion", not "The process by which Gems combine their physical forms".\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is true.\n`;
+    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates.\n${exclusionInstructionQuestions}${exclusionInstructionAnswers} \nDifficulty level: ${difficulty}.\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'correct_answer' should be "Lion". If the question asks for a concept like "when Gems combine their forms", the 'correct_answer' should be "Fusion", not "The process by which Gems combine their physical forms".\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is true.\n`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
@@ -286,14 +289,15 @@ function formatTriviaParts(questionText, factualInfo, topic, difficulty) {
 /**
  * Generates a trivia question based on topic and difficulty.
  * Uses a two-step approach: (1) search for facts if needed, (2) generate the question using those facts or standard prompt.
- * Now includes logic to exclude specific QUESTIONS.
+ * Now includes logic to exclude specific QUESTIONS and ANSWERS.
  * @param {string} topic
  * @param {string} difficulty
  * @param {string[]} excludedQuestions - Array of question texts to avoid regenerating.
  * @param {string|null} channelName
+ * @param {string[]} excludedAnswers - Array of answer strings to avoid regenerating.
  * @returns {Promise<object|null>}
  */
-export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null) {
+export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = []) {
     const model = getGeminiClient();
     
     let specificTopic = topic;
@@ -308,17 +312,20 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
 
     if (shouldUseSearch) {
         logger.info(`[TriviaService] Specific topic "${specificTopic}" identified. Forcing search-based question generation.`);
-        return generateQuestionWithExplicitSearch(specificTopic, difficulty, excludedQuestions, channelName);
+        return generateQuestionWithExplicitSearch(specificTopic, difficulty, excludedQuestions, channelName, excludedAnswers);
     }
     // MODIFICATION END
 
     let prompt = '';
-    const exclusionInstruction = excludedQuestions.length > 0
+    const exclusionInstructionQuestions = excludedQuestions.length > 0
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
+        : '';
+    const exclusionInstructionAnswers = excludedAnswers.length > 0
+        ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
     // MODIFIED PROMPT for general knowledge - ensuring concise answer guidance
-    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific.\n- The 'Answer' field in your response MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for the 'Answer'; such details belong in the 'Explanation' field. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'Answer' should be "Lion".\n- Provide the correct answer.\n- For 'Alternate Answers':\n    - If the 'Answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'Answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'Answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Add a brief explanation about the answer.${exclusionInstruction}\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the concise correct answer]\nAlternate Answers: [concise alternate answers, comma separated]\nExplanation: [brief explanation of the answer, can include more detail]`;
+    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific.\n- The 'Answer' field in your response MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for the 'Answer'; such details belong in the 'Explanation' field. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'Answer' should be "Lion".\n- Provide the correct answer.\n- For 'Alternate Answers':\n    - If the 'Answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'Answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'Answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Add a brief explanation about the answer.\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the concise correct answer]\nAlternate Answers: [concise alternate answers, comma separated]\nExplanation: [brief explanation of the answer, can include more detail]`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge question with concise answer guidance.`);
