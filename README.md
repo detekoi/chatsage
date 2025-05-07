@@ -4,9 +4,12 @@
 
 ChatSage is an AI-powered chatbot designed for Twitch chat environments. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
 
+**[Add ChatSage to your Twitch channel →](https://streamsage-bot.web.app)**
+
 ## Table of Contents
 
 - [Features (Core Capabilities)](#features-core-capabilities)
+- [Adding ChatSage to Your Channel](#adding-chatsage-to-your-channel)
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
 - [Running the Bot](#running-the-bot)
@@ -19,15 +22,48 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 
 *   Connects to specified Twitch channels via IRC.
 *   Fetches real-time stream context (game, title, tags) using the Twitch Helix API.
-*   Utilizes Google's Gemini Large Language Model (LLM) for natural language understanding and response generation.
+*   Utilizes Google's Gemini 2.0 Flash LLM for natural language understanding and response generation.
 *   Maintains conversation context (history and summaries) per channel.
 *   Supports custom chat commands with permission levels.
 *   Configurable through environment variables.
 *   Includes structured logging suitable for production environments.
+*   Web-based channel management interface for streamers to add/remove the bot.
 
-## Prerequisites
+## Adding ChatSage to Your Channel
 
-*   Node.js (Version 18.0.0 or later recommended)
+Streamers can now easily add or remove ChatSage from their channel using our web interface:
+
+1. **Visit the ChatSage Management Portal**:
+   - Go to [ChatSage Management Portal](https://streamsage-bot.web.app)
+   - Click on "Login with Twitch"
+
+2. **Authorize the Application**:
+   - You'll be redirected to Twitch to authorize ChatSage
+   - Grant the required permissions
+   - This process is secure and uses Twitch's OAuth flow
+
+3. **Manage the Bot**:
+   - Once logged in, you'll see your dashboard
+   - Use the "Add Bot to My Channel" button to have ChatSage join your channel
+   - Use "Remove Bot from My Channel" if you want to remove it
+
+4. **Bot Joining Time**:
+   - After adding the bot, it should join your channel within a few minutes
+   - If the bot doesn't join after 10 minutes, please try removing and adding again
+
+5. **User Interaction**:
+   - Viewers can interact with ChatSage by mentioning it: `@StreamSageTheBot hello` (the username will be updated to reflect the new name, ChatSage, when Twitch allows me)
+   - Or by using various [commands](https://detekoi.github.io/botcommands.html) like `!ask`, `!translate`, etc.
+
+## Usage Examples
+
+### Chat Commands
+
+For a complete list of available commands and their usage, please visit [Bot Commands Documentation](https://detekoi.github.io/botcommands.html).
+
+## Development Prerequisites
+
+*   Node.js (Version 22.0.0 or later recommended)
 *   npm (or yarn)
 
 ## Getting Started
@@ -70,8 +106,8 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 ChatSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
 
 *   `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
-*   `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used for local development.
-*   `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager (e.g., `projects/YOUR_PROJECT_ID/secrets/twitch-channels/versions/latest`). Used in production.
+*   `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback if Firestore channel management is unavailable.
+*   `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager. Used as fallback if Firestore channel management is unavailable.
 *   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
 *   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
@@ -84,7 +120,9 @@ Ensure all required variables are set in your environment or `.env` file before 
 
 ChatSage uses a secure token refresh mechanism to maintain authentication with Twitch:
 
-1. **Initial Setup**:
+### Bot IRC Authentication
+
+1. **Initial Setup for Bot IRC Token**:
    - Go to [Twitch Token Generator](https://twitchtokengenerator.com)
    - Select the required scopes: `chat:read`, `chat:edit`
    - Generate the token
@@ -105,7 +143,25 @@ ChatSage uses a secure token refresh mechanism to maintain authentication with T
    - If the access token expires, it will be automatically refreshed
    - If the refresh token itself becomes invalid, the application will log an error requiring manual intervention
 
-This approach provides better security by not storing the OAuth token directly in configuration files and ensures the bot can maintain connectivity for longer periods.
+### Channel Management Web UI
+
+The web interface uses a separate OAuth flow to allow streamers to manage the bot in their channel:
+
+1. **Firebase Functions Setup**:
+   - The web UI is built with Firebase Functions and Hosting
+   - It uses Twitch OAuth to authenticate streamers
+   - When a streamer adds or removes the bot, it updates a Firestore collection
+   - The bot periodically checks this collection to determine which channels to join or leave
+
+2. **Environment Variables for Web UI**:
+   - `TWITCH_CLIENT_ID`: Twitch application client ID
+   - `TWITCH_CLIENT_SECRET`: Twitch application client secret 
+   - `CALLBACK_URL`: The OAuth callback URL (your deployed function URL)
+   - `FRONTEND_URL`: The URL of your web interface
+   - `JWT_SECRET_KEY`: Secret for signing authentication tokens
+   - `SESSION_COOKIE_SECRET`: Secret for session cookies
+
+This approach provides better security by using standard OAuth flows and not storing tokens directly in configuration files. It also gives streamers control over adding or removing the bot from their channel.
 
 ## Docker
 
@@ -122,19 +178,3 @@ A `Dockerfile` is provided for building a container image of the application.
     docker run --rm --env-file ./.env -it chatsage:latest
     ```
     *(Ensure your `.env` file is populated correctly)*
-
-## Usage Examples
-
-### Chat Commands
-
-For a complete list of available commands and their usage, please visit [Bot Commands Documentation](https://detekoi.github.io/botcommands.html).
-
-### Sample Log Output
-
-```bash
-$ npm run dev
-[INFO] Pretty logging enabled for development.
-[INFO] Connected to channels: #channel1, #channel2
-[INFO] Chat | user123: !help
-[INFO] Response | Provided commands list to user123
-```
