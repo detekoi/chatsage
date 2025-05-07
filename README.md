@@ -31,7 +31,7 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 
 ## Adding ChatSage to Your Channel
 
-Streamers can now easily add or remove ChatSage from their channel using our web interface:
+Streamers can now easily add or remove ChatSage from their channel using the web interface:
 
 1. **Visit the ChatSage Management Portal**:
    - Go to [ChatSage Management Portal](https://streamsage-bot.web.app)
