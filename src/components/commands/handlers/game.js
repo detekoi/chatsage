@@ -164,7 +164,7 @@ const gameHandler = {
 };
 
 /**
- * Handles image analysis for the game command with API data as source of truth
+ * Handles image analysis for the game command with direct summarization
  * @param {string} channel - Channel with # prefix
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
@@ -191,14 +191,14 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
-        // Modify the prompt to focus on scene analysis, not game identification
+        // Modify the prompt to focus on scene analysis AND make it concise from the start
         const analysisPrompt = `This is a screenshot from the game "${officialGameName}". 
-                              Analyze what's happening in the scene, what the player is doing,
-                              and any notable UI elements visible.
-                              Describe only what you can see in the image.
-                              Format response as a JSON object with "activity" and "ui_elements" properties.`;
+                               Analyze what's happening in the scene, what the player is doing, 
+                               and any notable UI elements visible.
+                               IMPORTANT: Keep your response very concise (max 200 characters).
+                               Just describe what you see in 1-3 short sentences.`;
         
-        // Analyze the image with Gemini
+        // Analyze the image with Gemini - directly asking for concise results
         const analysisResult = await analyzeImage(thumbnailBuffer, analysisPrompt);
         
         if (!analysisResult) {
@@ -206,37 +206,24 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
-        // Extract the gameplay description
-        let activityDescription = '';
-        let uiElements = '';
-        
-        // Try to parse JSON response if available
-        try {
-            const jsonMatch = analysisResult.match(/{[\s\S]*}/);
-            if (jsonMatch) {
-                const parsedResult = JSON.parse(jsonMatch[0]);
-                activityDescription = parsedResult.activity || '';
-                uiElements = parsedResult.ui_elements && parsedResult.ui_elements.length > 0 
-                    ? ` | UI: ${parsedResult.ui_elements.slice(0, 2).join(', ')}`
-                    : '';
+        // If result is still too long, manually trim it to ensure it fits
+        let conciseDescription = analysisResult;
+        if (conciseDescription.length > 350) {
+            // Find a good cutoff point (sentence ending)
+            const sentenceEndMatch = conciseDescription.substring(0, 350).match(/[.!?][^.!?]*$/);
+            if (sentenceEndMatch) {
+                const endIndex = 350 - sentenceEndMatch[0].length + 1; // +1 to include the punctuation
+                conciseDescription = conciseDescription.substring(0, endIndex);
             } else {
-                // Use the full response as activity description if not JSON
-                activityDescription = analysisResult.substring(0, 300);
+                // If no sentence ending found, just cut at 350
+                conciseDescription = conciseDescription.substring(0, 350);
             }
-        } catch (e) {
-            // If JSON parsing fails, use the raw response
-            activityDescription = analysisResult.substring(0, 300);
-        }
-        
-        // Limit the activity description length
-        if (activityDescription.length > 350) {
-            activityDescription = activityDescription.substring(0, 350) + '...';
         }
         
         // Format the final response
-        const gameResponse = `@${userName}, In ${officialGameName}: ${activityDescription}${uiElements}`;
+        const gameResponse = `@${userName}, In ${officialGameName}: ${conciseDescription}`;
         
-        // Final length check
+        // Final length check for IRC limits
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
             const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             enqueueMessage(channel, truncated);
