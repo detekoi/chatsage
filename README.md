@@ -178,4 +178,3 @@ A `Dockerfile` is provided for building a container image of the application.
     docker run --rm --env-file ./.env -it chatsage:latest
     ```
     *(Ensure your `.env` file is populated correctly)*
-# Test
