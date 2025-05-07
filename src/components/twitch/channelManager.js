@@ -87,7 +87,12 @@ export async function getActiveManagedChannels() {
         
         const channels = [];
         snapshot.forEach(doc => {
-            channels.push(doc.data().channelName.toLowerCase());
+            const data = doc.data();
+            if (data && typeof data.channelName === 'string') {
+                channels.push(data.channelName.toLowerCase());
+            } else {
+                logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName'. Skipping.`);
+            }
         });
         
         logger.info(`[ChannelManager] Successfully fetched ${channels.length} active managed channels.`);
@@ -162,30 +167,34 @@ export async function syncManagedChannelsWithIrc(ircClient) {
         
         snapshot.forEach(doc => {
             const channelData = doc.data();
-            const channelName = channelData.channelName.toLowerCase();
-            const isActive = !!channelData.isActive;
-            const isCurrentlyJoined = currentChannels.includes(channelName);
-            
-            if (isActive && !isCurrentlyJoined) {
-                // Need to join
-                promises.push(
-                    syncChannelWithIrc(ircClient, channelName, true)
-                        .then(() => joinedChannels.push(channelName))
-                        .catch(err => {
-                            logger.error({ err, channel: channelName }, 
-                                `[ChannelManager] Error joining channel ${channelName}`);
-                        })
-                );
-            } else if (!isActive && isCurrentlyJoined) {
-                // Need to leave
-                promises.push(
-                    syncChannelWithIrc(ircClient, channelName, false)
-                        .then(() => partedChannels.push(channelName))
-                        .catch(err => {
-                            logger.error({ err, channel: channelName }, 
-                                `[ChannelManager] Error leaving channel ${channelName}`);
-                        })
-                );
+            if (channelData && typeof channelData.channelName === 'string') {
+                const channelName = channelData.channelName.toLowerCase();
+                const isActive = !!channelData.isActive;
+                const isCurrentlyJoined = currentChannels.includes(channelName);
+                
+                if (isActive && !isCurrentlyJoined) {
+                    // Need to join
+                    promises.push(
+                        syncChannelWithIrc(ircClient, channelName, true)
+                            .then(() => joinedChannels.push(channelName))
+                            .catch(err => {
+                                logger.error({ err, channel: channelName }, 
+                                    `[ChannelManager] Error joining channel ${channelName}`);
+                            })
+                    );
+                } else if (!isActive && isCurrentlyJoined) {
+                    // Need to leave
+                    promises.push(
+                        syncChannelWithIrc(ircClient, channelName, false)
+                            .then(() => partedChannels.push(channelName))
+                            .catch(err => {
+                                logger.error({ err, channel: channelName }, 
+                                    `[ChannelManager] Error leaving channel ${channelName}`);
+                            })
+                    );
+                }
+            } else {
+                logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName' during sync. Skipping.`);
             }
         });
         
@@ -218,25 +227,32 @@ export function listenForChannelChanges(ircClient) {
             
             snapshot.docChanges().forEach(change => {
                 const channelData = change.doc.data();
-                changes.push({
-                    type: change.type,
-                    channelName: channelData.channelName,
-                    isActive: !!channelData.isActive
-                });
+                // Defensive check for channelName
+                if (channelData && typeof channelData.channelName === 'string') {
+                    changes.push({
+                        type: change.type,
+                        channelName: channelData.channelName, // Now safe
+                        isActive: !!channelData.isActive,
+                        docId: change.doc.id // For logging
+                    });
+                } else {
+                    logger.warn({ docId: change.doc.id }, `[ChannelManager] Firestore listener detected change in document missing valid 'channelName'. Skipping processing for this change.`);
+                }
             });
             
             if (changes.length > 0) {
                 logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);
                 
-                // Process the changes
+                // Process the VALID changes
                 changes.forEach(change => {
                     if (change.type === 'added' || change.type === 'modified') {
                         syncChannelWithIrc(ircClient, change.channelName, change.isActive)
                             .catch(err => {
-                                logger.error({ err, channel: change.channelName },
-                                    `[ChannelManager] Error processing channel change`);
+                                logger.error({ err, channel: change.channelName, docId: change.docId },
+                                    `[ChannelManager] Error processing channel change via listener`);
                             });
                     }
+                    // Optionally handle 'removed' type if needed
                 });
             }
         }, error => {

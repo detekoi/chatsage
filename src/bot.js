@@ -122,21 +122,67 @@ async function main() {
         logger.info('Initializing Channel Manager...');
         await initializeChannelManager();
         
-        // Attempt to load managed channels from Firestore first
-        try {
-            logger.info('Loading Twitch channels from Firestore managedChannels collection...');
-            const managedChannels = await getActiveManagedChannels();
-            if (managedChannels && managedChannels.length > 0) {
-                config.twitch.channels = managedChannels;
-                logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
+        // --- Load Twitch Channels based on Environment ---
+        if (config.app.nodeEnv === 'development') {
+            logger.info('Running in DEVELOPMENT mode. Loading channels ONLY from TWITCH_CHANNELS environment variable.');
+            if (process.env.TWITCH_CHANNELS) {
+                config.twitch.channels = process.env.TWITCH_CHANNELS
+                    .split(',')
+                    .map(ch => ch.trim().toLowerCase())
+                    .filter(ch => ch);
+                if (config.twitch.channels.length > 0) {
+                    logger.info(`Loaded ${config.twitch.channels.length} channels from .env: [${config.twitch.channels.join(', ')}]`);
+                } else {
+                    logger.fatal('TWITCH_CHANNELS environment variable is set but contains no valid channels.');
+                    process.exit(1);
+                }
             } else {
-                logger.warn('No active channels found in Firestore managedChannels collection.');
-                // Fall back to environment or Secret Manager if no channels in Firestore
+                logger.fatal('Running in DEVELOPMENT mode, but TWITCH_CHANNELS environment variable is not set or empty. Please set it in your .env file.');
+                process.exit(1);
+            }
+        } else {
+            // --- Production/Non-Development Channel Loading Logic ---
+            logger.info('Running in non-development mode. Loading channels from Firestore (fallback to env/secrets)...');
+            try {
+                logger.info('Loading Twitch channels from Firestore managedChannels collection...');
+                const managedChannels = await getActiveManagedChannels();
+                if (managedChannels && managedChannels.length > 0) {
+                    config.twitch.channels = managedChannels.map(ch => ch.toLowerCase());
+                    logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
+                } else {
+                    logger.warn('No active channels found in Firestore managedChannels collection. Falling back...');
+                    if (process.env.TWITCH_CHANNELS) {
+                        logger.info('Falling back to TWITCH_CHANNELS environment variable...');
+                        config.twitch.channels = process.env.TWITCH_CHANNELS
+                            .split(',')
+                            .map(ch => ch.trim().toLowerCase())
+                            .filter(ch => ch);
+                        logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
+                    } else if (config.secrets.twitchChannelsSecretName) {
+                        logger.info('Falling back to Secret Manager for channel list...');
+                        const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
+                        if (channelsString) {
+                            config.twitch.channels = channelsString
+                                .split(',')
+                                .map(ch => ch.trim().toLowerCase())
+                                .filter(ch => ch);
+                            logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
+                        } else {
+                            logger.error('Failed to load Twitch channels from Secret Manager fallback.');
+                            process.exit(1);
+                        }
+                    } else {
+                        logger.error('No channel configuration found (Firestore, Env, Secrets). Cannot proceed.');
+                        process.exit(1);
+                    }
+                }
+            } catch (error) {
+                logger.error({ err: error }, 'Error loading channels from Firestore. Falling back...');
                 if (process.env.TWITCH_CHANNELS) {
                     logger.info('Falling back to TWITCH_CHANNELS environment variable...');
                     config.twitch.channels = process.env.TWITCH_CHANNELS
                         .split(',')
-                        .map(ch => ch.trim())
+                        .map(ch => ch.trim().toLowerCase())
                         .filter(ch => ch);
                     logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
                 } else if (config.secrets.twitchChannelsSecretName) {
@@ -145,45 +191,23 @@ async function main() {
                     if (channelsString) {
                         config.twitch.channels = channelsString
                             .split(',')
-                            .map(ch => ch.trim())
+                            .map(ch => ch.trim().toLowerCase())
                             .filter(ch => ch);
                         logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
                     } else {
-                        logger.error('Failed to load Twitch channels from Secret Manager.');
+                        logger.error('Failed to load Twitch channels from Secret Manager fallback after Firestore error.');
                         process.exit(1);
                     }
                 } else {
-                    logger.error('No channel configuration found. Please configure managedChannels in Firestore or set TWITCH_CHANNELS/TWITCH_CHANNELS_SECRET_NAME.');
+                    logger.error('No channel configuration found after Firestore error. Cannot proceed.');
                     process.exit(1);
                 }
             }
-        } catch (error) {
-            logger.error({ err: error }, 'Error loading channels from Firestore. Falling back to environment or Secret Manager.');
-            // Fall back to environment or Secret Manager if error occurs
-            if (process.env.TWITCH_CHANNELS) {
-                logger.info('Falling back to TWITCH_CHANNELS environment variable...');
-                config.twitch.channels = process.env.TWITCH_CHANNELS
-                    .split(',')
-                    .map(ch => ch.trim())
-                    .filter(ch => ch);
-                logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
-            } else if (config.secrets.twitchChannelsSecretName) {
-                logger.info('Falling back to Secret Manager for channel list...');
-                const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
-                if (channelsString) {
-                    config.twitch.channels = channelsString
-                        .split(',')
-                        .map(ch => ch.trim())
-                        .filter(ch => ch);
-                    logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
-                } else {
-                    logger.error('Failed to load Twitch channels from Secret Manager.');
-                    process.exit(1);
-                }
-            } else {
-                logger.error('No channel configuration found after Firestore error. Please configure managedChannels in Firestore or set TWITCH_CHANNELS/TWITCH_CHANNELS_SECRET_NAME.');
-                process.exit(1);
-            }
+        }
+        // Ensure channels are populated before proceeding
+        if (!config.twitch.channels || config.twitch.channels.length === 0) {
+            logger.fatal('FATAL: No Twitch channels configured to join. Exiting.');
+            process.exit(1);
         }
 
         // 3. Other initializations that might need secrets
@@ -231,25 +255,46 @@ async function main() {
         ircClient.on('connected', async (address, port) => {
             logger.info(`Successfully connected to Twitch IRC: ${address}:${port}`);
             
-            // 1. Set up listener for channel changes
-            if (!channelChangeListener) {
-                logger.info('Setting up listener for channel changes...');
-                channelChangeListener = listenForChannelChanges(ircClient);
+            // --- Conditional Firestore Syncing/Listening ---
+            if (config.app.nodeEnv !== 'development') {
+                logger.info('Non-dev environment: Setting up Firestore channel listener and sync.');
+                // 1. Set up listener for channel changes
+                if (!channelChangeListener) {
+                    logger.info('Setting up listener for channel changes...');
+                    channelChangeListener = listenForChannelChanges(ircClient);
+                }
+                // 2. Sync channels from Firestore with IRC (Initial Sync after connect)
+                try {
+                    logger.info('Syncing channels from Firestore with IRC...');
+                    const syncResult = await syncManagedChannelsWithIrc(ircClient);
+                    logger.info(`Channels synced: ${syncResult.joined.length} joined, ${syncResult.parted.length} parted`);
+                    // Update config again after sync if needed
+                    const activeChannels = await getActiveManagedChannels();
+                    config.twitch.channels = activeChannels.map(ch => ch.toLowerCase());
+                    logger.info(`Updated config with ${config.twitch.channels.length} active channels post-sync.`);
+                } catch (error) {
+                    logger.error({ err: error }, 'Error syncing channels from Firestore post-connect.');
+                }
+                // 4. Set up recurring channel sync
+                setInterval(async () => {
+                    try {
+                        if (config.app.nodeEnv !== 'development') { // Double check env inside interval
+                            logger.info('Running scheduled channel sync...');
+                            const syncResult = await syncManagedChannelsWithIrc(ircClient);
+                            if (syncResult.joined.length > 0 || syncResult.parted.length > 0) {
+                                const activeChannels = await getActiveManagedChannels();
+                                config.twitch.channels = activeChannels.map(ch => ch.toLowerCase());
+                                logger.info(`Updated config with ${config.twitch.channels.length} active channels after scheduled sync.`);
+                            }
+                        }
+                    } catch (error) {
+                        logger.error({ err: error }, 'Error during scheduled channel sync.');
+                    }
+                }, CHANNEL_SYNC_INTERVAL_MS);
+            } else {
+                logger.info('Development mode: Skipping Firestore channel listener setup and periodic sync.');
             }
-            
-            // 2. Sync channels from Firestore with IRC
-            try {
-                logger.info('Syncing channels from Firestore with IRC...');
-                const syncResult = await syncManagedChannelsWithIrc(ircClient);
-                logger.info(`Channels synced: ${syncResult.joined.length} joined, ${syncResult.parted.length} parted`);
-                
-                // Update the config.twitch.channels with the latest active channels
-                const activeChannels = await getActiveManagedChannels();
-                config.twitch.channels = activeChannels;
-                logger.info(`Updated config with ${config.twitch.channels.length} active channels from Firestore.`);
-            } catch (error) {
-                logger.error({ err: error }, 'Error syncing channels from Firestore.');
-            }
+            // --- End Conditional Syncing/Listening ---
             
             // 3. Start stream info polling
             logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
@@ -259,32 +304,15 @@ async function main() {
                 helixClient, // Pass already retrieved instance
                 contextManager // Pass already retrieved instance
             );
-            
-            // 4. Set up recurring channel sync
-            setInterval(async () => {
-                try {
-                    logger.info('Running scheduled channel sync...');
-                    const syncResult = await syncManagedChannelsWithIrc(ircClient);
-                    
-                    if (syncResult.joined.length > 0 || syncResult.parted.length > 0) {
-                        // Update the config.twitch.channels with the latest active channels
-                        const activeChannels = await getActiveManagedChannels();
-                        config.twitch.channels = activeChannels;
-                        logger.info(`Updated config with ${config.twitch.channels.length} active channels after sync.`);
-                    }
-                } catch (error) {
-                    logger.error({ err: error }, 'Error during scheduled channel sync.');
-                }
-            }, CHANNEL_SYNC_INTERVAL_MS);
         });
 
         ircClient.on('disconnected', (reason) => {
             logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
             stopStreamInfoPolling(streamInfoIntervalId);
             
-            // Clean up channel change listener on disconnect
-            if (channelChangeListener) {
-                logger.info('Cleaning up channel change listener...');
+            // Clean up Firestore listener ONLY if it was started
+            if (config.app.nodeEnv !== 'development' && channelChangeListener) {
+                logger.info('Cleaning up channel change listener on disconnect...');
                 channelChangeListener();
                 channelChangeListener = null;
             }
@@ -490,7 +518,8 @@ async function main() {
 
         // --- Post-Connection Logging ---
         logger.info('ChatSage components initialized and event listeners attached.');
-        logger.info(`Ready and listening to channels: ${config.twitch.channels.join(', ')}`);
+        // Log the *actual* channels joined
+        logger.info(`Ready and listening to channels: ${ircClient.getChannels().join(', ')}`);
 
     } catch (error) {
         logger.fatal({ err: error }, 'Fatal error during ChatSage initialization.');
