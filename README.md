@@ -10,13 +10,13 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 
 - [Features (Core Capabilities)](#features-core-capabilities)
 - [Adding ChatSage to Your Channel](#adding-chatsage-to-your-channel)
-- [Prerequisites](#prerequisites)
+- [Usage Examples](#usage-examples)
+- [Development Prerequisites](#development-prerequisites)
 - [Getting Started](#getting-started)
 - [Running the Bot](#running-the-bot)
 - [Configuration](#configuration)
 - [Twitch Token Management](#twitch-token-management)
 - [Docker](#docker)
-- [Usage Examples](#usage-examples)
 
 ## Features (Core Capabilities)
 
