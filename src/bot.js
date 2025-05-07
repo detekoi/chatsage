@@ -15,11 +15,14 @@ import { initializeGeoGameManager, getGeoGameManager } from './components/geo/ge
 import { initializeStorage } from './components/geo/geoStorage.js';
 import { initializeTriviaGameManager, getTriviaGameManager } from './components/trivia/triviaGameManager.js';
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
+import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges } from './components/twitch/channelManager.js';
 
 let streamInfoIntervalId = null;
 let ircClient = null;
+let channelChangeListener = null;
 const MAX_IRC_MESSAGE_LENGTH = 450; // Define globally for reuse
 const SUMMARY_TARGET_LENGTH = 400;  // Define globally for reuse
+const CHANNEL_SYNC_INTERVAL_MS = 300000; // 5 minutes
 
 // Helper function for checking mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
@@ -46,6 +49,17 @@ async function gracefulShutdown(signal) {
                 });
             })
         );
+    }
+    
+    // Clean up channel change listener if active
+    if (channelChangeListener) {
+        try {
+            logger.info('Cleaning up channel change listener during shutdown...');
+            channelChangeListener();
+            channelChangeListener = null;
+        } catch (error) {
+            logger.error({ err: error }, 'Error cleaning up channel change listener during shutdown.');
+        }
     }
     
     // Clear polling interval immediately
@@ -104,30 +118,72 @@ async function main() {
         logger.info('Initializing Secret Manager...');
         initializeSecretManager();
 
-        // 2. Load Twitch channels from environment or Secret Manager
-        if (process.env.TWITCH_CHANNELS) {
-            logger.info('Loading Twitch channels from TWITCH_CHANNELS environment variable...');
-            config.twitch.channels = process.env.TWITCH_CHANNELS
-                .split(',')
-                .map(ch => ch.trim())
-                .filter(ch => ch);
-            logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
-        } else if (config.secrets.twitchChannelsSecretName) {
-            logger.info('Loading Twitch channels from Secret Manager...');
-            const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
-            if (channelsString) {
-                config.twitch.channels = channelsString
+        // 2. Initialize Channel Manager and load channels from Firestore
+        logger.info('Initializing Channel Manager...');
+        await initializeChannelManager();
+        
+        // Attempt to load managed channels from Firestore first
+        try {
+            logger.info('Loading Twitch channels from Firestore managedChannels collection...');
+            const managedChannels = await getActiveManagedChannels();
+            if (managedChannels && managedChannels.length > 0) {
+                config.twitch.channels = managedChannels;
+                logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
+            } else {
+                logger.warn('No active channels found in Firestore managedChannels collection.');
+                // Fall back to environment or Secret Manager if no channels in Firestore
+                if (process.env.TWITCH_CHANNELS) {
+                    logger.info('Falling back to TWITCH_CHANNELS environment variable...');
+                    config.twitch.channels = process.env.TWITCH_CHANNELS
+                        .split(',')
+                        .map(ch => ch.trim())
+                        .filter(ch => ch);
+                    logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
+                } else if (config.secrets.twitchChannelsSecretName) {
+                    logger.info('Falling back to Secret Manager for channel list...');
+                    const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
+                    if (channelsString) {
+                        config.twitch.channels = channelsString
+                            .split(',')
+                            .map(ch => ch.trim())
+                            .filter(ch => ch);
+                        logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
+                    } else {
+                        logger.error('Failed to load Twitch channels from Secret Manager.');
+                        process.exit(1);
+                    }
+                } else {
+                    logger.error('No channel configuration found. Please configure managedChannels in Firestore or set TWITCH_CHANNELS/TWITCH_CHANNELS_SECRET_NAME.');
+                    process.exit(1);
+                }
+            }
+        } catch (error) {
+            logger.error({ err: error }, 'Error loading channels from Firestore. Falling back to environment or Secret Manager.');
+            // Fall back to environment or Secret Manager if error occurs
+            if (process.env.TWITCH_CHANNELS) {
+                logger.info('Falling back to TWITCH_CHANNELS environment variable...');
+                config.twitch.channels = process.env.TWITCH_CHANNELS
                     .split(',')
                     .map(ch => ch.trim())
                     .filter(ch => ch);
-                logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
+                logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
+            } else if (config.secrets.twitchChannelsSecretName) {
+                logger.info('Falling back to Secret Manager for channel list...');
+                const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
+                if (channelsString) {
+                    config.twitch.channels = channelsString
+                        .split(',')
+                        .map(ch => ch.trim())
+                        .filter(ch => ch);
+                    logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
+                } else {
+                    logger.error('Failed to load Twitch channels from Secret Manager.');
+                    process.exit(1);
+                }
             } else {
-                logger.error('Failed to load Twitch channels from Secret Manager.');
+                logger.error('No channel configuration found after Firestore error. Please configure managedChannels in Firestore or set TWITCH_CHANNELS/TWITCH_CHANNELS_SECRET_NAME.');
                 process.exit(1);
             }
-        } else {
-            logger.error('No channel configuration found. Set TWITCH_CHANNELS or TWITCH_CHANNELS_SECRET_NAME.');
-            process.exit(1);
         }
 
         // 3. Other initializations that might need secrets
@@ -172,8 +228,30 @@ async function main() {
         // --- Setup IRC Event Listeners BEFORE Connecting ---
         logger.debug('Attaching IRC event listeners...');
 
-        ircClient.on('connected', (address, port) => {
+        ircClient.on('connected', async (address, port) => {
             logger.info(`Successfully connected to Twitch IRC: ${address}:${port}`);
+            
+            // 1. Set up listener for channel changes
+            if (!channelChangeListener) {
+                logger.info('Setting up listener for channel changes...');
+                channelChangeListener = listenForChannelChanges(ircClient);
+            }
+            
+            // 2. Sync channels from Firestore with IRC
+            try {
+                logger.info('Syncing channels from Firestore with IRC...');
+                const syncResult = await syncManagedChannelsWithIrc(ircClient);
+                logger.info(`Channels synced: ${syncResult.joined.length} joined, ${syncResult.parted.length} parted`);
+                
+                // Update the config.twitch.channels with the latest active channels
+                const activeChannels = await getActiveManagedChannels();
+                config.twitch.channels = activeChannels;
+                logger.info(`Updated config with ${config.twitch.channels.length} active channels from Firestore.`);
+            } catch (error) {
+                logger.error({ err: error }, 'Error syncing channels from Firestore.');
+            }
+            
+            // 3. Start stream info polling
             logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
             streamInfoIntervalId = startStreamInfoPolling(
                 config.twitch.channels,
@@ -181,11 +259,35 @@ async function main() {
                 helixClient, // Pass already retrieved instance
                 contextManager // Pass already retrieved instance
             );
+            
+            // 4. Set up recurring channel sync
+            setInterval(async () => {
+                try {
+                    logger.info('Running scheduled channel sync...');
+                    const syncResult = await syncManagedChannelsWithIrc(ircClient);
+                    
+                    if (syncResult.joined.length > 0 || syncResult.parted.length > 0) {
+                        // Update the config.twitch.channels with the latest active channels
+                        const activeChannels = await getActiveManagedChannels();
+                        config.twitch.channels = activeChannels;
+                        logger.info(`Updated config with ${config.twitch.channels.length} active channels after sync.`);
+                    }
+                } catch (error) {
+                    logger.error({ err: error }, 'Error during scheduled channel sync.');
+                }
+            }, CHANNEL_SYNC_INTERVAL_MS);
         });
 
         ircClient.on('disconnected', (reason) => {
             logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
             stopStreamInfoPolling(streamInfoIntervalId);
+            
+            // Clean up channel change listener on disconnect
+            if (channelChangeListener) {
+                logger.info('Cleaning up channel change listener...');
+                channelChangeListener();
+                channelChangeListener = null;
+            }
         });
 
         // --- MESSAGE HANDLER ---

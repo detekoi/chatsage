@@ -8,7 +8,9 @@
         "start": "node src/bot.js",
         "dev": "node --watch src/bot.js",
         "lint": "eslint .",
-        "test": "jest"
+        "test": "jest",
+        "test:channel-manager": "node scripts/test-channel-manager.js",
+        "migrate:channels": "node scripts/migrate-channels-to-firestore.js"
     },
     "keywords": [
         "twitch",
@@ -21,6 +23,7 @@
     "author": "Henry Manes",
     "license": "BSD-2-Clause",
     "dependencies": {
+        "22": "^0.0.0",
         "@google-cloud/firestore": "^7.11.0",
         "@google-cloud/secret-manager": "^6.0.1",
         "@google/generative-ai": "latest",
