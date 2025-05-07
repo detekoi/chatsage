@@ -330,6 +330,40 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
 }
 
 /**
+ * Gets additional game information and returns it as a string (or null).
+ * @param {string} channelName - Channel without # prefix
+ * @param {string} userName - Display name of requesting user
+ * @param {string} gameName - Name of the game
+ * @returns {Promise<string|null>} Interesting fact/overview or null
+ */
+async function getAdditionalGameInfo(channelName, userName, gameName) {
+    try {
+        if (!gameName || gameName === 'Unknown' || gameName === 'N/A') {
+            return null;
+        }
+        const contextManager = getContextManager();
+        const llmContext = contextManager.getContextForLLM(channelName, userName, `general info request for ${gameName}`);
+        const contextPrompt = buildContextPrompt(llmContext || {});
+        const gameQuery = `Tell me something interesting or provide a brief overview about the game: "${gameName}"`;
+        logger.debug(`[${channelName}] Fetching additional info for ${gameName}`);
+        const responseText = await generateSearchResponse(contextPrompt, gameQuery);
+        if (!responseText?.trim()) {
+            return null;
+        }
+        let finalText = responseText;
+        const localSummaryTarget = SUMMARY_TARGET_LENGTH - 50;
+        if (finalText.length > SUMMARY_TARGET_LENGTH) {
+            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
+            finalText = summary?.trim() ? summary : finalText.substring(0, SUMMARY_TARGET_LENGTH - 3) + '...';
+        }
+        return finalText.trim();
+    } catch (error) {
+        logger.error({ err: error }, 'Error getting additional game info');
+        return null;
+    }
+}
+
+/**
  * Handles game info response using context data
  * @param {string} channel - Channel with # prefix
  * @param {string} channelName - Channel without # prefix
@@ -338,90 +372,42 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
  */
 async function handleGameInfoResponse(channel, channelName, userName, gameInfo) {
     try {
-        const gameName = gameInfo.gameName;
-        
-        // Basic response with context data
-        let basicResponse = `@${userName}, Current game: ${gameName}`;
-        
-        // Add additional info if available
-        if (gameInfo.streamTitle && gameInfo.streamTitle !== 'Unknown') {
-            basicResponse += ` | Stream title: ${gameInfo.streamTitle}`;
-        }
-        
-        if (gameInfo.viewerCount) {
-            basicResponse += ` | Viewers: ${gameInfo.viewerCount}`;
-        }
-        
-        if (basicResponse.length <= MAX_IRC_MESSAGE_LENGTH) {
-            enqueueMessage(channel, basicResponse);
-        } else {
-            // Truncate if too long
-            const truncated = basicResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
-            enqueueMessage(channel, truncated);
-        }
-        
-        // Get additional game info in background
-        getAdditionalGameInfo(channel, channelName, userName, gameName);
-        
-    } catch (error) {
-        logger.error({ err: error }, 'Error handling game info response');
-        
-        // Fallback to simple response if error in formatting
-        const gameName = gameInfo?.gameName || 'Unknown';
-        enqueueMessage(channel, `@${userName}, Current game: ${gameName}`);
-    }
-}
+        const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
-/**
- * Gets additional game information and sends a follow-up message
- * @param {string} channel - Channel with # prefix
- * @param {string} channelName - Channel without # prefix
- * @param {string} userName - Display name of requesting user
- * @param {string} gameName - Name of the game
- */
-async function getAdditionalGameInfo(channel, channelName, userName, gameName) {
-    try {
-        // If game name is unknown or missing, don't proceed
-        if (!gameName || gameName === 'Unknown' || gameName === 'N/A') {
+        if (!gameName) {
+            enqueueMessage(channel, `@${userName}, I couldn't determine the current game.`);
             return;
         }
-        
-        // Build context prompt
-        const contextManager = getContextManager();
-        const llmContext = contextManager.getContextForLLM(channelName, userName, "game info request");
-        const contextPrompt = buildContextPrompt(llmContext || {});
-        
-        // Formulate query
-        const gameQuery = `Tell me something interesting or provide a brief overview about the game: "${gameName}"`;
-        
-        // Get response from LLM
-        const responseText = await generateSearchResponse(contextPrompt, gameQuery);
-        
-        if (!responseText?.trim()) {
-            return; // No need to send a follow-up if we have no additional info
-        }
-        
-        // Format and check length
-        let finalText = responseText;
-        
-        if (finalText.length > SUMMARY_TARGET_LENGTH) {
-            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
-            finalText = summary?.trim() ? summary : finalText.substring(0, SUMMARY_TARGET_LENGTH - 3) + '...';
-        }
-        
-        // Formulate follow-up message (no @ mention to avoid notification spam)
-        const followUp = `More about ${gameName}: ${finalText}`;
-        
-        if (followUp.length <= MAX_IRC_MESSAGE_LENGTH) {
-            enqueueMessage(channel, followUp);
+
+        // Get *only* the additional info
+        const additionalInfo = await getAdditionalGameInfo(channelName, userName, gameName);
+
+        if (additionalInfo) {
+            // We have additional info, format the response *just* with that
+            let responseText = additionalInfo;
+            const prefix = `@${userName}, `;
+            const maxTextLength = MAX_IRC_MESSAGE_LENGTH - prefix.length - 3;
+
+            // Truncate *only the additional info text* if necessary
+            if (responseText.length > maxTextLength) {
+                logger.info(`Additional game info too long (${responseText.length} > ${maxTextLength}). Truncating.`);
+                responseText = removeMarkdownAsterisks(responseText.substring(0, maxTextLength < 0 ? 0 : maxTextLength) + '...');
+            } else {
+                responseText = removeMarkdownAsterisks(responseText);
+            }
+
+            const finalMessage = prefix + responseText;
+            enqueueMessage(channel, finalMessage);
         } else {
-            const truncated = followUp.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
-            enqueueMessage(channel, truncated);
+            // No additional info found, maybe just acknowledge the command silently or provide a minimal response?
+            logger.warn(`[${channelName}] No additional info found for game: ${gameName}. No message sent for !game.`);
+            // Optionally, uncomment the next line to send a minimal fallback:
+            // enqueueMessage(channel, `@${userName}, Currently playing: ${gameName}. (Couldn't find extra details).`);
         }
-        
     } catch (error) {
-        logger.error({ err: error }, 'Error getting additional game info');
-        // Silently fail - no need to send error message for the follow-up
+        logger.error({ err: error }, 'Error handling game info response (concise version)');
+        const gameName = gameInfo?.gameName || 'Unknown';
+        enqueueMessage(channel, `@${userName}, Current game: ${gameName}`);
     }
 }
 
