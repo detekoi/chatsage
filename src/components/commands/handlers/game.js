@@ -6,12 +6,96 @@ import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
 // Need image analysis functions
 import { fetchStreamThumbnail, getCurrentGameInfo } from '../../twitch/streamImageCapture.js';
-import { analyzeGameStream } from '../../llm/geminiImageClient.js';
+import { analyzeGameStream, analyzeImage } from '../../llm/geminiImageClient.js';
+// Need summarizer for image analysis results
+import { triggerSummarizationIfNeeded } from '../../context/summarizer.js';
 // Need message queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
-const SUMMARY_TARGET_LENGTH = 400;
+const SUMMARY_TARGET_LENGTH = 300; // Shortened to allow for formatting and mentions
+
+/**
+ * Creates a summarization prompt specifically for AI image analysis results
+ * @param {string|object} analysisResult - The image analysis result to summarize
+ * @returns {string} Formatted prompt for summarization
+ */
+function buildImageAnalysisSummaryPrompt(analysisResult) {
+    let textToSummarize;
+    
+    if (typeof analysisResult === 'string') {
+        textToSummarize = analysisResult;
+    } else {
+        // Format object into text
+        const gameName = analysisResult.game || 'Unknown';
+        const activity = analysisResult.activity || '';
+        const uiElements = analysisResult.ui_elements && analysisResult.ui_elements.length > 0
+            ? analysisResult.ui_elements.join(', ')
+            : '';
+            
+        textToSummarize = `Game: ${gameName}\nActivity: ${activity}\nUI Elements: ${uiElements}`;
+    }
+    
+    return `Summarize the following AI image analysis of a video game stream.
+Keep only the most important details and ensure your summary is under 200 characters.
+Format as: Game name | Activity description | Key UI elements (if relevant)
+
+--- START OF ANALYSIS ---
+${textToSummarize}
+--- END OF ANALYSIS ---
+
+Concise summary:`;
+}
+
+/**
+ * Custom summarization for image analysis results
+ * @param {string|object} analysisResult - The image analysis result to summarize
+ * @returns {Promise<string>} Summarized text
+ */
+async function summarizeImageAnalysis(analysisResult) {
+    try {
+        // If it's already a string and short enough, just return it
+        if (typeof analysisResult === 'string' && analysisResult.length <= SUMMARY_TARGET_LENGTH) {
+            return analysisResult;
+        }
+        
+        // Create messages array mimicking chat history format expected by summarizer
+        const mockMessages = [{
+            username: 'Image Analysis',
+            message: typeof analysisResult === 'string' 
+                ? analysisResult 
+                : JSON.stringify(analysisResult, null, 2)
+        }];
+        
+        // Use the existing summarization function
+        const summary = await triggerSummarizationIfNeeded('imageAnalysis', mockMessages);
+        
+        if (summary) {
+            return summary;
+        }
+        
+        // Fallback: Simple truncation if summarization fails
+        if (typeof analysisResult === 'string') {
+            return analysisResult.substring(0, SUMMARY_TARGET_LENGTH);
+        } else {
+            // Basic object formatting with truncation
+            const gameName = analysisResult.game || 'Unknown';
+            const activity = analysisResult.activity 
+                ? analysisResult.activity.substring(0, 150) 
+                : '';
+            
+            return `${gameName} | ${activity}`;
+        }
+    } catch (error) {
+        logger.error({ err: error }, 'Error summarizing image analysis');
+        // Return a simplified version on error
+        if (typeof analysisResult === 'string') {
+            return analysisResult.substring(0, SUMMARY_TARGET_LENGTH);
+        } else {
+            return analysisResult.game || 'Unknown game';
+        }
+    }
+}
 
 /**
  * Determines if argument indicates an image analysis is requested
@@ -80,7 +164,7 @@ const gameHandler = {
 };
 
 /**
- * Handles image analysis for the game command
+ * Handles image analysis for the game command with API data as source of truth
  * @param {string} channel - Channel with # prefix
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
@@ -90,6 +174,15 @@ async function handleImageAnalysis(channel, channelName, userName) {
         // Inform user we're processing
         enqueueMessage(channel, `@${userName}, analyzing the stream using AI image recognition...`);
         
+        // Get the official game info from the API/context FIRST
+        const gameInfo = await getCurrentGameInfo(channelName);
+        const officialGameName = gameInfo?.gameName !== 'Unknown' ? gameInfo.gameName : null;
+        
+        if (!officialGameName) {
+            enqueueMessage(channel, `@${userName}, couldn't determine the current game. The channel might not be streaming a game.`);
+            return;
+        }
+        
         // Fetch the stream thumbnail
         const thumbnailBuffer = await fetchStreamThumbnail(channelName);
         
@@ -98,39 +191,58 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
+        // Modify the prompt to focus on scene analysis, not game identification
+        const analysisPrompt = `This is a screenshot from the game "${officialGameName}". 
+                              Analyze what's happening in the scene, what the player is doing,
+                              and any notable UI elements visible.
+                              Describe only what you can see in the image.
+                              Format response as a JSON object with "activity" and "ui_elements" properties.`;
+        
         // Analyze the image with Gemini
-        const analysisResult = await analyzeGameStream(thumbnailBuffer);
+        const analysisResult = await analyzeImage(thumbnailBuffer, analysisPrompt);
         
         if (!analysisResult) {
-            enqueueMessage(channel, `@${userName}, AI couldn't analyze the stream content.`);
+            enqueueMessage(channel, `@${userName}, AI couldn't analyze the ${officialGameName} gameplay.`);
             return;
         }
         
-        // Format the response based on the analysis result
-        let gameResponse;
+        // Extract the gameplay description
+        let activityDescription = '';
+        let uiElements = '';
         
-        if (typeof analysisResult === 'string') {
-            // If we got a string back instead of an object
-            gameResponse = `@${userName}, AI Analysis: ${analysisResult}`;
-        } else {
-            // Construct response from the structured data
-            const gameName = analysisResult.game || 'Unknown';
-            const activity = analysisResult.activity 
-                ? ` | Activity: ${analysisResult.activity.substring(0, 150)}` 
-                : '';
-            const uiElements = analysisResult.ui_elements && analysisResult.ui_elements.length > 0
-                ? ` | UI elements: ${analysisResult.ui_elements.slice(0, 3).join(', ')}`
-                : '';
-                
-            gameResponse = `@${userName}, AI detected: ${gameName}${activity}${uiElements}`;
+        // Try to parse JSON response if available
+        try {
+            const jsonMatch = analysisResult.match(/{[\s\S]*}/);
+            if (jsonMatch) {
+                const parsedResult = JSON.parse(jsonMatch[0]);
+                activityDescription = parsedResult.activity || '';
+                uiElements = parsedResult.ui_elements && parsedResult.ui_elements.length > 0 
+                    ? ` | UI: ${parsedResult.ui_elements.slice(0, 2).join(', ')}`
+                    : '';
+            } else {
+                // Use the full response as activity description if not JSON
+                activityDescription = analysisResult.substring(0, 300);
+            }
+        } catch (e) {
+            // If JSON parsing fails, use the raw response
+            activityDescription = analysisResult.substring(0, 300);
         }
         
-        // Limit response length for IRC
+        // Limit the activity description length
+        if (activityDescription.length > 350) {
+            activityDescription = activityDescription.substring(0, 350) + '...';
+        }
+        
+        // Format the final response
+        const gameResponse = `@${userName}, In ${officialGameName}: ${activityDescription}${uiElements}`;
+        
+        // Final length check
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
-            gameResponse = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+            const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+            enqueueMessage(channel, truncated);
+        } else {
+            enqueueMessage(channel, gameResponse);
         }
-        
-        enqueueMessage(channel, gameResponse);
         
     } catch (error) {
         logger.error({ err: error }, 'Error in image analysis for !game command');
