@@ -6,11 +6,13 @@ import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
 // Need image analysis functions
 import { fetchStreamThumbnail, getCurrentGameInfo } from '../../twitch/streamImageCapture.js';
-import { analyzeGameStream, analyzeImage } from '../../llm/geminiImageClient.js';
+import { analyzeImage } from '../../llm/geminiImageClient.js';
 // Need summarizer for image analysis results
 import { triggerSummarizationIfNeeded } from '../../context/summarizer.js';
 // Need message queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
+// Import markdown removal utility
+import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 300; // Shortened to allow for formatting and mentions
@@ -174,7 +176,7 @@ async function handleImageAnalysis(channel, channelName, userName) {
         // Removed confirmation message to reduce chat verbosity
         // Get the official game info from the API/context FIRST
         const gameInfo = await getCurrentGameInfo(channelName);
-        const officialGameName = gameInfo?.gameName !== 'Unknown' ? gameInfo.gameName : null;
+        const officialGameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
         
         if (!officialGameName) {
             enqueueMessage(channel, `@${userName}, couldn't determine the current game. The channel might not be streaming a game.`);
@@ -189,35 +191,72 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
-        // Account for the fixed parts of the message to determine available character count
-        const prefixLength = `@${userName}, In ${officialGameName}: `.length;
-        const availableChars = MAX_IRC_MESSAGE_LENGTH - prefixLength - 3; // -3 for potential ellipsis
-        
-        // Modify the prompt to focus on scene analysis with appropriate detail
-        const analysisPrompt = `This is a screenshot from ${officialGameName}. 
-                              Analyze what's happening in the scene, what the player is doing,
-                              and any notable UI elements visible.
-                              Important: Provide a detailed but concise analysis in about 300-350 characters.
-                              Focus on the most important game elements and player actions visible.
-                              Write in a natural conversational style without quotes around game names or other terms.`;
-        
-        // Analyze the image with Gemini 
-        const analysisResult = await analyzeImage(thumbnailBuffer, analysisPrompt);
-        
-        if (!analysisResult) {
-            enqueueMessage(channel, `@${userName}, AI couldn't analyze the ${officialGameName} gameplay.`);
+        // --- Step 1: Initial Image Analysis ---
+        // Prompt focuses purely on description now
+        const initialAnalysisPrompt = `Analyze this screenshot from the game "${officialGameName}". Describe what's happening, player actions, and notable UI elements. Focus only on description.`;
+
+        // Analyze the image with Gemini
+        const initialAnalysisResult = await analyzeImage(thumbnailBuffer, initialAnalysisPrompt);
+
+        if (!initialAnalysisResult || initialAnalysisResult.trim().length === 0) {
+            enqueueMessage(channel, `@${userName}, AI couldn't analyze the ${officialGameName} gameplay initially.`);
             return;
         }
-        
-        // Process the result to clean up common AI response patterns
-        let description = analysisResult;
-        
+        logger.debug(`[${channelName}] Initial analysis for ${officialGameName}: "${initialAnalysisResult.substring(0,100)}..."`);
+
+        // --- Step 2: Verify/Refine with Search Grounding ---
+        let verifiedAnalysisResult = initialAnalysisResult; // Default to initial if verification fails
+        try {
+            logger.info(`[${channelName}] Verifying image analysis for ${officialGameName} using search grounding.`);
+            // Get context for the verification call
+            const contextManager = getContextManager();
+            const llmContext = contextManager.getContextForLLM(channelName, userName, `Verifying image analysis of ${officialGameName}`);
+            const contextPrompt = buildContextPrompt(llmContext || {});
+
+            // --- REVISED VERIFICATION QUERY V2 ---
+            // Stronger emphasis on using initial analysis as base truth for visuals.
+            // Explicitly forbids adding non-mentioned elements or outputting commentary.
+            const verificationQuery = `Your task is to produce a concise, fact-checked description of a video game screenshot from "${officialGameName}". You are given an initial analysis generated directly from the screenshot.
+
+Initial analysis (describes visuals in the CURRENT screenshot):
+"${initialAnalysisResult}"
+
+Instructions:
+1. Use search *only* to verify the factual accuracy of specific named entities (characters, locations, items) mentioned in the 'Initial analysis'.
+2. **Output the Refined Description ONLY:** Your entire response MUST be the refined description of the screenshot.
+3. **Stick to Visuals:** Base the refined description primarily on the 'Initial analysis'. Do NOT add characters, locations, or objects found in search results if they were NOT mentioned in the 'Initial analysis'.
+4. **Correct ONLY If Necessary:** Only modify the 'Initial analysis' if search confirms a *specific named entity* within it is factually incorrect for "${officialGameName}". If correcting, keep the correction minimal and focused on the incorrect entity.
+5. **NO Commentary:** Do NOT include phrases like "The analysis is accurate", "Based on the search results", or any other commentary about the process. Output ONLY the description itself.
+
+Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
+
+            const searchResult = await generateSearchResponse(contextPrompt, verificationQuery);
+
+            if (searchResult && searchResult.trim().length > 0) {
+                verifiedAnalysisResult = searchResult;
+                logger.info(`[${channelName}] Analysis verified/refined.`);
+            } else {
+                logger.warn(`[${channelName}] Search verification step returned empty result. Using initial analysis.`);
+            }
+        } catch(verificationError) {
+             logger.error({ err: verificationError }, `[${channelName}] Error during search verification step. Using initial analysis.`);
+             // Keep verifiedAnalysisResult = initialAnalysisResult
+        }
+
+        // --- Step 3: Process and Format Final Result ---
+        const prefixLength = `@${userName}, In ${officialGameName}: `.length;
+        const availableChars = MAX_IRC_MESSAGE_LENGTH - prefixLength - 3; // -3 for potential ellipsis
+
+        let description = verifiedAnalysisResult; // Start with the verified/refined result
+
         // Clean up text patterns that look unnatural
         description = description
             // Remove any instances of quoted phrases
             .replace(/["']([^"']{1,20})["']/g, '$1')
             // Remove common intro phrases
             .replace(/This (screenshot|image) (shows|depicts|is from) /gi, '')
+            .replace(/^Based on the search results[:,]?\s*/i, '')
+            .replace(/^Okay, here's the analysis:\s*/i, '')
             .replace(/In this (scene|screenshot|image|frame)/gi, '')
             .replace(/The (screenshot|image) (shows|depicts) a scene from /gi, '')
             .replace(/We can see /gi, '')
@@ -226,40 +265,52 @@ async function handleImageAnalysis(channel, channelName, userName) {
             .replace(/\s{2,}/g, ' ')
             .trim();
         
-        // If still too long, find a good breaking point
+        // Also apply markdown removal
+        description = removeMarkdownAsterisks(description);
+
+        // Apply summarization/truncation if still too long
         if (description.length > availableChars) {
-            // Try to find sentence endings
-            const sentenceEndRegex = /[.!?][^.!?]*$/;
-            const matchSentenceEnd = description.substring(0, availableChars).match(sentenceEndRegex);
-            
-            if (matchSentenceEnd) {
-                // Cut at the end of the last complete sentence
-                const endIndex = availableChars - matchSentenceEnd[0].length + 1;
-                description = description.substring(0, endIndex);
+            logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Summarizing/Truncating.`);
+            // Try summarizing first
+            const summary = await summarizeText(description, availableChars - 10); // Target slightly shorter
+            if (summary && summary.trim().length > 0) {
+                 description = removeMarkdownAsterisks(summary.trim()); // Apply markdown removal to summary too
             } else {
-                // Try to find a comma or other natural break
-                const commaBreakRegex = /,[^,]*$/;
-                const matchComma = description.substring(0, availableChars).match(commaBreakRegex);
-                
-                if (matchComma) {
-                    const endIndex = availableChars - matchComma[0].length + 1;
-                    description = description.substring(0, endIndex);
+                // Fallback to truncation if summary fails or is empty
+                logger.warn(`Summarization failed for verified analysis. Truncating.`);
+                const sentenceEndRegex = /[.!?][^.!?]*$/;
+                 // Try to find sentence endings
+                const matchSentenceEnd = description.substring(0, availableChars).match(sentenceEndRegex);
+
+                if (matchSentenceEnd) {
+                    const endIndex = availableChars - matchSentenceEnd[0].length + 1;
+                    description = description.substring(0, endIndex > 0 ? endIndex : 0);
                 } else {
-                    // If no natural break, try to break at a space
-                    const lastSpaceIndex = description.substring(0, availableChars).lastIndexOf(' ');
-                    if (lastSpaceIndex > availableChars * 0.8) { // Only use if space is reasonably close to limit
-                        description = description.substring(0, lastSpaceIndex);
+                    // Try to find a comma or other natural break
+                    const commaBreakRegex = /,[^,]*$/;
+                    const matchComma = description.substring(0, availableChars).match(commaBreakRegex);
+
+                    if (matchComma) {
+                        const endIndex = availableChars - matchComma[0].length + 1;
+                        description = description.substring(0, endIndex > 0 ? endIndex : 0);
                     } else {
-                        // Last resort: hard cut
-                        description = description.substring(0, availableChars);
+                        // If no natural break, try to break at a space
+                        const lastSpaceIndex = description.substring(0, availableChars).lastIndexOf(' ');
+                        if (lastSpaceIndex > availableChars * 0.8) {
+                            description = description.substring(0, lastSpaceIndex);
+                        } else {
+                            // Last resort: hard cut
+                            description = description.substring(0, availableChars > 0 ? availableChars : 0);
+                        }
                     }
                 }
+                 description += '...'; // Add ellipsis for truncation
             }
         }
-        
-        // Format the final response
+
+        // --- Step 4: Send Final Message ---
         const gameResponse = `@${userName}, In ${officialGameName}: ${description}`;
-        
+
         // Final length check for IRC limits (shouldn't be needed with above logic, but safety first)
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
             const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
