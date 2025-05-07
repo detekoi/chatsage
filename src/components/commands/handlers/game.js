@@ -100,22 +100,6 @@ async function summarizeImageAnalysis(analysisResult) {
 }
 
 /**
- * Determines if argument indicates an image analysis is requested
- * @param {string[]} args - Command arguments
- * @returns {boolean} True if image analysis is requested
- */
-function shouldUseImageAnalysis(args) {
-    if (!args || args.length === 0) return false;
-    
-    const analysisTerms = ['analyze', 'image', 'ai', 'vision', 'detect', 'looking', 'sees', 'screen'];
-    
-    // Check if any argument contains analysis terms
-    return args.some(arg => 
-        analysisTerms.some(term => arg.toLowerCase().includes(term))
-    );
-}
-
-/**
  * Handler for the !game command.
  * Retrieves the current game from context and provides researched info via LLM search.
  * Can also analyze stream thumbnails using image recognition when requested.
@@ -123,44 +107,65 @@ function shouldUseImageAnalysis(args) {
 const gameHandler = {
     name: 'game',
     description: 'Provides information about the game currently being played. Add "analyze" to use AI image recognition on the stream.',
-    usage: '!game [analyze]',
+    usage: '!game [analyze] [your question]',
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
         const userName = user['display-name'] || user.username;
-        const useImageAnalysis = shouldUseImageAnalysis(args);
-        
+
+        // --- Argument Parsing ---
+        let analysisRequested = false;
+        let helpQueryArgs = [];
+
+        if (args.length > 0 && args[0].toLowerCase() === 'analyze') {
+            analysisRequested = true;
+            helpQueryArgs = args.slice(1); // Take args after 'analyze'
+        } else {
+            helpQueryArgs = args; // All args are potentially part of the help query
+        }
+
+        const helpQuery = helpQueryArgs.join(' ').trim();
+        const helpRequested = helpQuery.length > 0;
+
         logger.info({
             command: 'game',
             channel: channelName,
             user: userName,
-            useImageAnalysis
+            analysisRequested,
+            helpRequested,
+            helpQuery: helpQuery || 'N/A'
         }, `Executing !game command`);
 
         try {
-            // Try the image analysis path if requested
-            if (useImageAnalysis) {
+            // --- Execute Image Analysis if requested ---
+            if (analysisRequested) {
                 await handleImageAnalysis(channel, channelName, userName);
+                // If both analysis and help are requested, add a small delay to avoid message overlap
+                if (helpRequested) await new Promise(resolve => setTimeout(resolve, 1200));
+            }
+
+            // --- Execute Help Search if requested ---
+            if (helpRequested) {
+                await handleGameHelpRequest(channel, channelName, userName, helpQuery);
                 return;
             }
-            
-            // Get game info from context (our most reliable source)
-            const gameInfo = await getCurrentGameInfo(channelName);
-            
-            if (gameInfo && gameInfo.gameName !== 'Unknown') {
-                // We have game info from context, provide it
-                await handleGameInfoResponse(channel, channelName, userName, gameInfo);
+
+            // --- Fallback: Handle !game with no analysis or help query ---
+            if (!analysisRequested && !helpRequested) {
+                const gameInfo = await getCurrentGameInfo(channelName);
+                if (gameInfo && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') {
+                    await handleGameInfoResponse(channel, channelName, userName, gameInfo);
+                } else {
+                    logger.info(`[${channelName}] No current game set in context for basic !game command.`);
+                    enqueueMessage(channel, `@${userName}, I don't see a game set for the stream right now.`);
+                }
                 return;
             }
-            
-            // If we don't have game info, inform the user
-            logger.info(`[${channelName}] No current game set in context for !game command.`);
-            enqueueMessage(channel, `@${userName}, I don't see a game set for the stream right now.`);
-            
+
         } catch (error) {
-            logger.error({ err: error, command: 'game' }, `Error executing !game command.`);
-            enqueueMessage(channel, `@${userName}, sorry, an error occurred while fetching game info.`);
+            logger.error({ err: error, command: 'game', analysisRequested, helpRequested }, `Error executing !game command flow.`);
+            enqueueMessage(channel, `@${userName}, sorry, an error occurred while processing the !game command.`);
         }
     },
 };
@@ -417,6 +422,75 @@ async function getAdditionalGameInfo(channel, channelName, userName, gameName) {
     } catch (error) {
         logger.error({ err: error }, 'Error getting additional game info');
         // Silently fail - no need to send error message for the follow-up
+    }
+}
+
+/**
+ * Handles specific gameplay help requests using search.
+ * @param {string} channel - Channel with # prefix
+ * @param {string} channelName - Channel without # prefix
+ * @param {string} userName - Display name of requesting user
+ * @param {string} helpQuery - The specific question the user asked
+ */
+async function handleGameHelpRequest(channel, channelName, userName, helpQuery) {
+    logger.info(`[${channelName}] Handling game help request from ${userName}: "${helpQuery}"`);
+    try {
+        // 1. Get Current Game Name
+        const gameInfo = await getCurrentGameInfo(channelName);
+        const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
+
+        if (!gameName) {
+            enqueueMessage(channel, `@${userName}, I couldn't determine the current game to search for help. Please ensure the stream category is set.`);
+            return;
+        }
+
+        // 2. Get Context & Formulate Search Query
+        const contextManager = getContextManager();
+        const llmContext = contextManager.getContextForLLM(channelName, userName, helpQuery);
+        const contextPrompt = buildContextPrompt(llmContext || {});
+        
+        // Formulate a query targeting walkthroughs/help
+        const helpSearchQuery = `Find walkthrough or help information for the game "${gameName}" regarding this specific problem: "${helpQuery}"`;
+
+        // 3. Call Search-Grounded LLM
+        const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
+
+        if (!searchResultText || searchResultText.trim().length === 0) {
+            logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}".`);
+            enqueueMessage(channel, `@${userName}, Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`);
+            return;
+        }
+
+        // 4. Format and Send Response
+        let replyPrefix = `@${userName}, For "${helpQuery}" in ${gameName}: `;
+        let finalReplyText = removeMarkdownAsterisks(searchResultText);
+
+        // Check length and Summarize/Truncate if needed
+        if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
+            logger.info(`[${channelName}] Help response too long (${finalReplyText.length} chars). Attempting summarization.`);
+            const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
+            if (summary?.trim()) {
+                finalReplyText = removeMarkdownAsterisks(summary);
+                logger.info(`[${channelName}] Help response summarization successful (${finalReplyText.length} chars).`);
+            } else {
+                logger.warn(`[${channelName}] Summarization failed for help response. Falling back to truncation.`);
+                const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
+                finalReplyText = finalReplyText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
+            }
+        }
+
+        // Final length check
+        let finalMessage = replyPrefix + finalReplyText;
+        if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
+             logger.warn(`[${channelName}] Final help reply too long (${finalMessage.length} chars). Truncating sharply.`);
+             finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        }
+        
+        enqueueMessage(channel, finalMessage);
+
+    } catch (error) {
+        logger.error({ err: error, channel: channelName, user: userName, helpQuery }, `Error processing game help request.`);
+        enqueueMessage(channel, `@${userName}, Sorry, an error occurred while searching for help with "${helpQuery}".`);
     }
 }
 
