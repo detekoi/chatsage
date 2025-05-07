@@ -164,16 +164,14 @@ const gameHandler = {
 };
 
 /**
- * Handles image analysis for the game command with direct summarization
+ * Handles image analysis for the game command with balanced text cleanup
  * @param {string} channel - Channel with # prefix
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
  */
 async function handleImageAnalysis(channel, channelName, userName) {
     try {
-        // Inform user we're processing
-        enqueueMessage(channel, `@${userName}, analyzing the stream using AI image recognition...`);
-        
+        // Removed confirmation message to reduce chat verbosity
         // Get the official game info from the API/context FIRST
         const gameInfo = await getCurrentGameInfo(channelName);
         const officialGameName = gameInfo?.gameName !== 'Unknown' ? gameInfo.gameName : null;
@@ -191,14 +189,19 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
-        // Modify the prompt to focus on scene analysis AND make it concise from the start
-        const analysisPrompt = `This is a screenshot from the game "${officialGameName}". 
-                               Analyze what's happening in the scene, what the player is doing, 
-                               and any notable UI elements visible.
-                               IMPORTANT: Keep your response very concise (max 200 characters).
-                               Just describe what you see in 1-3 short sentences.`;
+        // Account for the fixed parts of the message to determine available character count
+        const prefixLength = `@${userName}, In ${officialGameName}: `.length;
+        const availableChars = MAX_IRC_MESSAGE_LENGTH - prefixLength - 3; // -3 for potential ellipsis
         
-        // Analyze the image with Gemini - directly asking for concise results
+        // Modify the prompt to focus on scene analysis with appropriate detail
+        const analysisPrompt = `This is a screenshot from ${officialGameName}. 
+                              Analyze what's happening in the scene, what the player is doing,
+                              and any notable UI elements visible.
+                              Important: Provide a detailed but concise analysis in about 300-350 characters.
+                              Focus on the most important game elements and player actions visible.
+                              Write in a natural conversational style without quotes around game names or other terms.`;
+        
+        // Analyze the image with Gemini 
         const analysisResult = await analyzeImage(thumbnailBuffer, analysisPrompt);
         
         if (!analysisResult) {
@@ -206,24 +209,58 @@ async function handleImageAnalysis(channel, channelName, userName) {
             return;
         }
         
-        // If result is still too long, manually trim it to ensure it fits
-        let conciseDescription = analysisResult;
-        if (conciseDescription.length > 350) {
-            // Find a good cutoff point (sentence ending)
-            const sentenceEndMatch = conciseDescription.substring(0, 350).match(/[.!?][^.!?]*$/);
-            if (sentenceEndMatch) {
-                const endIndex = 350 - sentenceEndMatch[0].length + 1; // +1 to include the punctuation
-                conciseDescription = conciseDescription.substring(0, endIndex);
+        // Process the result to clean up common AI response patterns
+        let description = analysisResult;
+        
+        // Clean up text patterns that look unnatural
+        description = description
+            // Remove any instances of quoted phrases
+            .replace(/["']([^"']{1,20})["']/g, '$1')
+            // Remove common intro phrases
+            .replace(/This (screenshot|image) (shows|depicts|is from) /gi, '')
+            .replace(/In this (scene|screenshot|image|frame)/gi, '')
+            .replace(/The (screenshot|image) (shows|depicts) a scene from /gi, '')
+            .replace(/We can see /gi, '')
+            .replace(/I can see /gi, '')
+            // Fix any double spaces that might have been created
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        
+        // If still too long, find a good breaking point
+        if (description.length > availableChars) {
+            // Try to find sentence endings
+            const sentenceEndRegex = /[.!?][^.!?]*$/;
+            const matchSentenceEnd = description.substring(0, availableChars).match(sentenceEndRegex);
+            
+            if (matchSentenceEnd) {
+                // Cut at the end of the last complete sentence
+                const endIndex = availableChars - matchSentenceEnd[0].length + 1;
+                description = description.substring(0, endIndex);
             } else {
-                // If no sentence ending found, just cut at 350
-                conciseDescription = conciseDescription.substring(0, 350);
+                // Try to find a comma or other natural break
+                const commaBreakRegex = /,[^,]*$/;
+                const matchComma = description.substring(0, availableChars).match(commaBreakRegex);
+                
+                if (matchComma) {
+                    const endIndex = availableChars - matchComma[0].length + 1;
+                    description = description.substring(0, endIndex);
+                } else {
+                    // If no natural break, try to break at a space
+                    const lastSpaceIndex = description.substring(0, availableChars).lastIndexOf(' ');
+                    if (lastSpaceIndex > availableChars * 0.8) { // Only use if space is reasonably close to limit
+                        description = description.substring(0, lastSpaceIndex);
+                    } else {
+                        // Last resort: hard cut
+                        description = description.substring(0, availableChars);
+                    }
+                }
             }
         }
         
         // Format the final response
-        const gameResponse = `@${userName}, In ${officialGameName}: ${conciseDescription}`;
+        const gameResponse = `@${userName}, In ${officialGameName}: ${description}`;
         
-        // Final length check for IRC limits
+        // Final length check for IRC limits (shouldn't be needed with above logic, but safety first)
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
             const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             enqueueMessage(channel, truncated);
