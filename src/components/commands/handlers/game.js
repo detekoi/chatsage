@@ -213,20 +213,19 @@ async function handleImageAnalysis(channel, channelName, userName) {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `Verifying image analysis of ${officialGameName}`);
             const contextPrompt = buildContextPrompt(llmContext || {});
 
-            // --- REVISED VERIFICATION QUERY V2 ---
-            // Stronger emphasis on using initial analysis as base truth for visuals.
-            // Explicitly forbids adding non-mentioned elements or outputting commentary.
-            const verificationQuery = `Your task is to produce a concise, fact-checked description of a video game screenshot from "${officialGameName}". You are given an initial analysis generated directly from the screenshot.
+            // --- REVISED VERIFICATION QUERY V3 ---
+            // Focus on in-game elements, explicitly ignore overlays.
+            const verificationQuery = `Your task is to produce a concise, fact-checked description of the *in-game scene* shown in a video game screenshot from "${officialGameName}". You are given an initial analysis generated directly from the screenshot.
 
 Initial analysis (describes visuals in the CURRENT screenshot):
 "${initialAnalysisResult}"
 
-Instructions:
-1. Use search *only* to verify the factual accuracy of specific named entities (characters, locations, items) mentioned in the 'Initial analysis'.
-2. **Output the Refined Description ONLY:** Your entire response MUST be the refined description of the screenshot.
-3. **Stick to Visuals:** Base the refined description primarily on the 'Initial analysis'. Do NOT add characters, locations, or objects found in search results if they were NOT mentioned in the 'Initial analysis'.
-4. **Correct ONLY If Necessary:** Only modify the 'Initial analysis' if search confirms a *specific named entity* within it is factually incorrect for "${officialGameName}". If correcting, keep the correction minimal and focused on the incorrect entity.
-5. **NO Commentary:** Do NOT include phrases like "The analysis is accurate", "Based on the search results", or any other commentary about the process. Output ONLY the description itself.
+Refinement Instructions:
+1.  **Focus on In-Game Elements:** Prioritize describing characters, environment, items, actions, and UI elements belonging *to the game itself*.
+2.  **Ignore Stream Overlays:** Explicitly **ignore and do not mention** common stream overlay elements such as clocks, timestamps, webcam borders, donation alerts, subscriber goals, chat boxes overlaid on the game, or mouse cursors, unless the initial analysis *mistakenly* identifies them as part of the game.
+3. **Correct ONLY Clear Factual Errors:** If search *proves* a specific claim about an *in-game element* in the 'Initial analysis' is factually impossible within "${officialGameName}", correct *only that specific error* concisely.
+4. **Do NOT Add External Information:** Do *not* introduce characters, locations, items, or events based on search results if they were *not* mentioned as *in-game elements* in the 'Initial analysis'.
+5. **Output the Refined Description ONLY:** Your entire response MUST be the refined textual description of the *in-game scene*. Do NOT output commentary *about* the analysis (e.g., do not say "The analysis is accurate").
 
 Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
 
