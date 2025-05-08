@@ -453,9 +453,9 @@ export async function translateText(textToTranslate, targetLanguage) {
     const model = getGeminiClient();
 
     // Simple, direct translation prompt
-    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary:
+    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary. Do not add quotation marks to your translation:
 
-"${textToTranslate}"
+${textToTranslate}
 
 Translation:`;
 
@@ -486,8 +486,10 @@ Translation:`;
         }
 
         const translatedText = candidate.content.parts.map(part => part.text).join('');
-        logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: translatedText.length }, 'Successfully generated translation from Gemini.');
-        return translatedText.trim();
+        // Remove any remaining quotation marks from the result
+        const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
+        logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
+        return cleanedText;
 
     } catch (error) {
         logger.error({ err: error, prompt: "[translation prompt omitted]" }, 'Error during translation Gemini API call');
