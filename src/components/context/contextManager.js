@@ -32,7 +32,8 @@ interface ChannelState {
     chatHistory: Message[];
     chatSummary: string;
     streamContext: StreamContext;
-    userStates: Map<string, UserState>; // <-- NEW Map: username -> UserState
+    userStates: Map<string, UserState>; // <-- Map: username -> UserState
+    botLanguage: string | null; // <-- Channel-specific bot language setting
 }
 */
 
@@ -89,7 +90,8 @@ function _getOrCreateChannelState(channelName) {
                 lastUpdated: null,
                 fetchErrorCount: 0,
             },
-            userStates: new Map() // <-- Initialize the userStates Map here
+            userStates: new Map(), // <-- Initialize the userStates Map here
+            botLanguage: null // <-- Initialize with no language preference
         });
     }
     return channelStates.get(channelName);
@@ -358,6 +360,44 @@ function getUserTranslationState(channelName, username) {
 }
 
 /**
+ * Sets the bot's language for responses in a specific channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} language - Target language (null to use default English).
+ * @returns {boolean} True if language was set, false if channel not found.
+ */
+function setBotLanguage(channelName, language) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState) {
+        logger.warn(`[${channelName}] Attempted to set bot language, but channel not found.`);
+        return false;
+    }
+    
+    // If language is explicitly null or 'english' or 'default', reset to no translation
+    if (language === null || language.toLowerCase() === 'english' || language.toLowerCase() === 'default') {
+        channelState.botLanguage = null;
+        logger.info(`[${channelName}] Bot language reset to default (English)`);
+    } else {
+        channelState.botLanguage = language;
+        logger.info(`[${channelName}] Bot language set to: ${language}`);
+    }
+    return true;
+}
+
+/**
+ * Gets the bot's configured language for a specific channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {string|null} The configured language or null if none/default.
+ */
+function getBotLanguage(channelName) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState) {
+        logger.debug(`[${channelName}] Attempted to get bot language, but channel not found.`);
+        return null;
+    }
+    return channelState.botLanguage;
+}
+
+/**
  * Disables translation for ALL users currently tracked in a specific channel.
  * @param {string} channelName - Channel name (without '#').
  * @returns {number} The number of users whose translation was disabled.
@@ -400,6 +440,8 @@ const manager = {
     disableUserTranslation,
     getUserTranslationState,
     disableAllTranslationsInChannel,
+    setBotLanguage,
+    getBotLanguage,
 };
 
 /**
@@ -415,4 +457,6 @@ export {
     getUserTranslationState,
     disableUserTranslation,
     disableAllTranslationsInChannel,
+    setBotLanguage,
+    getBotLanguage,
 };

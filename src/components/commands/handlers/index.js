@@ -20,6 +20,7 @@ import search from './search.js';
 import translate from './translate.js';
 import geo from './geo.js';
 import trivia from './trivia.js';
+import botLang from './botlang.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -60,6 +61,7 @@ const commandHandlers = {
     translate: translate,
     geo: geo,
     trivia: trivia,
+    botlang: botLang,
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)

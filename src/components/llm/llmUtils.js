@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getIrcClient } from '../twitch/ircClient.js';
 import { generateStandardResponse as generateLlmResponse, buildContextPrompt, summarizeText } from './geminiClient.js';
+import { sendBotResponse } from './botResponseHandler.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
@@ -44,7 +45,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const initialResponseText = await generateLlmResponse(contextPrompt, userMessage);
         if (!initialResponseText?.trim()) {
             logger.warn({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'LLM generated null or empty response.');
-            await ircClient.say(channel, `@${displayName} Sorry, I couldn't come up with a reply to that.`);
+            await sendBotResponse(channel, `@${displayName} Sorry, I couldn't come up with a reply to that.`);
             return;
         }
 
@@ -73,13 +74,13 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
              logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
              finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
         }
-        await ircClient.say(channel, finalMessage);
+        await sendBotResponse(channel, finalMessage);
 
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);
         try {
             const ircClient = getIrcClient();
-            await ircClient.say(channel, `@${displayName} Sorry, an error occurred while processing that.`);
+            await sendBotResponse(channel, `@${displayName} Sorry, an error occurred while processing that.`);
         } catch (sayError) { logger.error({ err: sayError }, 'Failed to send LLM error message to chat.'); }
     }
 }
