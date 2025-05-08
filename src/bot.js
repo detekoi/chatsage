@@ -8,6 +8,7 @@ import { initializeHelixClient, getHelixClient } from './components/twitch/helix
 import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
 import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation, disableAllTranslationsInChannel } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
+
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
 import { initializeIrcSender, enqueueMessage, clearMessageQueue } from './lib/ircSender.js';
 import { handleStandardLlmQuery } from './components/llm/llmUtils.js';
@@ -16,6 +17,7 @@ import { initializeStorage } from './components/geo/geoStorage.js';
 import { initializeTriviaGameManager, getTriviaGameManager } from './components/trivia/triviaGameManager.js';
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges } from './components/twitch/channelManager.js';
+import { initializeLanguageStorage } from './components/context/languageStorage.js';
 
 let streamInfoIntervalId = null;
 let ircClient = null;
@@ -35,7 +37,6 @@ function isPrivilegedUser(tags, channelName) {
  * Gracefully shuts down the application.
  */
 async function gracefulShutdown(signal) {
-    logger.info(`Received ${signal}. Shutting down ChatSage gracefully...`);
     
     const shutdownTasks = [];
     
@@ -217,6 +218,9 @@ async function main() {
         logger.info('Initializing Trivia Storage...');
         await initializeTriviaStorage();
 
+        logger.info('Initializing Language Storage...');
+        await initializeLanguageStorage();
+
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);
 
@@ -224,7 +228,7 @@ async function main() {
         await initializeHelixClient(config.twitch);
 
         logger.info('Initializing Context Manager...');
-        initializeContextManager(config.twitch.channels);
+        await initializeContextManager(config.twitch.channels);
 
         logger.info('Initializing Command Processor...');
         initializeCommandProcessor();

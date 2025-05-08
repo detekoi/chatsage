@@ -293,3 +293,45 @@ export async function getAllManagedChannels() {
         throw new ChannelManagerError("Failed to fetch all managed channels.", error);
     }
 }
+
+/**
+ * Saves language preference for a channel
+ * @param {string} channelName - Channel name without #
+ * @param {string|null} language - Language setting or null for default
+ * @returns {Promise<boolean>} - Success indicator
+ */
+export async function saveChannelLanguageSetting(channelName, language) {
+    try {
+        const db = _getDb();
+        const channelRef = db.collection(MANAGED_CHANNELS_COLLECTION).doc(channelName.toLowerCase());
+        await channelRef.update({
+            botLanguage: language,
+            updatedAt: new Date()
+        });
+        logger.info(`[ChannelManager] Updated language setting for ${channelName} to ${language || 'default'}`);
+        return true;
+    } catch (error) {
+        logger.error({ err: error }, `[ChannelManager] Error updating language for ${channelName}`);
+        return false;
+    }
+}
+
+/**
+ * Gets language preference for a channel
+ * @param {string} channelName - Channel name without #
+ * @returns {Promise<string|null>} - Language setting or null
+ */
+export async function getChannelLanguageSetting(channelName) {
+    try {
+        const db = _getDb();
+        const channelRef = db.collection(MANAGED_CHANNELS_COLLECTION).doc(channelName.toLowerCase());
+        const docSnap = await channelRef.get();
+        if (docSnap.exists && docSnap.data().botLanguage) {
+            return docSnap.data().botLanguage;
+        }
+        return null;
+    } catch (error) {
+        logger.error({ err: error }, `[ChannelManager] Error getting language for ${channelName}`);
+        return null;
+    }
+}

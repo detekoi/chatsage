@@ -1,6 +1,7 @@
 import logger from '../../lib/logger.js';
 import { getHelixClient, getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
+import { saveChannelLanguage, getChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
 /*
@@ -51,7 +52,7 @@ const channelStates = new Map();
  * for all configured channels.
  * @param {string[]} configuredChannels - Array of channel names (without '#').
  */
-function initializeContextManager(configuredChannels = []) {
+async function initializeContextManager(configuredChannels = []) {
     if (channelStates.size > 0) {
         logger.warn('Context Manager already initialized or has existing state.');
         // Optionally clear or handle existing state if re-initializing
@@ -65,6 +66,19 @@ function initializeContextManager(configuredChannels = []) {
             _getOrCreateChannelState(channelName); // This populates the map
         }
         logger.info(`Context Manager initialized for channels: ${configuredChannels.join(', ')}`);
+    }
+    // Load language settings from Firestore
+    try {
+        const languageSettings = await loadAllChannelLanguages();
+        // Apply stored settings to memory state
+        languageSettings.forEach((language, channelName) => {
+            if (channelStates.has(channelName)) {
+                channelStates.get(channelName).botLanguage = language;
+                logger.debug(`Applied stored language setting for ${channelName}: ${language || 'default'}`);
+            }
+        });
+    } catch (error) {
+        logger.error({ err: error }, 'Failed to load stored language settings');
     }
 }
 
@@ -363,15 +377,14 @@ function getUserTranslationState(channelName, username) {
  * Sets the bot's language for responses in a specific channel.
  * @param {string} channelName - Channel name (without '#').
  * @param {string} language - Target language (null to use default English).
- * @returns {boolean} True if language was set, false if channel not found.
+ * @returns {Promise<boolean>} True if language was set, false if channel not found.
  */
-function setBotLanguage(channelName, language) {
+async function setBotLanguage(channelName, language) {
     const channelState = channelStates.get(channelName);
     if (!channelState) {
         logger.warn(`[${channelName}] Attempted to set bot language, but channel not found.`);
         return false;
     }
-    
     // If language is explicitly null or 'english' or 'default', reset to no translation
     if (language === null || language.toLowerCase() === 'english' || language.toLowerCase() === 'default') {
         channelState.botLanguage = null;
@@ -379,6 +392,13 @@ function setBotLanguage(channelName, language) {
     } else {
         channelState.botLanguage = language;
         logger.info(`[${channelName}] Bot language set to: ${language}`);
+    }
+    // Save to Firestore
+    try {
+        await saveChannelLanguage(channelName, channelState.botLanguage);
+    } catch (error) {
+        logger.error({ err: error }, `Error saving language setting to Firestore for ${channelName}`);
+        // Continue even if saving fails - at least memory state is updated
     }
     return true;
 }
