@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
 
-ChatSage is an AI-powered chatbot designed for Twitch chat environments. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
+ChatSage is an AI-powered chatbot designed for Twitch chat environments in any language. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
 
 **[Add ChatSage to your Twitch channel →](https://streamsage-bot.web.app)**
 
@@ -25,6 +25,7 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 *   Utilizes Google's Gemini 2.0 Flash LLM for natural language understanding and response generation.
 *   Maintains conversation context (history and summaries) per channel.
 *   Supports custom chat commands with permission levels.
+*   Configurable bot language settings for multilingual channel support.
 *   Configurable through environment variables.
 *   Includes structured logging suitable for production environments.
 *   Web-based channel management interface for streamers to add/remove the bot.
