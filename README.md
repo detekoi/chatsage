@@ -21,7 +21,7 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments. It prov
 ## Features (Core Capabilities)
 
 *   Connects to specified Twitch channels via IRC.
-*   Fetches real-time stream context (game, title, tags) using the Twitch Helix API.
+*   Fetches real-time stream context (game, title, tags, thumbnail images) using the Twitch Helix API.
 *   Utilizes Google's Gemini 2.0 Flash LLM for natural language understanding and response generation.
 *   Maintains conversation context (history and summaries) per channel.
 *   Supports custom chat commands with permission levels.
