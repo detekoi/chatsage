@@ -453,7 +453,7 @@ export async function translateText(textToTranslate, targetLanguage) {
     const model = getGeminiClient();
 
     // Simple, direct translation prompt
-    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary. Do not add quotation marks to your translation:
+    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary. Do not wrap your translation in quotation marks:
 
 ${textToTranslate}
 
@@ -486,7 +486,8 @@ Translation:`;
         }
 
         const translatedText = candidate.content.parts.map(part => part.text).join('');
-        // Remove any remaining quotation marks from the result
+        // Only remove quotation marks if they surround the entire message
+        // This preserves quotation marks used as punctuation within the text
         const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
         logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
         return cleanedText;
