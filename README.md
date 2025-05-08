@@ -1,10 +1,14 @@
-# ChatSage
+[![English](https://img.shields.io/badge/lang-English-blue?style=flat)](README.md)
+[![Español (MX)](https://img.shields.io/badge/lang-Español%20(MX)-red?style=flat)](README-es-mx.md)
+[![Português (BR)](https://img.shields.io/badge/lang-Português%20(BR)-green?style=flat)](README-pt-br.md)
 
-[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
+# ChatSage
 
 ChatSage is an AI-powered chatbot designed for Twitch chat environments in any language. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
 
 **[Add ChatSage to your Twitch channel →](https://streamsage-bot.web.app)**
+
+[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
 
 ## Table of Contents
 
