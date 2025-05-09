@@ -32,7 +32,7 @@ async function fetchNewAppAccessToken() {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded' // Although params are used, specifying content-type is good practice
             },
-            timeout: 10000, // 10 second timeout for the request
+            timeout: 15000, // 15 second timeout for the request
         });
 
         if (response.status === 200 && response.data && response.data.access_token) {

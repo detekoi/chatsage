@@ -132,46 +132,66 @@ ChatSage uses a secure token refresh mechanism to maintain authentication with T
 
 ### Bot IRC Authentication
 
-1. **Initial Setup for Bot IRC Token**:
-   - Go to [Twitch Token Generator](https://twitchtokengenerator.com)
-   - Select the required scopes: `chat:read`, `chat:edit`
-   - Generate the token
-   - Copy the **Refresh Token** (not the Access Token)
-   - Store this Refresh Token securely in Google Secret Manager
+1.  **Prerequisites for Token Generation**:
+    * **Twitch Application**: Ensure you have registered an application on the [Twitch Developer Console](https://dev.twitch.tv/console/). Note your **Client ID** and generate a **Client Secret**.
+    * **OAuth Redirect URI**: In your Twitch Application settings, add `http://localhost:3000` as an OAuth Redirect URL. The Twitch CLI specifically uses this as the first redirect URL by default.
+    * **Twitch CLI**: Install the [Twitch CLI](https://dev.twitch.tv/docs/cli/install) on your local machine.
 
-2. **Google Secret Manager Setup**:
-   - Create a Google Cloud Project if you don't have one
-   - Enable the Secret Manager API
-   - Create a new secret to store your refresh token
-   - Note the resource name: `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`
-   - Set this resource name as `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` in your `.env` file
-   - Ensure the service account running your application has the "Secret Manager Secret Accessor" role
+2.  **Configure Twitch CLI**:
+    * Open your terminal or command prompt.
+    * Run `twitch configure`.
+    * When prompted, enter the **Client ID** and **Client Secret** from your Twitch Application.
 
-3. **Authentication Flow**:
-   - On startup, ChatSage will fetch the refresh token from Secret Manager
-   - It will use this refresh token to obtain a fresh access token from Twitch
-   - If the access token expires, it will be automatically refreshed
-   - If the refresh token itself becomes invalid, the application will log an error requiring manual intervention
+3.  **Generate User Access Token and Refresh Token using Twitch CLI**:
+    * Run the following command in your terminal. Replace `<your_scopes>` with a space-separated list of scopes required for your bot. For ChatSage, you need at least `chat:read` and `chat:edit`.
+        ```bash
+        twitch token -u -s 'chat:read chat:edit'
+        ```
+        *(You can add other scopes if your bot's custom commands need them, e.g., `channel:manage:polls channel:read:subscriptions`)*
+    * The CLI will output a URL. Copy this URL and paste it into your web browser.
+    * Log in to Twitch using the **Twitch account you want the bot to use**.
+    * Authorize your application for the requested scopes.
+    * After authorization, Twitch will redirect your browser to `http://localhost:3000`. The CLI, which temporarily runs a local server, will capture the authorization code and exchange it for tokens.
+    * The CLI will then print the `User Access Token`, `Refresh Token`, `Expires At` (for the access token), and the `Scopes` granted.
+
+4.  **Store the Refresh Token Securely**:
+    * From the Twitch CLI output, copy the **Refresh Token**. This is the crucial token your bot needs for long-term authentication.
+    * Store this Refresh Token securely in Google Secret Manager.
+
+5.  **Google Secret Manager Setup**:
+    * Create a Google Cloud Project if you don't have one.
+    * Enable the Secret Manager API in your project.
+    * Create a new secret in Secret Manager to store the Twitch Refresh Token you just obtained.
+    * Note the **Resource Name** of this secret. It will look like `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`.
+    * Set this full resource name as the value for the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` environment variable in your bot's configuration (e.g., in your `.env` file or Cloud Run environment variables).
+    * Ensure the service account running your ChatSage application (whether locally via ADC or in Cloud Run) has the "Secret Manager Secret Accessor" IAM role for this secret.
+
+6.  **Authentication Flow in ChatSage**:
+    * On startup, ChatSage (specifically `ircAuthHelper.js`) will use the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` to fetch the stored refresh token from Google Secret Manager.
+    * It will then use this refresh token, along with your application's `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`, to obtain a fresh, short-lived OAuth Access Token from Twitch.
+    * This access token is used to connect to Twitch IRC.
+    * If the access token expires or becomes invalid, the bot will use the refresh token to automatically obtain a new one.
+    * If the refresh token itself becomes invalid (e.g., revoked by Twitch, user password change), the application will log a critical error, and you will need to repeat the token generation process (Steps 3-4) to get a new refresh token.
 
 ### Channel Management Web UI
 
-The web interface uses a separate OAuth flow to allow streamers to manage the bot in their channel:
+The [web interface](https://github.com/detekoi/chatsage-web-ui) uses a separate OAuth flow to allow streamers to manage the bot in their channel:
 
-1. **Firebase Functions Setup**:
-   - The web UI is built with Firebase Functions and Hosting
-   - It uses Twitch OAuth to authenticate streamers
-   - When a streamer adds or removes the bot, it updates a Firestore collection
-   - The bot periodically checks this collection to determine which channels to join or leave
+1.  **Firebase Functions Setup**:
+    * The web UI is built with Firebase Functions and Hosting.
+    * It uses Twitch OAuth to authenticate streamers.
+    * When a streamer adds or removes the bot, it updates a Firestore collection.
+    * The bot periodically checks this collection to determine which channels to join or leave.
 
-2. **Environment Variables for Web UI**:
-   - `TWITCH_CLIENT_ID`: Twitch application client ID
-   - `TWITCH_CLIENT_SECRET`: Twitch application client secret 
-   - `CALLBACK_URL`: The OAuth callback URL (your deployed function URL)
-   - `FRONTEND_URL`: The URL of your web interface
-   - `JWT_SECRET_KEY`: Secret for signing authentication tokens
-   - `SESSION_COOKIE_SECRET`: Secret for session cookies
+2.  **Environment Variables for Web UI**:
+    * `TWITCH_CLIENT_ID`: Twitch application client ID.
+    * `TWITCH_CLIENT_SECRET`: Twitch application client secret.
+    * `CALLBACK_URL`: The OAuth callback URL (your deployed function URL).
+    * `FRONTEND_URL`: The URL of your web interface.
+    * `JWT_SECRET_KEY`: Secret for signing authentication tokens.
+    * `SESSION_COOKIE_SECRET`: Secret for session cookies.
 
-This approach provides better security by using standard OAuth flows and not storing tokens directly in configuration files. It also gives streamers control over adding or removing the bot from their channel.
+This approach provides better security by using standard OAuth flows and official tools, and not storing sensitive tokens directly in configuration files where possible. It also gives streamers control over adding or removing the bot from their channel.
 
 ## Docker
 

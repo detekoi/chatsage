@@ -128,50 +128,70 @@ ChatSageは主に環境変数を通じて設定されます。必須およびオ
 
 ## Twitchトークン管理 {#twitch-token-management}
 
-ChatSageは、Twitchとの認証を維持するために安全なトークン更新メカニズムを使用します：
+ChatSageは、Twitchとの認証を維持するために安全なトークン更新メカニズムを使用します。
 
 ### ボットIRC認証 {#bot-irc-authentication}
 
-1.  **ボットIRCトークンの初期設定**：
-    -   [Twitch Token Generator](https://twitchtokengenerator.com) にアクセスします
-    -   必要なスコープを選択します：`chat:read`, `chat:edit`
-    -   トークンを生成します
-    -   **リフレッシュトークン**（アクセストークンではない）をコピーします
-    -   このリフレッシュトークンをGoogle Secret Managerに安全に保存します
+1.  **トークン生成の前提条件**：
+    *   **Twitchアプリケーション**：[Twitch開発者コンソール](https://dev.twitch.tv/console/)でアプリケーションを登録していることを確認してください。**クライアントID**をメモし、**クライアントシークレット**を生成します。
+    *   **OAuthリダイレクトURI**：Twitchアプリケーション設定で、OAuthリダイレクトURLとして`http://localhost:3000`を追加します。Twitch CLIは、デフォルトでこれを最初のリダイレクトURLとして具体的に使用します。
+    *   **Twitch CLI**：ローカルマシンに[Twitch CLI](https://dev.twitch.tv/docs/cli/install)をインストールします。
 
-2.  **Google Secret Managerの設定**：
-    -   Google Cloudプロジェクトがない場合は作成します
-    -   Secret Manager APIを有効にします
-    -   リフレッシュトークンを保存するための新しいシークレットを作成します
-    -   リソース名をメモします：`projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`
-    -   このリソース名を`.env`ファイルの`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`として設定します
-    -   アプリケーションを実行するサービスアカウントに「Secret Managerのシークレットアクセサー」ロールがあることを確認します
+2.  **Twitch CLIの設定**：
+    *   ターミナルまたはコマンドプロンプトを開きます。
+    *   `twitch configure`を実行します。
+    *   プロンプトが表示されたら、Twitchアプリケーションの**クライアントID**と**クライアントシークレット**を入力します。
 
-3.  **認証フロー**：
-    -   起動時、ChatSageはSecret Managerからリフレッシュトークンを取得します
-    -   このリフレッシュトークンを使用して、Twitchから新しいアクセストークンを取得します
-    -   アクセストークンが期限切れになると、自動的に更新されます
-    -   リフレッシュトークン自体が無効になった場合、アプリケーションは手動介入が必要なエラーをログに記録します
+3.  **Twitch CLIを使用したユーザーアクセストークンと更新トークンの生成**：
+    *   ターミナルで次のコマンドを実行します。`<your_scopes>`を、ボットに必要なスコープのスペース区切りリストに置き換えます。ChatSageの場合、少なくとも`chat:read`と`chat:edit`が必要です。
+        ```bash
+        twitch token -u -s 'chat:read chat:edit'
+        ```
+        *（ボットのカスタムコマンドで他のスコープが必要な場合は追加できます。例：`channel:manage:polls channel:read:subscriptions`）*
+    *   CLIはURLを出力します。このURLをコピーしてウェブブラウザに貼り付けます。
+    *   **ボットが使用するTwitchアカウント**でTwitchにログインします。
+    *   要求されたスコープに対してアプリケーションを承認します。
+    *   承認後、Twitchはブラウザを`http://localhost:3000`にリダイレクトします。一時的にローカルサーバーを実行するCLIが認証コードをキャプチャし、トークンと交換します。
+    *   その後、CLIは`ユーザーアクセストークン`、`更新トークン`、`有効期限`（アクセストークン用）、および付与された`スコープ`を出力します。
+
+4.  **更新トークンの安全な保存**：
+    *   Twitch CLIの出力から**更新トークン**をコピーします。これは、ボットが長期的な認証に必要とする重要なトークンです。
+    *   この更新トークンをGoogle Secret Managerに安全に保存します。
+
+5.  **Google Secret Managerの設定**：
+    *   Google Cloudプロジェクトがない場合は作成します。
+    *   プロジェクトでSecret Manager APIを有効にします。
+    *   取得したTwitch更新トークンを保存するために、Secret Managerで新しいシークレットを作成します。
+    *   このシークレットの**リソース名**をメモします。`projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`のようになります。
+    *   ボットの設定（`.env`ファイルやCloud Runの環境変数など）で、この完全なリソース名を`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`環境変数の値として設定します。
+    *   ChatSageアプリケーションを実行しているサービスアカウント（ローカルのADC経由またはCloud Run内）が、このシークレットに対する「Secret Managerのシークレットアクセサー」IAMロールを持っていることを確認します。
+
+6.  **ChatSageでの認証フロー**：
+    *   起動時、ChatSage（具体的には`ircAuthHelper.js`）は`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`を使用して、Google Secret Managerから保存されている更新トークンを取得します。
+    *   次に、この更新トークンをアプリケーションの`TWITCH_CLIENT_ID`および`TWITCH_CLIENT_SECRET`とともに使用して、Twitchから新しい短命のOAuthアクセストークンを取得します。
+    *   このアクセストークンはTwitch IRCへの接続に使用されます。
+    *   アクセストークンが期限切れになったり無効になったりした場合、ボットは更新トークンを使用して自動的に新しいトークンを取得します。
+    *   更新トークン自体が無効になった場合（例：Twitchによる取り消し、ユーザーパスワードの変更）、アプリケーションは重大なエラーをログに記録し、新しい更新トークンを取得するためにトークン生成プロセス（手順3〜4）を繰り返す必要があります。
 
 ### チャンネル管理ウェブUI {#channel-management-web-ui}
 
-ウェブインターフェースは、配信者が自分のチャンネルでボットを管理できるように、別のOAuthフローを使用します：
+[ウェブインターフェース](https://github.com/detekoi/chatsage-web-ui)は、配信者が自分のチャンネルでボットを管理できるように、別のOAuthフローを使用します：
 
 1.  **Firebase Functionsの設定**：
-    -   ウェブUIはFirebase FunctionsとHostingで構築されています
-    -   配信者を認証するためにTwitch OAuthを使用します
-    -   配信者がボットを追加または削除すると、Firestoreコレクションが更新されます
-    -   ボットはこのコレクションを定期的にチェックして、参加または退出するチャンネルを決定します
+    *   ウェブUIはFirebase FunctionsとHostingで構築されています。
+    *   配信者を認証するためにTwitch OAuthを使用します。
+    *   配信者がボットを追加または削除すると、Firestoreコレクションが更新されます。
+    *   ボットはこのコレクションを定期的にチェックして、参加または退出するチャンネルを決定します。
 
 2.  **ウェブUIの環境変数**：
-    -   `TWITCH_CLIENT_ID`: TwitchアプリケーションのクライアントID
-    -   `TWITCH_CLIENT_SECRET`: Twitchアプリケーションのクライアントシークレット
-    -   `CALLBACK_URL`: OAuthコールバックURL（デプロイされた関数のURL）
-    -   `FRONTEND_URL`: ウェブインターフェースのURL
-    -   `JWT_SECRET_KEY`: 認証トークン署名用のシークレット
-    -   `SESSION_COOKIE_SECRET`: セッションクッキー用のシークレット
+    *   `TWITCH_CLIENT_ID`: TwitchアプリケーションのクライアントID。
+    *   `TWITCH_CLIENT_SECRET`: Twitchアプリケーションのクライアントシークレット。
+    *   `CALLBACK_URL`: OAuthコールバックURL（デプロイされた関数のURL）。
+    *   `FRONTEND_URL`: ウェブインターフェースのURL。
+    *   `JWT_SECRET_KEY`: 認証トークン署名用のシークレット。
+    *   `SESSION_COOKIE_SECRET`: セッションクッキー用のシークレット。
 
-このアプローチは、標準のOAuthフローを使用し、トークンを設定ファイルに直接保存しないことで、セキュリティを向上させます。また、配信者が自分のチャンネルからボットを追加または削除する制御も可能にします。
+このアプローチは、標準のOAuthフローと公式ツールを使用し、可能な場合は機密性の高いトークンを設定ファイルに直接保存しないことで、セキュリティを向上させます。また、配信者が自分のチャンネルからボットを追加または削除する制御も可能にします。
 
 ## Docker {#docker}
 

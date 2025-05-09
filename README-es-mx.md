@@ -132,46 +132,66 @@ ChatSage utiliza un mecanismo seguro de actualización de tokens para mantener l
 
 ### Autenticación IRC del Bot
 
-1. **Configuración Inicial para el Token IRC del Bot**:
-   - Ve al [Generador de Tokens de Twitch](https://twitchtokengenerator.com)
-   - Selecciona los alcances (scopes) requeridos: `chat:read`, `chat:edit`
-   - Genera el token
-   - Copia el **Token de Actualización** (no el Token de Acceso)
-   - Almacena este Token de Actualización de forma segura en Google Secret Manager
+1.  **Prerrequisitos para la Generación de Tokens**:
+    *   **Aplicación de Twitch**: Asegúrate de haber registrado una aplicación en la [Consola de Desarrolladores de Twitch](https://dev.twitch.tv/console/). Anota tu **ID de Cliente** y genera un **Secreto de Cliente**.
+    *   **URI de Redirección OAuth**: En la configuración de tu aplicación de Twitch, agrega `http://localhost:3000` como URL de redirección OAuth. La CLI de Twitch utiliza específicamente esta como la primera URL de redirección por defecto.
+    *   **CLI de Twitch**: Instala la [CLI de Twitch](https://dev.twitch.tv/docs/cli/install) en tu máquina local.
 
-2. **Configuración de Google Secret Manager**:
-   - Crea un Proyecto de Google Cloud si no tienes uno
-   - Habilita la API de Secret Manager
-   - Crea un nuevo secreto para almacenar tu token de actualización
-   - Anota el nombre del recurso: `projects/TU_ID_DE_PROYECTO/secrets/TU_NOMBRE_DE_SECRETO/versions/latest`
-   - Establece este nombre de recurso como `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` en tu archivo `.env`
-   - Asegúrate de que la cuenta de servicio que ejecuta tu aplicación tenga el rol "Accesor de Secretos de Secret Manager" (Secret Manager Secret Accessor)
+2.  **Configurar la CLI de Twitch**:
+    *   Abre tu terminal o símbolo del sistema.
+    *   Ejecuta `twitch configure`.
+    *   Cuando se te solicite, ingresa el **ID de Cliente** y el **Secreto de Cliente** de tu aplicación de Twitch.
 
-3. **Flujo de Autenticación**:
-   - Al iniciar, ChatSage obtendrá el token de actualización de Secret Manager
-   - Usará este token de actualización para obtener un token de acceso nuevo de Twitch
-   - Si el token de acceso expira, se actualizará automáticamente
-   - Si el propio token de actualización se invalida, la aplicación registrará un error que requerirá intervención manual
+3.  **Generar Token de Acceso de Usuario y Token de Actualización usando la CLI de Twitch**:
+    *   Ejecuta el siguiente comando en tu terminal. Reemplaza `<tus_scopes>` con una lista de ámbitos requeridos para tu bot, separados por espacios. Para ChatSage, necesitas al menos `chat:read` y `chat:edit`.
+        ```bash
+        twitch token -u -s 'chat:read chat:edit'
+        ```
+        *(Puedes agregar otros ámbitos si los comandos personalizados de tu bot los necesitan, por ejemplo, `channel:manage:polls channel:read:subscriptions`)*
+    *   La CLI mostrará una URL. Copia esta URL y pégala en tu navegador web.
+    *   Inicia sesión en Twitch usando la **cuenta de Twitch que quieres que use el bot**.
+    *   Autoriza tu aplicación para los ámbitos solicitados.
+    *   Después de la autorización, Twitch redirigirá tu navegador a `http://localhost:3000`. La CLI, que ejecuta temporalmente un servidor local, capturará el código de autorización y lo intercambiará por tokens.
+    *   Luego, la CLI imprimirá el `Token de Acceso de Usuario`, el `Token de Actualización`, `Expira en` (para el token de acceso) y los `Ámbitos` otorgados.
+
+4.  **Almacenar el Token de Actualización de Forma Segura**:
+    *   De la salida de la CLI de Twitch, copia el **Token de Actualización**. Este es el token crucial que tu bot necesita para la autenticación a largo plazo.
+    *   Almacena este Token de Actualización de forma segura en Google Secret Manager.
+
+5.  **Configuración de Google Secret Manager**:
+    *   Crea un Proyecto de Google Cloud si no tienes uno.
+    *   Habilita la API de Secret Manager en tu proyecto.
+    *   Crea un nuevo secreto en Secret Manager para almacenar el Token de Actualización de Twitch que acabas de obtener.
+    *   Anota el **Nombre del Recurso** de este secreto. Se verá así: `projects/TU_ID_DE_PROYECTO/secrets/TU_NOMBRE_DE_SECRETO/versions/latest`.
+    *   Establece este nombre de recurso completo como el valor de la variable de entorno `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` en la configuración de tu bot (por ejemplo, en tu archivo `.env` o en las variables de entorno de Cloud Run).
+    *   Asegúrate de que la cuenta de servicio que ejecuta tu aplicación ChatSage (ya sea localmente a través de ADC o en Cloud Run) tenga el rol de IAM "Accesor de Secretos de Secret Manager" para este secreto.
+
+6.  **Flujo de Autenticación en ChatSage**:
+    *   Al iniciar, ChatSage (específicamente `ircAuthHelper.js`) usará `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` para obtener el token de actualización almacenado de Google Secret Manager.
+    *   Luego usará este token de actualización, junto con el `TWITCH_CLIENT_ID` y el `TWITCH_CLIENT_SECRET` de tu aplicación, para obtener un Token de Acceso OAuth nuevo y de corta duración de Twitch.
+    *   Este token de acceso se utiliza para conectarse al IRC de Twitch.
+    *   Si el token de acceso expira o se vuelve inválido, el bot usará el token de actualización para obtener uno nuevo automáticamente.
+    *   Si el propio token de actualización se vuelve inválido (por ejemplo, revocado por Twitch, cambio de contraseña del usuario), la aplicación registrará un error crítico y deberás repetir el proceso de generación de tokens (Pasos 3-4) para obtener un nuevo token de actualización.
 
 ### Interfaz de Usuario Web para la Gestión de Canales
 
-La interfaz web utiliza un flujo OAuth separado para permitir a los streamers gestionar el bot en su canal:
+La [interfaz web](https://github.com/detekoi/chatsage-web-ui) utiliza un flujo OAuth separado para permitir a los streamers gestionar el bot en su canal:
 
-1. **Configuración de Firebase Functions**:
-   - La interfaz de usuario web está construida con Firebase Functions y Hosting
-   - Utiliza OAuth de Twitch para autenticar a los streamers
-   - Cuando un streamer agrega o elimina el bot, actualiza una colección de Firestore
-   - El bot verifica periódicamente esta colección para determinar a qué canales unirse o de cuáles salir
+1.  **Configuración de Firebase Functions**:
+    *   La interfaz de usuario web está construida con Firebase Functions y Hosting.
+    *   Utiliza OAuth de Twitch para autenticar a los streamers.
+    *   Cuando un streamer agrega o elimina el bot, actualiza una colección de Firestore.
+    *   El bot verifica periódicamente esta colección para determinar a qué canales unirse o de cuáles salir.
 
-2. **Variables de Entorno para la Interfaz de Usuario Web**:
-   - `TWITCH_CLIENT_ID`: ID de cliente de la aplicación de Twitch
-   - `TWITCH_CLIENT_SECRET`: Secreto de cliente de la aplicación de Twitch 
-   - `CALLBACK_URL`: La URL de devolución de llamada de OAuth (la URL de tu función desplegada)
-   - `FRONTEND_URL`: La URL de tu interfaz web
-   - `JWT_SECRET_KEY`: Secreto para firmar tokens de autenticación
-   - `SESSION_COOKIE_SECRET`: Secreto para las cookies de sesión
+2.  **Variables de Entorno para la Interfaz de Usuario Web**:
+    *   `TWITCH_CLIENT_ID`: ID de cliente de la aplicación de Twitch.
+    *   `TWITCH_CLIENT_SECRET`: Secreto de cliente de la aplicación de Twitch.
+    *   `CALLBACK_URL`: La URL de devolución de llamada de OAuth (la URL de tu función desplegada).
+    *   `FRONTEND_URL`: La URL de tu interfaz web.
+    *   `JWT_SECRET_KEY`: Secreto para firmar tokens de autenticación.
+    *   `SESSION_COOKIE_SECRET`: Secreto para las cookies de sesión.
 
-Este enfoque proporciona mayor seguridad al utilizar flujos OAuth estándar y no almacenar tokens directamente en archivos de configuración. También otorga a los streamers control sobre la adición o eliminación del bot de su canal.
+Este enfoque proporciona mayor seguridad al utilizar flujos OAuth estándar y herramientas oficiales, y no almacenar tokens sensibles directamente en archivos de configuración cuando sea posible. También otorga a los streamers control sobre la adición o eliminación del bot de su canal.
 
 ## Docker
 
