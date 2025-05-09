@@ -59,6 +59,7 @@ Los streamers ahora pueden agregar o eliminar fácilmente ChatSage de su canal u
 4. **Tiempo para que el Bot se Una**:
    - Después de agregar el bot, debería unirse a tu canal en unos pocos minutos.
    - Si el bot no se une después de 10 minutos, intenta eliminarlo y agregarlo nuevamente.
+   - Importante: si el bot no responde, asígnale el estado de moderador con el comando "/mod StreamSageTheBot"
 
 5. **Interacción del Usuario**:
    - Los espectadores pueden interactuar con ChatSage mencionándolo: `@StreamSageTheBot hola` (el nombre de usuario se actualizará para reflejar el nuevo nombre, ChatSage, cuando Twitch me lo permita).
