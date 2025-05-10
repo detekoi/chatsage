@@ -29,3 +29,7 @@ const getCurrentTime = ({ timezone = 'UTC' }) => {
   };
   
   export { getCurrentTime };
+
+export function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
