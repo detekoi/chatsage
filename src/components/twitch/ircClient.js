@@ -46,7 +46,7 @@ async function createIrcClient(twitchConfig) {
     const clientOptions = {
         options: { debug: config.app.logLevel === 'debug' },
         connection: {
-            reconnect: true, // tmi.js will attempt its own reconnections on general disconnects
+            reconnect: false, // tmi.js will not attempt its own reconnections on general disconnects. Handled instead by handleAuthenticationFailure.
             secure: true,
             timeout: 90000,
             maxReconnectAttempts: 5,
@@ -91,10 +91,52 @@ async function createIrcClient(twitchConfig) {
         }
     });
 
-    client.on('disconnected', (reason) => {
-        logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}. Current connectionAttemptPromise state: ${!!connectionAttemptPromise}, isHandlingAuthFailure: ${isHandlingAuthFailure}`);
-        connectionAttemptPromise = null; // Reset general connection attempt promise
-        // Do NOT reset isHandlingAuthFailure here; the handler itself will do it in its finally block.
+    client.on('disconnected', async (reason) => {
+        const wasHandlingAuthFailure = isHandlingAuthFailure; // Capture state before nulling
+        logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}. Current connectionAttemptPromise state: ${!!connectionAttemptPromise}, isHandlingAuthFailure when disconnect started: ${wasHandlingAuthFailure}`);
+
+        connectionAttemptPromise = null; // Always clear the general connection attempt promise
+
+        if (isHandlingAuthFailure) {
+            logger.info('Disconnected event fired, but an authentication failure handling process is already active. Letting that process complete or fail on its own.');
+            // The handleAuthenticationFailure function has its own connect logic and error handling.
+            return;
+        }
+
+        // If tmi.js internal reconnect is off, we need to decide how to reconnect here.
+        logger.info(`TMI.js reconnect is OFF. Reason for disconnect: "${reason}". Deciding action...`);
+
+        // Stop polling and other activities that assume a connection
+        if (global.streamInfoPollerIntervalId) {
+            if (typeof stopStreamInfoPolling === 'function') {
+                stopStreamInfoPolling(); // Assuming you have this function accessible or implement it
+            } else {
+                logger.warn('stopStreamInfoPolling is not defined. Please ensure it is implemented and accessible.');
+            }
+        }
+        // Add similar logic for other periodic tasks if needed
+
+        // Attempt to reconnect, always trying to refresh the token first if the reason suggests auth issues
+        // or even for general network issues, as the token might have expired during the downtime.
+        if (reason && (reason.toLowerCase().includes('login authentication failed') || 
+                       reason.toLowerCase().includes('authentication failed') || 
+                       reason.toLowerCase().includes('ping timeout') ||
+                       reason.toLowerCase().includes('unable to connect') // General failure
+                      )) {
+            logger.warn(`Disconnect reason ("${reason}") suggests a need for token refresh or connection issue. Triggering full authentication failure handling.`);
+            await handleAuthenticationFailure(); // This will try to refresh token and then connect
+        } else if (reason) {
+            // For other specific known reasons, you might have different logic.
+            // For now, let's treat most other disconnect reasons as needing a robust reconnect.
+            logger.warn(`Disconnected for reason: "${reason}". Attempting robust reconnect via handleAuthenticationFailure.`);
+            await handleAuthenticationFailure(); // Defaulting to full recovery to be safe
+        } else {
+            // If reason is null or undefined (e.g. clean client.disconnect() was called by us),
+            // usually no automatic action is needed unless it was an unexpected manual disconnect.
+            // If it was part of handleShutdown, that's fine.
+            // If it was part of handleAuthenticationFailure's own client.disconnect(), that's also fine.
+            logger.info('Disconnected with no specific reason or a planned disconnect. No automatic reconnect from "disconnected" handler itself.');
+        }
     });
 
     return client;
@@ -104,6 +146,7 @@ async function createIrcClient(twitchConfig) {
  * Handler for authentication failures that attempts to refresh the token and reconnect.
  */
 async function handleAuthenticationFailure() {
+    logger.error('ENTERING handleAuthenticationFailure due to a suspected auth issue.');
     if (!client) {
         logger.warn('handleAuthenticationFailure called but no client instance.');
         return;
