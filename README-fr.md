@@ -80,7 +80,7 @@ Pour une liste complète des commandes disponibles et leur utilisation, veuillez
 
 1.  **Clonez le dépôt :**
     ```bash
-    git clone [https://github.com/your-username/chatsage.git](https://github.com/your-username/chatsage.git)
+    git clone https://github.com/detekoi/chatsage.git
     cd chatsage
     ```
 

@@ -80,7 +80,7 @@ Eine vollständige Liste der verfügbaren Befehle und deren Verwendung findest d
 
 1.  **Klone das Repository:**
     ```bash
-    git clone [https://github.com/your-username/chatsage.git](https://github.com/your-username/chatsage.git)
+    git clone https://github.com/detekoi/chatsage.git
     cd chatsage
     ```
 

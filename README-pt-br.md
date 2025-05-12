@@ -80,7 +80,7 @@ Para uma lista completa dos comandos disponíveis e seu uso, visite a [Documenta
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/your-username/chatsage.git](https://github.com/your-username/chatsage.git)
+    git clone https://github.com/detekoi/chatsage.git
     cd chatsage
     ```
 

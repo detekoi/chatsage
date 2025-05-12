@@ -80,7 +80,7 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 1.  **リポジトリをクローンします：**
     ```bash
-    git clone https://github.com/your-username/chatsage.git
+    git clone https://github.com/detekoi/chatsage.git
     cd chatsage
     ```
 

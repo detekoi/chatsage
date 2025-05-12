@@ -80,7 +80,7 @@ For a complete list of available commands and their usage, please visit [Bot Com
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/chatsage.git
+    git clone https://github.com/detekoi/chatsage.git
     cd chatsage
     ```
 
