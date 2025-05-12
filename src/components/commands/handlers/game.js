@@ -313,7 +313,7 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
         }
 
         // --- Step 4: Send Final Message ---
-        const gameResponse = `@${userName}, In ${officialGameName}: ${description}`;
+        const gameResponse = `@${userName}: ${description}`;
 
         // Final length check for IRC limits (shouldn't be needed with above logic, but safety first)
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
@@ -448,7 +448,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
         }
 
         // 4. Format and Send Response
-        let replyPrefix = `@${userName}, For "${helpQuery}" in ${gameName}: `;
+        let replyPrefix = `@${userName}: `;
         let finalReplyText = removeMarkdownAsterisks(searchResultText);
 
         // Check length and Summarize/Truncate if needed
