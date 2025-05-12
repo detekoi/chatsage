@@ -1,5 +1,9 @@
 name: Deploy ChatSage to Cloud Run
-on: push
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'README-*.md'
 
 env:
   GCP_PROJECT_ID: 'streamsage-bot'
