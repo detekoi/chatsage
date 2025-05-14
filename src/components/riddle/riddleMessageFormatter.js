@@ -1,5 +1,5 @@
 // src/components/riddle/riddleMessageFormatter.js
-import { removeMarkdownAsterisks } from '../llm/llmUtils.js'; // Assuming you have this utility
+import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
 
 export function formatRiddleStartMessage(topic, questionTimeSeconds, totalRounds) {
     const roundText = totalRounds > 1 ? `${totalRounds} rounds` : 'a round';
@@ -9,11 +9,11 @@ export function formatRiddleStartMessage(topic, questionTimeSeconds, totalRounds
 
 export function formatRiddleQuestionMessage(roundNumber, totalRounds, question, difficulty, timeSeconds) {
     const roundPrefix = totalRounds > 1 ? `[Riddle ${roundNumber}/${totalRounds}] ` : '';
-    // Assuming getDifficultyEmoji is a shared utility or you can implement it here
-    // const difficultyEmoji = getDifficultyEmoji(difficulty); 
-    const difficultyText = difficulty ? `(${difficulty})` : '';
+    // const difficultyEmoji = getDifficultyEmoji(difficulty); // Emoji was optional
+    // const difficultyText = difficulty ? `(${difficulty})` : ''; // REMOVED THIS LINE
     const cleanQuestion = removeMarkdownAsterisks(question);
-    return `${roundPrefix}❓ RIDDLE ${difficultyText}: ${cleanQuestion} (${timeSeconds}s)`;
+    // MODIFIED RETURN STRING:
+    return `${roundPrefix}❓ RIDDLE: ${cleanQuestion} (${timeSeconds}s)`;
 }
 
 export function formatRiddleCorrectAnswerMessage(roundPrefix, displayName, answer, explanation, timeString, pointsInfo) {
