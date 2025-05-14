@@ -22,7 +22,9 @@ import {
     clearLeaderboardData as clearRiddleLeaderboardData,
     getMostRecentRiddlePlayed,
     flagRiddleAsProblem,
-    getLatestCompletedSessionInfo
+    getLatestCompletedSessionInfo,
+    saveRecentAnswer,
+    getRecentAnswers
 } from './riddleStorage.js';
 import config from '../../config/index.js'; // For bot's own username
 import crypto from 'crypto';
@@ -75,6 +77,7 @@ GameState structure:
     // Stores SETS of keywords from riddles already used in THIS multi-round session
     gameSessionExcludedKeywordSets: Array<string[]>,
     gameSessionId: string,
+    gameSessionExcludedAnswers: Array<string>,
 }
 */
 
@@ -103,6 +106,7 @@ async function _getOrCreateGameState(channelName) {
             currentRound: 1,
             gameSessionScores: new Map(),
             gameSessionExcludedKeywordSets: [],
+            gameSessionExcludedAnswers: [],
         });
     } else {
         // Ensure config is up-to-date if manager was re-initialized
@@ -145,6 +149,7 @@ async function _resetGameToIdle(gameState) {
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
     newState.gameSessionExcludedKeywordSets = [];
+    newState.gameSessionExcludedAnswers = [];
 }
 
 function _calculatePoints(gameState, timeElapsedMs) {
@@ -193,6 +198,20 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
                 await saveRiddleKeywords(channelName, currentRiddle.keywords);
             } catch (err) {
                 logger.error({ err, channelName }, "[RiddleGameManager] Failed to save riddle keywords to Firestore.");
+            }
+        }
+
+        // Save the answer for exclusion
+        if (currentRiddle.answer) {
+            // Add to session exclusion
+            if (!gameState.gameSessionExcludedAnswers.includes(currentRiddle.answer.toLowerCase())) {
+                gameState.gameSessionExcludedAnswers.push(currentRiddle.answer.toLowerCase());
+            }
+            // Persist to Firestore
+            try {
+                await saveRecentAnswer(channelName, currentRiddle.answer);
+            } catch (err) {
+                logger.error({ err, channelName }, "[RiddleGameManager] Failed to save recent answer to Firestore.");
             }
         }
 
@@ -309,25 +328,32 @@ async function _startNextRound(gameState) {
 
     // Fetch recent keywords from Firestore for broader exclusion + session exclusions
     let combinedExcludedKeywordSets = [...gameState.gameSessionExcludedKeywordSets];
+    let excludedAnswers = [...gameState.gameSessionExcludedAnswers];
     try {
         const recentGlobalKeywords = await getRecentKeywords(channelName, config.recentKeywordsFetchLimit || DEFAULT_RIDDLE_CONFIG.recentKeywordsFetchLimit);
         if (recentGlobalKeywords.length > 0) {
-            // Add only if not already in session exclusions (to avoid overly large exclusion list if items overlap)
             recentGlobalKeywords.forEach(globalSet => {
                 if (!combinedExcludedKeywordSets.some(sessionSet => JSON.stringify(sessionSet.sort()) === JSON.stringify(globalSet.sort()))) {
                     combinedExcludedKeywordSets.push(globalSet);
                 }
             });
         }
-        logger.debug(`[RiddleGameManager][${channelName}] Total ${combinedExcludedKeywordSets.length} keyword sets for exclusion.`);
+        // Fetch recent answers for exclusion
+        const recentGlobalAnswers = await getRecentAnswers(channelName, 15);
+        recentGlobalAnswers.forEach(ans => {
+            if (!excludedAnswers.includes(ans)) {
+                excludedAnswers.push(ans);
+            }
+        });
+        logger.debug(`[RiddleGameManager][${channelName}] Total ${excludedAnswers.length} answers for exclusion.`);
     } catch (error) {
-        logger.error({ err: error, channelName }, "[RiddleGameManager] Failed to fetch recent global keywords for exclusion.");
+        logger.error({ err: error, channelName }, "[RiddleGameManager] Failed to fetch recent global keywords/answers for exclusion.");
     }
 
 
     while (!generatedRiddle && retries < (config.maxRiddleGenerationRetries || DEFAULT_RIDDLE_CONFIG.maxRiddleGenerationRetries)) {
         try {
-            generatedRiddle = await generateRiddle(topic, config.difficulty, combinedExcludedKeywordSets, channelName);
+            generatedRiddle = await generateRiddle(topic, config.difficulty, combinedExcludedKeywordSets, channelName, excludedAnswers);
             if (generatedRiddle && generatedRiddle.question && generatedRiddle.answer && generatedRiddle.keywords) {
                 // Optional: Could add a check here to see if the *new* riddle's keywords heavily overlap with an excluded set,
                 // though the LLM should ideally handle this. For now, we trust the LLM's avoidance.
@@ -449,6 +475,7 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     gameState.currentRound = 1;
     gameState.gameSessionScores = new Map();
     gameState.gameSessionExcludedKeywordSets = []; // Fresh set for new game
+    gameState.gameSessionExcludedAnswers = [];
     gameState.currentRiddle = null;
     gameState.startTime = null;
     gameState.winner = null;

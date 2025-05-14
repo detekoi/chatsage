@@ -1,24 +1,24 @@
 // scripts/get-recent-reports.js
 import { Firestore } from '@google-cloud/firestore';
-import fs from 'fs'; // Import Node.js file system module
-import path from 'path'; // Import Node.js path module
-import open from 'open'; // Import the 'open' package
-import { fileURLToPath } from 'url'; // Helper for __dirname in ES modules
-import { dirname } from 'path'; // Helper for __dirname in ES modules
+import fs from 'fs';
+import path from 'path';
+import open from 'open';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 // --- Configuration ---
-const TRIVIA_COLLECTION = 'triviaQuestions';
+// Let's assume reported TRIVIA questions are in the 'triviaQuestions' collection
+const TRIVIA_REPORTS_FROM_COLLECTION = 'triviaQuestions'; // Or 'triviaGameHistory' if that's where they are flagged
 const GEO_HISTORY_COLLECTION = 'geoGameHistory';
+const RIDDLE_HISTORY_COLLECTION = 'riddleGameHistory';
 const TOTAL_REPORTS_LIMIT = 500;
 const QUERY_LIMIT_PER_COLLECTION = 500;
-const OUTPUT_HTML_FILENAME = 'game_reports.html'; // Name of the output file
+const OUTPUT_HTML_FILENAME = 'game_reports.html';
 // --- End Configuration ---
 
-// Helper to get the directory name in ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// --- Firestore Initialization (same as before) ---
 let db;
 try {
     db = new Firestore();
@@ -29,7 +29,6 @@ try {
     process.exit(1);
 }
 
-// --- fetchReports function (same as before) ---
 async function fetchReports(collectionName, reportType, limit) {
     console.log(`Workspaceing up to ${limit} reports from ${collectionName}...`);
     const reports = [];
@@ -46,55 +45,83 @@ async function fetchReports(collectionName, reportType, limit) {
                 const data = doc.data();
                 const flaggedTimeMillis = data.flaggedTimestamp?.toMillis ? data.flaggedTimestamp.toMillis() : null;
 
-                reports.push({
+                const reportEntry = {
                     id: doc.id,
                     type: reportType,
                     reason: data.problemReason || 'N/A',
+                    reportedBy: data.reportedBy || 'N/A',
                     flaggedTimestampMillis: flaggedTimeMillis,
-                    ...(reportType === 'trivia' && { question: data.question, answer: data.answer }),
-                    ...(reportType === 'geo' && { location: data.location, channel: data.channel }),
-                    rawData: data // Keeping rawData might be useful
-                });
+                    // Use 'channelName' if available (from riddle/geo history), otherwise 'channel' (geo might use this)
+                    channel: data.channelName || data.channel || (reportType === 'trivia' ? 'N/A - Bank' : 'N/A'),
+                    rawData: data 
+                };
+
+                // Populate question/answer/details based on reportType
+                if (reportType === 'trivia') {
+                    // If TRIVIA_REPORTS_FROM_COLLECTION is 'triviaQuestions', fields are likely 'question' and 'answer'
+                    // If it's 'triviaGameHistory', they might also be 'question' and 'answer', or need adjustment.
+                    reportEntry.question = data.question || 'N/A';
+                    reportEntry.answer = data.answer || 'N/A';
+                } else if (reportType === 'geo') {
+                    reportEntry.location = data.location || 'N/A';
+                    // 'channel' field from data is already handled by reportEntry.channel
+                } else if (reportType === 'riddle') {
+                    reportEntry.question = data.riddleText || 'N/A'; // Correct from riddleGameHistory
+                    reportEntry.answer = data.riddleAnswer || 'N/A'; // Correct from riddleGameHistory
+                    reportEntry.keywords = data.keywords || [];
+                    reportEntry.topic = data.topic || 'N/A';
+                     // 'channelName' field from data is already handled by reportEntry.channel
+                }
+                reports.push(reportEntry);
             });
         }
         console.log(`Workspaceed ${reports.length} reports from ${collectionName}.`);
     } catch (error) {
-        console.error(`Error fetching reports from ${collectionName}:`, error);
-        if (error.code === 5 && error.details?.includes('index')) {
+        console.error(`Error fetching reports from ${collectionName}:`, error.message);
+        if (error.code === 5 && error.message && error.message.includes('index')) {
              console.error(`\n Firestore index required for collection '${collectionName}'.`);
              console.error(` Please create a composite index on 'flaggedAsProblem' (ascending) and 'flaggedTimestamp' (descending).\n`);
+        } else {
+            console.error("Full error details:", error); // Log full error for other issues
         }
     }
     return reports;
 }
 
-// --- NEW: Function to generate HTML content ---
-/**
- * Generates an HTML string to display the reports in a table.
- * @param {Array<object>} reports - The sorted array of report objects.
- * @returns {string} The generated HTML content.
- */
 function generateHtml(reports) {
     let tableRows = '';
     if (reports.length === 0) {
-        tableRows = '<tr><td colspan="5">No reports found.</td></tr>';
+        tableRows = '<tr><td colspan="7">No reports found.</td></tr>'; // Updated colspan
     } else {
         reports.forEach(report => {
             const date = report.flaggedTimestampMillis ? new Date(report.flaggedTimestampMillis).toLocaleString() : 'No Timestamp';
             const type = report.type.toUpperCase();
+            const channel = escapeHtml(report.channel);
+            const reportedBy = escapeHtml(report.reportedBy);
             const reason = escapeHtml(report.reason);
             let details = '';
+
             if (report.type === 'trivia') {
-                details = `Q: ${escapeHtml(report.question || 'N/A')}<br>A: ${escapeHtml(report.answer || 'N/A')}`;
+                details = `Q: ${escapeHtml(report.question)}<br>A: ${escapeHtml(report.answer)}`;
             } else if (report.type === 'geo') {
-                details = `Loc: ${escapeHtml(report.location || 'N/A')}<br>Ch: ${escapeHtml(report.channel || 'N/A')}`;
+                details = `Loc: ${escapeHtml(report.location)}`;
+            } else if (report.type === 'riddle') {
+                details = `Q: ${escapeHtml(report.question)}<br>A: ${escapeHtml(report.answer)}`;
+                if (report.keywords && report.keywords.length > 0) {
+                    details += `<br>Keywords: ${escapeHtml(report.keywords.join(', '))}`;
+                }
+                if (report.topic) {
+                    details += `<br>Topic: ${escapeHtml(report.topic)}`;
+                }
             }
             const id = escapeHtml(report.id);
 
             tableRows += `
                 <tr>
                     <td>${type}</td>
+                    <td>${channel}</td>
                     <td>${date}</td>
+                    <td>${reportedBy}</td>
                     <td>${reason}</td>
                     <td>${details}</td>
                     <td>${id}</td>
@@ -114,15 +141,18 @@ function generateHtml(reports) {
         body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
         h1 { text-align: center; color: #2c3e50; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #fff; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
-        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #3498db; color: #fff; text-transform: uppercase; font-size: 0.9em; letter-spacing: 0.03em; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+        th { background-color: #3498db; color: #fff; text-transform: uppercase; letter-spacing: 0.03em; }
         tr:nth-child(even) { background-color: #ecf0f1; }
         tr:hover { background-color: #d6eaf8; }
-        td:nth-child(1) { font-weight: bold; min-width: 60px; } /* Type */
-        td:nth-child(2) { min-width: 180px; } /* Timestamp */
-        td:nth-child(3) { max-width: 300px; word-wrap: break-word; } /* Reason */
-        td:nth-child(4) { max-width: 400px; word-wrap: break-word; } /* Details */
-        td:nth-child(5) { font-family: monospace; font-size: 0.85em; color: #7f8c8d; } /* ID */
+        td { word-wrap: break-word; max-width: 250px; } /* General max-width */
+        td:nth-child(1) { font-weight: bold; min-width: 50px; } /* Type */
+        td:nth-child(2) { min-width: 100px; } /* Channel */
+        td:nth-child(3) { min-width: 150px; } /* Timestamp */
+        td:nth-child(4) { min-width: 100px; } /* Reported By */
+        td:nth-child(5) { max-width: 200px; } /* Reason */
+        td:nth-child(6) { max-width: 300px; } /* Details */
+        td:nth-child(7) { font-family: monospace; color: #7f8c8d; max-width: 150px; } /* ID */
     </style>
 </head>
 <body>
@@ -131,7 +161,9 @@ function generateHtml(reports) {
         <thead>
             <tr>
                 <th>Type</th>
+                <th>Channel</th>
                 <th>Reported At</th>
+                <th>Reported By</th>
                 <th>Reason</th>
                 <th>Details</th>
                 <th>ID</th>
@@ -146,10 +178,9 @@ function generateHtml(reports) {
     `;
 }
 
-// Basic HTML escaping function
 function escapeHtml(unsafe) {
     if (typeof unsafe !== 'string') {
-        return unsafe; // Return non-strings as is
+        return unsafe === undefined || unsafe === null ? '' : String(unsafe); 
     }
     return unsafe
          .replace(/&/g, "&amp;")
@@ -159,18 +190,16 @@ function escapeHtml(unsafe) {
          .replace(/'/g, "&#039;");
 }
 
-
-// --- Main function (modified) ---
-async function getRecentReports() {
+async function main() {
     console.log(`Workspaceing combined reports (limit ${TOTAL_REPORTS_LIMIT})...`);
-
     try {
-        const [triviaReports, geoReports] = await Promise.all([
-            fetchReports(TRIVIA_COLLECTION, 'trivia', QUERY_LIMIT_PER_COLLECTION),
-            fetchReports(GEO_HISTORY_COLLECTION, 'geo', QUERY_LIMIT_PER_COLLECTION)
+        const [triviaReports, geoReports, riddleReports] = await Promise.all([
+            fetchReports(TRIVIA_REPORTS_FROM_COLLECTION, 'trivia', QUERY_LIMIT_PER_COLLECTION), // Using the constant
+            fetchReports(GEO_HISTORY_COLLECTION, 'geo', QUERY_LIMIT_PER_COLLECTION),
+            fetchReports(RIDDLE_HISTORY_COLLECTION, 'riddle', QUERY_LIMIT_PER_COLLECTION),
         ]);
 
-        const allReports = [...triviaReports, ...geoReports];
+        const allReports = [...triviaReports, ...geoReports, ...riddleReports];
         console.log(`Total reports fetched before sorting: ${allReports.length}`);
 
         allReports.sort((a, b) => {
@@ -181,20 +210,13 @@ async function getRecentReports() {
 
         const finalReports = allReports.slice(0, TOTAL_REPORTS_LIMIT);
 
-        // Generate HTML
         console.log("Generating HTML report...");
         const htmlContent = generateHtml(finalReports);
-
-        // Define output path (e.g., in the project root directory)
-        // `__dirname` is the directory of the *current script* (scripts/)
-        // `path.join(__dirname, '..')` goes up one level to the project root
         const reportFilePath = path.join(__dirname, '..', OUTPUT_HTML_FILENAME);
 
-        // Write HTML to file
         fs.writeFileSync(reportFilePath, htmlContent);
         console.log(`HTML report saved to: ${reportFilePath}`);
 
-        // Open the HTML file in the default browser
         await open(reportFilePath);
         console.log(`Opening ${reportFilePath} in your default browser...`);
 
@@ -203,5 +225,4 @@ async function getRecentReports() {
     }
 }
 
-// Run the main function
-getRecentReports();
+main();

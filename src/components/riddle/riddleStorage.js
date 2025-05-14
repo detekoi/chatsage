@@ -7,6 +7,7 @@ const RIDDLE_CONFIG_COLLECTION = 'riddleGameConfigs';
 const RIDDLE_PLAYER_STATS_COLLECTION = 'riddlePlayerStats';
 const RIDDLE_GAME_HISTORY_COLLECTION = 'riddleGameHistory';
 const RIDDLE_RECENT_KEYWORDS_COLLECTION = 'riddleRecentKeywords'; // For storing keywords of recently asked riddles
+const RIDDLE_RECENT_ANSWERS_COLLECTION = 'riddleRecentAnswers'; // For storing recent answers
 
 let db = null;
 
@@ -552,5 +553,61 @@ export async function getLatestCompletedSessionInfo(channelName) {
             logger.warn(`[RiddleStorage] Firestore index likely missing for getLatestCompletedSessionInfo queries. Please check Firestore console for index suggestions. You may need a composite index on (channelName ASC, gameSessionId ASC, roundNumber ASC) for the '${RIDDLE_GAME_HISTORY_COLLECTION}' collection, and also an index on (channelName ASC, timestamp DESC).`);
         }
         return null;
+    }
+}
+
+// --- Recent Riddle Answers ---
+const RECENT_ANSWERS_TTL_DAYS = 3; // Shorter TTL for answers, or fewer items
+
+export async function saveRecentAnswer(channelName, answer) {
+    if (!answer || typeof answer !== 'string' || answer.trim() === '') {
+        logger.warn(`[RiddleStorage] Attempted to save empty or invalid answer for channel ${channelName}. Skipping.`);
+        return;
+    }
+    const firestore = _getDb();
+    const answersCollection = firestore.collection(RIDDLE_RECENT_ANSWERS_COLLECTION);
+    const dataToSave = {
+        channelName: channelName.toLowerCase(),
+        answer: answer.toLowerCase().trim(), // Store normalized answer
+        createdAt: FieldValue.serverTimestamp()
+    };
+    try {
+        // Simple add, duplicates are okay but will be filtered by getRecentAnswers
+        await answersCollection.add(dataToSave);
+        logger.debug(`[RiddleStorage] Saved recent answer for channel ${channelName}: ${answer}`);
+    } catch (error) {
+        logger.error({ err: error, channel: channelName, answer }, `[RiddleStorage] Error saving recent answer`);
+        // Don't throw, not critical if this fails
+    }
+}
+
+export async function getRecentAnswers(channelName, limit = 15) {
+    const firestore = _getDb();
+    const answersCollection = firestore.collection(RIDDLE_RECENT_ANSWERS_COLLECTION);
+    const recentAnswers = new Set(); // Use a Set to get unique answers
+
+    try {
+        const query = answersCollection
+            .where('channelName', '==', channelName.toLowerCase())
+            .orderBy('createdAt', 'desc')
+            .limit(limit * 2); // Fetch more to account for potential duplicates before Set uniques them
+
+        const snapshot = await query.get();
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.answer) {
+                recentAnswers.add(data.answer); // Add to set (auto-handles uniqueness)
+            }
+        });
+        const limitedRecentAnswers = Array.from(recentAnswers).slice(0, limit);
+        logger.debug(`[RiddleStorage] Retrieved ${limitedRecentAnswers.length} unique recent answers for channel ${channelName}.`);
+        return limitedRecentAnswers;
+    } catch (error) {
+        // Similar index check and fallback as getRecentKeywords if needed
+        if (error.code === 5 && error.message.includes('index')) {
+            logger.warn(`[RiddleStorage] Index missing for getRecentAnswers (channelName ASC, createdAt DESC on ${RIDDLE_RECENT_ANSWERS_COLLECTION}).`);
+        }
+        logger.error({ err: error, channel: channelName }, `[RiddleStorage] Error getting recent answers`);
+        return []; // Return empty on error
     }
 }
