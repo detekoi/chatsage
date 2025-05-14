@@ -416,3 +416,141 @@ export async function flagRiddleAsProblem(riddleDocId, reason, reportedBy) {
         throw new RiddleStorageError(`Failed to flag riddle ${riddleDocId}`, error);
     }
 }
+
+const MAX_RECORDS_FOR_SESSION_LOOKUP = 20; // How far back to look for a session ID
+
+/**
+ * Gets the gameSessionId and totalRounds of the most recently completed game session.
+ * @param {string} channelName
+ * @returns {Promise<{gameSessionId: string, totalRounds: number, riddlesInSession: Array<{docId: string, question: string, answer: string, roundNumber: number}> }|null>}
+ */
+export async function getLatestCompletedSessionInfo(channelName) {
+    const firestore = _getDb();
+    const historyCollection = firestore.collection(RIDDLE_GAME_HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+
+    try {
+        logger.debug(`[RiddleStorage][${lowerChannelName}] --- Entering getLatestCompletedSessionInfo ---`); // Entry log
+        const latestEntrySnapshot = await historyCollection
+            .where('channelName', '==', lowerChannelName)
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (latestEntrySnapshot.empty) {
+            logger.debug(`[RiddleStorage][${lowerChannelName}] No riddle history found. Returning null.`);
+            return null;
+        }
+
+        const latestEntryDocId = latestEntrySnapshot.docs[0].id;
+        const latestEntryData = latestEntrySnapshot.docs[0].data();
+        const sessionId = latestEntryData.gameSessionId;
+        const totalRoundsInSession = latestEntryData.totalRounds;
+
+        logger.debug(`[RiddleStorage][${lowerChannelName}] Latest entry (Doc ID: ${latestEntryDocId}) for session check: sessionId=${sessionId}, totalRoundsInSession=${totalRoundsInSession}, riddleText="${latestEntryData.riddleText?.substring(0,30)}..."`);
+
+        if (!sessionId || typeof totalRoundsInSession !== 'number') {
+            logger.warn(`[RiddleStorage][${lowerChannelName}] Latest entry (ID: ${latestEntryDocId}) missing gameSessionId or valid totalRounds. gameSessionId: ${sessionId}, totalRounds: ${totalRoundsInSession}. Falling back to single report.`);
+            return {
+                gameSessionId: null, totalRounds: 1,
+                riddlesInSession: [{
+                    docId: latestEntryDocId,
+                    question: latestEntryData.riddleText,
+                    answer: latestEntryData.riddleAnswer,
+                    roundNumber: latestEntryData.roundNumber || 1
+                }]
+            };
+        }
+        
+        if (totalRoundsInSession === 1) { 
+            logger.debug(`[RiddleStorage][${lowerChannelName}] Latest game (Doc ID: ${latestEntryDocId}, Session ID: ${sessionId}) was recorded as single round. Reporting that specific riddle.`);
+             return {
+                gameSessionId: sessionId, totalRounds: 1,
+                riddlesInSession: [{
+                    docId: latestEntryDocId,
+                    question: latestEntryData.riddleText,
+                    answer: latestEntryData.riddleAnswer,
+                    roundNumber: latestEntryData.roundNumber || 1
+                }]
+            };
+        }
+
+        logger.info(`[RiddleStorage][${lowerChannelName}] Multi-round session detected (ID: ${sessionId}, TotalRounds: ${totalRoundsInSession}). Fetching all riddles for this session.`);
+        const sessionRiddlesQuery = historyCollection
+            .where('channelName', '==', lowerChannelName)
+            .where('gameSessionId', '==', sessionId)
+            .orderBy('roundNumber', 'asc')
+            .limit(totalRoundsInSession + 5);
+        logger.debug(`[RiddleStorage][${lowerChannelName}] Executing Firestore Query for session: channelName='${lowerChannelName}', gameSessionId='${sessionId}', orderBy='roundNumber ASC'`);
+        let sessionRiddlesSnapshot;
+        try {
+            logger.debug(`[RiddleStorage][${lowerChannelName}] PRE-AWAIT for sessionRiddlesQuery.get() for session ${sessionId}`);
+            sessionRiddlesSnapshot = await sessionRiddlesQuery.get();
+            logger.debug(`[RiddleStorage][${lowerChannelName}] POST-AWAIT for sessionRiddlesQuery.get() for session ${sessionId}. Snapshot object: ${sessionRiddlesSnapshot ? 'exists' : 'null/undefined'}`);
+        } catch (queryError) {
+            logger.error({ err: queryError, message: queryError.message, stack: queryError.stack, channel: lowerChannelName, sessionId }, `[RiddleStorage] Firestore query FOR SESSION ${sessionId} FAILED.`);
+            return {
+                gameSessionId: sessionId, totalRounds: 1, 
+                riddlesInSession: [{ docId: latestEntryDocId, question: latestEntryData.riddleText, answer: latestEntryData.riddleAnswer, roundNumber: latestEntryData.roundNumber || 1 }]
+            };
+        }
+        if (!sessionRiddlesSnapshot) {
+            logger.error(`[RiddleStorage][${lowerChannelName}] sessionRiddlesSnapshot IS NULL or UNDEFINED after get() for session ${sessionId}. This is very unexpected.`);
+            return {
+                gameSessionId: sessionId, totalRounds: 1,
+                riddlesInSession: [{ docId: latestEntryDocId, question: latestEntryData.riddleText, answer: latestEntryData.riddleAnswer, roundNumber: latestEntryData.roundNumber || 1 }]
+            };
+        }
+        logger.info(`[RiddleStorage][${lowerChannelName}] sessionRiddlesSnapshot for session ${sessionId} query completed. Size: ${sessionRiddlesSnapshot.size}. Empty: ${sessionRiddlesSnapshot.empty}. Expected approx: ${totalRoundsInSession}`);
+        const riddlesInSession = [];
+        if (!sessionRiddlesSnapshot.empty) {
+            logger.debug(`[RiddleStorage][${lowerChannelName}] Processing ${sessionRiddlesSnapshot.size} docs from session ${sessionId} query...`);
+            sessionRiddlesSnapshot.forEach(doc => {
+                const data = doc.data();
+                logger.debug(`[RiddleStorage][${lowerChannelName}]   Doc ${doc.id}: Round ${data.roundNumber}, GameSessionID Actual: ${data.gameSessionId}, Q: "${data.riddleText?.substring(0,20)}..."`);
+                if (data.gameSessionId === sessionId && data.riddleText && data.riddleAnswer && typeof data.roundNumber === 'number') {
+                     riddlesInSession.push({
+                        docId: doc.id,
+                        question: data.riddleText,
+                        answer: data.riddleAnswer,
+                        roundNumber: data.roundNumber
+                    });
+                } else {
+                    logger.warn(`[RiddleStorage][${lowerChannelName}]   Doc ${doc.id} filtered out. Expected SessionID: ${sessionId}, Got: ${data.gameSessionId}. HasText: ${!!data.riddleText}, HasAnswer: ${!!data.riddleAnswer}, HasRoundNum: ${typeof data.roundNumber === 'number'}`);
+                }
+            });
+            riddlesInSession.sort((a, b) => a.roundNumber - b.roundNumber);
+            if (riddlesInSession.length === 0) {
+                logger.warn(`[RiddleStorage][${lowerChannelName}] After processing, riddlesInSession array is EMPTY for session ID ${sessionId}. Falling back to single report using latest entry (Doc ID: ${latestEntryDocId}).`);
+                return {
+                    gameSessionId: sessionId, totalRounds: 1,
+                    riddlesInSession: [{
+                        docId: latestEntryDocId,
+                        question: latestEntryData.riddleText,
+                        answer: latestEntryData.riddleAnswer,
+                        roundNumber: latestEntryData.roundNumber || 1
+                    }]
+                };
+            }
+            logger.info(`[RiddleStorage][${lowerChannelName}] Successfully populated ${riddlesInSession.length} riddles for session ID ${sessionId}.`);
+            logger.debug(`[RiddleGameManager][${channelName}] Session Info for report decision: totalRoundsFromInfo=${totalRoundsInSession}, found ${riddlesInSession.length} riddles in session array.`);
+            return { gameSessionId: sessionId, totalRounds: totalRoundsInSession, riddlesInSession };
+        }
+        logger.warn(`[RiddleStorage][${lowerChannelName}] Query for session ID ${sessionId} returned EMPTY results unexpectedly. Falling back to single report using latest entry (Doc ID: ${latestEntryDocId}).`);
+        return {
+            gameSessionId: sessionId, totalRounds: 1,
+            riddlesInSession: [{
+                docId: latestEntryDocId,
+                question: latestEntryData.riddleText,
+                answer: latestEntryData.riddleAnswer,
+                roundNumber: latestEntryData.roundNumber || 1
+            }]
+        };
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName }, `[RiddleStorage] Error fetching latest session info for ${lowerChannelName}`);
+        if (error.code === 5 && error.message && error.message.includes('index')) {
+            logger.warn(`[RiddleStorage] Firestore index likely missing for getLatestCompletedSessionInfo queries. Please check Firestore console for index suggestions. You may need a composite index on (channelName ASC, gameSessionId ASC, roundNumber ASC) for the '${RIDDLE_GAME_HISTORY_COLLECTION}' collection, and also an index on (channelName ASC, timestamp DESC).`);
+        }
+        return null;
+    }
+}

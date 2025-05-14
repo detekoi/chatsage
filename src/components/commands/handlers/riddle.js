@@ -96,9 +96,11 @@ const riddleHandler = {
                     return;
                 }
                 const reason = args.slice(1).join(' ');
-                logger.info(`[RiddleCmd] ${invokingDisplayName} is reporting the last riddle in ${channelNameNoHash}. Reason: ${reason}`);
-                const reportResult = await riddleManager.reportLastRiddle(channelNameNoHash, reason, invokingUsernameLower);
-                enqueueMessage(channel, `@${invokingDisplayName}, ${reportResult.message}`);
+                logger.info(`[RiddleCmd] ${invokingDisplayName} is initiating report for last riddle session in ${channelNameNoHash}. Reason: ${reason}`);
+                const reportInitiationResult = await riddleManager.initiateReportProcess(channelNameNoHash, reason, invokingUsernameLower);
+                if (reportInitiationResult.message) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, ${reportInitiationResult.message}`);
+                }
                 break;
 
             case 'help':

@@ -21,9 +21,11 @@ import {
     getLeaderboard,
     clearLeaderboardData as clearRiddleLeaderboardData,
     getMostRecentRiddlePlayed,
-    flagRiddleAsProblem
+    flagRiddleAsProblem,
+    getLatestCompletedSessionInfo
 } from './riddleStorage.js';
 import config from '../../config/index.js'; // For bot's own username
+import crypto from 'crypto';
 
 // --- Default Configuration ---
 const DEFAULT_RIDDLE_CONFIG = {
@@ -42,6 +44,9 @@ const DEFAULT_RIDDLE_CONFIG = {
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
 const activeGames = new Map();
+
+const pendingReports = new Map(); // Key: "channelName_username", Value: { reason: string, riddlesInSession: Array<{docId, question, roundNumber}>, expiresAt: number }
+const PENDING_REPORT_TIMEOUT_MS = 60000; // 1 minute for user to reply
 
 /*
 GameState structure:
@@ -69,6 +74,7 @@ GameState structure:
     gameSessionScores: Map<string, { displayName: string, score: number }>,
     // Stores SETS of keywords from riddles already used in THIS multi-round session
     gameSessionExcludedKeywordSets: Array<string[]>,
+    gameSessionId: string,
 }
 */
 
@@ -245,7 +251,8 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
                 roundNumber: currentRound,
                 totalRounds,
                 pointsAwarded,
-                searchUsed: currentRiddle.searchUsed
+                searchUsed: currentRiddle.searchUsed,
+                gameSessionId: gameState.gameSessionId,
             });
         } catch (storageError) {
             logger.error({ err: storageError }, `[RiddleGameManager][${channelName}] Error recording riddle result.`);
@@ -432,7 +439,9 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
         const gameInProgressMsg = `A riddle game is already in progress (round ${gameState.currentRound}/${gameState.totalRounds}, started by @${gameState.initiatorUsername || 'Unknown'}).`;
         return { success: false, error: gameInProgressMsg };
     }
-    
+    gameState.gameSessionId = crypto.randomUUID();
+    logger.info(`[RiddleGameManager][${channelName}] New game starting by ${initiatorUsername}. Rounds: ${numberOfRounds}. Generated new gameSessionId: ${gameState.gameSessionId}`);
+
     // Reset/Initialize fields for a new game session
     gameState.topic = topic;
     gameState.initiatorUsername = initiatorUsername ? initiatorUsername.toLowerCase() : null;
@@ -454,15 +463,8 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     );
     enqueueMessage(`#${channelName}`, startMessage);
     
-    logger.info(`[RiddleGameManager][${channelName}] New game started by ${initiatorUsername}. Topic: ${topic || 'General/Game'}. Rounds: ${gameState.totalRounds}.`);
-    
     // Start the first round
-    // _startNextRound will handle the actual riddle generation and game flow
     await _startNextRound(gameState); 
-    // Note: _startNextRound now handles errors and can call _transitionToEnding itself
-    // So, the success/error reporting for startGame needs to be considered based on that.
-    // For simplicity, we'll assume startGame initiates the process, and _startNextRound logs its own critical failures.
-    // If _startNextRound fails immediately (e.g. can't generate first riddle), the game state might go to 'idle' via _transitionToEnding.
     if(gameState.state === 'idle'){ // Game failed to start properly
         return { success: false, error: "Failed to start the riddle game. Could not generate the first riddle."};
     }
@@ -624,7 +626,101 @@ export function getRiddleGameManager() {
             getCurrentGameInitiator,
             clearLeaderboard,
             reportLastRiddle,
+            initiateReportProcess,
+            finalizeReportWithRoundNumber,
         };
     }
     return riddleGameManagerInstance;
+}
+
+async function initiateReportProcess(channelName, reason, reportedByUsername) {
+    logger.info(`[RiddleGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
+    const sessionInfo = await getLatestCompletedSessionInfo(channelName);
+
+    // Detailed logging of sessionInfo
+    logger.debug(`[RiddleGameManager][${channelName}] sessionInfo received from getLatestCompletedSessionInfo: gameSessionId=${sessionInfo?.gameSessionId}, totalRounds=${sessionInfo?.totalRounds}, riddlesInSessionCount=${sessionInfo?.riddlesInSession?.length}`);
+    if (sessionInfo && sessionInfo.riddlesInSession && sessionInfo.riddlesInSession.length > 0) {
+        sessionInfo.riddlesInSession.forEach((r, idx) => logger.debug(`[RiddleGameManager][${channelName}] Session Riddle [${idx}]: Round ${r.roundNumber}, Q: ${r.question?.substring(0,20)}...`));
+    }
+
+    if (!sessionInfo || !sessionInfo.riddlesInSession || sessionInfo.riddlesInSession.length === 0) {
+        logger.warn(`[RiddleGameManager][${channelName}] getLatestCompletedSessionInfo returned insufficient data. sessionInfo: ${JSON.stringify(sessionInfo, null, 2)}`);
+        return { success: false, message: "I couldn't find any recent riddles in this channel to report." };
+    }
+
+    const totalRoundsFromInfo = sessionInfo.totalRounds;
+    const riddlesFoundInSession = sessionInfo.riddlesInSession;
+
+    logger.debug(`[RiddleGameManager][${channelName}] Session Info for report decision: totalRoundsFromInfo=${totalRoundsFromInfo}, found ${riddlesFoundInSession.length} riddles in session array.`);
+
+    if (totalRoundsFromInfo > 1 && riddlesFoundInSession.length > 1) {
+        logger.info(`[RiddleGameManager][${channelName}] Multi-round report scenario. Prompting user for round number.`);
+        // Multi-round game, ask for clarification
+        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        pendingReports.set(reportKey, {
+            reason,
+            riddlesInSession: riddlesFoundInSession, // Store [{docId, question, roundNumber}, ...]
+            reportedByUsername,
+            expiresAt: Date.now() + PENDING_REPORT_TIMEOUT_MS
+        });
+
+        setTimeout(() => {
+            if (pendingReports.has(reportKey) && pendingReports.get(reportKey).expiresAt <= Date.now()) {
+                pendingReports.delete(reportKey);
+                logger.info(`[RiddleGameManager] Expired pending report for ${reportKey}`);
+            }
+        }, PENDING_REPORT_TIMEOUT_MS + 1000);
+        
+        let promptMessage = `@${reportedByUsername}, the last riddle game had ${totalRoundsFromInfo} rounds. Which round (1-${totalRoundsFromInfo}) is your report about? Reply with just the number.`;
+        if (riddlesFoundInSession.length < totalRoundsFromInfo) {
+            promptMessage = `@${reportedByUsername}, I found ${riddlesFoundInSession.length} riddles from the last session (expected ${totalRoundsFromInfo}). Which round (1-${riddlesFoundInSession.length}) is your report about? Reply with the number.`
+        }
+        return { success: true, message: promptMessage, needsFollowUp: true };
+    } else {
+        logger.info(`[RiddleGameManager][${channelName}] Single riddle report scenario. totalRoundsFromInfo: ${totalRoundsFromInfo}, riddlesFoundInSession.length: ${riddlesFoundInSession.length}`);
+        const riddleToReport = riddlesFoundInSession[0];
+        if (!riddleToReport || !riddleToReport.docId) {
+             return { success: false, message: "Could not identify a specific riddle to report." };
+        }
+        try {
+            await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
+            logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${riddleToReport.question.substring(0, 50)}..."`);
+            return { success: true, message: `Thanks for the feedback! The riddle ("${riddleToReport.question.substring(0, 30)}...") has been reported.` };
+        } catch (error) {
+            logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting single/latest riddle via storage.`);
+            return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
+        }
+    }
+}
+
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
+    const reportKey = `${channelName}_${username.toLowerCase()}`;
+    const pendingData = pendingReports.get(reportKey);
+
+    if (!pendingData) {
+        return { success: false, message: null }; // No pending report for this user, or it expired
+    }
+
+    const roundNum = parseInt(roundNumberStr, 10);
+    if (isNaN(roundNum) || roundNum < 1 || roundNum > pendingData.riddlesInSession.length) {
+        return { success: true, message: `@${username}, that's not a valid round number (1-${pendingData.riddlesInSession.length}). Please try reporting again.` };
+    }
+
+    const riddleToReport = pendingData.riddlesInSession.find(r => r.roundNumber === roundNum);
+
+    if (!riddleToReport || !riddleToReport.docId) {
+        pendingReports.delete(reportKey); // Clean up
+        return { success: true, message: `@${username}, I couldn't find the riddle for round ${roundNum}. Please try reporting again.` };
+    }
+
+    try {
+        await flagRiddleAsProblem(riddleToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        pendingReports.delete(reportKey); // Clean up successful report
+        logger.info(`[RiddleGameManager][${channelName}] Successfully finalized report for round ${roundNum}, riddle ID ${riddleToReport.docId}`);
+        return { success: true, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };
+    } catch (error) {
+        pendingReports.delete(reportKey); // Clean up even on error
+        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error finalizing report for round ${roundNum}.`);
+        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again.` };
+    }
 }

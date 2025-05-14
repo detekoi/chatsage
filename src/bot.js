@@ -333,7 +333,7 @@ async function main() {
         });
 
         // --- MESSAGE HANDLER ---
-        ircClient.on('message', (channel, tags, message, self) => {
+        ircClient.on('message', async (channel, tags, message, self) => {
             if (self) {
                 // Add self message to context ONLY
                 getContextManager().addMessage(channel.substring(1), tags.username, message, tags).catch(err => {
@@ -343,10 +343,30 @@ async function main() {
             }
 
             const cleanChannel = channel.substring(1);
-            const lowerUsername = tags.username;
+            const lowerUsername = tags.username.toLowerCase();
             const displayName = tags['display-name'] || tags.username;
             const contextManager = getContextManager();
             const isModOrBroadcaster = isPrivilegedUser(tags, cleanChannel);
+            const riddleManager = getRiddleGameManager(); // Ensure this is available
+
+            // --- NEW: Check for pending riddle report response ---
+            if (/^\d+$/.test(message.trim())) {
+                logger.debug(`[BotJS] Numeric message "${message.trim()}" from ${lowerUsername} in ${cleanChannel}. Checking for pending report.`);
+                const reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+                if (reportFinalizationResult.message !== null) {
+                    // A pending report was found and processed (successfully or with a validation error message like "invalid round")
+                    enqueueMessage(channel, reportFinalizationResult.message);
+                    logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
+                    // Add to context AFTER handling it
+                    contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
+                        logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
+                    });
+                    return; // IMPORTANT: Stop further processing of this numeric message
+                } else {
+                    logger.debug(`[BotJS] Numeric message from ${lowerUsername} but no pending report found or it was an internal error in finalizeReport with no message to user.`);
+                }
+            }
+            // --- END: Check for pending riddle report response ---
 
             // --- Stop Translation Check ---
             const lowerMessage = message.toLowerCase().trim();
