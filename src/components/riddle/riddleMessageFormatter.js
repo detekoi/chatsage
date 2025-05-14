@@ -47,11 +47,13 @@ export function formatRiddleSessionScoresMessage(scoresMap) {
 }
 
 export function formatRiddleHelpMessage(isModOrBroadcaster) {
-    let helpText = `🤔 Riddle Commands: !riddle (starts a general riddle, or about the current game), !riddle <subject> [<rounds>], !riddle <rounds>`;
+    let helpText = `🤔 Riddle Commands: !riddle (general/current game), !riddle <subject> [<rounds>], !riddle <rounds>, !riddle game [<rounds>]`;
+    helpText += `, !riddle leaderboard, !riddle report <reason>`;
     if (isModOrBroadcaster) {
         helpText += `, !riddle stop, !riddle clearleaderboard`;
+        helpText += `, !riddle config difficulty <easy|normal|hard> | questiontime <sec> | pointsbase <num> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <num> | keywordslimit <num> | rounddelay <ms>`;
+        helpText += `, !riddle resetconfig`;
     }
-    helpText += `, !riddle leaderboard.`;
     return helpText;
 }
 

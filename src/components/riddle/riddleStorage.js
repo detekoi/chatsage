@@ -348,3 +348,71 @@ export async function pruneOldKeywords(channelName) {
         throw new RiddleStorageError(`Failed to prune old keywords for ${channelName}`, error);
     }
 }
+
+/**
+ * Retrieves the most recent riddle played in a channel from the history.
+ * @param {string} channelName - The name of the channel (without #).
+ * @returns {Promise<{docId: string, question: string, answer: string, topic: string, keywords: string[]}|null>} Details of the last riddle or null.
+ */
+export async function getMostRecentRiddlePlayed(channelName) {
+    const firestore = _getDb();
+    const historyCollection = firestore.collection(RIDDLE_GAME_HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+
+    logger.debug(`[RiddleStorage] Fetching most recent riddle for channel ${lowerChannelName}`);
+    try {
+        const snapshot = await historyCollection
+            .where('channelName', '==', lowerChannelName)
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (snapshot.empty) {
+            logger.debug(`[RiddleStorage] No riddle history found for channel ${lowerChannelName}.`);
+            return null;
+        }
+
+        const doc = snapshot.docs[0];
+        const data = doc.data();
+        return {
+            docId: doc.id,
+            question: data.riddleText, // Assuming 'riddleText' was used in recordRiddleResult
+            answer: data.riddleAnswer, // Assuming 'riddleAnswer' was used
+            topic: data.topic,
+            keywords: data.keywords || []
+        };
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName }, `[RiddleStorage] Error fetching most recent riddle for ${lowerChannelName}`);
+        // Check for missing index error
+        if (error.code === 5 && error.message && error.message.includes('index')) {
+            logger.warn(`[RiddleStorage] Firestore index likely missing for getMostRecentRiddlePlayed query on '${RIDDLE_GAME_HISTORY_COLLECTION}'. Needs index on 'channelName' (asc) and 'timestamp' (desc).`);
+        }
+        throw new RiddleStorageError(`Failed to get most recent riddle for ${lowerChannelName}`, error);
+    }
+}
+
+/**
+ * Flags a specific riddle in the game history as problematic.
+ * @param {string} riddleDocId - The Firestore document ID of the riddle in riddleGameHistory.
+ * @param {string} reason - The reason for flagging.
+ * @param {string} reportedBy - The username of the person who reported it.
+ * @returns {Promise<void>}
+ */
+export async function flagRiddleAsProblem(riddleDocId, reason, reportedBy) {
+    const firestore = _getDb();
+    const docRef = firestore.collection(RIDDLE_GAME_HISTORY_COLLECTION).doc(riddleDocId);
+
+    logger.info(`[RiddleStorage] Flagging riddle ${riddleDocId} as problematic. Reason: ${reason}, Reported by: ${reportedBy}`);
+    try {
+        await docRef.update({
+            flaggedAsProblem: true,
+            problemReason: reason,
+            reportedBy: reportedBy.toLowerCase(),
+            flaggedTimestamp: FieldValue.serverTimestamp()
+        });
+        logger.debug(`[RiddleStorage] Successfully flagged riddle ${riddleDocId}.`);
+    } catch (error) {
+        logger.error({ err: error, riddleDocId, reason }, `[RiddleStorage] Error flagging riddle ${riddleDocId} as problematic.`);
+        throw new RiddleStorageError(`Failed to flag riddle ${riddleDocId}`, error);
+    }
+}

@@ -19,7 +19,9 @@ import {
     getRecentKeywords,
     saveRiddleKeywords, // To save keywords of successfully answered riddles
     getLeaderboard,
-    clearLeaderboardData as clearRiddleLeaderboardData
+    clearLeaderboardData as clearRiddleLeaderboardData,
+    getMostRecentRiddlePlayed,
+    flagRiddleAsProblem
 } from './riddleStorage.js';
 import config from '../../config/index.js'; // For bot's own username
 
@@ -280,7 +282,9 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         gameState.currentRiddle = null;
         gameState.startTime = null;
         gameState.winner = null;
-        logger.info(`[RiddleGameManager][${channelName}] Delaying for next round: ${gameState.currentRound}`);
+        // Set state to 'selecting' BEFORE scheduling the next round
+        gameState.state = 'selecting';
+        logger.info(`[RiddleGameManager][${channelName}] Preparing for next round: ${gameState.currentRound}. State set to 'selecting'.`);
         setTimeout(() => _startNextRound(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
     }
 }
@@ -290,7 +294,6 @@ async function _startNextRound(gameState) {
          logger.warn(`[RiddleGameManager][${gameState.channelName}] Attempted to start next round while game is ${gameState.state}. Aborting.`);
         return;
     }
-    gameState.state = 'selecting'; // Mark that we are in the process of selecting a new riddle
     logger.info(`[RiddleGameManager][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
 
     let generatedRiddle = null;
@@ -555,6 +558,57 @@ export async function clearLeaderboard(channelName) {
 }
 
 /**
+ * Gets the details of the last played riddle in a channel.
+ * Used by the report command.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {Promise<{question: string, answer: string, docId: string}|null>}
+ */
+async function getLastPlayedRiddleDetails(channelName) {
+    try {
+        const riddleDetails = await getMostRecentRiddlePlayed(channelName);
+        if (riddleDetails) {
+            logger.info(`[RiddleGameManager][${channelName}] Last played riddle details fetched: Q: ${riddleDetails.question ? riddleDetails.question.substring(0,30) : ''}...`);
+            return riddleDetails; // Contains docId, question, answer
+        }
+        logger.info(`[RiddleGameManager][${channelName}] No last played riddle found to report.`);
+        return null;
+    } catch (error) {
+        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error getting last played riddle details.`);
+        return null;
+    }
+}
+
+/**
+ * Reports the last played riddle in the channel as problematic.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string} reason - Reason for reporting.
+ * @param {string} reportedByUsername - Username of the reporter.
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function reportLastRiddle(channelName, reason, reportedByUsername) {
+    logger.info(`[RiddleGameManager][${channelName}] Attempting to report last riddle. Reason: "${reason}", Reported by: ${reportedByUsername}`);
+    const lastRiddle = await getLastPlayedRiddleDetails(channelName);
+
+    if (!lastRiddle || !lastRiddle.docId) {
+        return { success: false, message: "I couldn't find a recently played riddle in this channel to report." };
+    }
+
+    if (!lastRiddle.question) {
+         logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
+        return { success: false, message: "The last riddle found seems incomplete and cannot be reported." };
+    }
+
+    try {
+        await flagRiddleAsProblem(lastRiddle.docId, reason, reportedByUsername);
+        logger.info(`[RiddleGameManager][${channelName}] Successfully reported riddle: "${lastRiddle.question.substring(0, 50)}..."`);
+        return { success: true, message: `Thanks for the feedback! The riddle starting with \"${lastRiddle.question.substring(0, 30)}...\" has been reported.` };
+    } catch (error) {
+        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting riddle via storage.`);
+        return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
+    }
+}
+
+/**
  * Gets the singleton RiddleGameManager instance.
  */
 let riddleGameManagerInstance = null;
@@ -568,7 +622,8 @@ export function getRiddleGameManager() {
             configureGame: configureRiddleGame,
             resetConfig: resetRiddleConfig,
             getCurrentGameInitiator,
-            clearLeaderboard
+            clearLeaderboard,
+            reportLastRiddle,
         };
     }
     return riddleGameManagerInstance;

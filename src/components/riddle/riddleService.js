@@ -47,14 +47,16 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     if (topic && topic.toLowerCase() === 'game') {
         try {
             const contextManager = getContextManager();
-            const channelState = contextManager.getContextForLLM(channelName, 'riddle_service', 'fetch_game_topic');
+            // Ensure channelName does not have '#' for context manager
+            const cleanChannelName = channelName.startsWith('#') ? channelName.substring(1) : channelName;
+            const channelState = contextManager.getContextForLLM(cleanChannelName, 'riddle_service', 'fetch_game_topic');
             if (channelState?.streamGame && channelState.streamGame !== 'N/A') {
                 actualTopic = channelState.streamGame;
                 promptDetails += ` The riddle should be about the video game: "${actualTopic}".`;
                 logger.info(`[RiddleService] Riddle topic set to current game: ${actualTopic}`);
             } else {
-                actualTopic = 'general knowledge'; // Fallback if game not found
-                logger.warn(`[RiddleService] Could not determine current game for channel ${channelName}, defaulting to general knowledge.`);
+                actualTopic = 'general knowledge'; 
+                logger.warn(`[RiddleService] Could not determine current game for channel ${cleanChannelName}, defaulting to general knowledge.`);
             }
         } catch (error) {
             logger.error({ err: error }, `[RiddleService] Error getting current game for riddle, defaulting to general. Channel: ${channelName}`);
@@ -67,34 +69,44 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
 
     let exclusionInstruction = "";
     if (excludedKeywordSets.length > 0) {
-        // Flatten the array of arrays and join keywords for the prompt
         const flatExcludedKeywords = excludedKeywordSets.map(set => `(${set.join(', ')})`).join('; ');
-        exclusionInstruction = `\nIMPORTANT: Avoid generating riddles that heavily rely on the following keyword combinations: [${flatExcludedKeywords}]. Aim for fresh concepts.`;
+        exclusionInstruction = `\nCRITICAL: Avoid generating riddles that heavily rely on the following keyword combinations or themes: [${flatExcludedKeywords}]. Aim for conceptually different riddles.`;
     }
     
-    // Determine if search is needed (similar to !ask)
     const contextPromptForDecision = `Channel: ${channelName}\nStream Game (if any): ${actualTopic === topic && topic !== 'game' ? 'N/A' : actualTopic}\nUser is requesting a riddle.`;
-    const decisionQuery = `Is search needed to generate a high-quality, factually accurate ${difficulty} riddle about "${actualTopic}"?${exclusionInstruction}`;
+    const decisionQuery = `Is search needed to generate a high-quality, factually accurate ${difficulty} riddle about "${actualTopic}" that is a true riddle and not a trivia question?${exclusionInstruction}`;
     
     const decisionResult = await decideSearchWithFunctionCalling(contextPromptForDecision, decisionQuery);
     const useSearch = decisionResult.searchNeeded;
 
     logger.info(`[RiddleService] Decision to use search for riddle on "${actualTopic}": ${useSearch}. Reasoning: ${decisionResult.reasoning}`);
 
-    const generationPrompt = `You are a master riddle crafter. Your task is to generate an engaging and creative riddle.
-${promptDetails}${exclusionInstruction}
+    // --- MODIFIED PROMPT ---
+    const generationPrompt = `You are a master riddle crafter, known for your clever wordplay and imaginative puzzles. Your task is to generate an engaging and creative RIDDLE, not a trivia question.
+${promptDetails} ${exclusionInstruction}
+
+A RIDDLE typically uses metaphorical language, describes something in an unusual way, or plays on words to make the solver think laterally. It should be a fun mind-bender.
+AVOID questions that simply ask "What am I?" after listing factual attributes (e.g., "I am a large body of water..." is TRIVIA, not a riddle).
+INSTEAD, focus on characteristics presented in a puzzling or poetic manner. For example: "I have cities, but no houses; forests, but no trees; and water, but no fish. What am I?" (Answer: A map) is a good riddle.
+
+Your generated riddle clues must be factually accurate or based on commonly understood metaphors for the answer. Avoid obscure or misleading terminology.
+
 You MUST call the "generate_riddle_with_answer_and_keywords" function to structure your response.
-The 'riddle_answer' should be concise.
-The 'keywords' should be 3-5 core concepts or terms directly related to the riddle's question AND its answer; they help categorize the riddle.
-The 'explanation' should briefly clarify the answer or provide a fun fact.
-Ensure the 'search_used' field accurately reflects if you consulted external search to create or verify this riddle.
-If the topic is obscure or requires specific factual details, using search is highly recommended to ensure accuracy.
-If the topic is "general knowledge", you can rely more on your internal knowledge but still verify if unsure.
+Ensure:
+- 'riddle_question': The riddle itself, designed to be puzzling and metaphorical.
+- 'riddle_answer': A concise, common answer.
+- 'keywords': 3-5 core concepts or terms directly related to the riddle's question AND its answer. These should capture the *essence* of the puzzle.
+- 'explanation': Briefly clarify the answer, especially any wordplay or metaphors used in the riddle.
+- 'difficulty_generated': Your assessment of the riddle's difficulty (easy, normal, hard).
+- 'search_used': True if you consulted external search to create/verify this specific riddle.
+
+If the topic is "general knowledge", aim for classic riddle structures or common objects/concepts described in a novel way.
+If the topic is specific (like a video game), ensure the riddle is about elements *within* that topic, described imaginatively.
 Provide a riddle that is clever and not too straightforward, according to the requested difficulty.`;
 
     try {
         const generationConfig = {
-            temperature: 0.8, // Slightly higher for more creative riddles
+            temperature: 0.75, // Slightly increased for creativity, but not too high to maintain accuracy
             maxOutputTokens: 450,
         };
         
@@ -104,10 +116,10 @@ Provide a riddle that is clever and not too straightforward, according to the re
             contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
             tools: toolsToUse,
             toolConfig: {
-                functionCallingConfig: { mode: "ANY" } // Or "REQUIRED" if you always want the function
+                functionCallingConfig: { mode: "ANY" } 
             },
             generationConfig,
-            systemInstruction: { parts: [{ text: "You are an AI assistant specializing in creating riddles."}] }
+            systemInstruction: { parts: [{ text: "You are an AI assistant specializing in creating clever and accurate riddles."}] }
         });
 
         const response = result.response;
@@ -119,21 +131,28 @@ Provide a riddle that is clever and not too straightforward, according to the re
                 logger.warn('[RiddleService] Function call made, but essential riddle parts missing.', { args });
                 return null;
             }
-            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" via function call.`);
+            // Additional check for "What am I?" type questions if they still slip through
+            if (args.riddle_question.toLowerCase().includes("what am i?") && args.riddle_question.split('\n').length <= 3) {
+                const characteristics = args.riddle_question.toLowerCase().split('\n').slice(0, -1).join(' ');
+                if (characteristics.includes("i am") || characteristics.includes("i have") || characteristics.includes("i can")) {
+                    logger.warn(`[RiddleService] Generated riddle resembles trivia ("What am I?" with direct attributes): "${args.riddle_question}". Consider re-prompting or filtering. Topic: ${actualTopic}`);
+                    // Optionally: return null; // to force a retry
+                }
+            }
+
+            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" via function call. Search used by LLM: ${args.search_used}, Our decision: ${useSearch}`);
             return {
                 question: args.riddle_question,
                 answer: args.riddle_answer,
                 keywords: args.keywords,
                 difficulty: args.difficulty_generated || difficulty,
                 explanation: args.explanation || "No explanation provided.",
-                searchUsed: args.search_used || useSearch, // If LLM says it used search, trust it. Otherwise, use our decision.
+                searchUsed: args.search_used || useSearch, 
                 topic: actualTopic
             };
         } else {
-            // Fallback or error if function call wasn't made as expected
             const textResponse = candidate?.content?.parts?.map(p => p.text).join('').trim();
             logger.warn('[RiddleService] Model did not call "generate_riddle_with_answer_and_keywords" as expected.', { textResponse: textResponse || "No text response." });
-            // Attempt to parse if it looks like a riddle anyway? For now, return null.
             return null;
         }
 

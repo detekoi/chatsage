@@ -19,7 +19,7 @@ const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);
 const riddleHandler = {
     name: 'riddle',
     description: 'Starts or manages a Riddle game. Use !riddle help for more info.',
-    usage: '!riddle [<subject>] [<rounds>] | stop | leaderboard | clearleaderboard | help',
+    usage: '!riddle [<subject>] [<rounds>] | stop | leaderboard | clearleaderboard | report <reason...> | help',
     permission: 'everyone', // Subcommand permissions are handled internally
     execute: async (context) => {
         const { channel, user, args } = context; // channel has #
@@ -87,6 +87,18 @@ const riddleHandler = {
                     logger.error({ err: error, channel: channelNameNoHash }, '[RiddleCmd] Error clearing riddle leaderboard.');
                     enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while clearing the riddle leaderboard.`);
                 }
+                break;
+
+            case 'report':
+            case 'flag':
+                if (args.length < 2) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, Please provide a reason for reporting. Usage: !riddle report <your reason>`);
+                    return;
+                }
+                const reason = args.slice(1).join(' ');
+                logger.info(`[RiddleCmd] ${invokingDisplayName} is reporting the last riddle in ${channelNameNoHash}. Reason: ${reason}`);
+                const reportResult = await riddleManager.reportLastRiddle(channelNameNoHash, reason, invokingUsernameLower);
+                enqueueMessage(channel, `@${invokingDisplayName}, ${reportResult.message}`);
                 break;
 
             case 'help':
