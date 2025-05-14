@@ -10,6 +10,7 @@ import ping from './ping.js'; // Let's create ping first as a simple example
 
 // Stream Context Commands
 import game from './game.js';
+import riddle from './riddle.js';
 // import info from './info.js';
 
 // Knowledge & LLM Commands
@@ -61,6 +62,7 @@ const commandHandlers = {
     translate: translate,
     geo: geo,
     trivia: trivia,
+    riddle: riddle,
     botlang: botLang,
 
     // --- Context Management Commands ---

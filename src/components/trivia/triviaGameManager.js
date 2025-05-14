@@ -10,7 +10,7 @@ import { loadChannelConfig, saveChannelConfig, recordGameResult,
 // --- Default Configuration ---
 const DEFAULT_CONFIG = {
     difficulty: 'normal',
-    questionTimeSeconds: 30,
+    questionTimeSeconds: 45,
     roundDurationMinutes: 2,
     scoreTracking: true,
     topicPreferences: [],

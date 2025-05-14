@@ -18,6 +18,8 @@ import { initializeTriviaGameManager, getTriviaGameManager } from './components/
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
+import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
+import { initializeRiddleGameManager, getRiddleGameManager } from './components/riddle/riddleGameManager.js';
 
 let streamInfoIntervalId = null;
 let ircClient = null;
@@ -218,6 +220,9 @@ async function main() {
         logger.info('Initializing Trivia Storage...');
         await initializeTriviaStorage();
 
+        logger.info('Initializing Riddle Storage...');
+        await initializeRiddleStorage();
+
         logger.info('Initializing Language Storage...');
         await initializeLanguageStorage();
 
@@ -242,10 +247,15 @@ async function main() {
         logger.info('Initializing Trivia Game Manager...');
         await initializeTriviaGameManager();
 
+        logger.info('Initializing Riddle Game Manager...');
+        await initializeRiddleGameManager();
+
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
         const helixClient = getHelixClient();
         const geoManager = getGeoGameManager();
+        const triviaManager = getTriviaGameManager();
+        const riddleManager = getRiddleGameManager();
         // Get gemini client instance early if needed, or get inside async IIFE
         // const geminiClient = getGeminiClient();
 
@@ -423,6 +433,8 @@ async function main() {
             
             // Check if it was a geo command - prevents processing as guess
             let wasGeoCommand = message.trim().toLowerCase().startsWith('!geo');
+            let wasTriviaCommand = message.trim().toLowerCase().startsWith('!trivia');
+            let wasRiddleCommand = message.trim().toLowerCase().startsWith('!riddle');
             
             // Debug log for geo command
             if (wasGeoCommand) {
@@ -444,14 +456,14 @@ async function main() {
                 }, 'Error caught directly from processCommand call');
             });
 
-            // --- Check for Geo-Game Guess FIRST ---
+            // --- Check for Game Guesses/Answers FIRST ---
             // Only if it wasn't a command and wasn't handled by stop/translate
             if (!message.startsWith('!') && !isStopRequest) {
                 // Pass potential guess to the GeoGame Manager
                 geoManager.processPotentialGuess(cleanChannel, lowerUsername, displayName, message);
                 // Also pass potential answer to the Trivia Game Manager
-                const triviaManager = getTriviaGameManager();
                 triviaManager.processPotentialAnswer(cleanChannel, lowerUsername, displayName, message);
+                riddleManager.processPotentialAnswer(cleanChannel, lowerUsername, displayName, message);
                 // We don't necessarily 'return' here, as a guess or answer might *also* mention the bot
             }
 
@@ -477,8 +489,8 @@ async function main() {
             }
 
             // --- Mention Check ---
-            // Check only if: not self, not translate cmd, not stop request, not already translated
-            if (!self && !wasTranslateCommand && !isStopRequest) {
+            // Check only if: not self, not any game command, not translate cmd, not stop request, not already translated
+            if (!self && !wasTranslateCommand && !wasGeoCommand && !wasTriviaCommand && !wasRiddleCommand && !isStopRequest) {
                 const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
                 if (message.toLowerCase().startsWith(mentionPrefix)) {
                     const userMessageContent = message.substring(mentionPrefix.length).trim();
@@ -497,7 +509,6 @@ async function main() {
         ircClient.on('connecting', (address, port) => { logger.info(`Connecting to Twitch IRC at ${address}:${port}...`); });
         ircClient.on('logon', () => { logger.info('Successfully logged on to Twitch IRC.'); });
         ircClient.on('join', (channel, username, self) => { if (self) { logger.info(`Joined channel: ${channel}`); } });
-
 
         // --- Connect IRC Client ---
         logger.info('Connecting Twitch IRC Client...');

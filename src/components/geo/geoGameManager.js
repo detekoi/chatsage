@@ -67,7 +67,7 @@ interface GameState {
 // --- Default Configuration ---
 const DEFAULT_CONFIG = {
     difficulty: 'normal',
-    clueIntervalSeconds: 60,
+    clueIntervalSeconds: 45,
     roundDurationMinutes: 5,
     scoreTracking: true,
     // Scoring defaults
