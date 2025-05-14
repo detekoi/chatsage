@@ -349,24 +349,46 @@ async function main() {
             const isModOrBroadcaster = isPrivilegedUser(tags, cleanChannel);
             const riddleManager = getRiddleGameManager(); // Ensure this is available
 
-            // --- NEW: Check for pending riddle report response ---
+            // --- Check for pending report responses (Riddle, Trivia, Geo) ---
             if (/^\d+$/.test(message.trim())) {
                 logger.debug(`[BotJS] Numeric message "${message.trim()}" from ${lowerUsername} in ${cleanChannel}. Checking for pending report.`);
-                const reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+
+                // Try Riddle first
+                let reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
                 if (reportFinalizationResult.message !== null) {
-                    // A pending report was found and processed (successfully or with a validation error message like "invalid round")
                     enqueueMessage(channel, reportFinalizationResult.message);
-                    logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
-                    // Add to context AFTER handling it
+                    logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Riddle finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
                     contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                         logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
                     });
-                    return; // IMPORTANT: Stop further processing of this numeric message
-                } else {
-                    logger.debug(`[BotJS] Numeric message from ${lowerUsername} but no pending report found or it was an internal error in finalizeReport with no message to user.`);
+                    return;
                 }
+
+                // Try Trivia next
+                reportFinalizationResult = await triviaManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+                if (reportFinalizationResult.message !== null) {
+                    enqueueMessage(channel, reportFinalizationResult.message);
+                    logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Trivia finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
+                    contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
+                        logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
+                    });
+                    return;
+                }
+
+                // Try Geo last
+                reportFinalizationResult = await geoManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+                if (reportFinalizationResult.message !== null) {
+                    enqueueMessage(channel, reportFinalizationResult.message);
+                    logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Geo finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
+                    contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
+                        logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
+                    });
+                    return;
+                }
+
+                logger.debug(`[BotJS] Numeric message from ${lowerUsername} but no pending report found in any manager or it was an internal error in finalizeReport with no message to user.`);
             }
-            // --- END: Check for pending riddle report response ---
+            // --- END: Check for pending report responses ---
 
             // --- Stop Translation Check ---
             const lowerMessage = message.toLowerCase().trim();

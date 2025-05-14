@@ -25,7 +25,7 @@ export class StorageError extends Error {
  * Initializes the Google Cloud Firestore client.
  * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
  */
-export async function initializeStorage() {
+async function initializeStorage() {
     logger.info("[GeoStorage-GCloud] Initializing Google Cloud Firestore client...");
     try {
         // Log before creating client - will help identify if constructor fails
@@ -84,7 +84,7 @@ function _getDb() {
  * @param {string} channelName
  * @returns {Promise<object|null>} The config object or null if not found/error.
  */
-export async function loadChannelConfig(channelName) {
+async function loadChannelConfig(channelName) {
     const db = _getDb();
     const docRef = db.collection(CONFIG_COLLECTION).doc(channelName.toLowerCase());
     try {
@@ -108,7 +108,7 @@ export async function loadChannelConfig(channelName) {
  * @param {object} config - The complete config object to save.
  * @returns {Promise<boolean>} True on success, false on failure.
  */
-export async function saveChannelConfig(channelName, config) {
+async function saveChannelConfig(channelName, config) {
     const db = _getDb();
     const docRef = db.collection(CONFIG_COLLECTION).doc(channelName.toLowerCase());
     try {
@@ -125,7 +125,7 @@ export async function saveChannelConfig(channelName, config) {
  * @param {object} gameResultDetails - Details like winner, location, duration, channel etc.
  * @returns {Promise<boolean>} True on success, false on failure.
  */
-export async function recordGameResult(gameResultDetails) {
+async function recordGameResult(gameResultDetails) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     // Use console.log for maximum visibility
@@ -152,7 +152,7 @@ export async function recordGameResult(gameResultDetails) {
  * @returns {Promise<void>}
  * @throws {StorageError} On failure to update.
  */
-export async function updatePlayerScore(username, channelName, points = 0, displayName = null) {
+async function updatePlayerScore(username, channelName, points = 0, displayName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const lowerChannel = channelName.toLowerCase();
@@ -189,7 +189,7 @@ export async function updatePlayerScore(username, channelName, points = 0, displ
  * @param {string} [channelName] - Optional channel name to get channel-specific stats.
  * @returns {Promise<object|null>} Player stats object or null if not found/error.
  */
-export async function getPlayerStats(username, channelName = null) {
+async function getPlayerStats(username, channelName = null) {
     const db = _getDb();
     const lowerUsername = username.toLowerCase();
     const docRef = db.collection(STATS_COLLECTION).doc(lowerUsername);
@@ -243,7 +243,7 @@ export async function getPlayerStats(username, channelName = null) {
  * @param {number} [limit=10] - Number of top players to retrieve.
  * @returns {Promise<Array<{id: string, data: object}>>} Array of player objects {id: username, data: {points, wins, participation, ...}}.
  */
-export async function getLeaderboard(channelName = null, limit = 10) {
+async function getLeaderboard(channelName = null, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(STATS_COLLECTION);
     const leaderboard = [];
@@ -338,7 +338,7 @@ export async function getLeaderboard(channelName = null, limit = 10) {
  * @param {number} [limit=10] - How many recent locations to retrieve.
  * @returns {Promise<string[]>} An array of recent location names.
  */
-export async function getRecentLocations(channelName, limit = 10) {
+async function getRecentLocations(channelName, limit = 10) {
     const db = _getDb();
     const colRef = db.collection(HISTORY_COLLECTION);
     const lowerChannelName = channelName.toLowerCase();
@@ -391,7 +391,7 @@ export async function getRecentLocations(channelName, limit = 10) {
  * @param {string} channelName - Lowercase channel name.
  * @returns {Promise<{success: boolean, message: string, clearedCount: number}>}
  */
-export async function clearChannelLeaderboardData(channelName) {
+async function clearChannelLeaderboardData(channelName) {
     const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const statsCollection = db.collection(STATS_COLLECTION);
@@ -440,14 +440,7 @@ export async function clearChannelLeaderboardData(channelName) {
     }
 }
 
-/**
- * Flags the most recent game history record for a location in a channel as problematic.
- * @param {string} locationName - The primary name of the location to report.
- * @param {string} reason - The reason provided for the report.
- * @param {string} channelName - The channel where the report was made.
- * @returns {Promise<{success: boolean, message: string}>} Result object indicating success or failure.
- */
-export async function reportProblemLocation(locationName, reason, channelName) {
+async function reportProblemLocation(locationName, reason, channelName) {
     const db = _getDb();
     const historyCollection = db.collection(HISTORY_COLLECTION);
     const lowerChannel = channelName.toLowerCase();
@@ -484,3 +477,137 @@ export async function reportProblemLocation(locationName, reason, channelName) {
         return { success: false, message: `An error occurred while reporting "${primaryLocationName}".` };
     }
 }
+
+/**
+ * Gets the gameSessionId and item details of the most recently completed game session.
+ * @param {string} channelName - The channel name (without #)
+ * @returns {Promise<{gameSessionId: string | null, totalRounds: number, itemsInSession: Array<{docId: string, itemData: string, roundNumber: number}> }|null>}
+ * itemData will be the location string for Geo.
+ * Returns null if no history found or an error occurs.
+ */
+async function getLatestCompletedSessionInfo(channelName) {
+    const db = _getDb();
+    const historyCollection = db.collection(HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+
+    try {
+        logger.debug(`[GeoStorage-GCloud][${lowerChannelName}] Fetching latest game entry.`);
+        const latestEntrySnapshot = await historyCollection
+            .where('channel', '==', lowerChannelName)
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (latestEntrySnapshot.empty) {
+            logger.debug(`[GeoStorage-GCloud][${lowerChannelName}] No game history found.`);
+            return null;
+        }
+
+        const latestEntryDoc = latestEntrySnapshot.docs[0];
+        const latestEntryData = latestEntryDoc.data();
+        const gameSessionId = latestEntryData.gameSessionId || null;
+        const totalRoundsInSession = latestEntryData.totalRounds || 1;
+        const latestRoundNumber = latestEntryData.roundNumber || 1;
+
+        logger.debug(`[GeoStorage-GCloud][${lowerChannelName}] Latest entry: ID=${latestEntryDoc.id}, SessionID=${gameSessionId}, TotalRounds=${totalRoundsInSession}, Location=${latestEntryData.location}`);
+
+        // If it's a multi-round game and we have a session ID, fetch all rounds for that session
+        if (gameSessionId && totalRoundsInSession > 1) {
+            logger.debug(`[GeoStorage-GCloud][${lowerChannelName}] Multi-round session detected (ID: ${gameSessionId}). Fetching all locations for this session.`);
+            const sessionItemsQuery = historyCollection
+                .where('channel', '==', lowerChannelName)
+                .where('gameSessionId', '==', gameSessionId)
+                .orderBy('roundNumber', 'asc')
+                .limit(totalRoundsInSession + 5);
+
+            const sessionItemsSnapshot = await sessionItemsQuery.get();
+            const itemsInSession = [];
+            if (!sessionItemsSnapshot.empty) {
+                sessionItemsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.gameSessionId === gameSessionId && data.location && typeof data.roundNumber === 'number') {
+                        itemsInSession.push({
+                            docId: doc.id,
+                            itemData: data.location,
+                            roundNumber: data.roundNumber
+                        });
+                    }
+                });
+            }
+
+            if (itemsInSession.length > 0) {
+                logger.info(`[GeoStorage-GCloud][${lowerChannelName}] Found ${itemsInSession.length} locations for session ID ${gameSessionId}.`);
+                return { gameSessionId, totalRounds: totalRoundsInSession, itemsInSession };
+            } else {
+                logger.warn(`[GeoStorage-GCloud][${lowerChannelName}] Session query for ID ${gameSessionId} was empty. Falling back to latest entry.`);
+                return {
+                    gameSessionId,
+                    totalRounds: 1,
+                    itemsInSession: [{
+                        docId: latestEntryDoc.id,
+                        itemData: latestEntryData.location,
+                        roundNumber: latestRoundNumber
+                    }]
+                };
+            }
+        } else {
+            logger.debug(`[GeoStorage-GCloud][${lowerChannelName}] Single round game or no session ID on latest. Reporting only last location.`);
+            return {
+                gameSessionId,
+                totalRounds: 1,
+                itemsInSession: [{
+                    docId: latestEntryDoc.id,
+                    itemData: latestEntryData.location,
+                    roundNumber: latestRoundNumber
+                }]
+            };
+        }
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName }, `[GeoStorage-GCloud] Error fetching latest session info.`);
+        if (error.code === 5 && error.message && error.message.includes('index')) {
+            logger.warn(`[GeoStorage-GCloud] Firestore index likely missing for getLatestCompletedSessionInfo query. Please check Firestore console for index suggestions on collection '${HISTORY_COLLECTION}'. You might need composite indexes involving 'channel', 'timestamp', 'gameSessionId', and 'roundNumber'.`);
+        }
+        return null;
+    }
+}
+
+/**
+ * Flags a specific Geo-Game history document as problematic by its Firestore ID.
+ * @param {string} docId - The Firestore document ID of the game history entry.
+ * @param {string} reason - The reason for flagging.
+ * @param {string} reportedByUsername - Username of the reporter.
+ * @returns {Promise<void>}
+ * @throws {StorageError} If updating fails.
+ */
+async function flagGeoLocationByDocId(docId, reason, reportedByUsername) {
+    const db = _getDb();
+    const docRef = db.collection(HISTORY_COLLECTION).doc(docId);
+    logger.info(`[GeoStorage-GCloud] Flagging Geo-Game entry ${docId} as problematic. Reason: "${reason}", Reported by: ${reportedByUsername}`);
+    try {
+        await docRef.update({
+            flaggedAsProblem: true,
+            problemReason: reason,
+            reportedBy: reportedByUsername.toLowerCase(),
+            flaggedTimestamp: FieldValue.serverTimestamp()
+        });
+        logger.debug(`[GeoStorage-GCloud] Successfully flagged Geo-Game entry ${docId}.`);
+    } catch (error) {
+        logger.error({ err: error, docId, reason }, `[GeoStorage-GCloud] Error flagging Geo-Game entry ${docId}.`);
+        throw new StorageError(`Failed to flag Geo-Game entry ${docId}`, error);
+    }
+}
+
+export {
+    initializeStorage,
+    loadChannelConfig,
+    saveChannelConfig,
+    recordGameResult,
+    updatePlayerScore,
+    getPlayerStats,
+    getLeaderboard,
+    getRecentLocations,
+    clearChannelLeaderboardData,
+    reportProblemLocation,
+    getLatestCompletedSessionInfo,
+    flagGeoLocationByDocId
+};

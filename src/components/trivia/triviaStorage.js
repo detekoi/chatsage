@@ -141,15 +141,20 @@ async function recordGameResult(gameDetails) {
             endTime: gameDetails.endTime || new Date().toISOString(),
             durationMs: gameDetails.durationMs || 0,
             reasonEnded: gameDetails.reasonEnded || 'unknown',
-            roundNumber: gameDetails.roundNumber || 1,
-            totalRounds: gameDetails.totalRounds || 1,
             difficulty: gameDetails.difficulty || 'normal',
+            pointsAwarded: gameDetails.pointsAwarded !== undefined ? gameDetails.pointsAwarded : 0,
+            searchUsed: typeof gameDetails.searchUsed === 'boolean' ? gameDetails.searchUsed : false,
+            verified: typeof gameDetails.verified === 'boolean' ? gameDetails.verified : undefined,
+            gameSessionId: gameDetails.gameSessionId || null, // Default to null if not provided
+            roundNumber: gameDetails.roundNumber !== undefined ? gameDetails.roundNumber : 1,
+            totalRounds: gameDetails.totalRounds !== undefined ? gameDetails.totalRounds : 1,
             timestamp: FieldValue.serverTimestamp()
+
         };
         
         // Save to history collection
         await colRef.add(sanitizedDetails);
-        logger.debug(`[TriviaStorage] Recorded game result for channel ${sanitizedDetails.channel}`);
+        logger.debug(`[TriviaStorage] Recorded game result for channel ${sanitizedDetails.channel}. Session: ${sanitizedDetails.gameSessionId}, Round: ${sanitizedDetails.roundNumber}/${sanitizedDetails.totalRounds}`);
         
         // Optionally save the question to the bank if valid
         if (sanitizedDetails.question && sanitizedDetails.question !== 'Unknown question') {
@@ -539,6 +544,124 @@ async function clearChannelLeaderboardData(channelName) {
     }
 }
 
+/**
+ * Gets the gameSessionId and item details of the most recently completed game session.
+ * @param {string} channelName - The channel name (without #)
+ * @returns {Promise<{gameSessionId: string | null, totalRounds: number, itemsInSession: Array<{docId: string, itemData: {question: string, answer: string}, roundNumber: number}> }|null>}
+ * itemData will be an object { question, answer } for Trivia.
+ * Returns null if no history found or an error occurs.
+ */
+async function getLatestCompletedSessionInfo(channelName) {
+    const db = _getDb();
+    const historyCollection = db.collection(HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+
+    try {
+        logger.debug(`[TriviaStorage][${lowerChannelName}] Fetching latest game entry.`);
+        const latestEntrySnapshot = await historyCollection
+            .where('channel', '==', lowerChannelName)
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+        if (latestEntrySnapshot.empty) {
+            logger.debug(`[TriviaStorage][${lowerChannelName}] No game history found.`);
+            return null;
+        }
+
+        const latestEntryDoc = latestEntrySnapshot.docs[0];
+        const latestEntryData = latestEntryDoc.data();
+        const gameSessionId = latestEntryData.gameSessionId || null;
+        const totalRoundsInSession = latestEntryData.totalRounds || 1;
+        const latestRoundNumber = latestEntryData.roundNumber || 1;
+
+        logger.debug(`[TriviaStorage][${lowerChannelName}] Latest entry: ID=${latestEntryDoc.id}, SessionID=${gameSessionId}, TotalRounds=${totalRoundsInSession}, Question=${latestEntryData.question?.substring(0,30)}...`);
+
+        if (gameSessionId && totalRoundsInSession > 1) {
+            logger.debug(`[TriviaStorage][${lowerChannelName}] Multi-round session detected (ID: ${gameSessionId}). Fetching all questions for this session.`);
+            const sessionItemsQuery = historyCollection
+                .where('channel', '==', lowerChannelName)
+                .where('gameSessionId', '==', gameSessionId)
+                .orderBy('roundNumber', 'asc')
+                .limit(totalRoundsInSession + 5);
+
+            const sessionItemsSnapshot = await sessionItemsQuery.get();
+            const itemsInSession = [];
+            if (!sessionItemsSnapshot.empty) {
+                sessionItemsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.gameSessionId === gameSessionId && data.question && data.answer && typeof data.roundNumber === 'number') {
+                        itemsInSession.push({
+                            docId: doc.id,
+                            itemData: { question: data.question, answer: data.answer },
+                            roundNumber: data.roundNumber
+                        });
+                    }
+                });
+            }
+            
+            if (itemsInSession.length > 0) {
+                logger.info(`[TriviaStorage][${lowerChannelName}] Found ${itemsInSession.length} questions for session ID ${gameSessionId}.`);
+                return { gameSessionId, totalRounds: totalRoundsInSession, itemsInSession };
+            } else {
+                logger.warn(`[TriviaStorage][${lowerChannelName}] Session query for ID ${gameSessionId} was empty. Falling back to latest entry.`);
+                return {
+                    gameSessionId,
+                    totalRounds: 1,
+                    itemsInSession: [{
+                        docId: latestEntryDoc.id,
+                        itemData: { question: latestEntryData.question, answer: latestEntryData.answer },
+                        roundNumber: latestRoundNumber
+                    }]
+                };
+            }
+        } else {
+            logger.debug(`[TriviaStorage][${lowerChannelName}] Single round game or no session ID. Reporting only last question.`);
+            return {
+                gameSessionId,
+                totalRounds: 1,
+                itemsInSession: [{
+                    docId: latestEntryDoc.id,
+                    itemData: { question: latestEntryData.question, answer: latestEntryData.answer },
+                    roundNumber: latestRoundNumber
+                }]
+            };
+        }
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName }, `[TriviaStorage] Error fetching latest session info.`);
+        if (error.code === 5 && error.message && error.message.includes('index')) {
+            logger.warn(`[TriviaStorage] Firestore index likely missing for getLatestCompletedSessionInfo query on collection '${HISTORY_COLLECTION}'. You might need composite indexes involving 'channel', 'timestamp', 'gameSessionId', and 'roundNumber'.`);
+        }
+        return null;
+    }
+}
+
+/**
+ * Flags a specific Trivia game history document as problematic by its Firestore ID.
+ * @param {string} docId - The Firestore document ID of the game history entry.
+ * @param {string} reason - The reason for flagging.
+ * @param {string} reportedByUsername - Username of the reporter.
+ * @returns {Promise<void>}
+ * @throws {StorageError} If updating fails.
+ */
+async function flagTriviaQuestionByDocId(docId, reason, reportedByUsername) {
+    const db = _getDb();
+    const docRef = db.collection(HISTORY_COLLECTION).doc(docId);
+    logger.info(`[TriviaStorage] Flagging Trivia entry ${docId} as problematic. Reason: "${reason}", Reported by: ${reportedByUsername}`);
+    try {
+        await docRef.update({
+            flaggedAsProblem: true,
+            problemReason: reason,
+            reportedBy: reportedByUsername.toLowerCase(),
+            flaggedTimestamp: FieldValue.serverTimestamp()
+        });
+        logger.debug(`[TriviaStorage] Successfully flagged Trivia entry ${docId}.`);
+    } catch (error) {
+        logger.error({ err: error, docId, reason }, `[TriviaStorage] Error flagging Trivia entry ${docId}.`);
+        throw new StorageError(`Failed to flag Trivia entry ${docId}`, error);
+    }
+}
+
 export {
     initializeStorage,
     StorageError,
@@ -550,5 +673,7 @@ export {
     getPlayerStats,
     getLeaderboard,
     getRecentQuestions,
-    clearChannelLeaderboardData
+    clearChannelLeaderboardData,
+    getLatestCompletedSessionInfo,
+    flagTriviaQuestionByDocId
 };

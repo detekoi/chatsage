@@ -4,7 +4,7 @@ import { getGeoGameManager } from '../../geo/geoGameManager.js';
 // Need context manager to get current game for !geo game
 import { getContextManager } from '../../context/contextManager.js';
 // Need geoStorage to fetch the leaderboard
-import { getLeaderboard, reportProblemLocation } from '../../geo/geoStorage.js';
+import { getLeaderboard } from '../../geo/geoStorage.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
@@ -239,30 +239,24 @@ const geoHandler = {
 
         } else if (subCommand === 'report' || subCommand === 'flag') {
             // !geo report [reason...]
-            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; // Default if no reason provided
-
+            if (args.length < 2) {
+                enqueueMessage(channel, `@${invokingDisplayName}, Please provide a reason for reporting. Usage: !geo report <your reason>`);
+                return;
+            }
+            const reason = args.slice(1).join(' ');
+            logger.info(`[GeoCmd] ${invokingDisplayName} is initiating report for last geo session in ${channelName}. Reason: ${reason}`);
             try {
-                // Get the last played location from the manager
-                const lastLocation = geoManager.getLastPlayedLocation(channelName);
-
-                if (lastLocation) {
-                    // Call the storage function to report the problem
-                    const reportResult = await reportProblemLocation(lastLocation, reason, channelName);
-
-                    if (reportResult.success) {
-                        enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the location "${lastLocation}" (Reason: ${reason}). We'll review it.`);
-                    } else {
-                        // Inform user if reporting failed (e.g., history not found)
-                        enqueueMessage(channel, `@${invokingDisplayName}, ${reportResult.message || 'Could not process your report for the last location.'}`);
-                    }
-                } else {
-                    enqueueMessage(channel, `@${invokingDisplayName}, I don't have a record of the last location played in this channel to report.`);
+                const reportInitiationResult = await geoManager.initiateReportProcess(channelName, reason, invokingUsernameLower);
+                if (reportInitiationResult.message) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, ${reportInitiationResult.message}`);
+                } else if (!reportInitiationResult.success) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, Could not process your report request at this time.`);
                 }
             } catch (error) {
-                logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error processing !geo report command');
-                enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while trying to process your report.`);
+                logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error calling initiateReportProcess for Geo.');
+                enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while trying to initiate the report.`);
             }
-            return; // Action complete
+            return;
 
         } else if (subCommand === 'help') {
             // !geo help

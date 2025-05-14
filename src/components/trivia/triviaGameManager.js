@@ -5,7 +5,8 @@ import { generateQuestion, verifyAnswer, generateExplanation } from './triviaQue
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, 
-         updatePlayerScore, getRecentQuestions, getLeaderboard, clearChannelLeaderboardData } from './triviaStorage.js';
+         updatePlayerScore, getRecentQuestions, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId } from './triviaStorage.js';
+import crypto from 'crypto';
 
 // --- Default Configuration ---
 const DEFAULT_CONFIG = {
@@ -27,6 +28,9 @@ const RECENT_QUESTION_FETCH_LIMIT = 25; // How many recent questions to fetch fo
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
 const activeGames = new Map(); // channelName -> GameState
+
+const pendingTriviaReports = new Map();
+const PENDING_TRIVIA_REPORT_TIMEOUT_MS = 60000;
 
 /*
 GameState structure:
@@ -56,7 +60,8 @@ GameState structure:
     gameSessionScores: Map<string, {displayName: string, score: number}>,
     gameSessionExcludedQuestions: Set<string>,
     gameSessionExcludedAnswers: Set<string>,
-    streakMap: Map<string, number> // username -> consecutive correct answers
+    streakMap: Map<string, number>,
+    gameSessionId: string | null
 }
 */
 
@@ -102,6 +107,7 @@ async function _getOrCreateGameState(channelName) {
             lastMessageTimestamp: 0,
             
             // Multi-round fields
+            gameSessionId: null,
             totalRounds: 1,
             currentRound: 1,
             gameSessionScores: new Map(),
@@ -353,12 +359,13 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 endTime: new Date().toISOString(),
                 durationMs: gameState.startTime ? (Date.now() - gameState.startTime) : null,
                 reasonEnded: reason,
-                roundNumber: gameState.currentRound,
-                totalRounds: gameState.totalRounds,
                 difficulty: gameState.currentQuestion.difficulty,
                 pointsAwarded: points,
                 searchUsed: gameState.currentQuestion.searchUsed || false,
-                verified: typeof gameState.currentQuestion.verified === 'boolean' ? gameState.currentQuestion.verified : undefined
+                verified: typeof gameState.currentQuestion.verified === 'boolean' ? gameState.currentQuestion.verified : undefined,
+                gameSessionId: gameState.gameSessionId,
+                roundNumber: gameState.currentRound,
+                totalRounds: gameState.totalRounds,
             };
             
             await recordGameResult(gameDetails);
@@ -641,6 +648,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     }
     
     // Initialize game state (ensure new fields are reset)
+    gameState.gameSessionId = crypto.randomUUID();
     gameState.initiatorUsername = initiatorUsername?.toLowerCase() || null;
     gameState.topic = topic;
     gameState.state = 'selecting';
@@ -999,6 +1007,143 @@ async function initializeTriviaGameManager() {
 }
 
 /**
+ * Initiates the process for reporting a problematic Trivia question.
+ * If the last game was multi-round, it prompts the user for a round number.
+ * Otherwise, it reports the last played question directly.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string} reason - Reason for reporting.
+ * @param {string} reportedByUsername - Username of the reporter (lowercase).
+ * @returns {Promise<{success: boolean, message: string, needsFollowUp?: boolean}>}
+ */
+async function initiateReportProcess(channelName, reason, reportedByUsername) {
+    logger.info(`[TriviaGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
+    const sessionInfo = await getLatestTriviaSession(channelName);
+
+    if (!sessionInfo || !sessionInfo.itemsInSession || sessionInfo.itemsInSession.length === 0) {
+        logger.warn(`[TriviaGameManager][${channelName}] No session info found for reporting.`);
+        return { success: false, message: "I couldn't find a recently played Trivia round in this channel to report." };
+    }
+
+    const { totalRounds, itemsInSession } = sessionInfo;
+    const reportedByDisplayName = reportedByUsername;
+
+    if (totalRounds > 1 && itemsInSession.length > 0) {
+        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        // Ensure these are set BEFORE pendingTriviaReports.set
+        global.debug_lastSetTriviaPendingMap = pendingTriviaReports;
+        global.debug_lastSetTriviaReportKey = reportKey;
+        logger.debug({key: global.debug_lastSetTriviaReportKey}, "[TriviaGameManager] Set global.debug_lastSetTriviaReportKey");
+        logger.debug({
+            channel: channelName,
+            user: reportedByUsername,
+            reportKey: reportKey,
+            reason: reason,
+            itemsInSession: itemsInSession
+        }, `[TriviaGameManager] Storing pending trivia report.`);
+        pendingTriviaReports.set(reportKey, {
+            reason,
+            itemsInSession,
+            reportedByUsername,
+            expiresAt: Date.now() + PENDING_TRIVIA_REPORT_TIMEOUT_MS
+        });
+        logger.debug({
+            reportKeyStored: reportKey,
+            pendingTriviaReportsSizeAfterSet: pendingTriviaReports.size,
+            allPendingKeysAfterSet: Array.from(pendingTriviaReports.keys())
+        }, `[TriviaGameManager] initiateReport: Data set in pendingTriviaReports.`);
+        setTimeout(() => {
+            if (pendingTriviaReports.has(reportKey) && pendingTriviaReports.get(reportKey).expiresAt <= Date.now()) {
+                pendingTriviaReports.delete(reportKey);
+                logger.info(`[TriviaGameManager][${channelName}] Expired pending trivia report for ${reportKey}`);
+            }
+        }, PENDING_TRIVIA_REPORT_TIMEOUT_MS + 1000);
+        const maxRoundFound = itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
+        let promptMessage = `@${reportedByDisplayName}, the last Trivia game had ${totalRounds} round(s).`;
+        if (itemsInSession.length < totalRounds && itemsInSession.length > 0) {
+            promptMessage = `@${reportedByDisplayName}, I found ${itemsInSession.length} question(s) from the last session (expected ${totalRounds}).`;
+        }
+        promptMessage += ` Which round's question (1-${maxRoundFound}) are you reporting? Reply with just the number.`;
+        return { success: true, message: promptMessage, needsFollowUp: true };
+    } else if (itemsInSession.length === 1) {
+        const itemToReport = itemsInSession[0];
+        if (!itemToReport || !itemToReport.itemData || !itemToReport.itemData.question) {
+            logger.warn(`[TriviaGameManager][${channelName}] Single item session, but question data missing for report.`);
+            return { success: false, message: "Could not identify a specific question to report from the last game." };
+        }
+        try {
+            await flagTriviaQuestionProblem(itemToReport.itemData.question, reason, reportedByUsername);
+            logger.info(`[TriviaGameManager][${channelName}] Successfully reported single/latest question: "${itemToReport.itemData.question.substring(0, 50)}..."`);
+            return { success: true, message: `Thanks for the feedback! The question (\"${itemToReport.itemData.question.substring(0, 30)}...\") has been reported.` };
+        } catch (error) {
+            logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error reporting question directly.`);
+            return { success: false, message: "Sorry, an error occurred while trying to report the question." };
+        }
+    } else {
+        logger.warn(`[TriviaGameManager][${channelName}] No items found in session for reporting, though sessionInfo was present.`);
+        return { success: false, message: "No specific questions found in the last game session to report." };
+    }
+}
+
+/**
+ * Finalizes a report for a Trivia question based on the user-provided round number.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string} username - Username of the user responding (lowercase).
+ * @param {string} roundNumberStr - The numeric string provided by the user.
+ * @returns {Promise<{success: boolean, message: string | null}>}
+ */
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
+    const reportKey = `${channelName}_${username.toLowerCase()}`;
+    // --- VERY FOCUSED DEBUG LOG ---
+    logger.debug({
+        location: "TriviaManager.finalizeReport - Start",
+        reportKeyToLookup: reportKey,
+        currentMapSize: pendingTriviaReports.size,
+        mapHasThisKey: pendingTriviaReports.has(reportKey),
+        currentMapKeys: Array.from(pendingTriviaReports.keys())
+    }, `[TriviaGameManager] finalizeReport: Map state just before .get()`);
+    // --- END FOCUSED DEBUG LOG ---
+    const pendingData = pendingTriviaReports.get(reportKey);
+    if (!pendingData) {
+        logger.warn({
+            location: "TriviaManager.finalizeReport - No Pending Data",
+            keyLookedUp: reportKey,
+            mapHadKeyResult: pendingTriviaReports.has(reportKey)
+        }, `[TriviaGameManager] finalizeReport: No pendingData found for key.`);
+        return { success: false, message: null };
+    }
+
+    if (pendingData.expiresAt <= Date.now()) {
+        pendingTriviaReports.delete(reportKey);
+        logger.info(`[TriviaGameManager][${channelName}] Attempt to finalize an expired trivia report by ${username}.`);
+        return { success: true, message: `@${username}, your report session timed out. Please use !trivia report again.` };
+    }
+    
+    const roundNum = parseInt(roundNumberStr, 10);
+    const itemToReport = pendingData.itemsInSession.find(item => item.roundNumber === roundNum);
+
+    if (isNaN(roundNum) || !itemToReport) {
+        const maxRound = pendingData.itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
+        return { success: true, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
+    }
+
+    if (!itemToReport.docId || !itemToReport.itemData || !itemToReport.itemData.question) {
+        pendingTriviaReports.delete(reportKey);
+        logger.error(`[TriviaGameManager][${channelName}] Found item for round ${roundNum} but it's missing docId or question data.`);
+        return { success: true, message: `@${username}, I found round ${roundNum}, but there was an issue identifying the question for the report. Please try again.` };
+    }
+
+    try {
+        await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        pendingTriviaReports.delete(reportKey); 
+        logger.info(`[TriviaGameManager][${channelName}] Successfully finalized report for trivia round ${roundNum}, doc ID ${itemToReport.docId}, Question: "${itemToReport.itemData.question.substring(0, 30)}..."`);
+        return { success: true, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
+    } catch (error) {
+        logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error finalizing report for trivia round ${roundNum}.`);
+        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
+    }
+}
+
+/**
  * Gets the trivia game manager instance.
  * @returns {Object} The manager interface.
  */
@@ -1012,7 +1157,9 @@ function getTriviaGameManager() {
         configureGame,
         resetChannelConfig,
         getCurrentGameInitiator,
-        clearLeaderboard
+        clearLeaderboard,
+        initiateReportProcess,
+        finalizeReportWithRoundNumber
     };
 }
 

@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
 import { getContextManager } from '../../context/contextManager.js';
-import { getLeaderboard, getRecentQuestions } from '../../trivia/triviaStorage.js';
+import { getLeaderboard } from '../../trivia/triviaStorage.js';
 import { formatHelpMessage, formatGameSessionScoresMessage } from '../../trivia/triviaMessageFormatter.js';
 
 // Helper function to check mod/broadcaster status
@@ -193,25 +193,24 @@ const trivia = {
             return;
         } else if (subCommand === 'report' || subCommand === 'flag') {
             // !trivia report [reason...]
-            const reason = args.length > 1 ? args.slice(1).join(' ') : "reported by user"; 
-
+            if (args.length < 2) {
+                enqueueMessage(channel, `@${invokingDisplayName}, Please provide a reason for reporting. Usage: !trivia report <your reason>`);
+                return;
+            }
+            const reason = args.slice(1).join(' ');
+            logger.info(`[TriviaCmd] ${invokingDisplayName} is initiating report for last trivia session in ${channelName}. Reason: ${reason}`);
             try {
-                const recentQuestions = await getRecentQuestions(channelName, null, 1);
-                if (recentQuestions && recentQuestions.length > 0) {
-                    const question = recentQuestions[0]; // This is just the question text
-                    // Import reportProblemQuestion dynamically as it's part of triviaStorage
-                    const { reportProblemQuestion } = await import('../../trivia/triviaStorage.js');
-                    // The reportProblemQuestion function in storage expects the question text.
-                    await reportProblemQuestion(question, reason); 
-                    enqueueMessage(channel, `@${invokingDisplayName}, Thank you for reporting the question (Reason: ${reason}). We'll review it.`);
-                } else {
-                    enqueueMessage(channel, `@${invokingDisplayName}, No recent trivia questions found to report.`);
+                const reportInitiationResult = await triviaManager.initiateReportProcess(channelName, reason, invokingUsernameLower);
+                if (reportInitiationResult.message) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, ${reportInitiationResult.message}`);
+                } else if (!reportInitiationResult.success) {
+                    enqueueMessage(channel, `@${invokingDisplayName}, Could not process your report request at this time.`);
                 }
             } catch (error) {
-                logger.error({ err: error }, 'Error reporting problem question');
-                enqueueMessage(channel, `@${invokingDisplayName}, Error processing your report. Please try again later.`);
+                logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error calling initiateReportProcess for Trivia.');
+                enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while trying to initiate the report.`);
             }
-            return; 
+            return;
         } else if (subCommand === 'help') {
             // !trivia help -> Show help information
             const helpMessage = formatHelpMessage(isModOrBroadcaster);

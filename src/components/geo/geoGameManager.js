@@ -3,8 +3,9 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
-import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation } from './geoStorage.js';
+import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
 import { summarizeText } from '../llm/geminiClient.js';
+import crypto from 'crypto';
 
 // --- Game State & Config Interfaces (Conceptual) ---
 /*
@@ -61,6 +62,9 @@ interface GameState {
 
     // --- NEW FIELDS ---
     streakMap: Map<string, number>; // username -> consecutive correct guesses
+
+    // --- PHASE 1 ---
+    gameSessionId: string | null; // Add this field
 }
 */
 
@@ -86,6 +90,9 @@ const MULTI_ROUND_DELAY_MS = 5000; // Delay between rounds
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
 const activeGames = new Map(); // channelName -> GameState
+
+const pendingGeoReports = new Map();
+const PENDING_GEO_REPORT_TIMEOUT_MS = 60000;
 
 // --- Helper Functions ---
 async function _getOrCreateGameState(channelName) {
@@ -118,6 +125,7 @@ async function _getOrCreateGameState(channelName) {
             incorrectGuessReasons: [],
             lastPlayedLocation: null,
             streakMap: new Map(),
+            gameSessionId: null,
             totalRounds: 1,
             currentRound: 1,
             gameSessionScores: new Map(),
@@ -296,6 +304,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 durationMs: gameState.startTime ? (Date.now() - gameState.startTime) : null,
                 reasonEnded: reason,
                 cluesGiven: gameState.clues.length,
+                gameSessionId: gameState.gameSessionId,
                 roundNumber: gameState.currentRound,
                 totalRounds: gameState.totalRounds,
                 pointsAwarded: points,
@@ -571,6 +580,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     }
 
     // Reset core game fields before starting the FIRST round
+    gameState.gameSessionId = crypto.randomUUID(); // Generate new session ID
     gameState.initiatorUsername = initiatorUsername?.toLowerCase() || null; // Store initiator for the whole game
     gameState.mode = mode;
     // Set scope based on mode
@@ -1031,6 +1041,119 @@ function getLastPlayedLocation(channelName) {
 }
 
 /**
+ * Initiates the process for reporting a problematic Geo-Game location.
+ * If the last game was multi-round, it prompts the user for a round number.
+ * Otherwise, it reports the last played location directly.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string} reason - Reason for reporting.
+ * @param {string} reportedByUsername - Username of the reporter (lowercase).
+ * @returns {Promise<{success: boolean, message: string, needsFollowUp?: boolean}>}
+ */
+async function initiateReportProcess(channelName, reason, reportedByUsername) {
+    logger.info(`[GeoGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
+    const sessionInfo = await getLatestGeoSession(channelName);
+
+    if (!sessionInfo || !sessionInfo.itemsInSession || sessionInfo.itemsInSession.length === 0) {
+        logger.warn(`[GeoGameManager][${channelName}] No session info found for reporting.`);
+        return { success: false, message: "I couldn't find a recently played Geo-Game round in this channel to report." };
+    }
+
+    const { totalRounds, itemsInSession } = sessionInfo;
+    const reportedByDisplayName = reportedByUsername;
+
+    if (totalRounds > 1 && itemsInSession.length > 0) {
+        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        pendingGeoReports.set(reportKey, {
+            reason,
+            itemsInSession,
+            reportedByUsername,
+            expiresAt: Date.now() + PENDING_GEO_REPORT_TIMEOUT_MS
+        });
+        setTimeout(() => {
+            if (pendingGeoReports.has(reportKey) && pendingGeoReports.get(reportKey).expiresAt <= Date.now()) {
+                pendingGeoReports.delete(reportKey);
+                logger.info(`[GeoGameManager][${channelName}] Expired pending geo report for ${reportKey}`);
+            }
+        }, PENDING_GEO_REPORT_TIMEOUT_MS + 1000);
+        const maxRoundFound = itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
+        let promptMessage = `@${reportedByDisplayName}, the last Geo-Game had ${totalRounds} round(s).`;
+        if (itemsInSession.length < totalRounds && itemsInSession.length > 0) {
+            promptMessage = `@${reportedByDisplayName}, I found ${itemsInSession.length} location(s) from the last session (expected ${totalRounds}).`;
+        }
+        promptMessage += ` Which round's location (1-${maxRoundFound}) are you reporting? Reply with just the number.`;
+        return { success: true, message: promptMessage, needsFollowUp: true };
+    } else if (itemsInSession.length === 1) {
+        const itemToReport = itemsInSession[0];
+        if (!itemToReport || !itemToReport.docId) {
+            logger.warn(`[GeoGameManager][${channelName}] Single item session, but docId missing for report.`);
+            return { success: false, message: "Could not identify a specific location to report from the last game." };
+        }
+        try {
+            const directReportResult = await reportProblemLocation(itemToReport.itemData, reason, channelName, reportedByUsername);
+            logger.info(`[GeoGameManager][${channelName}] Successfully reported single/latest location: "${itemToReport.itemData}"`);
+            return { success: directReportResult.success, message: directReportResult.message };
+        } catch (error) {
+            logger.error({ err: error, channelName }, `[GeoGameManager][${channelName}] Error reporting location directly.`);
+            return { success: false, message: "Sorry, an error occurred while trying to report the location." };
+        }
+    } else {
+        logger.warn(`[GeoGameManager][${channelName}] No items found in session for reporting, though sessionInfo was present.`);
+        return { success: false, message: "No specific locations found in the last game session to report." };
+    }
+}
+
+/**
+ * Finalizes a report for a Geo-Game location based on the user-provided round number.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string} username - Username of the user responding (lowercase).
+ * @param {string} roundNumberStr - The numeric string provided by the user.
+ * @returns {Promise<{success: boolean, message: string | null}>}
+ * message is null if no pending report or if it's an internal error not messaged to user.
+ * message is a string to be sent to the user otherwise.
+ */
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
+    const reportKey = `${channelName}_${username.toLowerCase()}`;
+    const pendingData = pendingGeoReports.get(reportKey);
+
+    if (!pendingData) {
+        return { success: false, message: null }; // No pending report for this user
+    }
+
+    if (pendingData.expiresAt <= Date.now()) {
+        pendingGeoReports.delete(reportKey);
+        logger.info(`[GeoGameManager][${channelName}] Attempt to finalize an expired geo report by ${username}.`);
+        return { success: true, message: `@${username}, your report session timed out. Please use !geo report again.` };
+    }
+
+    const roundNum = parseInt(roundNumberStr, 10);
+    // Validate against the actual round numbers available in itemsInSession
+    const itemToReport = pendingData.itemsInSession.find(item => item.roundNumber === roundNum);
+
+    if (isNaN(roundNum) || !itemToReport) {
+        // Don't delete pendingData here, let them try again if they mistyped, until timeout.
+        const maxRound = pendingData.itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
+        return { success: true, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
+    }
+
+    if (!itemToReport.docId) {
+        pendingGeoReports.delete(reportKey); // Clean up
+        logger.error(`[GeoGameManager][${channelName}] Found item for round ${roundNum} but it's missing a docId.`);
+        return { success: true, message: `@${username}, I found round ${roundNum}, but there was an issue identifying it for the report. Please try again.` };
+    }
+
+    try {
+        await flagGeoLocationByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        pendingGeoReports.delete(reportKey); // Clean up successful report
+        logger.info(`[GeoGameManager][${channelName}] Successfully finalized report for geo round ${roundNum}, doc ID ${itemToReport.docId}, Location: "${itemToReport.itemData}"`);
+        return { success: true, message: `@${username}, thanks! Your report for the location from round ${roundNum} ("${String(itemToReport.itemData).substring(0, 30)}...") has been submitted.` };
+    } catch (error) {
+        // Don't delete pending data on error, user might want to know it failed to save
+        logger.error({ err: error, channelName }, `[GeoGameManager][${channelName}] Error finalizing report for geo round ${roundNum}.`);
+        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
+    }
+}
+
+/**
  * Gets the singleton GeoGame Manager instance/interface.
  */
 function getGeoGameManager() {
@@ -1044,7 +1167,9 @@ function getGeoGameManager() {
         resetChannelConfig,
         getCurrentGameInitiator,
         clearLeaderboard,
-        getLastPlayedLocation
+        getLastPlayedLocation,
+        initiateReportProcess,
+        finalizeReportWithRoundNumber
     };
 }
 
