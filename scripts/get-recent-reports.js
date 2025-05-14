@@ -7,8 +7,8 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 // --- Configuration ---
-// Let's assume reported TRIVIA questions are in the 'triviaQuestions' collection
-const TRIVIA_REPORTS_FROM_COLLECTION = 'triviaQuestions'; // Or 'triviaGameHistory' if that's where they are flagged
+// Collection names where reports are stored
+const TRIVIA_GAME_HISTORY = 'triviaGameHistory'; // Collection for flagged trivia questions
 const GEO_HISTORY_COLLECTION = 'geoGameHistory';
 const RIDDLE_HISTORY_COLLECTION = 'riddleGameHistory';
 const TOTAL_REPORTS_LIMIT = 500;
@@ -22,24 +22,38 @@ const __dirname = dirname(__filename);
 let db;
 try {
     db = new Firestore();
-    console.log('Firestore client initialized successfully.');
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'Unknown';
+    console.log(`Firestore client initialized successfully. Project ID: ${projectId}`);
 } catch (error) {
     console.error("Error initializing Firestore:", error);
     console.error("Ensure Application Default Credentials (ADC) are configured.");
+    console.error("Run 'gcloud auth application-default login' to set up credentials");
     process.exit(1);
 }
 
 async function fetchReports(collectionName, reportType, limit) {
-    console.log(`Workspaceing up to ${limit} reports from ${collectionName}...`);
+    console.log(`Fetching up to ${limit} reports from ${collectionName}...`);
     const reports = [];
     try {
+        // First, attempt a simple count query to verify collection exists and is accessible
+        try {
+            const countQuery = db.collection(collectionName).limit(1);
+            const countSnapshot = await countQuery.get();
+            console.log(`Collection ${collectionName} access test: ${countSnapshot.empty ? 'empty' : 'has documents'}`);
+        } catch (testError) {
+            console.error(`Failed basic access test for collection ${collectionName}:`, testError.message);
+            // Continue with the main query attempt regardless
+        }
+        
         const query = db.collection(collectionName)
             .where('flaggedAsProblem', '==', true)
             .orderBy('flaggedTimestamp', 'desc')
             .limit(limit);
 
+        console.log(`Executing Firestore query on collection: ${collectionName} for type: ${reportType}`);
         const snapshot = await query.get();
 
+        console.log(`Query returned ${snapshot.size} document(s) from ${collectionName}`);
         if (!snapshot.empty) {
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -58,8 +72,7 @@ async function fetchReports(collectionName, reportType, limit) {
 
                 // Populate question/answer/details based on reportType
                 if (reportType === 'trivia') {
-                    // If TRIVIA_REPORTS_FROM_COLLECTION is 'triviaQuestions', fields are likely 'question' and 'answer'
-                    // If it's 'triviaGameHistory', they might also be 'question' and 'answer', or need adjustment.
+                    // For trivia reports, use 'question' and 'answer' fields
                     reportEntry.question = data.question || 'N/A';
                     reportEntry.answer = data.answer || 'N/A';
                 } else if (reportType === 'geo') {
@@ -75,12 +88,16 @@ async function fetchReports(collectionName, reportType, limit) {
                 reports.push(reportEntry);
             });
         }
-        console.log(`Workspaceed ${reports.length} reports from ${collectionName}.`);
+        console.log(`Fetched ${reports.length} reports from ${collectionName}.`);
     } catch (error) {
         console.error(`Error fetching reports from ${collectionName}:`, error.message);
+        
         if (error.code === 5 && error.message && error.message.includes('index')) {
              console.error(`\n Firestore index required for collection '${collectionName}'.`);
              console.error(` Please create a composite index on 'flaggedAsProblem' (ascending) and 'flaggedTimestamp' (descending).\n`);
+        } else if (error.code === 7 && error.message && error.message.includes('PERMISSION_DENIED')) {
+             console.error(`\n Permission denied accessing Firestore. Check your credentials and ensure the Firestore API is enabled.`);
+             console.error(` Use 'gcloud auth application-default login' and 'gcloud config set project YOUR_PROJECT_ID'\n`);
         } else {
             console.error("Full error details:", error); // Log full error for other issues
         }
@@ -190,11 +207,38 @@ function escapeHtml(unsafe) {
          .replace(/'/g, "&#039;");
 }
 
+/**
+ * Extract project ID from a Firestore error message
+ * @param {Error} error - The error object
+ * @returns {string|null} - The extracted project ID or null if not found
+ */
+function extractProjectIdFromError(error) {
+    if (!error || !error.message) return null;
+    
+    // Try to extract from common error message format
+    const projectRegex = /project ([a-z0-9-]+)/i;
+    const match = error.message.match(projectRegex);
+    if (match && match[1]) return match[1];
+    
+    // Try to extract from errorInfoMetadata if available
+    if (error.errorInfoMetadata && error.errorInfoMetadata.consumer) {
+        const consumerMatch = error.errorInfoMetadata.consumer.match(/projects\/([a-z0-9-]+)/i);
+        if (consumerMatch && consumerMatch[1]) return consumerMatch[1];
+    }
+    
+    return null;
+}
+
 async function main() {
-    console.log(`Workspaceing combined reports (limit ${TOTAL_REPORTS_LIMIT})...`);
+    console.log(`Fetching combined reports from all game collections (limit ${TOTAL_REPORTS_LIMIT})...`);
+    console.log(`Authentication instructions:`);
+    console.log(`  1. Ensure you have gcloud CLI installed: https://cloud.google.com/sdk/docs/install`);
+    console.log(`  2. Run: gcloud auth application-default login`);
+    console.log(`  3. Run: gcloud config set project YOUR_PROJECT_ID (replace with your actual GCP project ID)`);
+    console.log(`  4. Run this script again\n`);
     try {
         const [triviaReports, geoReports, riddleReports] = await Promise.all([
-            fetchReports(TRIVIA_REPORTS_FROM_COLLECTION, 'trivia', QUERY_LIMIT_PER_COLLECTION), // Using the constant
+            fetchReports(TRIVIA_GAME_HISTORY, 'trivia', QUERY_LIMIT_PER_COLLECTION),
             fetchReports(GEO_HISTORY_COLLECTION, 'geo', QUERY_LIMIT_PER_COLLECTION),
             fetchReports(RIDDLE_HISTORY_COLLECTION, 'riddle', QUERY_LIMIT_PER_COLLECTION),
         ]);
