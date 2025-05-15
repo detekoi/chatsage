@@ -422,10 +422,16 @@ async function _handleAnswer(channelName, username, displayName, message) {
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
 
     try {
+        // Pass the original topic from gameState.topic
+        // gameState.currentRiddle.topic is the topic THE RIDDLE IS ABOUT (e.g., "Annie Wilkes")
+        // gameState.topic is the topic THE USER REQUESTED (e.g., "Kathy Bates")
+        const originalRequestedTopic = gameState.topic; // This is what the user typed for !riddle <topic>
+
         const verification = await verifyRiddleAnswer(
             gameState.currentRiddle.answer,
             userAnswer,
-            gameState.currentRiddle.question
+            gameState.currentRiddle.question,
+            originalRequestedTopic // Pass the original user-provided topic here
         );
         
         // Crucial check: Ensure game is still inProgress *after* the async verification
