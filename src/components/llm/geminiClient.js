@@ -323,35 +323,56 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: "Empty query" };
     const model = getGeminiClient();
 
-    // Updated prompt: More direct instruction to CALL the function ONLY.
-    const decisionPrompt = `${contextPrompt}\n\n**User Query:** "${userQuery}"\n\n**CRITICAL TASK:** Your ONLY task is to determine if Google Search is absolutely essential to answer the User Query accurately, considering the provided context. Call the 'decide_if_search_needed' function with your decision. Do NOT answer the user's query directly in this step.\n\n**IMPORTANT:** If the user's query is asking ONLY for the current time OR DATE in a specific location (e.g., 'what time is it?', 'what's the date today?', 'time in London'), then search is NOT needed. Set search_required: false because the getCurrentTime tool can handle this directly.\n\nSearch IS needed for other real-time information (such as weather, news, stock prices), video game guidance, complex questions, or topics outside general knowledge or the provided context. Base your decision on whether the query involves real-time data, recent events (after late 2024), specific obscure facts, or rapidly changing topics not likely covered by general knowledge or the provided context.`;
+    // MODIFIED: Make the prompt more robust for various types of "userQuery"
+    const decisionPrompt = `${contextPrompt}
 
-    logger.debug({ promptLength: decisionPrompt.length }, 'Attempting function calling decision for search');
+User's effective request/topic for consideration: "${userQuery}"
 
+**TASK:**
+Your task is to determine if external web search (Google Search) is *essential* to fulfill the user's request or generate high-quality, factually accurate content about the given topic/request, especially considering any provided context or exclusion instructions.
+
+You MUST call the 'decide_if_search_needed' function with your decision.
+Do NOT attempt to answer or fulfill the user's request directly in this step.
+
+**CRITERIA FOR REQUIRING SEARCH (set search_required: true):**
+* The request involves real-time information (e.g., news, current events after late 2023, weather, stock prices).
+* The request is about specific, obscure facts, or niche topics not commonly known.
+* The request pertains to rapidly changing information.
+* The request is for generating content (like a riddle or trivia) about a specific named entity (person, place, game, movie, book, etc.) where up-to-date or nuanced details are important for quality and accuracy.
+* The request involves video game guidance or specific game lore details.
+* The provided context (if any) is insufficient to confidently answer.
+
+**CRITERIA FOR NOT REQUIRING SEARCH (set search_required: false):**
+* The request is for general knowledge that is widely known and stable.
+* The request is about creative generation on a very broad topic where specific facts are less critical than the creative output itself (unless accuracy is stressed).
+* The request can be fully answered using the provided context or general knowledge.
+* The user's query is ONLY for the current time or date (this is handled by a different tool, so search is not needed for the decision function itself).
+
+Based on the above, make your decision.`;
+
+    logger.debug({ promptLength: decisionPrompt.length, userQueryFromCaller: userQuery }, 'Attempting function calling decision for search');
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            tools: decideSearchTool, // <-- Use specific tool
-            // Explicitly configure the function calling mode
+            tools: decideSearchTool,
             toolConfig: {
                 functionCallingConfig: {
-                    mode: "ANY", // Force the model to choose from the provided functions
+                    mode: "ANY",
                 }
             },
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
+            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if search is needed for a query." }] }
         });
 
         const response = result.response;
         const candidate = response?.candidates?.[0];
 
-        // Check if the model made a function call
         if (candidate?.content?.parts?.[0]?.functionCall) {
             const functionCall = candidate.content.parts[0].functionCall;
             if (functionCall.name === 'decide_if_search_needed') {
                 const args = functionCall.args;
-                const searchRequired = args?.search_required === true; // Explicit boolean check
+                const searchRequired = args?.search_required === true;
                 const reasoning = args?.reasoning || "No reasoning provided by model.";
-                logger.info({ search_required: searchRequired, reasoning: reasoning }, 'Function call decision received.');
+                logger.info({ search_required: searchRequired, reasoning: reasoning, called_args: args }, 'Function call decision received.');
                 return { searchNeeded: searchRequired, reasoning: reasoning };
             } else {
                 logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for search decision.");
@@ -362,7 +383,6 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
             if(textResponse) logger.debug({textResponse}, "Non-function-call response received for decision prompt.");
         }
 
-        // Default to not searching if function call failed or wasn't made correctly
         return { searchNeeded: false, reasoning: "Model did not call decision function as expected." };
 
     } catch (error) {

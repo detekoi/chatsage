@@ -99,7 +99,6 @@ async function createIrcClient(twitchConfig) {
 
         if (isHandlingAuthFailure) {
             logger.info('Disconnected event fired, but an authentication failure handling process is already active. Letting that process complete or fail on its own.');
-            // The handleAuthenticationFailure function has its own connect logic and error handling.
             return;
         }
 
@@ -135,7 +134,8 @@ async function createIrcClient(twitchConfig) {
             // usually no automatic action is needed unless it was an unexpected manual disconnect.
             // If it was part of handleShutdown, that's fine.
             // If it was part of handleAuthenticationFailure's own client.disconnect(), that's also fine.
-            logger.info('Disconnected with no specific reason or a planned disconnect. No automatic reconnect from "disconnected" handler itself.');
+            logger.warn('Disconnected with no specific reason (or empty reason). Attempting robust reconnect via handleAuthenticationFailure as a precaution.');
+            await handleAuthenticationFailure(); // <-- ADD THIS LINE TO ATTEMPT RECONNECT
         }
     });
 

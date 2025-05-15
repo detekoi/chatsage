@@ -44,8 +44,10 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     const model = getGeminiClient();
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
+    let forceSearch = false; // NEW: force search for certain topics
 
     if (topic && topic.toLowerCase() === 'game') {
+        forceSearch = true; // Always use search for game topics
         try {
             const contextManager = getContextManager();
             const cleanChannelName = channelName.startsWith('#') ? channelName.substring(1) : channelName;
@@ -53,14 +55,14 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
             if (channelState?.streamGame && channelState.streamGame !== 'N/A') {
                 actualTopic = channelState.streamGame;
                 promptDetails += ` The riddle should be about the video game: "${actualTopic}".`;
-                logger.info(`[RiddleService] Riddle topic set to current game: ${actualTopic}`);
+                logger.info(`[RiddleService] Riddle topic set to current game: ${actualTopic}. Search will be used.`);
             } else {
-                actualTopic = 'general knowledge'; 
-                logger.warn(`[RiddleService] Could not determine current game for channel ${cleanChannelName}, defaulting to general knowledge.`);
+                actualTopic = 'general video games';
+                logger.warn(`[RiddleService] Could not determine specific current game for channel ${cleanChannelName}, defaulting to "general video games". Search will be used.`);
             }
         } catch (error) {
-            logger.error({ err: error }, `[RiddleService] Error getting current game for riddle, defaulting to general. Channel: ${channelName}`);
-            actualTopic = 'general knowledge';
+            logger.error({ err: error }, `[RiddleService] Error getting current game for riddle, defaulting to "general video games". Search will be used. Channel: ${channelName}`);
+            actualTopic = 'general video games';
         }
     } else if (!topic) {
         actualTopic = 'general knowledge';
@@ -79,15 +81,25 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     }
     const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\nStrive for maximum conceptual novelty and variety from previous riddles.`;
 
-    const contextPromptForDecision = `Channel: ${channelName}\nTopic: ${actualTopic}\nDifficulty: ${difficulty}\nTask: Determine if web search is *essential* to create a factually accurate and high-quality *riddle* (not a trivia question) on this topic, considering the exclusion instructions.`;
-    const decisionQuery = `Is search needed? ${fullExclusionInstructions}`;
+    // --- Improved search decision logic ---
+    let useSearch = false;
+    if (forceSearch) {
+        useSearch = true;
+        logger.info(`[RiddleService] Forcing search for topic type: "game" (actual topic: "${actualTopic}")`);
+    } else {
+        // Construct a clear statement of the "task" for the decision model
+        const taskForSearchDecision = `Need to generate a ${difficulty} riddle about "${actualTopic}". ${fullExclusionInstructions}. Is search essential for factual accuracy and quality?`;
+        const decisionContext = `Riddle generation task details:\nChannel: ${channelName}\nTopic: ${actualTopic}\nDifficulty: ${difficulty}\nExclusion Instructions: ${fullExclusionInstructions || 'None'}`;
+        const decisionResult = await decideSearchWithFunctionCalling(decisionContext, taskForSearchDecision);
+        useSearch = decisionResult.searchNeeded;
+        logger.info(`[RiddleService] LLM decision to use search for riddle on "${actualTopic}": ${useSearch}. Reasoning: ${decisionResult.reasoning}`);
+    }
 
-    const decisionResult = await decideSearchWithFunctionCalling(contextPromptForDecision, decisionQuery);
-    const useSearch = decisionResult.searchNeeded;
-
-    logger.info(`[RiddleService] Decision to use search for riddle on "${actualTopic}": ${useSearch}. Reasoning: ${decisionResult.reasoning}`);
-
-    const generationPrompt = `You are a master riddle crafter, celebrated for your imaginative and clever puzzles. Your primary goal is to create a true RIDDLE, not a disguised trivia question.
+    // --- Begin new search/generation separation logic ---
+    let factualContextForRiddle = "";
+    let finalGenerationPrompt = "";
+    // --- Enhanced riddle prompt ---
+    const baseGenerationPrompt = `You are a master riddle crafter, celebrated for your imaginative and clever puzzles. Your primary goal is to create a true RIDDLE, not a disguised trivia question.
 ${promptDetails}
 ${fullExclusionInstructions}
 
@@ -95,32 +107,65 @@ A true RIDDLE uses metaphorical language, describes something in an unusual, ind
 ABSOLUTELY AVOID questions that simply list factual attributes and end with "What am I?" (e.g., "I am large and blue, and cover most of the Earth..." is TRIVIA).
 INSTEAD, craft clues that are puzzling and require interpretation. Example of a good riddle: "I have cities, but no houses; forests, but no trees; and water, but no fish. What am I?" (Answer: A map).
 
+**CRITICAL FOR TOPIC-BASED RIDDLES (like "${actualTopic}"):**
+* If the topic is a specific person, place, or thing (e.g., "Kathy Bates", "Eiffel Tower", "Chrono Trigger"), the riddle's answer should **NOT** be the topic itself.
+* Instead, the riddle should be about a **specific characteristic, role, achievement, event, character, item, or concept *related to* or *within* the topic.**
+* For example, if the topic is "Kathy Bates", a good riddle might be about one of her famous characters (e.g., Annie Wilkes), a notable award she won, or a significant movie she was in. The answer would then be that specific character, award, or movie title, NOT "Kathy Bates".
+* If the topic is "Chrono Trigger", the riddle could be about a character (e.g., "Magus"), a specific gameplay mechanic (e.g., "Techs"), or a key plot element (e.g., "The Day of Lavos"). The answer should be that specific element.
+* The goal is nuance and to test knowledge *about* the topic, not just recognition of the topic's name.
+
 Clues must be factually accurate or based on commonly understood metaphors related to the answer. Avoid obscure terminology or misleading statements.
 
 You MUST call the "generate_riddle_with_answer_and_keywords" function to structure your response.
 For the function call:
 - 'riddle_question': The riddle itself, artfully phrased.
-- 'riddle_answer': The single, concise, most common answer.
+- 'riddle_answer': The single, concise, most common answer to the riddle (which should be an aspect *of* the provided topic, not the topic itself if it's a specific entity).
 - 'keywords': 3-5 highly specific and discriminative keywords or short phrases capturing the *unique metaphorical elements or core puzzle components* of THIS riddle and THIS answer. They must help distinguish it from other riddles.
 - 'explanation': Briefly clarify the answer, especially any wordplay or metaphors used.
 - 'difficulty_generated': Your honest assessment (easy, normal, hard).
-- 'search_used': True if you actively used search to generate/verify THIS specific riddle.
+- 'search_used': True if you actively used search to generate/verify THIS specific riddle (this will be determined by the 'useSearch' logic before this prompt is finalized).
 
 If the topic is "general knowledge," focus on classic riddle structures or common objects/concepts described in a novel, puzzling way.
-If the topic is specific (e.g., a video game), the riddle must be about elements *within* that topic, described imaginatively.
+If the topic is specific (e.g., a video game), the riddle must be about elements *within* that topic, described imaginatively, and the answer should be that specific element.
 Deliver a riddle that is clever and not too straightforward, matching the requested difficulty.`;
+
+    if (useSearch) {
+        logger.info(`[RiddleService] Search is needed for topic: "${actualTopic}". Fetching information...`);
+        const infoGatheringPrompt = `Gather interesting and distinct facts, attributes, or unique details about the topic "${actualTopic}" that would be suitable for creating a riddle of ${difficulty} difficulty. Consider these exclusion instructions: ${fullExclusionInstructions}. Focus on information that lends itself to metaphorical or puzzling descriptions.`;
+        try {
+            const infoResult = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: infoGatheringPrompt }] }],
+                tools: [{ googleSearch: {} }],
+                systemInstruction: { parts: [{ text: "You are an information retriever." }] }
+            });
+            const infoResponse = infoResult.response;
+            const infoCandidate = infoResponse?.candidates?.[0];
+            if (infoCandidate?.content?.parts?.length > 0) {
+                factualContextForRiddle = infoCandidate.content.parts.map(part => part.text).join('\n');
+                logger.info(`[RiddleService] Successfully fetched factual context for "${actualTopic}" using search.`);
+                finalGenerationPrompt = `${baseGenerationPrompt}\n\n**Use the following factual information to help craft your riddle about an aspect of "${actualTopic}" (the answer should NOT be "${actualTopic}" itself unless the topic is very broad like "history"):**\n\u0060\u0060\u0060\n${factualContextForRiddle}\n\u0060\u0060\u0060\n\nYou MUST call the \"generate_riddle_with_answer_and_keywords\" function to structure your response. When calling the function, ensure you set 'search_used: true' because information was gathered via search.`;
+            } else {
+                logger.warn(`[RiddleService] Search was triggered for "${actualTopic}", but no factual context was returned. Proceeding without additional search context.`);
+                finalGenerationPrompt = `${baseGenerationPrompt}\n(Search was attempted for "${actualTopic}" but returned no specific pre-fetched context. Generate a riddle about an aspect of "${actualTopic}" based on your existing knowledge. The answer should NOT be "${actualTopic}" itself unless the topic is very broad. Set 'search_used: true' in the function call if your internal generation process leverages search-like capabilities.)`;
+            }
+        } catch (searchError) {
+            logger.error({ err: searchError, topic: actualTopic }, `[RiddleService] Error during information gathering search step for riddle. Proceeding without additional search context.`);
+            finalGenerationPrompt = `${baseGenerationPrompt}\n(An error occurred during an explicit search attempt for this topic. Generate the riddle based on your existing knowledge, and set 'search_used: false' in the function call.)`;
+        }
+    } else {
+        finalGenerationPrompt = `${baseGenerationPrompt}\n(Generate this riddle about an aspect of "${actualTopic}" without using external search. The answer should NOT be "${actualTopic}" itself unless the topic is very broad. Set 'search_used: false' in your function call.)`;
+    }
 
     try {
         const generationConfig = {
             temperature: 0.75, 
             maxOutputTokens: 450,
         };
-        
-        const toolsToUse = useSearch ? [generateRiddleTool, { googleSearch: {} }] : [generateRiddleTool];
 
+        // Only use the generateRiddleTool here
         const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: generationPrompt }] }],
-            tools: toolsToUse,
+            contents: [{ role: "user", parts: [{ text: finalGenerationPrompt }] }],
+            tools: [generateRiddleTool],
             toolConfig: { functionCallingConfig: { mode: "ANY" } },
             generationConfig,
             systemInstruction: { parts: [{ text: "You are an AI assistant specializing in creating clever, accurate, and varied riddles."}] }
@@ -146,14 +191,14 @@ Deliver a riddle that is clever and not too straightforward, matching the reques
                 }
             }
 
-            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0,50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search: ${args.search_used || useSearch}`);
+            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0,50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search Used (reported by tool): ${args.search_used}, Initial decision: ${useSearch}`);
             return {
                 question: args.riddle_question,
                 answer: args.riddle_answer,
                 keywords: args.keywords,
                 difficulty: args.difficulty_generated || difficulty,
                 explanation: args.explanation || "No explanation provided.",
-                searchUsed: args.search_used || useSearch, 
+                searchUsed: args.search_used, // Trust the value set by the LLM in the function call
                 topic: actualTopic
             };
         } else {
