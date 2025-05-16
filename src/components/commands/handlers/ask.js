@@ -6,8 +6,10 @@ import {
     decideSearchWithFunctionCalling,
     generateStandardResponse,
     generateSearchResponse,
-    summarizeText
+    summarizeText,
+    fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
+import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
@@ -61,12 +63,12 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
  * Handler for the !ask command using function calling to decide on search.
  */
 const askHandler = {
-    name: 'ask', // Keep name as 'ask'
-    description: 'Ask ChatSage a question. Uses search intelligently.',
+    name: 'ask',
+    description: 'Ask ChatSage a question. Uses search intelligently and can fetch time for locations.',
     usage: '!ask <your question>',
     permission: 'everyone',
     execute: async (context) => {
-        const { channel, user, args } = context; // No ircClient needed directly
+        const { channel, user, args } = context;
         const userQuery = args.join(' ').trim();
         const channelName = channel.substring(1);
         const userName = user['display-name'] || user.username;
@@ -80,32 +82,60 @@ const askHandler = {
         logger.info(`Executing !ask command for ${userName} in ${channel} with query: "${userQuery}"`);
 
         try {
-            // 1. Get Context (only needed for context prompt part)
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !ask command.`);
                 enqueueMessage(channel, `@${userName}, sorry, I couldn't retrieve the current context.`);
                 return;
             }
-            const contextPrompt = buildContextPrompt(llmContext); // Build context string
+            const contextPrompt = buildContextPrompt(llmContext);
 
-            // 2. Use Function Calling to Decide Search Need
+            // --- New Time Query Handling Logic ---
+            // Regex to roughly identify if the query is about time and mentions a location.
+            const timeQueryRegex = /\b(what(?:'s| is) the time in|time in|current time in|what time is it in)\s+([^?]+)(?:\?|$)/i;
+            const timeMatch = userQuery.match(timeQueryRegex);
+
+            if (timeMatch && timeMatch[2]) {
+                const locationForTime = timeMatch[2].replace(/[?]$/, '').trim(); // Extract location, remove trailing question mark
+                logger.info(`[${channelName}] Detected time query for location: "${locationForTime}"`);
+
+                const ianaTimezone = await fetchIanaTimezoneForLocation(locationForTime);
+
+                if (ianaTimezone) {
+                    const timeResult = getCurrentTime({ timezone: ianaTimezone });
+                    if (timeResult.currentTime) {
+                        await handleAskResponseFormatting(channel, userName, `The current time in ${locationForTime} (${ianaTimezone}) is ${timeResult.currentTime}.`, userQuery);
+                    } else {
+                        await handleAskResponseFormatting(channel, userName, timeResult.error || `Sorry, I couldn't get the time for ${locationForTime} using timezone ${ianaTimezone}.`, userQuery);
+                    }
+                } else {
+                    // Fallback to general LLM if IANA timezone not found, but inform the user.
+                    const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQuery);
+                    let responseText = null;
+                    if (decisionResult.searchNeeded) {
+                        responseText = await generateSearchResponse(contextPrompt, userQuery);
+                    } else {
+                        responseText = await generateStandardResponse(contextPrompt, userQuery);
+                    }
+                    await handleAskResponseFormatting(channel, userName, `I couldn't determine a specific timezone for "${locationForTime}", but here's what I found: ${responseText || 'No information available.'}`, userQuery);
+                }
+                return; // Handled time query
+            }
+            // --- End New Time Query Handling Logic ---
+
+            // Original !ask logic for non-time queries (or time queries that didn't match the regex)
             const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQuery);
             logger.info({ decisionResult }, `Search decision made for query: "${userQuery}"`);
 
-            // 3. Generate Response based on Decision
             let responseText = null;
             if (decisionResult.searchNeeded) {
-                 logger.info(`Proceeding with search-grounded response for query: "${userQuery}"`);
-                 // Call the generator that uses the googleSearchRetrieval tool
-                 responseText = await generateSearchResponse(contextPrompt, userQuery);
+                logger.info(`Proceeding with search-grounded response for query: "${userQuery}"`);
+                responseText = await generateSearchResponse(contextPrompt, userQuery);
             } else {
-                 logger.info(`Proceeding with standard (no search) response for query: "${userQuery}"`);
-                 // Call the generator that ONLY uses internal knowledge
-                 responseText = await generateStandardResponse(contextPrompt, userQuery);
+                logger.info(`Proceeding with standard (no search) response for query: "${userQuery}"`);
+                responseText = await generateStandardResponse(contextPrompt, userQuery);
             }
 
-            // 4. Format and Send the Response
             await handleAskResponseFormatting(channel, userName, responseText, userQuery);
 
         } catch (error) {

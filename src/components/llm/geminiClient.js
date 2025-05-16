@@ -46,19 +46,31 @@ const standardAnswerTools = {
     functionDeclarations: [
         {
             name: "getCurrentTime",
-            description: "Get the current date and time for a specified timezone. Defaults to UTC if no timezone is provided.",
+            description: "Get the current date and time for a *specific, validated IANA timezone string*. If a user mentions a location (e.g., 'San Diego'), first use 'get_iana_timezone_for_location_tool' to resolve it to an IANA timezone, then call this function with that IANA string. Defaults to UTC if no timezone is provided.",
             parameters: {
                 type: "OBJECT",
                 properties: {
                     timezone: {
                         type: "STRING",
-                        description: "Optional. The IANA timezone name (e.g., 'Europe/London', 'America/New_York', 'UTC', 'GMT')."
+                        description: "REQUIRED if a specific location's time is needed. The IANA timezone name (e.g., 'America/Los_Angeles', 'Europe/Paris')."
                     }
                 },
-                required: []
+            }
+        },
+        {
+            name: "get_iana_timezone_for_location_tool",
+            description: "Resolves a human-readable location name (city, region) into its standard IANA timezone string. This should be called BEFORE calling 'getCurrentTime' if a user specifies a location.",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    location_name: {
+                        type: "STRING",
+                        description: "The city or location name mentioned by the user (e.g., 'San Diego', 'Paris')."
+                    }
+                },
+                required: ["location_name"]
             }
         }
-        // Add other answer-generating tools here later if needed
     ]
 };
 
@@ -519,16 +531,104 @@ Translation:`;
 }
 
 /**
- * Handles Gemini function calls for tools (e.g., getCurrentTime).
- * @param {object} functionCall - The functionCall object from Gemini response.
- * @returns {object|null} The function result object or null if not handled.
+ * Uses the LLM to infer a valid IANA timezone for a given location string.
+ * This is a specialized call, not a general purpose one.
+ * @param {string} locationName - The name of the location (e.g., "San Diego", "London").
+ * @returns {Promise<string|null>} The IANA timezone string or null if not found/error.
  */
+export async function fetchIanaTimezoneForLocation(locationName) {
+  if (!locationName || typeof locationName !== 'string' || locationName.trim().length === 0) {
+    logger.error('fetchIanaTimezoneForLocation called with invalid locationName.');
+    return null;
+  }
+  const model = getGeminiClient(); // Ensure model is initialized
+
+  // Highly specific prompt for IANA timezone, including edge cases
+  const prompt = `What is the IANA timezone for "${locationName}"?
+Examples:
+- For "New York", respond: America/New_York
+- For "London", respond: Europe/London
+- For "Tokyo", respond: Asia/Tokyo
+- For "San Diego", respond: America/Los_Angeles
+- For "Los Angeles", respond: America/Los_Angeles
+- For "Paris", respond: Europe/Paris
+- For "Milan", respond: Europe/Rome
+- For "Turin", respond: Europe/Rome
+- For "Columbus, Ohio", respond: America/New_York
+- For "Indianapolis", respond: America/Indiana/Indianapolis
+- For "Phoenix", respond: America/Phoenix
+- For "St. John's", respond: America/St_Johns
+- For "Urumqi", respond: Asia/Urumqi
+- For "Kathmandu", respond: Asia/Kathmandu
+- For "Chatham Islands", respond: Pacific/Chatham
+- For "Lord Howe Island", respond: Australia/Lord_Howe
+
+Respond with ONLY the valid IANA timezone string. If the location is ambiguous, invalid, or you cannot determine a valid IANA timezone, respond with the exact string "UNKNOWN".`;
+
+  logger.debug({ locationName, prompt }, 'Attempting to fetch IANA timezone via LLM');
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      systemInstruction: { parts: [{ text: "You are an assistant that provides IANA timezone names for locations." }] },
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 50,
+      }
+    });
+    const response = result.response;
+
+    if (response.promptFeedback?.blockReason || !response.candidates?.length || !response.candidates[0].content) {
+      logger.warn({ locationName, response }, 'Gemini response for IANA timezone was blocked, empty, or invalid.');
+      return null;
+    }
+
+    const candidate = response.candidates[0];
+    if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+      logger.warn({ locationName, finishReason: candidate.finishReason }, `IANA timezone generation finished unexpectedly: ${candidate.finishReason}`);
+      return null;
+    }
+
+    const ianaTimezone = candidate.content.parts.map(part => part.text).join('').trim();
+
+    if (ianaTimezone === "UNKNOWN" || ianaTimezone.length < 3 || !ianaTimezone.includes('/')) {
+      logger.warn({ locationName, received: ianaTimezone }, 'LLM could not determine a valid IANA timezone or returned UNKNOWN.');
+      return null;
+    }
+
+    if (!/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(ianaTimezone)) {
+        logger.warn({ locationName, received: ianaTimezone }, 'Received string does not look like a valid IANA timezone format.');
+    }
+
+    logger.info({ locationName, ianaTimezone }, 'Successfully fetched IANA timezone via LLM.');
+    return ianaTimezone;
+
+  } catch (error) {
+    logger.error({ err: error, locationName }, 'Error during LLM call for IANA timezone');
+    return null;
+  }
+}
+
+// Update handleFunctionCall to support get_iana_timezone_for_location_tool
 async function handleFunctionCall(functionCall) {
     if (!functionCall || !functionCall.name) return null;
     if (functionCall.name === 'getCurrentTime') {
         const args = functionCall.args || {};
-        // getCurrentTime is synchronous, but wrap in Promise.resolve for uniformity
         return Promise.resolve(getCurrentTime(args));
+    }
+    if (functionCall.name === 'get_iana_timezone_for_location_tool') {
+        const location = functionCall.args?.location_name;
+        if (!location) {
+            logger.warn("get_iana_timezone_for_location_tool called without location_name arg.");
+            return { error: "Location name not provided for timezone lookup." };
+        }
+        logger.info({ location }, "handleFunctionCall: get_iana_timezone_for_location_tool called by LLM. Delegating to fetchIanaTimezoneForLocation.");
+        const ianaTimezone = await fetchIanaTimezoneForLocation(location);
+        if (ianaTimezone) {
+            return { iana_timezone: ianaTimezone, original_location: location };
+        } else {
+            return { error: `Could not determine IANA timezone for ${location}.` };
+        }
     }
     // Add more tool handlers here as needed
     return null;
