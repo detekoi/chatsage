@@ -14,7 +14,7 @@ ChatSage est un chatbot alimenté par l'IA, conçu pour les environnements de ch
 
 **[Ajoutez ChatSage à votre chaîne Twitch →](https://streamsage-bot.web.app)**
 
-[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md)
+[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
 
 ## Table des Matières
 

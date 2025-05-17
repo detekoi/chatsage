@@ -14,7 +14,7 @@ ChatSage ist ein KI-gestützter Chatbot, der für Twitch-Chat-Umgebungen in jede
 
 **[ChatSage zu deinem Twitch-Kanal hinzufügen →](https://streamsage-bot.web.app)**
 
-[![Lizenz](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md)
+[![Lizenz](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
 
 ## Inhaltsverzeichnis
 

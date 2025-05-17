@@ -13,7 +13,7 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 **[ChatSageをあなたのTwitchチャンネルに追加 →](https://streamsage-bot.web.app)**
 
-[![ライセンス](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md)
+[![ライセンス](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
 
 ## 目次 {#table-of-contents}
 

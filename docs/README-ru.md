@@ -13,7 +13,7 @@ ChatSage — это чат-бот на базе искусственного и�
 
 **[Добавить ChatSage на ваш канал Twitch →](https://streamsage-bot.web.app)**
 
-[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
+[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md) 
 
 ## Содержание
 
