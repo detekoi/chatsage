@@ -51,13 +51,14 @@ async function refreshIrcToken() {
     }
 
     try {
-        const response = await axios.post(TWITCH_TOKEN_URL, null, {
-            params: {
-                client_id: clientId,
-                client_secret: clientSecret,
-                grant_type: 'refresh_token',
-                refresh_token: refreshToken, // Use the retrieved refresh token
-            },
+        // Create form data parameters for request body (consistent with curl -d approach)  
+        const params = new URLSearchParams();
+        params.append('client_id', clientId);
+        params.append('client_secret', clientSecret);
+        params.append('grant_type', 'refresh_token');
+        params.append('refresh_token', refreshToken);
+        
+        const response = await axios.post(TWITCH_TOKEN_URL, params, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },

@@ -557,7 +557,7 @@ async function main() {
         await connectIrcClient(); // Use connectIrcClient
 
         // --- Setup Health Check Server ---
-        const PORT = process.env.PORT || 8080;
+        const PORT = parseInt(process.env.PORT || process.env.port || 8080, 10);
         global.healthServer = http.createServer((req, res) => {
             // Basic health check endpoint
             if (req.url === '/healthz' || req.url === '/') {
