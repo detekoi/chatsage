@@ -2,7 +2,7 @@
 import axios from 'axios';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
-import { getSecretValue } from '../../lib/secretManager.js'; // Use the secret manager helper
+import { getSecretValue, setSecretValue } from '../../lib/secretManager.js'; // Import setSecretValue
 
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 
@@ -72,12 +72,16 @@ async function refreshIrcToken() {
             logger.info('Successfully refreshed Twitch IRC Access Token.');
             currentAccessToken = newAccessToken; // Update in-memory cache
 
-            // TODO: If Twitch returns a new refresh token, update it in Secret Manager.
-            // This requires adding a 'setSecretValue' or 'addSecretVersion' function
-            // to secretManager.js and calling it here if newRefreshToken exists.
+            // If Twitch returns a new refresh token, update it in Secret Manager
             if (newRefreshToken && newRefreshToken !== refreshToken) {
-                 logger.info('Received a new refresh token from Twitch. Storing it securely is recommended.');
-                 // await setSecretValue(refreshTokenSecretName, newRefreshToken); // Example call
+                logger.info('Received a new refresh token from Twitch. Storing it in Secret Manager.');
+                
+                const success = await setSecretValue(refreshTokenSecretName, newRefreshToken);
+                if (success) {
+                    logger.info('Successfully updated refresh token in Secret Manager.');
+                } else {
+                    logger.error('Failed to update refresh token in Secret Manager. Will continue using the old token for future refreshes.');
+                }
             }
 
             isRefreshing = false;
@@ -137,4 +141,3 @@ async function getValidIrcToken() {
 }
 
 export { getValidIrcToken, refreshIrcToken }; // Export refreshIrcToken for potential manual trigger or error handling
-

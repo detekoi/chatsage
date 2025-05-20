@@ -81,9 +81,45 @@ async function getSecretValue(secretResourceName) {
     }
 }
 
-// Note: A 'setSecretValue' function might be needed if you want the bot
-// to automatically update the stored refresh token when Twitch provides a new one.
-// This involves creating a new secret version.
+/**
+ * Adds a new version to an existing secret in Google Secret Manager.
+ * @param {string} secretResourceName - The full resource name of the secret
+ * (e.g., projects/PROJECT_ID/secrets/SECRET_NAME).
+ * @param {string} secretValue - The value to store in the secret.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
+async function setSecretValue(secretResourceName, secretValue) {
+    if (!secretResourceName || !secretValue) {
+        logger.error('setSecretValue called with empty secretResourceName or secretValue.');
+        return false;
+    }
+    const smClient = getSecretManagerClient();
+    try {
+        logger.debug(`Adding new version to secret: ${secretResourceName}`);
+        
+        // Add a new version to the existing secret
+        const [version] = await smClient.addSecretVersion({
+            parent: secretResourceName,
+            payload: {
+                data: Buffer.from(secretValue, 'utf8'),
+            },
+        });
 
-export { initializeSecretManager, getSecretValue };
+        logger.info(`Successfully added new version to secret: ${secretResourceName.split('/secrets/')[1]} (version: ${version.name.split('/').pop()})`);
+        return true;
+    } catch (error) {
+        logger.error(
+            { err: { message: error.message, code: error.code }, secretName: secretResourceName },
+            `Failed to add version to secret ${secretResourceName}. Check permissions and secret existence.`
+        );
+        // Handle common errors specifically
+        if (error.code === 5) { // 5 = NOT_FOUND
+            logger.error(`Secret not found: ${secretResourceName}`);
+        } else if (error.code === 7) { // 7 = PERMISSION_DENIED
+            logger.error(`Permission denied adding version to secret: ${secretResourceName}. Check IAM roles.`);
+        }
+        return false;
+    }
+}
 
+export { initializeSecretManager, getSecretValue, setSecretValue };
