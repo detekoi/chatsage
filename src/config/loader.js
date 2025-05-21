@@ -58,7 +58,7 @@ function loadConfig() {
         // Google Gemini API
         gemini: {
             apiKey: process.env.GEMINI_API_KEY,
-            modelId: process.env.GEMINI_MODEL_ID || 'gemini-2.0-flash-001',
+            modelId: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash-preview-05-20',
         },
 
         // Application Behavior
