@@ -1,6 +1,8 @@
 // src/components/trivia/triviaGameManager.js
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { getContextManager } from '../../context/contextManager.js';
+import { translateText } from '../../llm/geminiClient.js';
 import { generateQuestion, verifyAnswer, generateExplanation } from './triviaQuestionService.js';
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
@@ -560,61 +562,66 @@ async function _startNextRound(gameState) {
  */
 async function _handleAnswer(channelName, username, displayName, message) {
     const gameState = activeGames.get(channelName);
-    
+
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentQuestion) {
         return;
     }
-    
-    // Basic throttling
+
     const now = Date.now();
     if (now - gameState.lastMessageTimestamp < 500) {
         return;
     }
     gameState.lastMessageTimestamp = now;
-    
+
     const userAnswer = message.trim();
     if (!userAnswer) return;
-    
+
     logger.debug(`[TriviaGame][${channelName}] Processing answer: "${userAnswer}" from ${username}`);
-    
-    // Store answer
-    gameState.answers.push({
-        username,
-        displayName,
-        answer: userAnswer,
-        timestamp: new Date()
-    });
-    
+    gameState.answers.push({ username, displayName, answer: userAnswer, timestamp: new Date() });
+
+    // Added: Translate user's answer if botlang is set
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    let answerToVerify = userAnswer;
+
+    if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+        logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${userAnswer}" to English for verification.`);
+        try {
+            const translatedUserAnswer = await translateText(userAnswer, 'English');
+            if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
+                answerToVerify = translatedUserAnswer.trim();
+                logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${userAnswer}" -> "${answerToVerify}"`);
+            } else {
+                logger.warn(`[TriviaGame][${channelName}] Translation of answer "${userAnswer}" to English resulted in empty string. Using original for verification.`);
+            }
+        } catch (translateError) {
+            logger.error({ err: translateError, channelName, userAnswer, botLanguage }, `[TriviaGame][${channelName}] Failed to translate user answer to English for verification. Using original.`);
+        }
+    }
+    // End of added translation logic
+
     try {
-        // Verify against the current question
         const verificationResult = await verifyAnswer(
             gameState.currentQuestion.answer,
-            userAnswer,
+            answerToVerify, // Use the potentially translated answer
             gameState.currentQuestion.alternateAnswers || [],
             gameState.currentQuestion.question
         );
-        
-        // Check state again after verification
+
         if (gameState.state !== 'inProgress') {
             logger.debug(`[TriviaGame][${channelName}] Game state changed to ${gameState.state} while verifying answer.`);
             return;
         }
-        
+
         if (verificationResult && verificationResult.is_correct) {
-            logger.info(`[TriviaGame][${channelName}] Correct answer "${userAnswer}" by ${username}. Confidence: ${verificationResult.confidence || 'N/A'}`);
-            
-            // Set winner
+            logger.info(`[TriviaGame][${channelName}] Correct answer "${userAnswer}" (verified as "${answerToVerify}") by ${username}. Confidence: ${verificationResult.confidence || 'N/A'}`);
             gameState.winner = { username, displayName };
             gameState.state = 'guessed';
-            
-            // Calculate time taken
             const timeTakenMs = Date.now() - gameState.startTime;
-            
-            // Transition to ending
             _transitionToEnding(gameState, "guessed", timeTakenMs);
         }
     } catch (error) {
-        logger.error({ err: error }, `[TriviaGame][${channelName}] Error validating answer "${userAnswer}" from ${username}.`);
+        logger.error({ err: error }, `[TriviaGame][${channelName}] Error validating answer "${userAnswer}" (verified as "${answerToVerify}") from ${username}.`);
     }
 }
 
