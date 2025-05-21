@@ -1,8 +1,8 @@
 // src/components/trivia/triviaGameManager.js
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
-import { getContextManager } from '../../context/contextManager.js';
-import { translateText } from '../../llm/geminiClient.js';
+import { getContextManager } from '../context/contextManager.js';
+import { translateText } from '../llm/geminiClient.js';
 import { generateQuestion, verifyAnswer, generateExplanation } from './triviaQuestionService.js';
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
