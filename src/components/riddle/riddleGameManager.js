@@ -1,6 +1,8 @@
 // src/components/riddle/riddleGameManager.js
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { getContextManager } from '../../context/contextManager.js';
+import { translateText } from '../../llm/geminiClient.js';
 import { generateRiddle, verifyRiddleAnswer } from './riddleService.js';
 import {
     formatRiddleStartMessage,
@@ -407,7 +409,7 @@ async function _handleAnswer(channelName, username, displayName, message) {
         return;
     }
 
-    // Simple spam prevention: 1 guess per user per 2 seconds
+    // Spam prevention
     const lastGuessTime = gameState.userLastGuessTime?.[username.toLowerCase()];
     if (lastGuessTime && (Date.now() - lastGuessTime < 2000)) {
         return;
@@ -415,26 +417,41 @@ async function _handleAnswer(channelName, username, displayName, message) {
     if (!gameState.userLastGuessTime) gameState.userLastGuessTime = {};
     gameState.userLastGuessTime[username.toLowerCase()] = Date.now();
 
-
     const userAnswer = message.trim();
     if (!userAnswer) return;
 
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
 
-    try {
-        // Pass the original topic from gameState.topic
-        // gameState.currentRiddle.topic is the topic THE RIDDLE IS ABOUT (e.g., "Annie Wilkes")
-        // gameState.topic is the topic THE USER REQUESTED (e.g., "Kathy Bates")
-        const originalRequestedTopic = gameState.topic; // This is what the user typed for !riddle <topic>
+    // Added: Translate user's answer if botlang is set
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    let answerToVerify = userAnswer;
 
+    if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+        logger.debug(`[RiddleGameManager][${channelName}] Bot language is ${botLanguage}. Translating user answer "${userAnswer}" to English for verification.`);
+        try {
+            const translatedUserAnswer = await translateText(userAnswer, 'English');
+            if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
+                answerToVerify = translatedUserAnswer.trim();
+                logger.info(`[RiddleGameManager][${channelName}] Translated user answer for verification: "${userAnswer}" -> "${answerToVerify}"`);
+            } else {
+                logger.warn(`[RiddleGameManager][${channelName}] Translation of answer "${userAnswer}" to English resulted in empty string. Using original for verification.`);
+            }
+        } catch (translateError) {
+            logger.error({ err: translateError, channelName, userAnswer, botLanguage }, `[RiddleGameManager][${channelName}] Failed to translate user answer to English for verification. Using original.`);
+        }
+    }
+    // End of added translation logic
+
+    try {
+        const originalRequestedTopic = gameState.topic;
         const verification = await verifyRiddleAnswer(
             gameState.currentRiddle.answer,
-            userAnswer,
+            answerToVerify, // Use the potentially translated answer
             gameState.currentRiddle.question,
-            originalRequestedTopic // Pass the original user-provided topic here
+            originalRequestedTopic
         );
-        
-        // Crucial check: Ensure game is still inProgress *after* the async verification
+
         if (gameState.state !== 'inProgress') {
             logger.debug(`[RiddleGameManager][${channelName}] Game state changed to ${gameState.state} while verifying answer for ${displayName}. Ignoring result.`);
             return;
@@ -443,12 +460,8 @@ async function _handleAnswer(channelName, username, displayName, message) {
         if (verification && verification.isCorrect) {
             logger.info(`[RiddleGameManager][${channelName}] Correct answer from ${displayName} for round ${gameState.currentRound}. Confidence: ${verification.confidence.toFixed(2)}`);
             gameState.winner = { username: username.toLowerCase(), displayName };
-            // gameState.state = 'answered'; // This state will be set in _transitionToEnding
             const timeTakenMs = Date.now() - gameState.startTime;
             await _transitionToEnding(gameState, "answered", timeTakenMs);
-        } else {
-            // Optional: Log incorrect guess reason
-            // logger.debug(`[RiddleGameManager][${channelName}] Incorrect guess by ${displayName}. Reason: ${verification?.reasoning}`);
         }
     } catch (error) {
         logger.error({ err: error }, `[RiddleGameManager][${channelName}] Error verifying answer from ${displayName}.`);
