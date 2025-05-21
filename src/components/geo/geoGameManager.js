@@ -1,5 +1,7 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { getContextManager } from '../context/contextManager.js';
+import { translateText } from '../llm/geminiClient.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
@@ -732,13 +734,11 @@ async function _handleGuess(channelName, username, displayName, guess) {
     const gameState = activeGames.get(channelName);
 
     if (!gameState || gameState.state !== 'inProgress') {
-        return; // Only process guesses during 'inProgress' state of a round
+        return;
     }
 
-    // Basic throttling
     const now = Date.now();
     if (now - gameState.lastMessageTimestamp < 1000) {
-        // logger.trace(`[GeoGame][${channelName}] Throttling guess from ${username}.`); // Can be noisy
         return;
     }
     gameState.lastMessageTimestamp = now;
@@ -747,30 +747,45 @@ async function _handleGuess(channelName, username, displayName, guess) {
     if (!trimmedGuess) return;
 
     logger.debug(`[GeoGame][${channelName}] Processing guess for round ${gameState.currentRound}: "${trimmedGuess}" from ${username}`);
-    // Store guess with round number for potential analysis later? For now, just push.
     gameState.guesses.push({ username, displayName, guess: trimmedGuess, timestamp: new Date(), round: gameState.currentRound });
 
-    try {
-        // Validate against the *current round's* target location
-        const validationResult = await validateGuess(gameState.targetLocation.name, trimmedGuess, gameState.targetLocation.alternateNames);
+    // Added: Translate user's guess if botlang is set
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    let guessToVerify = trimmedGuess;
 
-        // Check state again *after* validation, as it might change
+    if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+        logger.debug(`[GeoGame][${channelName}] Bot language is ${botLanguage}. Translating user guess "${trimmedGuess}" to English for verification.`);
+        try {
+            const translatedUserGuess = await translateText(trimmedGuess, 'English');
+            if (translatedUserGuess && translatedUserGuess.trim().length > 0) {
+                guessToVerify = translatedUserGuess.trim();
+                logger.info(`[GeoGame][${channelName}] Translated user guess for verification: "${trimmedGuess}" -> "${guessToVerify}"`);
+            } else {
+                logger.warn(`[GeoGame][${channelName}] Translation of guess "${trimmedGuess}" to English resulted in empty string. Using original for verification.`);
+            }
+        } catch (translateError) {
+            logger.error({ err: translateError, channelName, trimmedGuess, botLanguage }, `[GeoGame][${channelName}] Failed to translate user guess to English for verification. Using original.`);
+        }
+    }
+    // End of added translation logic
+
+    try {
+        const validationResult = await validateGuess(gameState.targetLocation.name, guessToVerify, gameState.targetLocation.alternateNames);
+
         if (gameState.state !== 'inProgress') {
             logger.debug(`[GeoGame][${channelName}] Game state changed to ${gameState.state} while validating guess from ${username} for round ${gameState.currentRound}. Ignoring result.`);
             return;
         }
 
         if (validationResult && validationResult.is_correct) {
-            logger.info(`[GeoGame][${channelName}] Correct guess for round ${gameState.currentRound} "${trimmedGuess}" by ${username}. Confidence: ${validationResult.confidence || 'N/A'}`);
-            // Set the winner *for this round*
+            logger.info(`[GeoGame][${channelName}] Correct guess for round ${gameState.currentRound} "${trimmedGuess}" (verified as "${guessToVerify}") by ${username}. Confidence: ${validationResult.confidence || 'N/A'}`);
             gameState.winner = { username, displayName };
-            gameState.state = 'guessed'; // Mark round as guessed
+            gameState.state = 'guessed';
 
-            const timeTakenMs = Date.now() - gameState.startTime; // Time taken for *this round*
-            // Transition to ending logic, passing round winner and time
-            _transitionToEnding(gameState, "guessed", timeTakenMs); // Handles next round or game over
+            const timeTakenMs = Date.now() - gameState.startTime;
+            _transitionToEnding(gameState, "guessed", timeTakenMs);
         } else {
-            // Store incorrect guess reason (for the current round)
             const reason = validationResult?.reasoning?.trim();
             if (reason) {
                  if (!gameState.incorrectGuessReasons.includes(reason)) {
@@ -780,12 +795,10 @@ async function _handleGuess(channelName, username, displayName, guess) {
                     }
                     logger.debug(`[GeoGame][${channelName}] Stored incorrect guess reason for round ${gameState.currentRound}: "${reason}".`);
                  }
-            } else {
-                 // logger.debug(`[GeoGame][${channelName}] Incorrect guess by ${username} for round ${gameState.currentRound}.`); // Can be noisy
             }
         }
     } catch (error) {
-        logger.error({ err: error }, `[GeoGame][${channelName}] Error validating guess "${trimmedGuess}" from ${username} for round ${gameState.currentRound}.`);
+        logger.error({ err: error }, `[GeoGame][${channelName}] Error validating guess "${trimmedGuess}" (verified as "${guessToVerify}") from ${username} for round ${gameState.currentRound}.`);
     }
 }
 
