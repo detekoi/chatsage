@@ -60,10 +60,10 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 4.  **ボットの参加時間**：
     -   ボット追加後、数分以内にあなたのチャンネルに参加するはずです
     -   10分経ってもボットが参加しない場合は、一度削除してから再度追加してみてください
-    -   重要: ボットが反応しない場合、「/mod StreamSageTheBot」コマンドでモデレーター権限を付与してください
+    -   重要: ボットが反応しない場合、「/mod ChatSageBot」コマンドでモデレーター権限を付与してください
 
 5.  **ユーザーインタラクション**：
-    -   視聴者はChatSageにメンションすることで対話できます：`@StreamSageTheBot hello` （Twitchが許可すれば、ユーザー名は新しい名前ChatSageを反映するように更新されます）
+    -   視聴者はChatSageにメンションすることで対話できます：`@ChatSageBot hello` （Twitchが許可すれば、ユーザー名は新しい名前ChatSageを反映するように更新されます）
     -   または、`!ask`や`!translate`などの様々な[コマンド](https://detekoi.github.io/botcommands.html)を使用します。
 
 ## 使用例 {#usage-examples}

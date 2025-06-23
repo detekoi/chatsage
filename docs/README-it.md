@@ -61,10 +61,10 @@ Gli streamer possono ora aggiungere o rimuovere facilmente ChatSage dal loro can
 4.  **Tempo di Ingresso del Bot**:
     -   Dopo aver aggiunto il bot, dovrebbe entrare nel tuo canale entro pochi minuti
     -   Se il bot non entra dopo 10 minuti, prova a rimuoverlo e aggiungerlo di nuovo
-    -   Importante: se il bot non risponde, concedigli lo stato di moderatore con il comando "/mod StreamSageTheBot"
+    -   Importante: se il bot non risponde, concedigli lo stato di moderatore con il comando "/mod ChatSageBot"
 
 5.  **Interazione Utente**:
-    -   Gli spettatori possono interagire con ChatSage menzionandolo: `@StreamSageTheBot ciao` (il nome utente verrà aggiornato per riflettere il nuovo nome, ChatSage, quando Twitch me lo consentirà)
+    -   Gli spettatori possono interagire con ChatSage menzionandolo: `@ChatSageBot ciao` (il nome utente verrà aggiornato per riflettere il nuovo nome, ChatSage, quando Twitch me lo consentirà)
     -   Oppure utilizzando vari [comandi](https://detekoi.github.io/botcommands.html) come `!ask`, `!translate`, ecc.
 
 ## Esempi di Utilizzo
