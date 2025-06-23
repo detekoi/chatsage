@@ -17,6 +17,8 @@ env:
   NODE_ENV: 'production'
   PINO_PRETTY_LOGGING: 'false'
   TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME: 'projects/907887386166/secrets/TWITCH_BOT_REFRESH_TOKEN/versions/latest'
+  LAZY_CONNECT: '1'
+  PUBLIC_URL: 'https://chatsage-907887386166.us-central1.run.app'
 
 jobs:
   deploy:
@@ -54,8 +56,10 @@ jobs:
             --source . \
             --region ${{ env.GCP_REGION }} \
             --project ${{ env.GCP_PROJECT_ID }} \
-            --set-env-vars="^:^NODE_ENV=${{ env.NODE_ENV }}:LOG_LEVEL=${{ env.LOG_LEVEL }}:PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }}:TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }}:TWITCH_CHANNELS_SECRET_NAME=${{ env.TWITCH_CHANNELS_SECRET_NAME }}:GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }}:STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }}:TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }}" \
-            --set-secrets="GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest,TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest,TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest" \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --set-env-vars="^:^NODE_ENV=${{ env.NODE_ENV }}:LOG_LEVEL=${{ env.LOG_LEVEL }}:PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }}:TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }}:TWITCH_CHANNELS_SECRET_NAME=${{ env.TWITCH_CHANNELS_SECRET_NAME }}:GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }}:STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }}:TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }}:LAZY_CONNECT=$LAZY_CONNECT:PUBLIC_URL=$PUBLIC_URL" \
+            --set-secrets="GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest,TWITCH_CLIENT_ID=STREAM_SAGE_TWITCH_CLIENT_ID:latest,TWITCH_CLIENT_SECRET=STREAM_SAGE_TWITCH_CLIENT_SECRET:latest,TWITCH_EVENTSUB_SECRET=twitch-eventsub-secret:latest" \
             --labels="managed-by=github-actions,commit-sha=${{ github.sha }}" \
             --format="get(status.url)")
           echo "url=$DEPLOYED_URL" >> $GITHUB_OUTPUT

@@ -21,5 +21,10 @@
       "logLevel": "info",
       "prettyLog": true,
       "nodeEnv": "development"
+    },
+    "eventsub": {
+      "comment": "EventSub configuration for zero-instance Cloud Run deployment",
+      "secret": "your_eventsub_webhook_secret",
+      "publicUrl": "https://your-service-name.a.run.app"
     }
   }
