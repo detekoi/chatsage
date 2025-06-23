@@ -1,6 +1,7 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
 import http from 'http';
+import { eventSubHandler } from './components/twitch/eventsub.js';
 // Import Secret Manager initializer and getSecretValue
 import { initializeSecretManager, getSecretValue } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
@@ -552,13 +553,25 @@ async function main() {
         ircClient.on('logon', () => { logger.info('Successfully logged on to Twitch IRC.'); });
         ircClient.on('join', (channel, username, self) => { if (self) { logger.info(`Joined channel: ${channel}`); } });
 
-        // --- Connect IRC Client ---
-        logger.info('Connecting Twitch IRC Client...');
-        await connectIrcClient(); // Use connectIrcClient
+        // --- Connect IRC Client (conditionally based on LAZY_CONNECT) ---
+        if (!process.env.LAZY_CONNECT) {
+            logger.info('Connecting Twitch IRC Client...');
+            await connectIrcClient(); // Use connectIrcClient
+        } else {
+            logger.info('LAZY_CONNECT enabled - IRC client will connect on first EventSub trigger');
+        }
 
-        // --- Setup Health Check Server ---
+        // --- Setup Health Check Server with EventSub endpoint ---
         const PORT = parseInt(process.env.PORT || process.env.port || 8080, 10);
-        global.healthServer = http.createServer((req, res) => {
+        global.healthServer = http.createServer(async (req, res) => {
+            // EventSub webhook endpoint
+            if (req.method === 'POST' && req.url === '/twitch/event') {
+                const chunks = [];
+                req.on('data', c => chunks.push(c));
+                req.on('end', () => eventSubHandler(req, res, Buffer.concat(chunks)));
+                return;
+            }
+
             // Basic health check endpoint
             if (req.url === '/healthz' || req.url === '/') {
                 res.writeHead(200, { 'Content-Type': 'text/plain' });
