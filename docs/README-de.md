@@ -61,10 +61,10 @@ Streamer können ChatSage jetzt einfach über die Weboberfläche zu ihrem Kanal 
 4.  **Beitrittszeit des Bots**:
     -   Nach dem Hinzufügen des Bots sollte er deinem Kanal innerhalb weniger Minuten beitreten
     -   Wenn der Bot nach 10 Minuten nicht beitritt, versuche bitte, ihn zu entfernen und erneut hinzuzufügen
-    -   Wichtig: Falls der Bot nicht reagiert, gib ihm Mod-Status mit dem Befehl „/mod StreamSageTheBot“
+    -   Wichtig: Falls der Bot nicht reagiert, gib ihm Mod-Status mit dem Befehl „/mod ChatSageBot“
 
 5.  **Benutzerinteraktion**:
-    -   Zuschauer können mit ChatSage interagieren, indem sie ihn erwähnen: `@StreamSageTheBot hallo` (der Benutzername wird aktualisiert, um den neuen Namen, ChatSage, widerzuspiegeln, sobald Twitch es mir erlaubt)
+    -   Zuschauer können mit ChatSage interagieren, indem sie ihn erwähnen: `@ChatSageBot hallo` (der Benutzername wird aktualisiert, um den neuen Namen, ChatSage, widerzuspiegeln, sobald Twitch es mir erlaubt)
     -   Oder durch die Verwendung verschiedener [Befehle](https://detekoi.github.io/botcommands.html) wie `!ask`, `!translate`, etc.
 
 ## Anwendungsbeispiele
