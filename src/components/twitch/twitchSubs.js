@@ -205,14 +205,17 @@ export async function subscribeAllManagedChannels() {
  * @returns {Promise<Object>} The result of the subscription request.
  */
 export async function subscribeStreamOffline(broadcasterUserId) {
-    const { publicUrl, eventSubSecret } = config.twitch;
+    // Get the helixClient instance which has the config attached
+    const helixClient = getHelixClient(); 
+    // Now correctly get the config from the client instance
+    const { publicUrl, eventSubSecret } = helixClient.config.twitch; 
+
     if (!publicUrl || !eventSubSecret) {
         logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
         return { success: false, error: 'Missing configuration' };
     }
 
     try {
-        const helixClient = getHelixClient();
         const body = {
             type: 'stream.offline',
             version: '1',
@@ -224,6 +227,7 @@ export async function subscribeStreamOffline(broadcasterUserId) {
             }
         };
 
+        // Use the existing helixClient instance to make the request
         await helixClient.post('/eventsub/subscriptions', body);
         logger.info({ broadcasterUserId }, 'Successfully subscribed to stream.offline');
         return { success: true };
