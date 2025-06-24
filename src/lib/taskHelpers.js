@@ -46,7 +46,7 @@ export async function createKeepAliveTask() {
                 scheduleTime: { 
                     seconds: Math.floor(Date.now() / 1000) + 30 // first ping in 30 seconds
                 },
-                dispatchDeadline: { seconds: 10 }
+                dispatchDeadline: { seconds: 30 }
             }
         });
 
@@ -100,7 +100,7 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
                 scheduleTime: { 
                     seconds: Math.floor(Date.now() / 1000) + delaySeconds
                 },
-                dispatchDeadline: { seconds: 10 }
+                dispatchDeadline: { seconds: 30 }
             }
         });
 
