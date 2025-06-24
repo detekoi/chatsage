@@ -1,7 +1,7 @@
 // src/components/twitch/eventsub.js
 import crypto from 'crypto';
 import axios from 'axios'; // Use axios instead of node-fetch
-import { config } from '../../config/index.js';
+import config from '../../config/index.js';
 import { logger } from '../../lib/logger.js';
 import { getIrcClient } from './ircClient.js';
 import { getChannelManager } from './channelManager.js';

@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { getHelixClient } from './helixClient.js';
 import logger from '../../lib/logger.js';
 import { getAppAccessToken } from './auth.js';
 import config from '../../config/index.js';
