@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { getHelixClient } from './helixClient.js';
+import { getHelixClient, getUsersByLogin } from './helixClient.js';
 import logger from '../../lib/logger.js';
 import { getAppAccessToken } from './auth.js';
 import config from '../../config/index.js';
@@ -10,19 +10,14 @@ import config from '../../config/index.js';
  * @returns {Promise<Object>} The subscription response or error
  */
 export async function subscribeStreamOnline(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+
     try {
-        const token = await getAppAccessToken();
-        const publicUrl = process.env.PUBLIC_URL;
-        const eventSubSecret = process.env.TWITCH_EVENTSUB_SECRET;
-
-        if (!publicUrl) {
-            throw new Error('PUBLIC_URL environment variable is not set');
-        }
-
-        if (!eventSubSecret) {
-            throw new Error('TWITCH_EVENTSUB_SECRET environment variable is not set');
-        }
-
+        const helixClient = getHelixClient();
         const body = {
             type: 'stream.online',
             version: '1',
@@ -33,41 +28,11 @@ export async function subscribeStreamOnline(broadcasterUserId) {
                 secret: eventSubSecret
             }
         };
-
-        logger.info({ broadcasterUserId, callback: body.transport.callback }, 'Creating stream.online EventSub subscription');
-
-        const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-            method: 'POST',
-            headers: {
-                'Client-ID': config.twitch.clientId,
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-
-        const responseData = await response.json();
-
-        if (!response.ok) {
-            logger.error({ 
-                status: response.status, 
-                statusText: response.statusText,
-                error: responseData,
-                broadcasterUserId 
-            }, 'EventSub subscription failed');
-            return { success: false, error: responseData };
-        }
-
-        logger.info({ 
-            subscriptionId: responseData.data[0].id,
-            broadcasterUserId,
-            status: responseData.data[0].status 
-        }, 'EventSub subscription created successfully');
-
-        return { success: true, data: responseData.data[0] };
-
+        const response = await helixClient.post('/eventsub/subscriptions', body);
+        logger.info({ subscriptionId: response.data.data[0].id, broadcasterUserId, status: response.data.data[0].status }, 'EventSub subscription created successfully');
+        return { success: true, data: response.data.data[0] };
     } catch (error) {
-        logger.error({ err: error, broadcasterUserId }, 'Error creating EventSub subscription');
+        logger.error({ err: error, broadcasterUserId }, 'Error subscribing to stream.online');
         return { success: false, error: error.message };
     }
 }
@@ -144,14 +109,12 @@ export async function deleteEventSubSubscription(subscriptionId) {
 }
 
 /**
- * Subscribe to stream.online events for all active managed channels
+ * Subscribe to stream.online and stream.offline events for all active managed channels
  * @returns {Promise<Object>} Summary of subscription results
  */
 export async function subscribeAllManagedChannels() {
     try {
         const { getActiveManagedChannels } = await import('./channelManager.js');
-        const { getUsersByLogin } = await import('./helixClient.js');
-        
         const activeChannels = await getActiveManagedChannels();
         const results = { successful: [], failed: [], total: activeChannels.length };
 
@@ -171,7 +134,6 @@ export async function subscribeAllManagedChannels() {
                      continue;
                 }
 
-                // Subscribe to both stream.online and stream.offline events
                 const onlineSubResult = await subscribeStreamOnline(userResponse.id);
                 const offlineSubResult = await subscribeStreamOffline(userResponse.id);
 
@@ -185,15 +147,8 @@ export async function subscribeAllManagedChannels() {
                 results.failed.push({ channel: channelName, error: error.message });
             }
         }
-
-        logger.info({ 
-            successful: results.successful.length,
-            failed: results.failed.length,
-            total: results.total 
-        }, 'EventSub subscription batch completed');
-
+        logger.info({ successful: results.successful.length, failed: results.failed.length, total: results.total }, 'EventSub subscription batch completed');
         return results;
-
     } catch (error) {
         logger.error({ err: error }, 'Error in subscribeAllManagedChannels');
         return { successful: [], failed: [], total: 0, error: error.message };
@@ -206,17 +161,14 @@ export async function subscribeAllManagedChannels() {
  * @returns {Promise<Object>} The result of the subscription request.
  */
 export async function subscribeStreamOffline(broadcasterUserId) {
-    // Get the helixClient instance which has the config attached
-    const helixClient = getHelixClient(); 
-    // Now correctly get the config from the client instance
-    const { publicUrl, eventSubSecret } = helixClient.config.twitch; 
-
+    const { publicUrl, eventSubSecret } = config.twitch;
     if (!publicUrl || !eventSubSecret) {
         logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
         return { success: false, error: 'Missing configuration' };
     }
 
     try {
+        const helixClient = getHelixClient();
         const body = {
             type: 'stream.offline',
             version: '1',
@@ -227,8 +179,6 @@ export async function subscribeStreamOffline(broadcasterUserId) {
                 secret: eventSubSecret
             }
         };
-
-        // Use the existing helixClient instance to make the request
         await helixClient.post('/eventsub/subscriptions', body);
         logger.info({ broadcasterUserId }, 'Successfully subscribed to stream.offline');
         return { success: true };
