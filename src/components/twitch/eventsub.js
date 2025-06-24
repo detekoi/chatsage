@@ -1,19 +1,32 @@
 import crypto from 'crypto';
 import axios from 'axios';
 import config from '../../config/index.js';
-import logger from '../../lib/logger.js'; // <-- This was the line causing the crash
+import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
 import { getChannelManager } from './channelManager.js';
+import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 
-const activePings = new Map();
+// Track active streams and keep-alive tasks
+const activeStreams = new Set();
+let keepAliveTaskName = null;
 
-async function selfPing() {
-    if (!config.twitch.publicUrl) return;
-    try {
-        await axios.get(config.twitch.publicUrl, { timeout: 5000 });
-        logger.info('Self-ping successful, keeping instance alive.');
-    } catch (error) {
-        logger.error({ err: error.message }, 'Error during self-ping.');
+/**
+ * Handles the keep-alive ping from Cloud Tasks
+ * This is called by the /keep-alive endpoint
+ */
+export async function handleKeepAlivePing() {
+    if (activeStreams.size > 0) {
+        logger.debug(`Keep-alive ping processed. ${activeStreams.size} stream(s) active: ${Array.from(activeStreams).join(', ')}`);
+        
+        // Schedule the next ping
+        try {
+            keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
+        } catch (error) {
+            logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
+        }
+    } else {
+        logger.info('Keep-alive ping received but no streams are active. Allowing instance to scale down.');
+        keepAliveTaskName = null;
     }
 }
 
@@ -74,10 +87,17 @@ export async function eventSubHandler(req, res, rawBody) {
             const { broadcaster_user_id, broadcaster_user_name } = event;
             logger.info(`📡 ${broadcaster_user_name} just went live — ensuring bot is active...`);
 
-            if (!activePings.has(broadcaster_user_id)) {
-                logger.info({ channel: broadcaster_user_name }, 'Starting self-ping to keep instance alive.');
-                const intervalId = setInterval(selfPing, 10 * 60 * 1000); 
-                activePings.set(broadcaster_user_id, intervalId);
+            // Add to active streams
+            activeStreams.add(broadcaster_user_name);
+
+            // Start keep-alive pings if this is the first stream to go live
+            if (activeStreams.size === 1 && !keepAliveTaskName) {
+                try {
+                    logger.info('First stream went live - starting keep-alive pings');
+                    keepAliveTaskName = await scheduleNextKeepAlivePing(240); // Start in 4 minutes
+                } catch (error) {
+                    logger.error({ err: error }, 'Failed to start keep-alive pings');
+                }
             }
 
             if (process.env.LAZY_CONNECT) {
@@ -103,10 +123,18 @@ export async function eventSubHandler(req, res, rawBody) {
             const { broadcaster_user_id, broadcaster_user_name } = event;
             logger.info(`🔌 ${broadcaster_user_name} went offline.`);
 
-            if (activePings.has(broadcaster_user_id)) {
-                logger.info({ channel: broadcaster_user_name }, 'Stopping self-ping for offline channel.');
-                clearInterval(activePings.get(broadcaster_user_id));
-                activePings.delete(broadcaster_user_id);
+            // Remove from active streams
+            activeStreams.delete(broadcaster_user_name);
+
+            // If no more streams are active, stop keep-alive pings
+            if (activeStreams.size === 0 && keepAliveTaskName) {
+                try {
+                    logger.info('Last stream went offline - stopping keep-alive pings to allow scale-down');
+                    await deleteTask(keepAliveTaskName);
+                    keepAliveTaskName = null;
+                } catch (error) {
+                    logger.error({ err: error }, 'Failed to stop keep-alive pings');
+                }
             }
             
             const channelManager = getChannelManager();

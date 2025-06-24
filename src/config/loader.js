@@ -35,8 +35,9 @@ function loadConfig() {
             `Missing required environment variables: ${missingEnvVars.join(', ')}`
         );
     }
-    // Ensure at least one channel source is provided
-    if (!('TWITCH_CHANNELS' in process.env) && !('TWITCH_CHANNELS_SECRET_NAME' in process.env)) {
+    // Ensure at least one channel source is provided (unless using lazy connect with Firestore)
+    const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+    if (!isLazyConnect && !('TWITCH_CHANNELS' in process.env) && !('TWITCH_CHANNELS_SECRET_NAME' in process.env)) {
         throw new Error('Missing channel configuration: set TWITCH_CHANNELS or TWITCH_CHANNELS_SECRET_NAME');
     }
 

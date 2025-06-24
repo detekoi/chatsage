@@ -31,6 +31,9 @@ Add these to your Cloud Run environment:
 TWITCH_EVENTSUB_SECRET=your_webhook_secret_here
 PUBLIC_URL=https://your-service.a.run.app
 LAZY_CONNECT=1
+# GOOGLE_CLOUD_PROJECT is automatically set by Cloud Run
+GCP_REGION=us-central1
+KEEP_ALIVE_QUEUE=self-ping
 ```
 
 ## Deployment Configuration
@@ -51,18 +54,28 @@ gcloud run deploy chatsage \
 
 ## Setup Process
 
-1. **Deploy with EventSub support:**
+1. **Create Cloud Tasks queue:**
    ```bash
-   # Update environment variables and deploy
-   gcloud run deploy chatsage --set-env-vars LAZY_CONNECT=1,TWITCH_EVENTSUB_SECRET=your_secret,PUBLIC_URL=https://your-service.a.run.app
+   npm run setup:cloud-tasks
    ```
 
-2. **Subscribe channels to EventSub:**
+2. **Deploy with EventSub support:**
+   ```bash
+   # Update environment variables and deploy
+   gcloud run deploy chatsage \
+     --set-env-vars LAZY_CONNECT=1 \
+     --set-env-vars TWITCH_EVENTSUB_SECRET=your_secret \
+     --set-env-vars PUBLIC_URL=https://your-service.a.run.app \
+     --set-env-vars GCP_REGION=us-central1 \
+     --set-env-vars KEEP_ALIVE_QUEUE=self-ping
+   ```
+
+3. **Subscribe channels to EventSub:**
    ```bash
    node scripts/manage-eventsub.js subscribe-all
    ```
 
-3. **Verify subscriptions:**
+4. **Verify subscriptions:**
    ```bash
    node scripts/manage-eventsub.js list
    ```
@@ -74,7 +87,9 @@ gcloud run deploy chatsage \
 3. **Cold Start:** Cloud Run starts new instance (1-2 seconds)
 4. **Bot Activation:** EventSub handler creates IRC client and connects
 5. **Channel Join:** Bot joins the live streamer's channel
-6. **Ready:** Bot is active and responds to chat (~3-4 seconds total)
+6. **Keep-Alive:** Dynamic Cloud Tasks pings every 4 minutes to keep instance alive
+7. **Stream Goes Offline:** Bot stops keep-alive pings and allows scale-down
+8. **Ready:** Bot is active while streams are live, scales to 0 when all offline
 
 ## Testing
 
