@@ -30,7 +30,6 @@
         "axios": "^1.7.2",
         "dotenv": "^16.4.5",
         "firebase-admin": "^13.3.0",
-        "node-fetch": "^3.3.2",
         "open": "^10.1.2",
         "pino": "^9.3.2",
         "pino-pretty": "^11.2.1",
