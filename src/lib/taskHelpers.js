@@ -70,9 +70,25 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
     const queue = process.env.KEEP_ALIVE_QUEUE || 'self-ping';
     const url = process.env.PUBLIC_URL + '/keep-alive';
     
+    // Validate all required parameters
+    if (!project) {
+        throw new Error('GOOGLE_CLOUD_PROJECT environment variable is required');
+    }
+    if (!process.env.PUBLIC_URL) {
+        throw new Error('PUBLIC_URL environment variable is required');
+    }
+    if (!project || !location || !queue) {
+        throw new Error(`Missing required parameters for queue path: project=${project}, location=${location}, queue=${queue}`);
+    }
+    
     try {
+        logger.debug({ project, location, queue, url, delaySeconds }, 'Scheduling next keep-alive ping');
+        
+        const queuePath = client.queuePath(project, location, queue);
+        logger.debug({ queuePath }, 'Generated queue path for next ping');
+        
         const [task] = await client.createTask({
-            parent: client.queuePath(project, location, queue),
+            parent: queuePath,
             task: {
                 httpRequest: {
                     httpMethod: 'POST',
