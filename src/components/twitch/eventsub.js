@@ -23,12 +23,28 @@ function verifySignature(req, rawBody) {
     const timestamp = req.headers['twitch-eventsub-message-timestamp'];
     const signature = req.headers['twitch-eventsub-message-signature'];
     
-    if (!secret || !messageId || !timestamp || !signature) return false;
+    // --- Start of new debug logging ---
+    logger.info('--- Verifying EventSub Signature ---');
+    logger.info({ messageId }, 'Received Message ID');
+    logger.info({ timestamp }, 'Received Timestamp');
+    logger.info({ signature }, 'Received Signature');
+    logger.info('Received Raw Body: ' + rawBody.toString('utf8'));
+    // --- End of new debug logging ---
+    
+    if (!secret || !messageId || !timestamp || !signature) {
+        logger.warn('A required header or secret for signature verification is missing.');
+        return false;
+    }
 
     const hmacMessage = messageId + timestamp + rawBody;
     const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(hmacMessage).digest('hex');
     
-    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+    logger.info({ hmac }, 'Generated HMAC');
+
+    const isSignatureValid = crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+    logger.info({ isSignatureValid }, 'Signature verification result');
+    
+    return isSignatureValid;
 }
 
 export async function eventSubHandler(req, res, rawBody) {
