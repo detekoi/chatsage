@@ -1,91 +1,59 @@
+// src/components/twitch/eventsub.js
 import crypto from 'crypto';
-import logger from '../../lib/logger.js';
-import { connectIrcClient, getIrcClient, createIrcClient } from './ircClient.js';
-import { getActiveManagedChannels } from './channelManager.js';
-import config from '../../config/index.js';
+import fetch from 'node-fetch'; // Import the new dependency
+import { config } from '../../config/index.js';
+import { logger } from '../../lib/logger.js';
+import { getIrcClient } from './ircClient.js';
+import { getChannelManager } from './channelManager.js';
 
-const secret = process.env.TWITCH_EVENTSUB_SECRET;
-let ircReady = false;
+const activePings = new Map();
 
 /**
- * Compute Twitch-style HMAC and compare with header.
- * Spec: sig = "sha256=" + HMAC_SHA256(secret, messageId + timestamp + rawBody)
+ * Pings the bot's own public URL to prevent Cloud Run from scaling to zero during a live stream.
  */
-function verifySignature(req, raw) {
-    if (!secret) {
-        logger.error('TWITCH_EVENTSUB_SECRET not configured');
-        return false;
-    }
-
-    const id = req.headers['twitch-eventsub-message-id'];
-    const ts = req.headers['twitch-eventsub-message-timestamp'];
-    const sig = req.headers['twitch-eventsub-message-signature'];
-
-    if (!id || !ts || !sig) {
-        logger.warn('Missing required EventSub headers');
-        return false;
-    }
-
-    const hmac = crypto
-        .createHmac('sha256', secret)
-        .update(id + ts + raw)
-        .digest('hex');
-    const expected = `sha256=${hmac}`;
-
+async function selfPing() {
+    if (!config.twitch.publicUrl) return;
     try {
-        return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+        const response = await fetch(config.twitch.publicUrl);
+        if (response.ok) {
+            logger.info('Self-ping successful, keeping instance alive.');
+        } else {
+            logger.warn({ status: response.status }, 'Self-ping failed.');
+        }
     } catch (error) {
-        logger.error({ err: error }, 'Error verifying EventSub signature');
+        logger.error({ err: error }, 'Error during self-ping.');
+    }
+}
+
+
+/**
+ * Verifies the HMAC signature of the Twitch webhook.
+ * @param {object} req - The HTTP request object.
+ * @param {Buffer} rawBody - The raw request body.
+ * @returns {boolean} True if the signature is valid, false otherwise.
+ */
+function verifySignature(req, rawBody) {
+    const secret = config.twitch.eventSubSecret;
+    const messageId = req.headers['twitch-eventsub-message-id'];
+    const timestamp = req.headers['twitch-eventsub-message-timestamp'];
+    const signature = req.headers['twitch-eventsub-message-signature'];
+    
+    if (!secret || !messageId || !timestamp || !signature) {
         return false;
     }
+
+    const hmacMessage = messageId + timestamp + rawBody;
+    const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(hmacMessage).digest('hex');
+    
+    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
 }
 
-async function ensureIrc() {
-    if (!ircReady) {
-        logger.info('EventSub triggered - initializing IRC connection...');
-        try {
-            // Check if IRC client exists, if not create it first (for lazy connect mode)
-            let client;
-            try {
-                client = getIrcClient();
-            } catch (error) {
-                logger.info('IRC client not created yet, creating it now...');
-                client = await createIrcClient(config.twitch);
-            }
-            
-            // Now connect if not already connected
-            if (client.readyState() !== 'OPEN') {
-                await connectIrcClient();
-            }
-            
-            ircReady = true;
-            logger.info('IRC connection established from EventSub trigger');
-        } catch (error) {
-            logger.error({ err: error }, 'Failed to establish IRC connection from EventSub');
-            throw error;
-        }
-    }
-}
-
-async function joinChannel(channelName) {
-    try {
-        const client = getIrcClient();
-        const channelWithHash = channelName.startsWith('#') ? channelName : `#${channelName}`;
-        
-        // Check if already in channel
-        const currentChannels = client.getChannels();
-        if (currentChannels.includes(channelWithHash)) {
-            logger.debug(`Already in channel ${channelWithHash}`);
-            return;
-        }
-
-        await client.join(channelWithHash);
-        logger.info(`Joined channel ${channelWithHash} via EventSub trigger`);
-    } catch (error) {
-        logger.error({ err: error, channel: channelName }, 'Failed to join channel via EventSub');
-    }
-}
-
+/**
+ * Handles incoming EventSub webhook notifications from Twitch.
+ * @param {object} req - The HTTP request object.
+ * @param {object} res - The HTTP response object.
+ * @param {Buffer} rawBody - The raw request body.
+ */
 export async function eventSubHandler(req, res, rawBody) {
     if (!verifySignature(req, rawBody)) {
         logger.warn('⚠️ Bad EventSub signature');
@@ -93,39 +61,56 @@ export async function eventSubHandler(req, res, rawBody) {
         return;
     }
 
-    const msgType = req.headers['twitch-eventsub-message-type'];
-    const payload = JSON.parse(rawBody.toString());
+    const notification = JSON.parse(rawBody);
+    const messageType = req.headers['twitch-eventsub-message-type'];
 
-    logger.debug({ msgType, payload }, 'EventSub message received');
-
-    // 1. Initial webhook handshake
-    if (msgType === 'webhook_callback_verification') {
-        logger.info('EventSub webhook verification received');
-        res.writeHead(200, { 'Content-Type': 'text/plain' })
-           .end(payload.challenge);
-        return;
-    }
-
-    // 2. Handle revocations
-    if (msgType === 'revocation') {
-        logger.warn({ payload }, 'EventSub subscription revoked');
+    // Respond immediately to Twitch to acknowledge receipt
+    if (messageType !== 'webhook_callback_verification') {
         res.writeHead(200).end();
+    }
+
+    if (messageType === 'webhook_callback_verification') {
+        logger.info('✅ EventSub webhook verification challenge received');
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(notification.challenge);
+        logger.info('✅ EventSub webhook verification challenge responded');
         return;
     }
 
-    // 3. Stream went live — spin up the bot
-    if (msgType === 'notification' && payload.subscription.type === 'stream.online') {
-        const login = payload.event.broadcaster_user_login;
-        logger.info(`📡 ${login} just went live — ensuring bot is active...`);
+    if (messageType === 'notification') {
+        const { subscription, event } = notification;
 
-        try {
-            await ensureIrc();
-            await joinChannel(login);
-        } catch (error) {
-            logger.error({ err: error, channel: login }, 'Error handling stream.online event');
+        if (subscription.type === 'stream.online') {
+            const { broadcaster_user_id, broadcaster_user_name } = event;
+            logger.info(`📡 ${broadcaster_user_name} just went live — ensuring bot is active...`);
+
+            if (!activePings.has(broadcaster_user_id)) {
+                logger.info({ channel: broadcaster_user_name }, 'Starting self-ping to keep instance alive.');
+                // Ping every 10 minutes
+                const intervalId = setInterval(selfPing, 10 * 60 * 1000); 
+                activePings.set(broadcaster_user_id, intervalId);
+            }
+
+            if (config.twitch.lazyConnect) {
+                const ircClient = getIrcClient();
+                await ircClient.connectToChannel(broadcaster_user_name);
+            }
+        }
+
+        if (subscription.type === 'stream.offline') {
+            const { broadcaster_user_id, broadcaster_user_name } = event;
+            logger.info(`🔌 ${broadcaster_user_name} went offline.`);
+
+            if (activePings.has(broadcaster_user_id)) {
+                logger.info({ channel: broadcaster_user_name }, 'Stopping self-ping for offline channel.');
+                clearInterval(activePings.get(broadcaster_user_id));
+                activePings.delete(broadcaster_user_id);
+            }
+            // Optional: You could add logic here to part from the channel if desired
+            const channelManager = getChannelManager();
+            if (channelManager) {
+                await channelManager.partChannel(broadcaster_user_name);
+            }
         }
     }
-
-    // 4. Always ACK within a couple seconds so Twitch doesn't retry
-    res.writeHead(200).end();
 }

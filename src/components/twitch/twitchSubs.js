@@ -149,40 +149,35 @@ export async function deleteEventSubSubscription(subscriptionId) {
 export async function subscribeAllManagedChannels() {
     try {
         const { getActiveManagedChannels } = await import('./channelManager.js');
-        const { getHelixClient } = await import('./helixClient.js');
+        const { getUsersByLogin } = await import('./helixClient.js');
         
         const activeChannels = await getActiveManagedChannels();
-        const helixClient = getHelixClient();
-        
-        const results = {
-            successful: [],
-            failed: [],
-            total: activeChannels.length
-        };
+        const results = { successful: [], failed: [], total: activeChannels.length };
 
         for (const channelName of activeChannels) {
             try {
-                // Get user ID for the channel
-                const userResponse = await helixClient.getUserByName(channelName);
-                if (!userResponse || !userResponse.id) {
+                const userResponseArray = await getUsersByLogin([channelName]);
+                if (!userResponseArray || userResponseArray.length === 0) {
                     logger.warn({ channelName }, 'Could not find user ID for channel');
                     results.failed.push({ channel: channelName, error: 'User not found' });
                     continue;
                 }
+                const userResponse = userResponseArray[0];
 
-                const subscriptionResult = await subscribeStreamOnline(userResponse.id);
-                if (subscriptionResult.success) {
-                    results.successful.push({ 
-                        channel: channelName, 
-                        userId: userResponse.id,
-                        subscriptionId: subscriptionResult.data.id 
-                    });
+                if (!userResponse || !userResponse.id) {
+                     logger.warn({ channelName, userResponse }, 'User object found but missing ID.');
+                     results.failed.push({ channel: channelName, error: 'User object missing ID' });
+                     continue;
+                }
+
+                // Subscribe to both stream.online and stream.offline events
+                const onlineSubResult = await subscribeStreamOnline(userResponse.id);
+                const offlineSubResult = await subscribeStreamOffline(userResponse.id);
+
+                if (onlineSubResult.success && offlineSubResult.success) {
+                    results.successful.push({ channel: channelName, userId: userResponse.id });
                 } else {
-                    results.failed.push({ 
-                        channel: channelName, 
-                        userId: userResponse.id,
-                        error: subscriptionResult.error 
-                    });
+                    results.failed.push({ channel: channelName, error: 'Failed to create one or more subscriptions' });
                 }
             } catch (error) {
                 logger.error({ err: error, channelName }, 'Error subscribing channel to EventSub');
@@ -201,5 +196,39 @@ export async function subscribeAllManagedChannels() {
     } catch (error) {
         logger.error({ err: error }, 'Error in subscribeAllManagedChannels');
         return { successful: [], failed: [], total: 0, error: error.message };
+    }
+}
+
+/**
+ * Creates an EventSub subscription for a stream going offline.
+ * @param {string} broadcasterUserId - The ID of the broadcaster.
+ * @returns {Promise<Object>} The result of the subscription request.
+ */
+export async function subscribeStreamOffline(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+
+    try {
+        const helixClient = getHelixClient();
+        const body = {
+            type: 'stream.offline',
+            version: '1',
+            condition: { broadcaster_user_id: broadcasterUserId },
+            transport: {
+                method: 'webhook',
+                callback: `${publicUrl}/twitch/event`,
+                secret: eventSubSecret
+            }
+        };
+
+        await helixClient.post('/eventsub/subscriptions', body);
+        logger.info({ broadcasterUserId }, 'Successfully subscribed to stream.offline');
+        return { success: true };
+    } catch (error) {
+        logger.error({ err: error, broadcasterUserId }, 'Error subscribing to stream.offline');
+        return { success: false, error: error.message };
     }
 }
