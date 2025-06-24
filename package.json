@@ -10,7 +10,8 @@
         "lint": "eslint .",
         "test": "jest",
         "test:channel-manager": "node scripts/test-channel-manager.js",
-        "migrate:channels": "node scripts/migrate-channels-to-firestore.js"
+        "migrate:channels": "node scripts/migrate-channels-to-firestore.js",
+        "setup:cloud-tasks": "node scripts/setup-cloud-tasks.js"
     },
     "keywords": [
         "twitch",
@@ -26,6 +27,7 @@
         "22": "^0.0.0",
         "@google-cloud/firestore": "^7.11.0",
         "@google-cloud/secret-manager": "^6.0.1",
+        "@google-cloud/tasks": "^5.5.2",
         "@google/generative-ai": "latest",
         "axios": "^1.7.2",
         "dotenv": "^16.4.5",

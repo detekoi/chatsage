@@ -1,7 +1,7 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
 import http from 'http';
-import { eventSubHandler } from './components/twitch/eventsub.js';
+import { eventSubHandler, handleKeepAlivePing } from './components/twitch/eventsub.js';
 // Import Secret Manager initializer and getSecretValue
 import { initializeSecretManager, getSecretValue } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
@@ -572,14 +572,30 @@ async function main() {
                 return;
             }
 
-            // Basic health check endpoint
-            if (req.url === '/healthz' || req.url === '/') {
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
-                res.end('OK');
-            } else {
-                res.writeHead(404);
-                res.end();
+            // Keep-alive ping endpoint (called by Cloud Tasks)
+            if (req.method === 'POST' && req.url === '/keep-alive') {
+                try {
+                    await handleKeepAlivePing();
+                    res.writeHead(200, { 'Content-Type': 'text/plain' });
+                    res.end('OK');
+                } catch (error) {
+                    logger.error({ err: error }, 'Error handling keep-alive ping');
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Internal Server Error');
+                }
+                return;
             }
+
+            // Health check endpoints (respond quickly)
+            if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {
+                res.writeHead(200, { 'Content-Type': 'text/plain' });
+                res.end(req.method === 'HEAD' ? undefined : 'OK');
+                return;
+            }
+
+            // 404 for everything else
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('Not Found');
         });
 
         global.healthServer.listen(PORT, () => {
