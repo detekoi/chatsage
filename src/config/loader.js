@@ -83,10 +83,14 @@ function loadConfig() {
          config.app.streamInfoFetchIntervalMs = 120 * 1000;
     }
 
-    // REMOVED - Channel validation since channels will be populated later
-    // if (config.twitch.channels.length === 0) {
-    //     throw new Error('TWITCH_CHANNELS environment variable is empty or invalid.');
-    // }
+    const eventSubSecretSource = process.env.TWITCH_EVENTSUB_SECRET;
+    if (eventSubSecretSource && fs.existsSync(eventSubSecretSource)) {
+        // In Cloud Run, the env var is a path to a file. Read it.
+        config.twitch.eventSubSecret = fs.readFileSync(eventSubSecretSource, 'utf8').trim();
+    } else {
+        // For local dev, the env var holds the secret value directly.
+        config.twitch.eventSubSecret = eventSubSecretSource;
+    }
 
 
     return config;
