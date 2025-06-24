@@ -60,6 +60,10 @@ export async function initializeChannelManager() {
     }
 }
 
+export function getChannelManager() {
+    return instance;
+}
+
 /**
  * Gets the Firestore database instance.
  * @returns {Firestore} Firestore DB instance.
