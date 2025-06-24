@@ -1,46 +1,29 @@
-// src/components/twitch/eventsub.js
 import crypto from 'crypto';
-import axios from 'axios'; // Use axios instead of node-fetch
+import axios from 'axios';
 import config from '../../config/index.js';
-import { logger } from '../../lib/logger.js';
+import logger from '../../lib/logger.js'; // <-- This was the line causing the crash
 import { getIrcClient } from './ircClient.js';
 import { getChannelManager } from './channelManager.js';
 
 const activePings = new Map();
 
-/**
- * Pings the bot's own public URL to prevent Cloud Run from scaling to zero during a live stream.
- */
 async function selfPing() {
     if (!config.twitch.publicUrl) return;
     try {
-        const response = await axios.get(config.twitch.publicUrl, { timeout: 5000 });
-        if (response.status === 200) {
-            logger.info('Self-ping successful, keeping instance alive.');
-        } else {
-            logger.warn({ status: response.status }, 'Self-ping failed.');
-        }
+        await axios.get(config.twitch.publicUrl, { timeout: 5000 });
+        logger.info('Self-ping successful, keeping instance alive.');
     } catch (error) {
         logger.error({ err: error.message }, 'Error during self-ping.');
     }
 }
 
-
-/**
- * Verifies the HMAC signature of the Twitch webhook.
- * @param {object} req - The HTTP request object.
- * @param {Buffer} rawBody - The raw request body.
- * @returns {boolean} True if the signature is valid, false otherwise.
- */
 function verifySignature(req, rawBody) {
     const secret = config.twitch.eventSubSecret;
     const messageId = req.headers['twitch-eventsub-message-id'];
     const timestamp = req.headers['twitch-eventsub-message-timestamp'];
     const signature = req.headers['twitch-eventsub-message-signature'];
     
-    if (!secret || !messageId || !timestamp || !signature) {
-        return false;
-    }
+    if (!secret || !messageId || !timestamp || !signature) return false;
 
     const hmacMessage = messageId + timestamp + rawBody;
     const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(hmacMessage).digest('hex');
@@ -48,12 +31,6 @@ function verifySignature(req, rawBody) {
     return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
 }
 
-/**
- * Handles incoming EventSub webhook notifications from Twitch.
- * @param {object} req - The HTTP request object.
- * @param {object} res - The HTTP response object.
- * @param {Buffer} rawBody - The raw request body.
- */
 export async function eventSubHandler(req, res, rawBody) {
     if (!verifySignature(req, rawBody)) {
         logger.warn('⚠️ Bad EventSub signature');
@@ -64,10 +41,7 @@ export async function eventSubHandler(req, res, rawBody) {
     const notification = JSON.parse(rawBody);
     const messageType = req.headers['twitch-eventsub-message-type'];
 
-    // Respond immediately to Twitch to acknowledge receipt
-    if (messageType !== 'webhook_callback_verification') {
-        res.writeHead(200).end();
-    }
+    if (messageType !== 'webhook_callback_verification') res.writeHead(200).end();
 
     if (messageType === 'webhook_callback_verification') {
         logger.info('✅ EventSub webhook verification challenge received');
@@ -86,7 +60,6 @@ export async function eventSubHandler(req, res, rawBody) {
 
             if (!activePings.has(broadcaster_user_id)) {
                 logger.info({ channel: broadcaster_user_name }, 'Starting self-ping to keep instance alive.');
-                // Ping every 10 minutes (600,000 milliseconds)
                 const intervalId = setInterval(selfPing, 10 * 60 * 1000); 
                 activePings.set(broadcaster_user_id, intervalId);
             }
@@ -106,7 +79,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 clearInterval(activePings.get(broadcaster_user_id));
                 activePings.delete(broadcaster_user_id);
             }
-
+            
             const channelManager = getChannelManager();
             if (channelManager) {
                 await channelManager.partChannel(broadcaster_user_name);
