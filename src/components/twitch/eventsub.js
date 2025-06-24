@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js'; // <-- This was the line causing the crash
-import { getIrcClient } from './ircClient.js';
+import { getIrcClient, connectIrcClient } from './ircClient.js';
 import { getChannelManager } from './channelManager.js';
 
 const activePings = new Map();
@@ -81,8 +81,21 @@ export async function eventSubHandler(req, res, rawBody) {
             }
 
             if (config.twitch.lazyConnect) {
-                const ircClient = getIrcClient();
-                await ircClient.connectToChannel(broadcaster_user_name);
+                try {
+                    logger.info('EventSub triggered - initializing IRC connection...');
+                    
+                    // First connect to IRC if not already connected
+                    await connectIrcClient();
+                    logger.info('IRC connection established from EventSub trigger');
+                    
+                    // Then join the channel
+                    const ircClient = getIrcClient();
+                    await ircClient.join(`#${broadcaster_user_name}`);
+                    logger.info(`Joined channel #${broadcaster_user_name} via EventSub trigger`);
+                } catch (error) {
+                    logger.error({ err: error }, 'Failed to establish IRC connection or join channel from EventSub');
+                    throw error;
+                }
             }
         }
 
