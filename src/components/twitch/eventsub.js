@@ -1,6 +1,6 @@
 // src/components/twitch/eventsub.js
 import crypto from 'crypto';
-import fetch from 'node-fetch'; // Import the new dependency
+import axios from 'axios'; // Use axios instead of node-fetch
 import { config } from '../../config/index.js';
 import { logger } from '../../lib/logger.js';
 import { getIrcClient } from './ircClient.js';
@@ -14,14 +14,14 @@ const activePings = new Map();
 async function selfPing() {
     if (!config.twitch.publicUrl) return;
     try {
-        const response = await fetch(config.twitch.publicUrl);
-        if (response.ok) {
+        const response = await axios.get(config.twitch.publicUrl, { timeout: 5000 });
+        if (response.status === 200) {
             logger.info('Self-ping successful, keeping instance alive.');
         } else {
             logger.warn({ status: response.status }, 'Self-ping failed.');
         }
     } catch (error) {
-        logger.error({ err: error }, 'Error during self-ping.');
+        logger.error({ err: error.message }, 'Error during self-ping.');
     }
 }
 
@@ -86,7 +86,7 @@ export async function eventSubHandler(req, res, rawBody) {
 
             if (!activePings.has(broadcaster_user_id)) {
                 logger.info({ channel: broadcaster_user_name }, 'Starting self-ping to keep instance alive.');
-                // Ping every 10 minutes
+                // Ping every 10 minutes (600,000 milliseconds)
                 const intervalId = setInterval(selfPing, 10 * 60 * 1000); 
                 activePings.set(broadcaster_user_id, intervalId);
             }
@@ -106,7 +106,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 clearInterval(activePings.get(broadcaster_user_id));
                 activePings.delete(broadcaster_user_id);
             }
-            // Optional: You could add logic here to part from the channel if desired
+
             const channelManager = getChannelManager();
             if (channelManager) {
                 await channelManager.partChannel(broadcaster_user_name);
