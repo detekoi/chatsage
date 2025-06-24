@@ -80,7 +80,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 activePings.set(broadcaster_user_id, intervalId);
             }
 
-            if (config.twitch.lazyConnect) {
+            if (process.env.LAZY_CONNECT) {
                 try {
                     logger.info('EventSub triggered - initializing IRC connection...');
                     
