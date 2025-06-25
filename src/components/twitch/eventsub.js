@@ -5,6 +5,7 @@ import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
 import { getChannelManager } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
+import { getContextManager } from '../context/contextManager.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -15,18 +16,40 @@ let keepAliveTaskName = null;
  * This is called by the /keep-alive endpoint
  */
 export async function handleKeepAlivePing() {
-    if (activeStreams.size > 0) {
-        logger.debug(`Keep-alive ping processed. ${activeStreams.size} stream(s) active: ${Array.from(activeStreams).join(', ')}`);
-        
-        // Schedule the next ping
+    const contextManager = getContextManager();
+    // Create a copy to iterate over, allowing safe modification of the original set
+    const streamsToCheck = [...activeStreams]; 
+    let trulyActiveCount = 0;
+
+    for (const channelName of streamsToCheck) {
+        const context = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-check');
+        // A stream is considered active if the poller has recently set its game context.
+        if (context && context.streamGame && context.streamGame !== 'N/A') {
+            trulyActiveCount++;
+        } else {
+            // If context shows offline, prune it from the active set
+            logger.warn(`[EventSub] Pruning stale stream '${channelName}' from active list during keep-alive check. Poller likely marked it as offline.`);
+            activeStreams.delete(channelName);
+        }
+    }
+
+    if (trulyActiveCount > 0) {
+        logger.debug(`Keep-alive ping processed. ${trulyActiveCount} stream(s) confirmed active. Scheduling next ping.`);
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
         } catch (error) {
             logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
         }
     } else {
-        logger.info('Keep-alive ping received but no streams are active. Allowing instance to scale down.');
-        keepAliveTaskName = null;
+        logger.info('Keep-alive ping received, and no streams are confirmed active by the poller. Allowing instance to scale down.');
+        if (keepAliveTaskName) {
+            try {
+                await deleteTask(keepAliveTaskName);
+                keepAliveTaskName = null;
+            } catch (error) {
+                logger.error({ err: error }, 'Failed to delete final keep-alive task.');
+            }
+        }
     }
 }
 
