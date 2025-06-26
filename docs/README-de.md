@@ -195,6 +195,45 @@ Die [Weboberfläche](https://github.com/detekoi/chatsage-web-ui) verwendet einen
 
 Dieser Ansatz bietet eine bessere Sicherheit durch die Verwendung von Standard-OAuth-Flows und offiziellen Tools und vermeidet die direkte Speicherung sensibler Token in Konfigurationsdateien, wo immer möglich. Er gibt Streamern auch die Kontrolle über das Hinzufügen oder Entfernen des Bots aus ihrem Kanal.
 
+<details>
+<summary><strong>EventSub für Serverless-Bereitstellung (Optional)</strong></summary>
+
+Dieses Projekt unterstützt Twitchs EventSub, um eine "Scale-to-Zero"-Serverless-Bereitstellung auf Plattformen wie Google Cloud Run zu ermöglichen. Dies reduziert die Hosting-Kosten erheblich, da der Bot nur ausgeführt wird, wenn ein Kanal, in dem er sich befindet, live ist.
+
+### Übersicht
+
+- **Wie es funktioniert:** Der Bot abonniert `stream.online`-Events. Wenn ein Streamer live geht, sendet Twitch einen Webhook, der die Bot-Instanz startet. Der Bot bleibt aktiv, während der Stream live ist, und skaliert auf null Instanzen herunter, wenn alle überwachten Kanäle offline sind.
+- **Kostenersparnis:** Dieses Modell kann die Hosting-Kosten erheblich senken.
+
+### Erforderliche Umgebungsvariablen
+
+Um diese Funktion zu aktivieren, setzen Sie Folgendes in Ihrer Bereitstellungsumgebung (z. B. Cloud Run):
+
+- `LAZY_CONNECT=1`: Aktiviert die Scale-to-Zero-Logik.
+- `TWITCH_EVENTSUB_SECRET`: Eine lange, zufällige, geheime Zeichenfolge, die Sie erstellen, um Ihren Webhook-Endpunkt zu sichern.
+- `PUBLIC_URL`: Die öffentlich zugängliche URL Ihres bereitgestellten Dienstes (z. B. `https://your-service.a.run.app`).
+
+### Einrichtungsprozess
+
+1.  **Mit EventSub-Variablen bereitstellen:**
+    Stellen Sie Ihre Anwendung mit den oben aufgeführten Umgebungsvariablen bereit. Für Cloud Run würden Sie `gcloud run deploy` mit `--set-env-vars` verwenden.
+
+2.  **Events abonnieren:**
+    Führen Sie nach der Bereitstellung das Verwaltungsskript aus, um alle Ihre Kanäle für das `stream.online`-Event zu abonnieren.
+    ```bash
+    node scripts/manage-eventsub.js subscribe-all
+    ```
+
+3.  **Abonnements überprüfen:**
+    Sie können überprüfen, ob die Abonnements erfolgreich erstellt wurden:
+    ```bash
+    node scripts/manage-eventsub.js list
+    ```
+
+Diese Einrichtung stellt sicher, dass der Bot nur dann Ressourcen verbraucht, wenn er in einem Live-Kanal aktiv sein muss.
+
+</details>
+
 ## Docker
 
 Eine `Dockerfile` wird zum Erstellen eines Container-Images der Anwendung bereitgestellt.

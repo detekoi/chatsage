@@ -195,6 +195,45 @@ L'[interface web](https://github.com/detekoi/chatsage-web-ui) utilise un flux OA
 
 Cette approche offre une meilleure sécurité en utilisant des flux OAuth standard et des outils officiels, et en ne stockant pas les jetons sensibles directement dans les fichiers de configuration lorsque cela est possible. Elle donne également aux streamers le contrôle sur l'ajout ou la suppression du bot de leur chaîne.
 
+<details>
+<summary><strong>EventSub pour Déploiement Serverless (Optionnel)</strong></summary>
+
+Ce projet prend en charge EventSub de Twitch pour permettre un déploiement "scale-to-zero" sans serveur sur des plateformes comme Google Cloud Run. Cela réduit considérablement les coûts d'hébergement en n'exécutant le bot que lorsqu'un canal dans lequel il se trouve est en direct.
+
+### Aperçu
+
+- **Comment ça marche :** Le bot s'abonne aux événements `stream.online`. Lorsqu'un streamer commence sa diffusion, Twitch envoie un webhook qui démarre l'instance du bot. Le bot reste actif pendant la diffusion et se met à l'échelle jusqu'à zéro instance lorsque toutes les chaînes surveillées sont hors ligne.
+- **Économies de coûts :** Ce modèle peut réduire considérablement les coûts d'hébergement.
+
+### Variables d'Environnement Requises
+
+Pour activer cette fonctionnalité, définissez les éléments suivants dans votre environnement de déploiement (par exemple, Cloud Run) :
+
+- `LAZY_CONNECT=1` : Active la logique de mise à l'échelle à zéro.
+- `TWITCH_EVENTSUB_SECRET` : Une chaîne secrète longue et aléatoire que vous créez pour sécuriser votre point de terminaison de webhook.
+- `PUBLIC_URL` : L'URL publique de votre service déployé (par exemple, `https://your-service.a.run.app`).
+
+### Processus de Configuration
+
+1.  **Déployer avec les Variables EventSub :**
+    Déployez votre application avec les variables d'environnement listées ci-dessus. Pour Cloud Run, vous utiliseriez `gcloud run deploy` avec `--set-env-vars`.
+
+2.  **S'abonner aux Événements :**
+    Après le déploiement, exécutez le script de gestion pour abonner toutes vos chaînes à l'événement `stream.online`.
+    ```bash
+    node scripts/manage-eventsub.js subscribe-all
+    ```
+
+3.  **Vérifier les Abonnements :**
+    Vous pouvez vérifier que les abonnements ont été créés avec succès :
+    ```bash
+    node scripts/manage-eventsub.js list
+    ```
+
+Cette configuration garantit que le bot ne consomme des ressources que lorsqu'il doit être actif dans un canal en direct.
+
+</details>
+
 ## Docker
 
 Un `Dockerfile` est fourni pour construire une image conteneur de l'application.

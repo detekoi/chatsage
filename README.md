@@ -195,6 +195,45 @@ The [web interface](https://github.com/detekoi/chatsage-web-ui) uses a separate 
 
 This approach provides better security by using standard OAuth flows and official tools, and not storing sensitive tokens directly in configuration files where possible. It also gives streamers control over adding or removing the bot from their channel.
 
+<details>
+<summary><strong>EventSub for Serverless Deployment (Optional)</strong></summary>
+
+This project supports Twitch's EventSub to enable a "scale-to-zero" serverless deployment on platforms like Google Cloud Run. This significantly reduces hosting costs by only running the bot when a channel it's in is live.
+
+### Overview
+
+- **How it works:** The bot subscribes to `stream.online` events. When a streamer goes live, Twitch sends a webhook that starts the bot instance. The bot stays active while the stream is live and scales down to zero instances when all monitored channels are offline.
+- **Cost Savings:** This model can reduce hosting costs significantly.
+
+### Required Environment Variables
+
+To enable this feature, set the following in your deployment environment (e.g., Cloud Run):
+
+- `LAZY_CONNECT=1`: Enables the scale-to-zero logic.
+- `TWITCH_EVENTSUB_SECRET`: A long, random, secret string you create to secure your webhook endpoint.
+- `PUBLIC_URL`: The public-facing URL of your deployed service (e.g., `https://your-service.a.run.app`).
+
+### Setup Process
+
+1.  **Deploy with EventSub Variables:**
+    Deploy your application with the environment variables listed above. For Cloud Run, you would use `gcloud run deploy` with `--set-env-vars`.
+
+2.  **Subscribe to Events:**
+    After deploying, run the management script to subscribe all your channels to the `stream.online` event.
+    ```bash
+    node scripts/manage-eventsub.js subscribe-all
+    ```
+
+3.  **Verify Subscriptions:**
+    You can check that the subscriptions were created successfully:
+    ```bash
+    node scripts/manage-eventsub.js list
+    ```
+
+This setup ensures the bot only consumes resources when it needs to be active in a live channel.
+
+</details>
+
 ## Docker
 
 A `Dockerfile` is provided for building a container image of the application.

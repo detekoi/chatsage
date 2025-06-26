@@ -194,6 +194,45 @@ A [interface web](https://github.com/detekoi/chatsage-web-ui) usa um fluxo OAuth
 
 Esta abordagem fornece melhor segurança usando fluxos OAuth padrão e ferramentas oficiais, e não armazenando tokens sensíveis diretamente em arquivos de configuração quando possível. Também dá aos streamers controle sobre adicionar ou remover o bot de seu canal.
 
+<details>
+<summary><strong>EventSub para Implantação sem Servidor (Opcional)</strong></summary>
+
+Este projeto suporta o EventSub da Twitch para permitir uma implantação "scale-to-zero" sem servidor em plataformas como o Google Cloud Run. Isso reduz significativamente os custos de hospedagem, executando o bot apenas quando um canal em que ele está está ao vivo.
+
+### Visão geral
+
+- **Como funciona:** O bot se inscreve nos eventos `stream.online`. Quando um streamer entra ao vivo, a Twitch envia um webhook que inicia a instância do bot. O bot permanece ativo enquanto a transmissão está ao vivo e escala para zero instâncias quando todos os canais monitorados estão offline.
+- **Economia de custos:** Este modelo pode reduzir significativamente os custos de hospedagem.
+
+### Variáveis de Ambiente Necessárias
+
+Para habilitar este recurso, defina o seguinte em seu ambiente de implantação (por exemplo, Cloud Run):
+
+- `LAZY_CONNECT=1`: Habilita a lógica de scale-to-zero.
+- `TWITCH_EVENTSUB_SECRET`: Uma string secreta longa e aleatória que você cria para proteger seu endpoint de webhook.
+- `PUBLIC_URL`: A URL pública do seu serviço implantado (por exemplo, `https://your-service.a.run.app`).
+
+### Processo de Configuração
+
+1.  **Implantar com Variáveis EventSub:**
+    Implante sua aplicação com as variáveis de ambiente listadas acima. Para o Cloud Run, você usaria `gcloud run deploy` com `--set-env-vars`.
+
+2.  **Inscrever-se em Eventos:**
+    Após a implantação, execute o script de gerenciamento para inscrever todos os seus canais no evento `stream.online`.
+    ```bash
+    node scripts/manage-eventsub.js subscribe-all
+    ```
+
+3.  **Verificar Inscrições:**
+    Você pode verificar se as inscrições foram criadas com sucesso:
+    ```bash
+    node scripts/manage-eventsub.js list
+    ```
+
+Esta configuração garante que o bot consuma recursos apenas quando precisar estar ativo em um canal ao vivo.
+
+</details>
+
 ## Docker
 
 Um `Dockerfile` é fornecido para construir uma imagem de contêiner da aplicação.
