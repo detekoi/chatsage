@@ -3,7 +3,6 @@ import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
-import { getChannelManager } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';
 
@@ -160,9 +159,17 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
             }
             
-            const channelManager = getChannelManager();
-            if (channelManager) {
-                await channelManager.partChannel(broadcaster_user_name);
+            try {
+                const ircClient = getIrcClient();
+                if (ircClient && ircClient.readyState() === 'OPEN') {
+                    const channelToPart = `#${broadcaster_user_name}`;
+                    logger.info(`[EventSub] Attempting to part channel: ${channelToPart}`);
+                    await ircClient.part(channelToPart);
+                } else {
+                    logger.warn(`[EventSub] Received offline event for ${broadcaster_user_name}, but IRC client is not connected. No action taken.`);
+                }
+            } catch (error) {
+                logger.error({ err: error, channel: broadcaster_user_name }, 'Error trying to part channel via EventSub offline notification.');
             }
         }
     }
