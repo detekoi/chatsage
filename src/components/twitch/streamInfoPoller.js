@@ -38,14 +38,10 @@ async function fetchBatch(channels, helixClient, contextManager) {
                 });
             } else {
                 // Info not found for this specific ID in the response (might be offline, banned, deleted?)
-                logger.warn(`No channel info returned from Helix for ${channel.channelName} (ID: ${channel.broadcasterId}). Marking as offline in context.`);
-                // Explicitly update context to reflect offline status. This is the key change.
-                contextManager.updateStreamContext(channel.channelName, {
-                    game: null,
-                    title: null,
-                    tags: [],
-                    language: null,
-                });
+                // DO NOT clear the context here. Just log a warning.
+                // This prevents temporary API failures from causing a shutdown.
+                // The stream.offline EventSub message is the source of truth for offline status.
+                logger.warn(`No channel info returned from Helix for ${channel.channelName} (ID: ${channel.broadcasterId}). Context will NOT be cleared.`);
             }
         }
     } catch (error) {
