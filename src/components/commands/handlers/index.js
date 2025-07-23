@@ -6,7 +6,6 @@ import logger from '../../../lib/logger.js';
 import help from './help.js';
 import ping from './ping.js'; // Let's create ping first as a simple example
 // import about from './about.js';
-// import sage from './sage.js'; // UNUSED: sage is now aliased to ask
 
 // Stream Context Commands
 import game from './game.js';
@@ -22,6 +21,7 @@ import translate from './translate.js';
 import geo from './geo.js';
 import trivia from './trivia.js';
 import botLang from './botlang.js';
+import lurk from './lurk.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -64,6 +64,7 @@ const commandHandlers = {
     trivia: trivia,
     riddle: riddle,
     botlang: botLang,
+    lurk: lurk,
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)

@@ -106,7 +106,7 @@ export function initializeGeminiClient(geminiConfig) {
             ],
              generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 250,
+                maxOutputTokens: 512,
             }
         });
         logger.info('Gemini client and model initialized successfully.');
@@ -176,7 +176,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
 
-    const fullPrompt = `${contextPrompt}\n\n**User Query:** ${userQuery}\n\n**ChatSage Response:**`;
+    const fullPrompt = `${contextPrompt}\n\n**User Query:** ${userQuery}\n\n**ChatSage Response:** Keep your answer concise and suitable for a Twitch chat response (under 70 words).`;
 
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
@@ -276,7 +276,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\n**User Query:** ${userQuery}\n\n**ChatSage Response (using search results):**`;
+    const fullPrompt = `${contextPrompt}\n\n**User Query:** ${userQuery}\n\n**ChatSage Response (using search results):** Keep your answer concise and suitable for a Twitch chat response (under 80 words).`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
