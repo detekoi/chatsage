@@ -30,15 +30,15 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 
 ## Features (Core Capabilities)
 
-*   Connects to specified Twitch channels via IRC.
-*   Fetches real-time stream context (game, title, tags, thumbnail images) using the Twitch Helix API.
-*   Utilizes Google's Gemini 2.5 Flash LLM for natural language understanding and response generation.
-*   Maintains conversation context (history and summaries) per channel.
-*   Supports custom chat commands with permission levels.
-*   Configurable bot language settings for multilingual channel support.
-*   Configurable through environment variables.
-*   Includes structured logging suitable for production environments.
-*   Web-based channel management interface for streamers to add/remove the bot.
+* Connects to specified Twitch channels via IRC.
+* Fetches real-time stream context (game, title, tags, thumbnail images) using the Twitch Helix API.
+* Utilizes Google's Gemini 2.5 Flash LLM for natural language understanding and response generation.
+* Maintains conversation context (history and summaries) per channel.
+* Supports custom chat commands with permission levels.
+* Configurable bot language settings for multilingual channel support.
+* Configurable through environment variables.
+* Includes structured logging suitable for production environments.
+* Web-based channel management interface for streamers to add/remove the bot.
 
 ## Adding ChatSage to Your Channel
 
@@ -73,16 +73,27 @@ Streamers can now easily add or remove ChatSage from their channel using the web
 
 For a complete list of available commands and their usage, please visit [Bot Commands Documentation](https://detekoi.github.io/botcommands.html).
 
+### Context-Aware Responses
+
+ChatSage understands the flow of conversation. For example, the `!lurk` command provides a polite, contextual send-off.
+
+**Scenario:** The chat is discussing making dinner.
+> **User:** `!lurk going to make some pasta`
+>
+> **ChatSageBot:** `@user, enjoy making the pasta! Hope it turns out delicious. We'll be here when you get back!`
+
+This demonstrates how the bot can craft personalized responses based on both the command and the user's provided reason.
+
 ## Development Prerequisites
 
-*   Node.js (Version 22.0.0 or later recommended)
-*   npm (or yarn)
+* Node.js (Version 22.0.0 or later recommended)
+* npm (or yarn)
 
 ## Getting Started
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/detekoi/chatsage.git
+    git clone [https://github.com/detekoi/chatsage.git](https://github.com/detekoi/chatsage.git)
     cd chatsage
     ```
 
@@ -93,21 +104,21 @@ For a complete list of available commands and their usage, please visit [Bot Com
     *(Or `yarn install` if you prefer Yarn)*
 
 3.  **Configure environment variables:**
-    *   Copy the example environment file:
+    * Copy the example environment file:
         ```bash
         cp .env.example .env
         ```
-    *   Edit the `.env` file and fill in your credentials and settings. Refer to the comments within `.env.example` for details on each variable (Twitch bot username/token, Twitch application client ID/secret, Gemini API key, channels to join, etc.). **Do not commit your `.env` file.**
+    * Edit the `.env` file and fill in your credentials and settings. Refer to the comments within `.env.example` for details on each variable (Twitch bot username/token, Twitch application client ID/secret, Gemini API key, channels to join, etc.). **Do not commit your `.env` file.**
 
 ## Running the Bot
 
-*   **Development:**
+* **Development:**
     Uses Node's built-in watch mode for automatic restarts on file changes. Enables human-readable ("pretty") logs by default if `PINO_PRETTY_LOGGING=true` in `.env`.
     ```bash
     npm run dev
     ```
 
-*   **Production:**
+* **Production:**
     Runs the bot using standard `node`. Outputs structured JSON logs suitable for log aggregation systems.
     ```bash
     npm start
@@ -117,14 +128,14 @@ For a complete list of available commands and their usage, please visit [Bot Com
 
 ChatSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
 
-*   `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
-*   `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback if Firestore channel management is unavailable.
-*   `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager. Used as fallback if Firestore channel management is unavailable.
-*   `GEMINI_API_KEY`: Your API key for the Google Gemini service.
-*   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
-*   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
-*   `STREAM_INFO_FETCH_INTERVAL_SECONDS`: How often to refresh stream context data.
-*   `LOG_LEVEL`: Controls the verbosity of logs.
+* `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
+* `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback if Firestore channel management is unavailable.
+* `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager. Used as fallback if Firestore channel management is unavailable.
+* `GEMINI_API_KEY`: Your API key for the Google Gemini service.
+* `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
+* `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
+* `STREAM_INFO_FETCH_INTERVAL_SECONDS`: How often to refresh stream context data.
+* `LOG_LEVEL`: Controls the verbosity of logs.
 
 Ensure all required variables are set in your environment or `.env` file before running the bot.
 

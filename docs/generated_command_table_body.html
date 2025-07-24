@@ -1,7 +1,12 @@
             <tr>
                 <td>!ask / !sage</td>
-                <td>Ask ChatSage a question. Uses search intelligently.</td>
+                <td>Ask ChatSage a question. Uses search intelligently and can fetch time for locations.</td>
                 <td><code>!ask &lt;your question&gt;</code></td>
+            </tr>
+            <tr>
+                <td>!botlang</td>
+                <td>Set the language for the bot in this channel. Only mods/broadcaster can use this command.</td>
+                <td><code>!botlang &lt;language&gt; | !botlang off | !botlang status</code></td>
             </tr>
             <tr>
                 <td>!commands / !help</td>
@@ -10,8 +15,8 @@
             </tr>
             <tr>
                 <td>!game</td>
-                <td>Provides researched information about the game currently being played.</td>
-                <td><code>!game</code></td>
+                <td>Provides information about the game currently being played. Add "analyze" to use AI image recognition on the stream.</td>
+                <td><code>!game [analyze] [your question]</code></td>
             </tr>
             <tr>
                 <td>!geo</td>
@@ -19,9 +24,19 @@
                 <td><code>!geo [&lt;rounds&gt;] | stop | config &lt;options...&gt; | resetconfig | leaderboard | clearleaderboard | report &lt;reason...&gt; | help</code></td>
             </tr>
             <tr>
+                <td>!lurk</td>
+                <td>Let the chat know you are lurking. Provide an optional reason for a custom send-off.</td>
+                <td><code>!lurk [your reason for lurking]</code></td>
+            </tr>
+            <tr>
                 <td>!ping</td>
                 <td>Checks if the bot is responsive. Responds with Pong!</td>
                 <td><code>!ping</code></td>
+            </tr>
+            <tr>
+                <td>!riddle</td>
+                <td>Starts or manages a Riddle game. Use !riddle help for more info.</td>
+                <td><code>!riddle [&lt;subject&gt;] [&lt;rounds&gt;] | stop | leaderboard | clearleaderboard | report &lt;reason...&gt; | help</code></td>
             </tr>
             <tr>
                 <td>!search</td>
