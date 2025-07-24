@@ -113,7 +113,7 @@ export async function disableCommandForChannel(channelName, commandName) {
     if (PROTECTED_COMMANDS.has(normalizedCommand)) {
         return {
             success: false,
-            message: `Cannot disable core management command '${normalizedCommand}' to prevent lockout.`,
+            message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
             wasAlreadyDisabled: false
         };
     }
