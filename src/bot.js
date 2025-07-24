@@ -19,6 +19,7 @@ import { initializeTriviaGameManager, getTriviaGameManager } from './components/
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
+import { initializeCommandStateManager, shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
 import { initializeRiddleGameManager, getRiddleGameManager } from './components/riddle/riddleGameManager.js';
 
@@ -64,6 +65,14 @@ async function gracefulShutdown(signal) {
         } catch (error) {
             logger.error({ err: error }, 'Error cleaning up channel change listener during shutdown.');
         }
+    }
+    
+    // Clean up command state manager
+    try {
+        logger.info('Shutting down command state manager...');
+        shutdownCommandStateManager();
+    } catch (error) {
+        logger.error({ err: error }, 'Error shutting down command state manager during shutdown.');
     }
     
     // Clear polling interval immediately
@@ -226,6 +235,9 @@ async function main() {
 
         logger.info('Initializing Language Storage...');
         await initializeLanguageStorage();
+
+        logger.info('Initializing Command State Manager...');
+        await initializeCommandStateManager();
 
         logger.info('Initializing Gemini Client...');
         initializeGeminiClient(config.gemini);

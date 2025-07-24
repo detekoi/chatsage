@@ -31,8 +31,8 @@ import lurk from './lurk.js';
 // import reset from './reset.js';
 
 // Moderator/Broadcaster Commands
-// import enable from './enable.js';
-// import disable from './disable.js';
+import enable from './enable.js';
+import disable from './disable.js';
 // import cooldown from './cooldown.js';
 // import setthreshold from './setthreshold.js';
 
@@ -74,8 +74,8 @@ const commandHandlers = {
     // reset: reset,   // !reset command (for mods)
 
     // --- Moderator/Broadcaster Commands ---
-    // enable: enable,
-    // disable: disable,
+    enable: enable,
+    disable: disable,
     // cooldown: cooldown,
     // setthreshold: setthreshold,
 };

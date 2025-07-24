@@ -6,6 +6,8 @@ import commandHandlers from './handlers/index.js';
 import { getIrcClient } from '../twitch/ircClient.js';
 // We might need context for some commands
 import { getContextManager } from '../context/contextManager.js';
+// Import command state manager for checking if commands are disabled
+import { isCommandDisabled } from '../context/commandStateManager.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
@@ -104,6 +106,16 @@ async function processMessage(channelName, tags, message) {
     if (!handler || typeof handler.execute !== 'function') {
         logger.debug(`Command prefix used, but no handler found for: ${command}`);
         return false;
+    }
+
+    // --- Command Disabled Check ---
+    logger.debug(`Checking if command !${command} is disabled in #${channelName}`);
+    const commandDisabled = isCommandDisabled(channelName, command);
+    logger.debug({ commandDisabled }, 'Command disabled check result');
+    
+    if (commandDisabled) {
+        logger.debug(`Command !${command} is disabled in #${channelName}, ignoring silently`);
+        return false; // Silently ignore disabled commands
     }
 
     // --- Permission Check ---
