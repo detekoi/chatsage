@@ -148,6 +148,9 @@ export async function eventSubHandler(req, res, rawBody) {
             // Remove from active streams
             activeStreams.delete(broadcaster_user_name);
 
+            // Clear the stream context to ensure the poller and keep-alive know the stream is offline
+            getContextManager().clearStreamContext(broadcaster_user_name);
+            
             // If no more streams are active, stop keep-alive pings
             if (activeStreams.size === 0 && keepAliveTaskName) {
                 try {
