@@ -210,6 +210,20 @@ function recordStreamContextFetchError(channelName) {
 }
 
 /**
+ * Clears the stream-specific context for a channel, typically after going offline.
+ * @param {string} channelName - Channel name (without '#').
+ */
+function clearStreamContext(channelName) {
+    const state = _getOrCreateChannelState(channelName);
+    state.streamContext.game = 'N/A';
+    state.streamContext.title = 'N/A';
+    state.streamContext.tags = [];
+    state.streamContext.lastUpdated = new Date();
+    state.streamContext.fetchErrorCount = 0; // Reset error count
+    logger.info(`[${channelName}] Stream context has been cleared.`);
+}
+
+/**
  * Formats recent chat history into a simple string.
  * @param {Message[]} history - Array of message objects.
  * @returns {string} Formatted string (e.g., "User1: msg1\nUser2: msg2").
@@ -462,6 +476,7 @@ const manager = {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    clearStreamContext,
 };
 
 /**
@@ -479,4 +494,5 @@ export {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    clearStreamContext,
 };
