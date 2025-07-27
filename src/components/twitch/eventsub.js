@@ -15,8 +15,21 @@ let keepAliveTaskName = null;
  * This is called by the /keep-alive endpoint
  */
 export async function handleKeepAlivePing() {
+    logger.info('Keep-alive ping received.');
+
+    // First, check our real-time list of active streams from EventSub
+    if (activeStreams.size > 0) {
+        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active according to EventSub.`);
+        try {
+            keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
+        } catch (error) {
+            logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
+        }
+        return;
+    }
+
+    // Fallback to the poller context only if EventSub shows no active streams
     const contextManager = getContextManager();
-    // Create a copy to iterate over, allowing safe modification of the original set
     const streamsToCheck = [...activeStreams]; 
     let trulyActiveCount = 0;
 
@@ -25,22 +38,18 @@ export async function handleKeepAlivePing() {
         // A stream is considered active if the poller has recently set its game context.
         if (context && context.streamGame && context.streamGame !== 'N/A') {
             trulyActiveCount++;
-        } else {
-            // If context shows offline, prune it from the active set
-            logger.warn(`[EventSub] Pruning stale stream '${channelName}' from active list during keep-alive check. Poller likely marked it as offline.`);
-            activeStreams.delete(channelName);
         }
     }
 
     if (trulyActiveCount > 0) {
-        logger.debug(`Keep-alive ping processed. ${trulyActiveCount} stream(s) confirmed active. Scheduling next ping.`);
+        logger.info(`Keep-alive check passed: ${trulyActiveCount} stream(s) are live according to poller fallback.`);
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
         } catch (error) {
             logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
         }
     } else {
-        logger.info('Keep-alive ping received, and no streams are confirmed active by the poller. Allowing instance to scale down.');
+        logger.warn('Keep-alive ping received, and no streams are confirmed active by EventSub or poller. Allowing instance to scale down.');
         if (keepAliveTaskName) {
             try {
                 await deleteTask(keepAliveTaskName);
