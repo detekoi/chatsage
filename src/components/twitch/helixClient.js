@@ -9,6 +9,37 @@ const TWITCH_HELIX_URL = 'https://api.twitch.tv/helix';
 let axiosInstance = null;
 
 /**
+ * Retry helper with exponential backoff
+ * @param {Function} fn - Function to retry
+ * @param {number} retries - Number of retry attempts
+ * @param {number} delay - Initial delay in ms
+ * @returns {Promise} Result of the function call
+ */
+async function retryWithBackoff(fn, retries = 3, delay = 1000) {
+    try {
+        return await fn();
+    } catch (error) {
+        if (retries === 0) {
+            throw error;
+        }
+        
+        // Check if this is a timeout or network error that should be retried
+        const shouldRetry = error.code === 'ECONNABORTED' || 
+                           error.code === 'ENOTFOUND' ||
+                           error.code === 'ECONNRESET' ||
+                           (error.response && error.response.status >= 500);
+        
+        if (!shouldRetry) {
+            throw error;
+        }
+        
+        logger.warn({ error: error.message, retriesLeft: retries, delayMs: delay }, 'Retrying API call after error');
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryWithBackoff(fn, retries - 1, delay * 2);
+    }
+}
+
+/**
  * Initializes the Axios instance for Helix API communication.
  * Configures base URL and interceptors for auth and logging.
  */
@@ -22,7 +53,7 @@ async function initializeHelixClient() {
 
     axiosInstance = axios.create({
         baseURL: TWITCH_HELIX_URL,
-        timeout: 8000, // 8 second timeout for API requests
+        timeout: 15000, // 15 second timeout for API requests (increased from 8s)
     });
 
     // --- Axios Request Interceptor ---
@@ -196,15 +227,57 @@ async function getUsersByLogin(loginNames) {
     logger.debug({ loginNames }, 'Fetching user information by login from Helix...');
 
     try {
-        const response = await client.get('/users', { params });
+        // Use retry logic for user lookups (critical for EventSub subscriptions)
+        const response = await retryWithBackoff(async () => {
+            return await client.get('/users', { params });
+        }, 3, 1000);
+        
         // Spec: https://dev.twitch.tv/docs/api/reference/#get-users
         // Data is expected in response.data.data
         return response.data?.data || [];
     } catch (error) {
          // Errors are already logged by the response interceptor
-         logger.error({ err: { message: error.message, code: error.code } , loginNames }, `Failed to get user information for logins: ${loginNames.join(',')}`);
+         logger.error({ err: { message: error.message, code: error.code } , loginNames }, `Failed to get user information for logins after retries: ${loginNames.join(',')}`);
          // Return empty array for graceful degradation
          return [];
+    }
+}
+
+/**
+ * Fetches live stream information from Twitch Helix API.
+ * @param {string[]} broadcasterIds - An array of broadcaster user IDs to query. Max 100 per request.
+ * @returns {Promise<object[]>} A promise resolving to an array of live stream objects.
+ *                                Returns an empty array if input is empty or on API error after logging.
+ */
+async function getLiveStreams(broadcasterIds) {
+    if (!broadcasterIds || broadcasterIds.length === 0) {
+        logger.warn('getLiveStreams called with empty broadcaster IDs.');
+        return [];
+    }
+    if (broadcasterIds.length > 100) {
+        logger.warn(`getLiveStreams called with ${broadcasterIds.length} IDs. Max 100 allowed per request. Truncating.`);
+        broadcasterIds = broadcasterIds.slice(0, 100);
+    }
+
+    const client = getHelixClient(); // Ensures client is initialized
+    const params = new URLSearchParams();
+    broadcasterIds.forEach(id => params.append('user_id', id));
+
+    logger.debug({ broadcasterIds }, 'Fetching live stream information from Helix...');
+
+    try {
+        const response = await retryWithBackoff(async () => {
+            return await client.get('/streams', { params });
+        }, 2, 500); // Shorter retry for stream checks
+        
+        // Spec: https://dev.twitch.tv/docs/api/reference/#get-streams
+        // Data is expected in response.data.data - only returns live streams
+        return response.data?.data || [];
+    } catch (error) {
+        // Errors are already logged by the response interceptor
+        logger.error({ err: { message: error.message, code: error.code } , broadcasterIds }, `Failed to get live stream information for IDs: ${broadcasterIds.join(',')}`);
+        // Return empty array for graceful degradation
+        return [];
     }
 }
 
@@ -214,5 +287,6 @@ export {
     initializeHelixClient,
     getHelixClient,
     getChannelInformation,
-    getUsersByLogin, // <-- Added export
+    getUsersByLogin,
+    getLiveStreams,
 };
