@@ -461,6 +461,14 @@ function disableAllTranslationsInChannel(channelName) {
     return disabledCount;
 }
 
+/**
+ * Gets all channel states for keep-alive checks.
+ * @returns {Map<string, ChannelState>} Map of channel names to their states.
+ */
+function getAllChannelStates() {
+    return new Map(channelStates);
+}
+
 // Define what the "manager" object exposes
 const manager = {
     initialize: initializeContextManager,
@@ -477,6 +485,7 @@ const manager = {
     setBotLanguage,
     getBotLanguage,
     clearStreamContext,
+    getAllChannelStates,
 };
 
 /**

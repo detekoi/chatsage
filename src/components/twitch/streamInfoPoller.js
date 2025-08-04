@@ -1,5 +1,5 @@
 import logger from '../../lib/logger.js';
-import { getChannelInformation } from './helixClient.js';
+import { getChannelInformation, getLiveStreams } from './helixClient.js';
 // No need to import helixClient directly here, pass it in
 // No need to import contextManager directly here, pass it in
 
@@ -18,30 +18,44 @@ async function fetchBatch(channels, helixClient, contextManager) {
     logger.debug(`Polling stream info for IDs: ${broadcasterIds.join(', ')}`);
 
     try {
-        // Fetch channel info using the imported function directly
-        const channelInfoList = await getChannelInformation(broadcasterIds);
+        // First, check which streams are actually live
+        const liveStreams = await getLiveStreams(broadcasterIds);
+        const liveStreamIds = new Set(liveStreams.map(stream => stream.user_id));
+        
+        logger.debug(`Found ${liveStreams.length} live streams out of ${channels.length} channels checked`);
 
-        // Create a map for easy lookup by ID
+        // For live streams, fetch detailed channel information
+        const liveChannelIds = broadcasterIds.filter(id => liveStreamIds.has(id));
+        const channelInfoList = liveChannelIds.length > 0 ? await getChannelInformation(liveChannelIds) : [];
+
+        // Create maps for easy lookup
+        const liveStreamMap = new Map(liveStreams.map(stream => [stream.user_id, stream]));
         const infoMap = new Map(channelInfoList.map(info => [info.broadcaster_id, info]));
 
         // Update context for each channel in the batch
         for (const channel of channels) {
-            const info = infoMap.get(channel.broadcasterId);
-            if (info) {
-                // Found info, update context
+            const isLive = liveStreamIds.has(channel.broadcasterId);
+            
+            if (isLive) {
+                const streamInfo = liveStreamMap.get(channel.broadcasterId);
+                const channelInfo = infoMap.get(channel.broadcasterId);
+                
+                // Stream is live, update with live context
                 contextManager.updateStreamContext(channel.channelName, {
-                    game: info.game_name,
-                    title: info.title,
-                    tags: info.tags,
-                    language: info.broadcaster_language,
-                    // Add other fields from 'info' if needed by contextManager
+                    game: streamInfo?.game_name || channelInfo?.game_name || 'Unknown',
+                    title: streamInfo?.title || channelInfo?.title || 'Untitled Stream',
+                    tags: channelInfo?.tags || [],
+                    language: channelInfo?.broadcaster_language || 'en',
+                    viewerCount: streamInfo?.viewer_count || 0,
+                    startedAt: streamInfo?.started_at || null,
                 });
+                
+                logger.debug(`Updated live stream context for ${channel.channelName}: ${streamInfo?.game_name} (${streamInfo?.viewer_count} viewers)`);
             } else {
-                // Info not found for this specific ID in the response (might be offline, banned, deleted?)
-                // DO NOT clear the context here. Just log a warning.
-                // This prevents temporary API failures from causing a shutdown.
-                // The stream.offline EventSub message is the source of truth for offline status.
-                logger.warn(`No channel info returned from Helix for ${channel.channelName} (ID: ${channel.broadcasterId}). Context will NOT be cleared.`);
+                // Stream is offline - clear the context to indicate it's not live
+                // This ensures the keep-alive check knows the stream is offline
+                contextManager.clearStreamContext(channel.channelName);
+                logger.debug(`Cleared context for offline stream: ${channel.channelName}`);
             }
         }
     } catch (error) {

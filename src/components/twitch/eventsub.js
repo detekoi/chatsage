@@ -9,6 +9,9 @@ import { getContextManager } from '../context/contextManager.js';
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
 let keepAliveTaskName = null;
+let consecutiveFailedChecks = 0;
+const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling down
+const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 /**
  * Handles the keep-alive ping from Cloud Tasks
@@ -20,6 +23,7 @@ export async function handleKeepAlivePing() {
     // First, check our real-time list of active streams from EventSub
     if (activeStreams.size > 0) {
         logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active according to EventSub.`);
+        consecutiveFailedChecks = 0; // Reset failure counter
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
         } catch (error) {
@@ -28,34 +32,64 @@ export async function handleKeepAlivePing() {
         return;
     }
 
-    // Fallback to the poller context only if EventSub shows no active streams
+    // Check for recent chat activity as a fallback indicator
     const contextManager = getContextManager();
-    const streamsToCheck = [...activeStreams]; 
-    let trulyActiveCount = 0;
+    const channelStates = contextManager.getAllChannelStates();
+    let recentChatActivity = false;
+    let pollerActiveCount = 0;
 
-    for (const channelName of streamsToCheck) {
+    for (const [channelName, state] of channelStates) {
+        // Check for recent chat messages
+        if (state.chatHistory && state.chatHistory.length > 0) {
+            const lastMessage = state.chatHistory[state.chatHistory.length - 1];
+            const timeSinceLastMessage = Date.now() - lastMessage.timestamp.getTime();
+            
+            if (timeSinceLastMessage < CHAT_ACTIVITY_THRESHOLD) {
+                recentChatActivity = true;
+                logger.debug(`Recent chat activity detected in ${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
+            }
+        }
+
+        // Check poller context - a stream is considered active if it has valid game info
         const context = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-check');
-        // A stream is considered active if the poller has recently set its game context.
-        if (context && context.streamGame && context.streamGame !== 'N/A') {
-            trulyActiveCount++;
+        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
+            pollerActiveCount++;
         }
     }
 
-    if (trulyActiveCount > 0) {
-        logger.info(`Keep-alive check passed: ${trulyActiveCount} stream(s) are live according to poller fallback.`);
+    // Determine if we should keep the instance alive
+    const shouldStayAlive = recentChatActivity || pollerActiveCount > 0;
+
+    if (shouldStayAlive) {
+        consecutiveFailedChecks = 0; // Reset failure counter
+        const reason = recentChatActivity ? 'recent chat activity detected' : `${pollerActiveCount} stream(s) are live according to poller`;
+        logger.info(`Keep-alive check passed: ${reason}.`);
+        
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
         } catch (error) {
             logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
         }
     } else {
-        logger.warn('Keep-alive ping received, and no streams are confirmed active by EventSub or poller. Allowing instance to scale down.');
-        if (keepAliveTaskName) {
+        consecutiveFailedChecks++;
+        logger.warn(`Keep-alive check failed (${consecutiveFailedChecks}/${MAX_FAILED_CHECKS}): No active streams or recent chat activity detected.`);
+
+        if (consecutiveFailedChecks >= MAX_FAILED_CHECKS) {
+            logger.warn(`${MAX_FAILED_CHECKS} consecutive failed keep-alive checks. Allowing instance to scale down.`);
+            if (keepAliveTaskName) {
+                try {
+                    await deleteTask(keepAliveTaskName);
+                    keepAliveTaskName = null;
+                } catch (error) {
+                    logger.error({ err: error }, 'Failed to delete final keep-alive task.');
+                }
+            }
+        } else {
+            // Schedule next check even after failure (until max failures reached)
             try {
-                await deleteTask(keepAliveTaskName);
-                keepAliveTaskName = null;
+                keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
             } catch (error) {
-                logger.error({ err: error }, 'Failed to delete final keep-alive task.');
+                logger.error({ err: error }, 'Failed to schedule next keep-alive ping after failure');
             }
         }
     }
