@@ -20,9 +20,28 @@ const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 export async function handleKeepAlivePing() {
     logger.info('Keep-alive ping received.');
 
-    // First, check our real-time list of active streams from EventSub
+    // Validate EventSub active streams against stream poller data
+    const contextManager = getContextManager();
+    const channelStates = contextManager.getAllChannelStates();
+    const actuallyActiveStreams = new Set();
+    
+    // Check which EventSub streams are actually live according to the poller
+    for (const streamName of activeStreams) {
+        const context = contextManager.getContextForLLM(streamName, 'system', 'keep-alive-validation');
+        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
+            actuallyActiveStreams.add(streamName);
+        } else {
+            logger.warn(`EventSub thinks ${streamName} is live, but poller shows it's offline. Removing from active streams.`);
+        }
+    }
+    
+    // Clean up phantom EventSub entries
+    activeStreams.clear();
+    actuallyActiveStreams.forEach(stream => activeStreams.add(stream));
+
+    // First, check our validated list of active streams from EventSub
     if (activeStreams.size > 0) {
-        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active according to EventSub.`);
+        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active according to validated EventSub data.`);
         consecutiveFailedChecks = 0; // Reset failure counter
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
@@ -32,9 +51,7 @@ export async function handleKeepAlivePing() {
         return;
     }
 
-    // Check for recent chat activity as a fallback indicator
-    const contextManager = getContextManager();
-    const channelStates = contextManager.getAllChannelStates();
+    // Check for recent chat activity as a fallback indicator (reuse contextManager)
     let recentChatActivity = false;
     let pollerActiveCount = 0;
 
@@ -93,6 +110,25 @@ export async function handleKeepAlivePing() {
             }
         }
     }
+}
+
+/**
+ * Manually clear phantom EventSub entries (useful for debugging/cleanup)
+ * @param {string[]} streamNames - Optional array of specific streams to remove, or empty to clear all
+ */
+export function clearPhantomEventSubEntries(streamNames = []) {
+    if (streamNames.length === 0) {
+        logger.info(`Clearing all phantom EventSub entries. Previously tracking: ${Array.from(activeStreams).join(', ')}`);
+        activeStreams.clear();
+    } else {
+        streamNames.forEach(streamName => {
+            if (activeStreams.has(streamName)) {
+                activeStreams.delete(streamName);
+                logger.info(`Removed phantom EventSub entry for: ${streamName}`);
+            }
+        });
+    }
+    logger.info(`EventSub now tracking ${activeStreams.size} active streams: ${Array.from(activeStreams).join(', ') || 'none'}`);
 }
 
 function verifySignature(req, rawBody) {

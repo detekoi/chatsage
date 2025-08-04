@@ -11,7 +11,8 @@
         "test": "jest",
         "test:channel-manager": "node scripts/test-channel-manager.js",
         "migrate:channels": "node scripts/migrate-channels-to-firestore.js",
-        "setup:cloud-tasks": "node scripts/setup-cloud-tasks.js"
+        "setup:cloud-tasks": "node scripts/setup-cloud-tasks.js",
+        "trigger:stream-online": "node scripts/trigger-stream-online.js"
     },
     "keywords": [
         "twitch",
