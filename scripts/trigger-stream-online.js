@@ -31,7 +31,7 @@ if (EVENTSUB_SECRET === 'your_secret_here') {
 /**
  * Creates a mock stream.online EventSub notification
  */
-function createStreamOnlineEvent(broadcasterUserName = 'teststreamer') {
+function createStreamOnlineEvent(broadcasterUserName = 'testbroadcaster') {
     const messageId = crypto.randomUUID();
     const timestamp = new Date().toISOString();
     
@@ -75,7 +75,7 @@ function createEventSubSignature(messageId, timestamp, body, secret) {
 /**
  * Sends the EventSub notification to the bot
  */
-async function triggerStreamOnline(broadcasterUserName = 'teststreamer') {
+async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
     console.log(`🚀 Triggering stream.online event for ${broadcasterUserName}...`);
     
     const { event, messageId, timestamp } = createStreamOnlineEvent(broadcasterUserName);
@@ -137,5 +137,5 @@ async function triggerStreamOnline(broadcasterUserName = 'teststreamer') {
 }
 
 // Run the script
-const broadcasterName = process.argv[2] || 'teststreamer';
+const broadcasterName = process.argv[2] || 'testbroadcaster';
 triggerStreamOnline(broadcasterName).catch(console.error);

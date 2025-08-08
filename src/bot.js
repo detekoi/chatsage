@@ -566,7 +566,8 @@ async function main() {
         ircClient.on('join', (channel, username, self) => { if (self) { logger.info(`Joined channel: ${channel}`); } });
 
         // --- Connect IRC Client (conditionally based on LAZY_CONNECT) ---
-        if (!process.env.LAZY_CONNECT) {
+        const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+        if (!isLazyConnect) {
             logger.info('Connecting Twitch IRC Client...');
             await connectIrcClient(); // Use connectIrcClient
         } else {
