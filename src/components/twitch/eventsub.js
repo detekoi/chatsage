@@ -132,6 +132,13 @@ export function clearPhantomEventSubEntries(streamNames = []) {
 }
 
 function verifySignature(req, rawBody) {
+    // Allow bypassing signature verification for local development
+    const bypass = process.env.EVENTSUB_BYPASS === '1' || process.env.EVENTSUB_BYPASS === 'true';
+    if (bypass) {
+        logger.warn('[DEV] EVENTSUB_BYPASS enabled - skipping signature verification');
+        return true;
+    }
+
     const secret = config.twitch.eventSubSecret;
     const messageId = req.headers['twitch-eventsub-message-id'];
     const timestamp = req.headers['twitch-eventsub-message-timestamp'];
@@ -201,7 +208,8 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
             }
 
-            if (process.env.LAZY_CONNECT) {
+            const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+            if (isLazyConnect) {
                 try {
                     logger.info('EventSub triggered - initializing IRC connection...');
                     
