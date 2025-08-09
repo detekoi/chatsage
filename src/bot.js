@@ -1,7 +1,7 @@
 import config from './config/index.js';
 import logger from './lib/logger.js';
 import http from 'http';
-import { eventSubHandler, handleKeepAlivePing } from './components/twitch/eventsub.js';
+import { eventSubHandler, handleKeepAlivePing, cleanupKeepAliveTasks, initializeActiveStreamsFromPoller } from './components/twitch/eventsub.js';
 // Import Secret Manager initializer and getSecretValue
 import { initializeSecretManager, getSecretValue } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
@@ -248,6 +248,9 @@ async function main() {
         logger.info('Initializing Context Manager...');
         await initializeContextManager(config.twitch.channels);
 
+        logger.info('Cleaning up any orphaned keep-alive tasks...');
+        await cleanupKeepAliveTasks();
+
         logger.info('Initializing Command Processor...');
         initializeCommandProcessor();
 
@@ -331,6 +334,16 @@ async function main() {
                 helixClient, // Pass already retrieved instance
                 contextManager // Pass already retrieved instance
             );
+            
+            // After starting stream polling, check for streams that are already live
+            // Wait a bit to give the first poll cycle a chance to run
+            setTimeout(async () => {
+                try {
+                    await initializeActiveStreamsFromPoller();
+                } catch (error) {
+                    logger.error({ err: error }, 'Error initializing active streams from poller');
+                }
+            }, 10000); // Wait 10 seconds for initial poll to complete
         });
 
         ircClient.on('disconnected', (reason) => {

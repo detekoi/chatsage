@@ -209,7 +209,7 @@ Dieses Projekt unterstützt Twitchs EventSub, um eine "Scale-to-Zero"-Serverless
 
 Um diese Funktion zu aktivieren, setzen Sie Folgendes in Ihrer Bereitstellungsumgebung (z. B. Cloud Run):
 
-- `LAZY_CONNECT=1`: Aktiviert die Scale-to-Zero-Logik.
+- `LAZY_CONNECT=true`: Aktiviert die Scale-to-Zero-Logik.
 - `TWITCH_EVENTSUB_SECRET`: Eine lange, zufällige, geheime Zeichenfolge, die Sie erstellen, um Ihren Webhook-Endpunkt zu sichern.
 - `PUBLIC_URL`: Die öffentlich zugängliche URL Ihres bereitgestellten Dienstes (z. B. `https://your-service.a.run.app`).
 

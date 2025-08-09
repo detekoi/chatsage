@@ -209,7 +209,7 @@ Ce projet prend en charge EventSub de Twitch pour permettre un déploiement "sca
 
 Pour activer cette fonctionnalité, définissez les éléments suivants dans votre environnement de déploiement (par exemple, Cloud Run) :
 
-- `LAZY_CONNECT=1` : Active la logique de mise à l'échelle à zéro.
+- `LAZY_CONNECT=true` : Active la logique de mise à l'échelle à zéro.
 - `TWITCH_EVENTSUB_SECRET` : Une chaîne secrète longue et aléatoire que vous créez pour sécuriser votre point de terminaison de webhook.
 - `PUBLIC_URL` : L'URL publique de votre service déployé (par exemple, `https://your-service.a.run.app`).
 

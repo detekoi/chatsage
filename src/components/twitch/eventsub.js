@@ -14,6 +14,65 @@ const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling do
 const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 /**
+ * Cleans up any existing keep-alive tasks on startup to prevent orphaned tasks
+ * from previous instances from interfering with the new instance.
+ */
+export async function cleanupKeepAliveTasks() {
+    if (keepAliveTaskName) {
+        logger.info('Cleaning up existing keep-alive task on startup...');
+        try {
+            await deleteTask(keepAliveTaskName);
+            keepAliveTaskName = null;
+            logger.info('Successfully cleaned up existing keep-alive task.');
+        } catch (error) {
+            logger.warn({ err: error }, 'Failed to cleanup existing keep-alive task (might not exist).');
+            keepAliveTaskName = null; // Reset anyway
+        }
+    }
+    
+    // Reset consecutive failed checks on startup
+    consecutiveFailedChecks = 0;
+    logger.debug('Reset consecutive failed checks counter on startup.');
+}
+
+/**
+ * Initializes streams that are already live when the bot starts up.
+ * This handles the case where streams are live before EventSub subscriptions are established.
+ */
+export async function initializeActiveStreamsFromPoller() {
+    logger.info('Checking for streams that are already live on startup...');
+    
+    const contextManager = getContextManager();
+    const channelStates = contextManager.getAllChannelStates();
+    let foundLiveStreams = 0;
+    
+    for (const [channelName, state] of channelStates) {
+        const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
+        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
+            logger.info(`Found ${channelName} already live on startup - adding to activeStreams`);
+            activeStreams.add(channelName);
+            foundLiveStreams++;
+        }
+    }
+    
+    if (foundLiveStreams > 0) {
+        logger.info(`Added ${foundLiveStreams} already-live streams to activeStreams on startup`);
+        
+        // Start keep-alive pings if we found live streams but no task is scheduled yet
+        if (!keepAliveTaskName) {
+            try {
+                logger.info('Starting keep-alive pings for streams that were already live');
+                keepAliveTaskName = await scheduleNextKeepAlivePing(240); // Start in 4 minutes
+            } catch (error) {
+                logger.error({ err: error }, 'Failed to start keep-alive pings for pre-existing streams');
+            }
+        }
+    } else {
+        logger.info('No streams found live on startup');
+    }
+}
+
+/**
  * Handles the keep-alive ping from Cloud Tasks
  * This is called by the /keep-alive endpoint
  */
@@ -39,9 +98,43 @@ export async function handleKeepAlivePing() {
     activeStreams.clear();
     actuallyActiveStreams.forEach(stream => activeStreams.add(stream));
 
-    // First, check our validated list of active streams from EventSub
+    // Check for recent chat activity and poller-detected active streams
+    let recentChatActivity = false;
+    let pollerActiveCount = 0;
+    const activeChannelsFromPoller = [];
+    let recentChatDetails = [];
+
+    for (const [channelName, state] of channelStates) {
+        // Check for recent chat messages
+        if (state.chatHistory && state.chatHistory.length > 0) {
+            const lastMessage = state.chatHistory[state.chatHistory.length - 1];
+            // Ensure timestamp is a Date object
+            const messageTimestamp = lastMessage.timestamp instanceof Date ? lastMessage.timestamp : new Date(lastMessage.timestamp);
+            const timeSinceLastMessage = Date.now() - messageTimestamp.getTime();
+            
+            if (timeSinceLastMessage < CHAT_ACTIVITY_THRESHOLD) {
+                recentChatActivity = true;
+                recentChatDetails.push(`${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
+                logger.debug(`Recent chat activity detected in ${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
+            }
+        }
+
+        // Check poller context - a stream is considered active if it has valid game info
+        const context = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-check');
+        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
+            pollerActiveCount++;
+            activeChannelsFromPoller.push(channelName);
+            // Add channels found live by poller to activeStreams if missing from EventSub
+            if (!activeStreams.has(channelName)) {
+                logger.info(`Adding ${channelName} to activeStreams - detected as live by poller but missing from EventSub`);
+                activeStreams.add(channelName);
+            }
+        }
+    }
+
+    // Check validated EventSub streams first
     if (activeStreams.size > 0) {
-        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active according to validated EventSub data.`);
+        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active (EventSub: ${actuallyActiveStreams.size}, Poller: ${pollerActiveCount}).`);
         consecutiveFailedChecks = 0; // Reset failure counter
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
@@ -51,36 +144,16 @@ export async function handleKeepAlivePing() {
         return;
     }
 
-    // Check for recent chat activity as a fallback indicator (reuse contextManager)
-    let recentChatActivity = false;
-    let pollerActiveCount = 0;
-
-    for (const [channelName, state] of channelStates) {
-        // Check for recent chat messages
-        if (state.chatHistory && state.chatHistory.length > 0) {
-            const lastMessage = state.chatHistory[state.chatHistory.length - 1];
-            const timeSinceLastMessage = Date.now() - lastMessage.timestamp.getTime();
-            
-            if (timeSinceLastMessage < CHAT_ACTIVITY_THRESHOLD) {
-                recentChatActivity = true;
-                logger.debug(`Recent chat activity detected in ${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
-            }
-        }
-
-        // Check poller context - a stream is considered active if it has valid game info
-        const context = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-check');
-        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
-            pollerActiveCount++;
-        }
-    }
-
-    // Determine if we should keep the instance alive
+    // Determine if we should keep the instance alive based on activity
     const shouldStayAlive = recentChatActivity || pollerActiveCount > 0;
 
     if (shouldStayAlive) {
         consecutiveFailedChecks = 0; // Reset failure counter
-        const reason = recentChatActivity ? 'recent chat activity detected' : `${pollerActiveCount} stream(s) are live according to poller`;
-        logger.info(`Keep-alive check passed: ${reason}.`);
+        let reason = [];
+        if (recentChatActivity) reason.push(`recent chat activity in: ${recentChatDetails.join(', ')}`);
+        if (pollerActiveCount > 0) reason.push(`${pollerActiveCount} stream(s) live according to poller: ${activeChannelsFromPoller.join(', ')}`);
+        
+        logger.info(`Keep-alive check passed: ${reason.join(' and ')}.`);
         
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
@@ -90,6 +163,7 @@ export async function handleKeepAlivePing() {
     } else {
         consecutiveFailedChecks++;
         logger.warn(`Keep-alive check failed (${consecutiveFailedChecks}/${MAX_FAILED_CHECKS}): No active streams or recent chat activity detected.`);
+        logger.debug(`Debug info - EventSub streams: ${Array.from(activeStreams).join(', ') || 'none'}, Poller active: ${pollerActiveCount}, Recent chat: ${recentChatActivity}`);
 
         if (consecutiveFailedChecks >= MAX_FAILED_CHECKS) {
             logger.warn(`${MAX_FAILED_CHECKS} consecutive failed keep-alive checks. Allowing instance to scale down.`);

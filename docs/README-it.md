@@ -209,7 +209,7 @@ Questo progetto supporta EventSub di Twitch per abilitare un deployment serverle
 
 Per abilitare questa funzione, imposta quanto segue nel tuo ambiente di deployment (ad es. Cloud Run):
 
-- `LAZY_CONNECT=1`: Abilita la logica scale-to-zero.
+- `LAZY_CONNECT=true`: Abilita la logica scale-to-zero.
 - `TWITCH_EVENTSUB_SECRET`: Una stringa segreta lunga e casuale che crei per proteggere il tuo endpoint webhook.
 - `PUBLIC_URL`: L'URL pubblico del tuo servizio distribuito (ad es. `https://your-service.a.run.app`).
 

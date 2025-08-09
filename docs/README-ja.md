@@ -208,7 +208,7 @@ ChatSageは、Twitchとの認証を維持するために安全なトークン更
 
 この機能を有効にするには、デプロイメント環境（例：Cloud Run）で以下を設定します。
 
-- `LAZY_CONNECT=1`：スケールトゥゼロのロジックを有効にします。
+- `LAZY_CONNECT=true`：スケールトゥゼロのロジックを有効にします。
 - `TWITCH_EVENTSUB_SECRET`：Webhookエンドポイントを保護するために作成する、長くてランダムな秘密の文字列。
 - `PUBLIC_URL`：デプロイされたサービスの公開URL（例：`https://your-service.a.run.app`）。
 
