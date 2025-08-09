@@ -208,7 +208,7 @@ Este projeto suporta o EventSub da Twitch para permitir uma implantação "scale
 
 Para habilitar este recurso, defina o seguinte em seu ambiente de implantação (por exemplo, Cloud Run):
 
-- `LAZY_CONNECT=1`: Habilita a lógica de scale-to-zero.
+- `LAZY_CONNECT=true`: Habilita a lógica de scale-to-zero.
 - `TWITCH_EVENTSUB_SECRET`: Uma string secreta longa e aleatória que você cria para proteger seu endpoint de webhook.
 - `PUBLIC_URL`: A URL pública do seu serviço implantado (por exemplo, `https://your-service.a.run.app`).
 

@@ -208,7 +208,7 @@ Este proyecto es compatible con EventSub de Twitch para permitir un despliegue s
 
 Para habilitar esta función, configure lo siguiente в su entorno de despliegue (por ejemplo, Cloud Run):
 
-- `LAZY_CONNECT=1`: Habilita la lógica de escalado a cero.
+- `LAZY_CONNECT=true`: Habilita la lógica de escalado a cero.
 - `TWITCH_EVENTSUB_SECRET`: Una cadena secreta larga y aleatoria que usted crea para asegurar su punto de conexión de webhook.
 - `PUBLIC_URL`: La URL pública de su servicio desplegado (por ejemplo, `https://your-service.a.run.app`).
 

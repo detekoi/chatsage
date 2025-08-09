@@ -18,7 +18,7 @@ env:
   NODE_ENV: 'production'
   PINO_PRETTY_LOGGING: 'false'
   TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME: 'projects/907887386166/secrets/TWITCH_BOT_REFRESH_TOKEN/versions/latest'
-  LAZY_CONNECT: '1'
+  LAZY_CONNECT: 'true'
   PUBLIC_URL: 'https://chatsage-907887386166.us-central1.run.app'
   KEEP_ALIVE_QUEUE: 'self-ping'
   GOOGLE_CLOUD_PROJECT: 'streamsage-bot'
