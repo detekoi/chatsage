@@ -2,30 +2,71 @@
 
 /**
  * Script to trigger a stream.online EventSub notification to wake up the bot
- * 
+ *
  * Usage:
- *   node trigger-stream-online.js [broadcaster_name]
- * 
+ *   node trigger-stream-online.js [broadcaster_name] [--secret=VALUE] [--secret-file=/path/to/file] [--dry-run]
+ *
  * Examples:
  *   node trigger-stream-online.js streamername
  *   node trigger-stream-online.js anotherchannel
  *   TWITCH_EVENTSUB_SECRET=your_secret node trigger-stream-online.js
+ *   node trigger-stream-online.js pedromarvarez --secret=your_secret
+ *   node trigger-stream-online.js --secret-file=/secrets/twitch_eventsub_secret --dry-run
  */
 
 import crypto from 'crypto';
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+
+// Load .env from project root if present (no-op if absent)
+try {
+  const projectRoot = process.cwd();
+  const envPath = path.resolve(projectRoot, '.env');
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+} catch {
+  // Ignore dotenv load errors - we'll rely on process.env
+}
 
 // Your bot's deployment URL
 const BOT_URL = 'https://chatsage-907887386166.us-central1.run.app';
 const WEBHOOK_ENDPOINT = `${BOT_URL}/twitch/event`;
 
-// You'll need to set this to your actual EventSub secret
-const EVENTSUB_SECRET = process.env.TWITCH_EVENTSUB_SECRET || 'your_secret_here';
+// Parse CLI args
+const args = process.argv.slice(2);
+const broadcasterArg = args.find(a => !a.startsWith('--'));
+const secretArg = args.find(a => a.startsWith('--secret='))?.split('=')[1];
+const secretFileArg = args.find(a => a.startsWith('--secret-file='))?.split('=')[1];
+const isDryRun = args.includes('--dry-run');
+
+// Resolve EventSub secret from (in order): --secret, --secret-file, env var (value or file path)
+function resolveEventSubSecret() {
+  if (secretArg && secretArg.trim()) {
+    return secretArg.trim();
+  }
+  if (secretFileArg && fs.existsSync(secretFileArg)) {
+    return fs.readFileSync(secretFileArg, 'utf8').trim();
+  }
+  const envValue = process.env.TWITCH_EVENTSUB_SECRET;
+  if (!envValue) return 'your_secret_here';
+  if (fs.existsSync(envValue)) {
+    return fs.readFileSync(envValue, 'utf8').trim();
+  }
+  return envValue;
+}
+
+const EVENTSUB_SECRET = resolveEventSubSecret();
 
 if (EVENTSUB_SECRET === 'your_secret_here') {
-    console.error('❌ Please set TWITCH_EVENTSUB_SECRET environment variable');
-    console.error('   You can find this in your Google Cloud Secret Manager or .env file');
-    process.exit(1);
+  console.error('❌ Please set TWITCH_EVENTSUB_SECRET or pass --secret/--secret-file');
+  console.error('   Examples:');
+  console.error('     TWITCH_EVENTSUB_SECRET=your_secret node scripts/trigger-stream-online.js pedromarvarez');
+  console.error('     node scripts/trigger-stream-online.js pedromarvarez --secret=your_secret');
+  console.error('     node scripts/trigger-stream-online.js --secret-file=/path/to/secret --dry-run');
+  process.exit(1);
 }
 
 /**
@@ -98,6 +139,12 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
         console.log(`   - Broadcaster: ${broadcasterUserName}`);
         console.log(`   - Message ID: ${messageId}`);
         console.log(`   - Timestamp: ${timestamp}`);
+        console.log(`   - Secret length: ${EVENTSUB_SECRET.length} chars`);
+
+        if (isDryRun) {
+            console.log('🔎 Dry run enabled: not sending request.');
+            return;
+        }
         
         const response = await axios.post(WEBHOOK_ENDPOINT, body, { 
             headers,
@@ -137,5 +184,5 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
 }
 
 // Run the script
-const broadcasterName = process.argv[2] || 'testbroadcaster';
+const broadcasterName = broadcasterArg || 'testbroadcaster';
 triggerStreamOnline(broadcasterName).catch(console.error);
