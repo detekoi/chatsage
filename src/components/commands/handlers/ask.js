@@ -80,6 +80,8 @@ function extractLocationFromTimeQuery(userQuery) {
  * @param {string} userQuery - The original query for context.
  */
 async function handleAskResponseFormatting(channel, userName, responseText, userQuery) {
+    logger.info({ responseText: responseText?.substring(0, 100), userQuery }, `handleAskResponseFormatting called for ${userName}`);
+    
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
         enqueueMessage(channel, `@${userName}, sorry, I couldn't find or generate an answer for that right now.`);
@@ -185,9 +187,11 @@ const askHandler = {
             if (decisionResult.searchNeeded) {
                 logger.info(`Proceeding with search-grounded response for query: "${userQuery}"`);
                 responseText = await generateSearchResponse(contextPrompt, userQuery);
+                logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Search response received for query: "${userQuery}"`);
             } else {
                 logger.info(`Proceeding with standard (no search) response for query: "${userQuery}"`);
                 responseText = await generateStandardResponse(contextPrompt, userQuery);
+                logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Standard response received for query: "${userQuery}"`);
             }
 
             await handleAskResponseFormatting(channel, userName, responseText, userQuery);
