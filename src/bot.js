@@ -135,86 +135,30 @@ async function main() {
         logger.info('Initializing Channel Manager...');
         await initializeChannelManager();
         
-        // --- Load Twitch Channels based on Environment ---
-        if (config.app.nodeEnv === 'development') {
-            logger.info('Running in DEVELOPMENT mode. Loading channels ONLY from TWITCH_CHANNELS environment variable.');
-            if (process.env.TWITCH_CHANNELS) {
-                config.twitch.channels = process.env.TWITCH_CHANNELS
-                    .split(',')
-                    .map(ch => ch.trim().toLowerCase())
-                    .filter(ch => ch);
-                if (config.twitch.channels.length > 0) {
-                    logger.info(`Loaded ${config.twitch.channels.length} channels from .env: [${config.twitch.channels.join(', ')}]`);
-                } else {
-                    logger.fatal('TWITCH_CHANNELS environment variable is set but contains no valid channels.');
-                    process.exit(1);
-                }
-            } else {
-                logger.fatal('Running in DEVELOPMENT mode, but TWITCH_CHANNELS environment variable is not set or empty. Please set it in your .env file.');
+        // --- Load Twitch Channels ---
+        // Use env-based channels locally (development) and Firestore when deployed on Cloud Run.
+        const isCloudRun = !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
+        if (!isCloudRun && config.app.nodeEnv === 'development') {
+            logger.info('Local development detected. Using TWITCH_CHANNELS from .env');
+            const envChannels = (process.env.TWITCH_CHANNELS || '')
+                .split(',')
+                .map(ch => ch.trim().toLowerCase())
+                .filter(Boolean);
+            if (envChannels.length === 0) {
+                logger.fatal('TWITCH_CHANNELS is empty or not set in .env for development. Please set it.');
                 process.exit(1);
             }
+            config.twitch.channels = envChannels;
+            logger.info(`Loaded ${config.twitch.channels.length} channels from .env: [${config.twitch.channels.join(', ')}]`);
         } else {
-            // --- Production/Non-Development Channel Loading Logic ---
-            logger.info('Running in non-development mode. Loading channels from Firestore (fallback to env/secrets)...');
-            try {
-                logger.info('Loading Twitch channels from Firestore managedChannels collection...');
-                const managedChannels = config.app.nodeEnv === 'development' ? [] : await getActiveManagedChannels();
-                if (managedChannels && managedChannels.length > 0) {
-                    config.twitch.channels = managedChannels.map(ch => ch.toLowerCase());
-                    logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
-                } else {
-                    logger.warn('No active channels found in Firestore managedChannels collection. Falling back...');
-                    if (process.env.TWITCH_CHANNELS) {
-                        logger.info('Falling back to TWITCH_CHANNELS environment variable...');
-                        config.twitch.channels = process.env.TWITCH_CHANNELS
-                            .split(',')
-                            .map(ch => ch.trim().toLowerCase())
-                            .filter(ch => ch);
-                        logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
-                    } else if (config.secrets.twitchChannelsSecretName) {
-                        logger.info('Falling back to Secret Manager for channel list...');
-                        const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
-                        if (channelsString) {
-                            config.twitch.channels = channelsString
-                                .split(',')
-                                .map(ch => ch.trim().toLowerCase())
-                                .filter(ch => ch);
-                            logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
-                        } else {
-                            logger.error('Failed to load Twitch channels from Secret Manager fallback.');
-                            process.exit(1);
-                        }
-                    } else {
-                        logger.error('No channel configuration found (Firestore, Env, Secrets). Cannot proceed.');
-                        process.exit(1);
-                    }
-                }
-            } catch (error) {
-                logger.error({ err: error }, 'Error loading channels from Firestore. Falling back...');
-                if (process.env.TWITCH_CHANNELS) {
-                    logger.info('Falling back to TWITCH_CHANNELS environment variable...');
-                    config.twitch.channels = process.env.TWITCH_CHANNELS
-                        .split(',')
-                        .map(ch => ch.trim().toLowerCase())
-                        .filter(ch => ch);
-                    logger.info(`Loaded ${config.twitch.channels.length} channels from environment.`);
-                } else if (config.secrets.twitchChannelsSecretName) {
-                    logger.info('Falling back to Secret Manager for channel list...');
-                    const channelsString = await getSecretValue(config.secrets.twitchChannelsSecretName);
-                    if (channelsString) {
-                        config.twitch.channels = channelsString
-                            .split(',')
-                            .map(ch => ch.trim().toLowerCase())
-                            .filter(ch => ch);
-                        logger.info(`Loaded ${config.twitch.channels.length} channels from Secret Manager.`);
-                    } else {
-                        logger.error('Failed to load Twitch channels from Secret Manager fallback after Firestore error.');
-                        process.exit(1);
-                    }
-                } else {
-                    logger.error('No channel configuration found after Firestore error. Cannot proceed.');
-                    process.exit(1);
-                }
+            logger.info('Cloud environment detected or not development. Loading channels from Firestore.');
+            const managedChannels = await getActiveManagedChannels();
+            if (managedChannels && managedChannels.length > 0) {
+                config.twitch.channels = managedChannels.map(ch => ch.toLowerCase());
+                logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
+            } else {
+                logger.fatal('No active channels found in Firestore managedChannels collection. Cannot proceed.');
+                process.exit(1);
             }
         }
         // Ensure channels are populated before proceeding
