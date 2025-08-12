@@ -12,7 +12,7 @@
 
 ChatSage est un chatbot alimenté par l'IA, conçu pour les environnements de chat Twitch dans n'importe quelle langue. Il fournit des réponses contextuellement pertinentes basées sur l'historique du chat, les requêtes des utilisateurs et les informations du stream en temps réel (jeu actuel, titre, tags).
 
-> Important : L'accès à ChatSage est actuellement limité (allow-list). Le tableau de bord en libre-service est désactivé pour les chaînes non approuvées. Si vous souhaitez essayer le bot, veuillez me contacter ici : [Formulaire de contact](https://detekoi.github.io/#contact-me).
+> Important : L'accès à la version cloud de ChatSage est actuellement limité (allow-list). Le tableau de bord en libre-service est désactivé pour les chaînes non approuvées. Si vous souhaitez essayer le bot, veuillez me contacter ici : [Formulaire de contact](https://detekoi.github.io/#contact-me).
 
 **[Ajoutez ChatSage à votre chaîne Twitch →](https://streamsage-bot.web.app)**
 

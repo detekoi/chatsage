@@ -86,7 +86,7 @@ export async function getActiveManagedChannels() {
     logger.info("[ChannelManager] Fetching active managed channels from Firestore...");
     
     try {
-        const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION)
+        const snapshot = await dbInstance.collection(MANAGED_CHANNELS_COLLECTION)
             .where('isActive', '==', true)
             .get();
         
@@ -149,7 +149,7 @@ export async function isChannelAllowed(channelName) {
         // On env allow-list check failure, continue to Firestore check but stay conservative if needed
     }
     try {
-        const snapshot = await dbInstance
+        const snapshot = await db
             .collection(MANAGED_CHANNELS_COLLECTION)
             .where('channelName', '==', cleanChannelName)
             .where('isActive', '==', true)

@@ -15,7 +15,7 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
 
-> Important: Access to ChatSage is currently invite-only via an allow-list. The self-serve web dashboard is disabled for unapproved channels. If you'd like to try the bot, please contact me here: [Contact form](https://detekoi.github.io/#contact-me).
+> Important: Access to the cloud version of ChatSage is currently invite-only via an allow-list. The self-serve web dashboard is disabled for unapproved channels. If you'd like to try the bot, please contact me here: [Contact form](https://detekoi.github.io/#contact-me).
 
 ## Table of Contents
 
