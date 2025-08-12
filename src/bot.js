@@ -17,7 +17,7 @@ import { initializeGeoGameManager, getGeoGameManager } from './components/geo/ge
 import { initializeStorage } from './components/geo/geoStorage.js';
 import { initializeTriviaGameManager, getTriviaGameManager } from './components/trivia/triviaGameManager.js';
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
-import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges } from './components/twitch/channelManager.js';
+import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges, isChannelAllowed } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
 import { initializeCommandStateManager, shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
@@ -158,7 +158,7 @@ async function main() {
             logger.info('Running in non-development mode. Loading channels from Firestore (fallback to env/secrets)...');
             try {
                 logger.info('Loading Twitch channels from Firestore managedChannels collection...');
-                const managedChannels = await getActiveManagedChannels();
+                const managedChannels = config.app.nodeEnv === 'development' ? [] : await getActiveManagedChannels();
                 if (managedChannels && managedChannels.length > 0) {
                     config.twitch.channels = managedChannels.map(ch => ch.toLowerCase());
                     logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
@@ -369,6 +369,22 @@ async function main() {
             }
 
             const cleanChannel = channel.substring(1);
+
+            // Enforce allow-list: if channel not in configured list (dev) or not allowed per Firestore (prod), ignore
+            try {
+                const isConfiguredChannel = Array.isArray(config.twitch.channels) && config.twitch.channels.map(c => c.toLowerCase()).includes(cleanChannel.toLowerCase());
+                let allowed = isConfiguredChannel;
+                if (!allowed && config.app.nodeEnv !== 'development') {
+                    allowed = await isChannelAllowed(cleanChannel);
+                }
+                if (!allowed) {
+                    logger.warn(`[BotJS] Received message in disallowed channel ${cleanChannel}. Ignoring.`);
+                    return;
+                }
+            } catch (allowErr) {
+                logger.error({ err: allowErr, channel: cleanChannel }, '[BotJS] Error checking allow-list. Ignoring message as a safety measure.');
+                return;
+            }
             const lowerUsername = tags.username.toLowerCase();
             const displayName = tags['display-name'] || tags.username;
             const contextManager = getContextManager();

@@ -55,3 +55,5 @@ scripts/copy-to-gemini-folder.js #
 **/.claude/settings.local.json
 
 game_reports.html
+
+channels.txt

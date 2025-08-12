@@ -1,6 +1,7 @@
 // src/components/twitch/channelManager.js
 import { Firestore } from '@google-cloud/firestore';
 import logger from '../../lib/logger.js';
+import config from '../../config/index.js';
 
 // --- Firestore Client Initialization ---
 let db = null; // Firestore database instance
@@ -81,7 +82,7 @@ function _getDb() {
  * @returns {Promise<string[]>} Array of channel names.
  */
 export async function getActiveManagedChannels() {
-    const db = _getDb();
+    const dbInstance = _getDb();
     logger.info("[ChannelManager] Fetching active managed channels from Firestore...");
     
     try {
@@ -106,6 +107,62 @@ export async function getActiveManagedChannels() {
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error fetching active managed channels.");
         throw new ChannelManagerError("Failed to fetch active managed channels.", error);
+    }
+}
+
+/**
+ * Checks whether a given channel is allowed (active) according to managedChannels in Firestore.
+ * @param {string} channelName - The Twitch channel name (with or without leading '#').
+ * @returns {Promise<boolean>} True if channel exists in allow-list and is active; false otherwise (or on error).
+ */
+export async function isChannelAllowed(channelName) {
+    const db = _getDb();
+    const cleanChannelName = (channelName || '').toLowerCase().replace(/^#/, '');
+    if (!cleanChannelName) {
+        return false;
+    }
+    // Environment allow-list acts as an additional filter: if configured, channel must be in it.
+    // It does NOT bypass Firestore; Firestore is the source of truth for active status.
+    try {
+        let hasEnvAllowlistConfigured = Array.isArray(config.app.allowedChannels) && config.app.allowedChannels.length > 0;
+        let isInEnvAllowlist = hasEnvAllowlistConfigured && config.app.allowedChannels.includes(cleanChannelName);
+        // If not configured via env and a secret name is provided, attempt to load list from Secret Manager
+        if (!hasEnvAllowlistConfigured && config.secrets.allowedChannelsSecretName) {
+            try {
+                const { getSecretValue } = await import('../../lib/secretManager.js');
+                const secret = await getSecretValue(config.secrets.allowedChannelsSecretName);
+                if (secret) {
+                    const secretList = secret.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+                    hasEnvAllowlistConfigured = secretList.length > 0;
+                    isInEnvAllowlist = secretList.includes(cleanChannelName);
+                }
+            } catch (secretErr) {
+                logger.error({ err: secretErr }, '[ChannelManager] Error loading allowed channels from Secret Manager');
+            }
+        }
+        if (hasEnvAllowlistConfigured && !isInEnvAllowlist) {
+            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Channel not present in ALLOWED_CHANNELS; access denied.');
+            return false;
+        }
+    } catch (envErr) {
+        logger.error({ err: envErr }, '[ChannelManager] Error checking environment allow-list');
+        // On env allow-list check failure, continue to Firestore check but stay conservative if needed
+    }
+    try {
+        const snapshot = await dbInstance
+            .collection(MANAGED_CHANNELS_COLLECTION)
+            .where('channelName', '==', cleanChannelName)
+            .where('isActive', '==', true)
+            .limit(1)
+            .get();
+        const allowed = !snapshot.empty;
+        if (!allowed) {
+            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Channel not found in allow-list or not active.');
+        }
+        return allowed;
+    } catch (error) {
+        logger.error({ err: error, channel: cleanChannelName }, '[ChannelManager] Error checking channel allow-list status.');
+        return false;
     }
 }
 

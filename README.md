@@ -15,6 +15,8 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
 
+> Important: Access to ChatSage is currently invite-only via an allow-list. The self-serve web dashboard is disabled for unapproved channels. If you'd like to try the bot, please contact me here: [Contact form](https://detekoi.github.io/#contact-me).
+
 ## Table of Contents
 
 - [Features (Core Capabilities)](#features-core-capabilities)
@@ -41,10 +43,12 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 
 ## Adding ChatSage to Your Channel
 
-Streamers can now easily add or remove ChatSage from their channel using the web interface:
+Note: Only pre-approved channels on the allow-list can enable ChatSage. If you are not yet approved but want to try it, please reach out via the [Contact form](https://detekoi.github.io/#contact-me).
+
+If your channel is approved, you can add or remove ChatSage using the web interface:
 
 1. **Visit the ChatSage Management Portal**:
-   - Go to [ChatSage Management Portal](https://streamsage-bot.web.app)
+   - Go to [ChatSage Management Portal](https://streamsage-bot.web.app) (approved channels only)
    - Click on "Login with Twitch"
 
 2. **Authorize the Application**:
