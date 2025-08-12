@@ -3,6 +3,7 @@ import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
+import { isChannelAllowed } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';
 
@@ -268,6 +269,13 @@ export async function eventSubHandler(req, res, rawBody) {
         if (subscription.type === 'stream.online') {
             const { broadcaster_user_id, broadcaster_user_name } = event;
             logger.info(`📡 ${broadcaster_user_name} just went live — ensuring bot is active...`);
+
+            // Enforce allow-list: ignore online events for disallowed channels
+            const allowed = await isChannelAllowed(broadcaster_user_name);
+            if (!allowed) {
+                logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
+                return;
+            }
 
             // Add to active streams
             activeStreams.add(broadcaster_user_name);

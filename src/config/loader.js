@@ -68,6 +68,10 @@ function loadConfig() {
             logLevel: process.env.LOG_LEVEL || 'info',
             prettyLog: process.env.PINO_PRETTY_LOGGING === 'true',
             nodeEnv: process.env.NODE_ENV || 'development',
+            // Optional allow-list: if present and non-empty, only these channels are allowed
+            allowedChannels: process.env.ALLOWED_CHANNELS
+                ? process.env.ALLOWED_CHANNELS.split(',').map(ch => ch.trim().toLowerCase()).filter(Boolean)
+                : [],
         },
 
         // Secret Manager Configuration
@@ -75,6 +79,8 @@ function loadConfig() {
             twitchBotRefreshTokenName: process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME,
             // Optional: resource name for channels list in Secret Manager
             twitchChannelsSecretName: process.env.TWITCH_CHANNELS_SECRET_NAME || null,
+            // Optional: resource name for allowed channels list in Secret Manager
+            allowedChannelsSecretName: process.env.ALLOWED_CHANNELS_SECRET_NAME || null,
         }
     };
 

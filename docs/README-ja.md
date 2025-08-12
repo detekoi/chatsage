@@ -11,6 +11,8 @@
 
 ChatSageは、あらゆる言語のTwitchチャット環境向けに設計されたAI搭載チャットボットです。チャット履歴、ユーザーのクエリ、リアルタイムの配信情報（現在のゲーム、タイトル、タグ）に基づいて、文脈に応じた適切な応答を提供します。
 
+> 重要: 現在、ChatSageへのアクセスは招待制（許可リスト）です。未承認のチャンネル向けのセルフサービスダッシュボードは無効になっています。ボットを試したい場合は、こちらからご連絡ください: [お問い合わせフォーム](https://detekoi.github.io/#contact-me)。
+
 **[ChatSageをあなたのTwitchチャンネルに追加 →](https://streamsage-bot.web.app)**
 
 [![ライセンス](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
@@ -41,10 +43,12 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 ## ChatSageをチャンネルに追加する方法 {#adding-chatsage-to-your-channel}
 
-配信者はウェブインターフェースを使用して、自分のチャンネルからChatSageを簡単に追加または削除できるようになりました。
+注意: 許可リストにある承認済みチャンネルのみがChatSageを有効にできます。まだ承認されていないが試したい場合は、[お問い合わせフォーム](https://detekoi.github.io/#contact-me)からご連絡ください。
+
+承認済みのチャンネルは、以下の手順でWebインターフェースから追加/削除できます。
 
 1.  **ChatSage管理ポータルにアクセスします**：
-    -   [ChatSage管理ポータル](https://streamsage-bot.web.app) にアクセスします
+    -   [ChatSage管理ポータル](https://streamsage-bot.web.app) にアクセスします（承認済みチャンネルのみ）
     -   「Twitchでログイン」をクリックします
 
 2.  **アプリケーションを認証します**：

@@ -12,6 +12,8 @@
 
 ChatSage è un chatbot potenziato dall'IA progettato per gli ambienti chat di Twitch in qualsiasi lingua. Fornisce risposte contestualmente pertinenti basate sulla cronologia della chat, sulle query degli utenti e sulle informazioni dello streaming in tempo reale (gioco corrente, titolo, tag).
 
+> Importante: L'accesso a ChatSage è attualmente su invito (allow-list). Il pannello self-service è disabilitato per i canali non approvati. Se desideri provare il bot, contattami qui: [Modulo di contatto](https://detekoi.github.io/#contact-me).
+
 **[Aggiungi ChatSage al tuo canale Twitch →](https://streamsage-bot.web.app)**
 
 [![Licenza](https://img.shields.io/badge/Licenza-BSD%202--Clausole-blue.svg)](../LICENSE.MD)
@@ -42,10 +44,12 @@ ChatSage è un chatbot potenziato dall'IA progettato per gli ambienti chat di Tw
 
 ## Aggiungere ChatSage al Tuo Canale
 
-Gli streamer possono ora aggiungere o rimuovere facilmente ChatSage dal loro canale utilizzando l'interfaccia web:
+Nota: Solo i canali approvati nella allow-list possono abilitare ChatSage. Se non sei ancora approvato ma vuoi provarlo, contattami tramite il [Modulo di contatto](https://detekoi.github.io/#contact-me).
+
+Se il tuo canale è approvato, puoi aggiungere o rimuovere ChatSage tramite l'interfaccia web:
 
 1.  **Visita il Portale di Gestione ChatSage**:
-    -   Vai al [Portale di Gestione ChatSage](https://streamsage-bot.web.app)
+    -   Vai al [Portale di Gestione ChatSage](https://streamsage-bot.web.app) (solo canali approvati)
     -   Fai clic su "Accedi con Twitch"
 
 2.  **Autorizza l'Applicazione**:
