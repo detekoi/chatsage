@@ -166,12 +166,13 @@ const askHandler = {
                 } else {
                     // Failed to get IANA from LLM, even though regex matched a location.
                     logger.warn(`[${channelName}] Regex extracted location "${locationForTime}", but LLM failed to find IANA. Falling back to general query.`);
-                    const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQuery);
+                    const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
+                    const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQueryWithContext);
                     let responseText = null;
                     if (decisionResult.searchNeeded) {
-                        responseText = await generateSearchResponse(contextPrompt, userQuery);
+                        responseText = await generateSearchResponse(contextPrompt, userQueryWithContext);
                     } else {
-                        responseText = await generateStandardResponse(contextPrompt, userQuery);
+                        responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
                     }
                     await handleAskResponseFormatting(channel, userName, responseText, userQuery);
                 }
@@ -180,17 +181,18 @@ const askHandler = {
 
             // --- Not a regex-matched time query. Proceed with general !ask logic. ---
             logger.debug(`[${channelName}] Query not matched by time regexes. Proceeding with general handling for: "${userQuery}"`);
-            const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQuery);
+            const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
+            const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQueryWithContext);
             logger.info({ decisionResult }, `Search decision made for general query: "${userQuery}"`);
 
             let responseText = null;
             if (decisionResult.searchNeeded) {
                 logger.info(`Proceeding with search-grounded response for query: "${userQuery}"`);
-                responseText = await generateSearchResponse(contextPrompt, userQuery);
+                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext);
                 logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Search response received for query: "${userQuery}"`);
             } else {
                 logger.info(`Proceeding with standard (no search) response for query: "${userQuery}"`);
-                responseText = await generateStandardResponse(contextPrompt, userQuery);
+                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
                 logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Standard response received for query: "${userQuery}"`);
             }
 

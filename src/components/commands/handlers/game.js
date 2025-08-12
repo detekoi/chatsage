@@ -436,7 +436,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
         const contextPrompt = buildContextPrompt(llmContext || {});
         
         // Formulate a query targeting walkthroughs/help
-        const helpSearchQuery = `Find walkthrough or help information for the game "${gameName}" regarding this specific problem: "${helpQuery}"`;
+        const helpSearchQuery = `Find the best and most effective strategy or walkthrough information for the game "${gameName}" regarding this specific problem: "${helpQuery}"`;
 
         // 3. Call Search-Grounded LLM
         const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
