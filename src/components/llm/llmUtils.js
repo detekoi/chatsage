@@ -42,7 +42,8 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const contextPrompt = buildContextPrompt(llmContext);
 
         // c. Generate initial response with both context and user message
-        const initialResponseText = await generateLlmResponse(contextPrompt, userMessage);
+        const userMessageWithContext = `The user is ${displayName}. Their message is: ${userMessage}`;
+        const initialResponseText = await generateLlmResponse(contextPrompt, userMessageWithContext);
         if (!initialResponseText?.trim()) {
             logger.warn({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'LLM generated null or empty response.');
             await sendBotResponse(channel, `@${displayName} Sorry, I couldn't come up with a reply to that.`);
