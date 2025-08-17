@@ -479,9 +479,9 @@ On a new line, provide a VERY BRIEF (1 short sentence) justification for your de
     } catch (error) {
         logger.error({ err: error }, '[TriviaService] Error verifying answer with LLM. Falling back to basic similarity.');
         const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
-        let isFallbackCorrect = similarity > 0.7; 
+        let isFallbackCorrect = similarity > 0.8; 
 
-        if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.7)) {
+        if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.8)) {
             isFallbackCorrect = true;
         }
 

@@ -91,6 +91,9 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
     let replyPrefix = `@${userName} `;
     let finalReplyText = responseText;
 
+    // Strip any mistaken prefixes from the LLM response
+    finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+
     if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
         logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
         replyPrefix = `@${userName}: `; // Changed to a more concise prefix that does not include "(Summary)"
