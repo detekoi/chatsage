@@ -247,21 +247,10 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             return null;
         }
         
-        // Debug logging to understand what's being returned
-        logger.debug({ 
-            candidateContent: candidate.content,
-            parts: candidate.content?.parts,
-            firstPart: candidate.content?.parts?.[0]
-        }, '[TriviaService] Debug: Response structure from Gemini');
         
         const functionCall = candidate.content?.parts?.[0]?.functionCall;
         if (!functionCall || functionCall.name !== 'generate_trivia_question') {
             logger.warn(`[TriviaService] Expected function call 'generate_trivia_question' but got: ${functionCall?.name || 'none'}`);
-            // Log the full response to understand what we're getting instead
-            logger.warn({ 
-                fullResponse: result.response,
-                candidateParts: candidate.content?.parts 
-            }, '[TriviaService] Debug: Full response when function call failed');
             return null;
         }
         
