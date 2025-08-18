@@ -165,15 +165,16 @@ async function addMessage(channelName, username, message, tags) {
                 state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
                 logger.debug(`Summarized and pruned history for ${channelName}. New length: ${state.chatHistory.length}`);
             } else {
-                 // If summarization didn't happen (e.g., not needed yet, or failed),
-                 // still prune to prevent unbounded growth, but keep more history maybe?
-                 // Simple prune for now:
-                 state.chatHistory = state.chatHistory.slice(-MAX_CHAT_HISTORY_LENGTH);
+                 // If summarization failed, prune more aggressively to prevent unbounded growth
+                 logger.warn(`[${channelName}] Summarization failed, pruning chat history more aggressively to prevent token overflow.`);
+                 state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+                 logger.debug(`Pruned history for ${channelName} after summarization failure. New length: ${state.chatHistory.length}`);
             }
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "Error during summarization trigger/pruning.");
-             // Still prune to prevent unbounded growth
-             state.chatHistory = state.chatHistory.slice(-MAX_CHAT_HISTORY_LENGTH);
+             // Prune aggressively to prevent unbounded growth when summarization throws errors
+             logger.warn(`[${channelName}] Exception during summarization, pruning chat history aggressively to prevent token overflow.`);
+             state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
         }
     }
 }
