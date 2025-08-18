@@ -33,7 +33,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                     { text: prompt }
                 ]
             }],
-            generationConfig: { maxOutputTokens: 300, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 380, responseMimeType: 'text/plain' }
         });
 
         // Extract and process the response
@@ -62,6 +62,11 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                     logger.info({ responseLength: fallback.length }, 'Successfully generated image analysis response');
                     return fallback.trim();
                 }
+            }
+            // Try candidate.text property if available
+            if (typeof candidate.text === 'string' && candidate.text.trim().length > 0) {
+                logger.info({ responseLength: candidate.text.length }, 'Successfully generated image analysis response');
+                return candidate.text.trim();
             }
             logger.warn('Gemini image analysis response candidate missing content parts.');
             return null;

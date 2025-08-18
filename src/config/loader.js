@@ -24,11 +24,17 @@ function loadConfig() {
         'GEMINI_API_KEY',
         'TWITCH_CLIENT_ID',
         'TWITCH_CLIENT_SECRET',
-        'TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME',
         // GEMINI_MODEL_ID has a default, so not strictly required here
     ];
 
-    const missingEnvVars = requiredEnvVars.filter(key => !(key in process.env));
+    // Secret requirement logic:
+    // If TWITCH_BOT_REFRESH_TOKEN is NOT provided directly (e.g., local dev),
+    // then require TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME for Secret Manager.
+    if (!process.env.TWITCH_BOT_REFRESH_TOKEN) {
+        requiredEnvVars.push('TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME');
+    }
+
+    const missingEnvVars = requiredEnvVars.filter(key => !(key in process.env) || process.env[key] === '');
 
     if (missingEnvVars.length > 0) {
         throw new Error(

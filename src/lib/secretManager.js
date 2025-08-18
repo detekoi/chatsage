@@ -17,8 +17,16 @@ function initializeSecretManager() {
         client = new SecretManagerServiceClient();
         logger.info('Secret Manager client initialized successfully.');
     } catch (error) {
+        // In local development, allow running without Secret Manager
+        const isDev = (process.env.NODE_ENV || 'development') === 'development';
+        const hasLocalRefreshToken = !!process.env.TWITCH_BOT_REFRESH_TOKEN;
+        if (isDev || hasLocalRefreshToken || process.env.ALLOW_SECRET_MANAGER_MISSING === 'true') {
+            logger.warn({ err: { message: error.message } }, 'Secret Manager client init failed. Continuing without Secret Manager (dev/local token mode).');
+            client = null; // Explicitly keep null; callers should handle fallback
+            return;
+        }
         logger.fatal({ err: error }, 'Failed to initialize Secret Manager client. Ensure ADC or credentials are configured.');
-        throw error; // Prevent startup if secret manager cannot be initialized
+        throw error; // In production, prevent startup if secret manager cannot be initialized
     }
 }
 

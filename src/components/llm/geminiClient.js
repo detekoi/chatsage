@@ -34,10 +34,18 @@ function extractTextFromResponse(response, candidate, logContext = 'response') {
     if (Array.isArray(parts) && parts.length > 0) {
         return parts.map(part => part.text || '').join('').trim();
     }
+    // Some SDK variants expose candidate.text directly
+    if (candidate && typeof candidate.text === 'string' && candidate.text.trim().length > 0) {
+        return candidate.text.trim();
+    }
     // Fallback: SDK convenience method
     if (response && typeof response.text === 'function') {
         const text = response.text();
         return typeof text === 'string' ? text.trim() : null;
+    }
+    // Newer SDKs may expose response.text as a string property
+    if (response && typeof response.text === 'string' && response.text.trim().length > 0) {
+        return response.text.trim();
     }
     // As a last resort, try joining any parts array if present but empty-like
     if (candidate?.content && 'parts' in candidate.content && Array.isArray(candidate.content.parts)) {
@@ -312,7 +320,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: searchTool,
-            toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+            // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: { maxOutputTokens: 340, responseMimeType: 'text/plain' }
         });

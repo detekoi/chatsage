@@ -335,7 +335,9 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo) 
             }
 
             const finalMessage = prefix + responseText;
-            enqueueMessage(channel, finalMessage);
+            // Defensive: avoid sending meta thought/regurgitation if present
+            const scrubbed = finalMessage.replace(/^@[^,]+,\s*(Thinking Process|Reasoning|Analysis)[:\-].*$/i, `@${userName}, `).trim();
+            enqueueMessage(channel, scrubbed);
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
             logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
@@ -386,7 +388,9 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
 
         // 4. Format and Send Response
         let replyPrefix = `@${userName}: `;
-        let finalReplyText = removeMarkdownAsterisks(searchResultText);
+        let finalReplyText = removeMarkdownAsterisks(searchResultText)
+            .replace(/^(Thinking Process|Reasoning|Analysis)[:\-].*$/i, '')
+            .trim();
 
         // Check length and Summarize/Truncate if needed
         if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
