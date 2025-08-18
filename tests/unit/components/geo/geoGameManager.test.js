@@ -1,7 +1,7 @@
 // tests/unit/components/geo/geoGameManager.test.js
 import { getGeoGameManager } from '../../../../src/components/geo/geoGameManager.js';
 import { getContextManager } from '../../../../src/context/contextManager.js';
-import { translateText } from '../../../../src/llm/geminiClient.js';
+import { translateText } from '../../../../src/lib/translationUtils.js';
 import { validateGuess } from '../../../../src/components/geo/geoLocationService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';

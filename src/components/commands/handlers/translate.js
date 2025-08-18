@@ -2,8 +2,9 @@ import logger from '../../../lib/logger.js';
 // Need contextManager functions to update user state
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { translateText } from '../../llm/geminiClient.js';
+import { translateText } from '../../../lib/translationUtils.js';
 import { getUsersByLogin } from '../../twitch/helixClient.js';
+
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {

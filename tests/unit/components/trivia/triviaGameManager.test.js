@@ -1,7 +1,7 @@
 // tests/unit/components/trivia/triviaGameManager.test.js
 import { getTriviaGameManager } from '../../../../src/components/trivia/triviaGameManager.js';
 import { getContextManager } from '../../../../src/context/contextManager.js';
-import { translateText } from '../../../../src/llm/geminiClient.js';
+import { translateText } from '../../../../src/lib/translationUtils.js';
 import { verifyAnswer } from '../../../../src/components/trivia/triviaQuestionService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';

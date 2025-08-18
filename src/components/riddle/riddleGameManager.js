@@ -2,7 +2,7 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
-import { translateText } from '../llm/geminiClient.js';
+import { translateText } from '../../lib/translationUtils.js';
 import { generateRiddle, verifyRiddleAnswer } from './riddleService.js';
 import {
     formatRiddleStartMessage,

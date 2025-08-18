@@ -1,6 +1,6 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
-import { translateText } from './geminiClient.js';
+import { translateText } from '../../lib/translationUtils.js';
 import { getContextManager } from '../context/contextManager.js';
 
 /**
