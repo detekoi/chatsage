@@ -27,16 +27,13 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         // Prepare the request with inline image data
         const result = await model.generateContent({
             contents: [{
+                role: 'user',
                 parts: [
-                    {
-                        inlineData: {
-                            mimeType: mimeType,
-                            data: base64Data
-                        }
-                    },
+                    { inlineData: { mimeType: mimeType, data: base64Data } },
                     { text: prompt }
                 ]
-            }]
+            }],
+            generationConfig: { maxOutputTokens: 300, responseMimeType: 'text/plain' }
         });
 
         // Extract and process the response
