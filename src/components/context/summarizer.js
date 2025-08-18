@@ -91,13 +91,20 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment)
              return null;
         }
 
-        // Check for missing content parts before trying to access them
-        if (!candidate.content?.parts?.length) {
-            logger.warn(`[${channelName}] Gemini summarization response candidate missing content parts.`);
+        // Extract summary text robustly
+        let summaryText = null;
+        if (Array.isArray(candidate.content?.parts) && candidate.content.parts.length > 0) {
+            summaryText = candidate.content.parts.map(part => part?.text || '').join('');
+        } else if (typeof response.text === 'function') {
+            const fallback = response.text();
+            if (typeof fallback === 'string') {
+                summaryText = fallback;
+            }
+        }
+        if (!summaryText || summaryText.trim().length === 0) {
+            logger.warn(`[${channelName}] Gemini summarization response candidate missing extractable text.`);
             return null;
         }
-
-        const summaryText = candidate.content.parts.map(part => part.text).join('');
         logger.info(`[${channelName}] Successfully generated chat summary (${summaryText.length} chars).`);
         return summaryText.trim();
 
