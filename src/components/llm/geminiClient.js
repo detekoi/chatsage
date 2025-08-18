@@ -222,7 +222,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             tools: standardAnswerTools,
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
         });
         const response = result.response;
         const candidate = response.candidates?.[0];
