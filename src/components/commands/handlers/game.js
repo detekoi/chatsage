@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 // Need context manager to get the current game
 import { getContextManager } from '../../context/contextManager.js';
 // Need LLM functions for search and summarization, and context builder
-import { buildContextPrompt, generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
+import { buildContextPrompt, generateSearchResponse, generateStandardResponse, summarizeText } from '../../llm/geminiClient.js';
 // Need image analysis functions
 import { fetchStreamThumbnail, getCurrentGameInfo } from '../../twitch/streamImageCapture.js';
 import { analyzeImage } from '../../llm/geminiImageClient.js';
@@ -259,25 +259,44 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
 async function getAdditionalGameInfo(channelName, userName, gameName) {
     try {
         if (!gameName || gameName === 'Unknown' || gameName === 'N/A') {
+            logger.warn(`[${channelName}] Invalid game name for info request: "${gameName}"`);
             return null;
         }
+        
         const contextManager = getContextManager();
         const llmContext = contextManager.getContextForLLM(channelName, userName, `general info request for ${gameName}`);
         const contextPrompt = buildContextPrompt(llmContext || {});
         const gameQuery = `Tell me something interesting or provide a brief overview about the game: "${gameName}"`;
-        logger.debug(`[${channelName}] Fetching additional info for ${gameName}`);
-        const responseText = await generateSearchResponse(contextPrompt, gameQuery);
+        
+        logger.info(`[${channelName}] Fetching additional info for game: "${gameName}"`);
+        
+        // First try with search
+        let responseText = await generateSearchResponse(contextPrompt, gameQuery);
+        logger.info(`[${channelName}] Search response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
+        
+        // If search fails, try standard response as fallback
         if (!responseText?.trim()) {
+            logger.warn(`[${channelName}] Search response failed for "${gameName}", trying standard response`);
+            responseText = await generateStandardResponse(contextPrompt, gameQuery);
+            logger.info(`[${channelName}] Standard response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
+        }
+        
+        if (!responseText?.trim()) {
+            logger.error(`[${channelName}] Both search and standard responses failed for "${gameName}"`);
             return null;
         }
+        
         let finalText = responseText;
         if (finalText.length > SUMMARY_TARGET_LENGTH) {
+            logger.debug(`[${channelName}] Response too long (${finalText.length}), summarizing`);
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
             finalText = summary?.trim() ? summary : finalText.substring(0, SUMMARY_TARGET_LENGTH - 3) + '...';
         }
+        
+        logger.info(`[${channelName}] Final game info for "${gameName}": "${finalText.substring(0, 100)}..."`);
         return finalText.trim();
     } catch (error) {
-        logger.error({ err: error }, 'Error getting additional game info');
+        logger.error({ err: error, gameName }, `[${channelName}] Error getting additional game info for "${gameName}"`);
         return null;
     }
 }
@@ -318,10 +337,9 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo) 
             const finalMessage = prefix + responseText;
             enqueueMessage(channel, finalMessage);
         } else {
-            // No additional info found, maybe just acknowledge the command silently or provide a minimal response?
-            logger.warn(`[${channelName}] No additional info found for game: ${gameName}. No message sent for !game.`);
-            // Optionally, uncomment the next line to send a minimal fallback:
-            // enqueueMessage(channel, `@${userName}, Currently playing: ${gameName}. (Couldn't find extra details).`);
+            // If no additional info is found, provide the basic game info with a helpful message
+            logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
+            enqueueMessage(channel, `@${userName}, currently playing ${gameName}. Try "!game [your question]" for specific help with the game.`);
         }
     } catch (error) {
         logger.error({ err: error }, 'Error handling game info response (concise version)');
