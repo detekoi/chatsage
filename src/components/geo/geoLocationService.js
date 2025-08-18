@@ -37,12 +37,23 @@ const checkGuessTool = {
  */
 export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = [], sessionRegionScope = null) {
     const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations, sessionRegionScope);
-    const model = getGeminiClient();
+    
+    // Create a fresh model instance without any system instruction to avoid token overhead
+    const { getGenAIInstance } = await import('../llm/geminiClient.js');
+    const genAI = getGenAIInstance();
+    const model = genAI.getGenerativeModel({
+        model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
+        generationConfig: {
+            maxOutputTokens: 150, // Account for 99+ internal reasoning tokens + actual output
+            temperature: 0.0, // Most deterministic possible
+            candidateCount: 1
+        }
+    });
+    
     logger.debug({ mode, gameTitle, sessionRegionScope, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const generateOptions = {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: 'Respond ONLY with the location name, and if relevant, a slash (/) separated list of alternate names. No commentary.' }] }
+            contents: [{ role: 'user', parts: [{ text: prompt }] }]
         };
         if (mode === 'game') {
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
@@ -50,11 +61,53 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         }
         const result = await model.generateContent(generateOptions);
         const response = result.response;
-        if (!response.candidates?.length || !response.candidates[0].content) {
-            logger.warn('[GeoLocation] No candidates/content in location selection response');
+        const candidate = response?.candidates?.[0];
+        
+        // Log detailed response information for debugging
+        logger.debug({
+            usageMetadata: result.response?.usageMetadata,
+            finishReason: candidate?.finishReason,
+            candidateIndex: candidate?.index,
+            safetyRatings: candidate?.safetyRatings
+        }, '[GeoLocation] Detailed response debug');
+        
+        if (!candidate) {
+            logger.warn('[GeoLocation] No candidate found in location selection response');
             return null;
         }
-        const text = response.candidates[0].content.parts.map(part => part.text).join('').trim();
+        
+        
+        // Robust text extraction similar to geminiClient.js approach
+        let text = null;
+        const parts = candidate?.content?.parts;
+        if (Array.isArray(parts) && parts.length > 0) {
+            text = parts.map(part => part.text || '').join('').trim();
+        }
+        
+        // Fallback text extraction methods
+        if (!text && candidate && typeof candidate.text === 'string') {
+            text = candidate.text.trim();
+        }
+        if (!text && response && typeof response.text === 'function') {
+            const responseText = response.text();
+            text = typeof responseText === 'string' ? responseText.trim() : null;
+        }
+        if (!text && response && typeof response.text === 'string') {
+            text = response.text.trim();
+        }
+        
+        if (!text) {
+            logger.warn('[GeoLocation] Could not extract text from Gemini response');
+            // Debug: Log the actual response to see what's happening
+            logger.warn({ 
+                finishReason: candidate.finishReason,
+                candidateContent: candidate.content,
+                hasContent: !!candidate.content,
+                hasParts: !!candidate.content?.parts,
+                partsLength: candidate.content?.parts?.length || 0
+            }, '[GeoLocation] Debug: Response details');
+            return null;
+        }
         // Parse: "Location Name/Alt1/Alt2"
         const [name, ...alts] = text.split('/').map(s => s.trim()).filter(Boolean);
         if (!name) {
