@@ -9,8 +9,9 @@ import { getContextManager } from '../context/contextManager.js';
  * @returns {string} The constructed thumbnail URL with cache busting
  */
 function constructThumbnailUrl(channelName) {
-    // Standard Twitch thumbnail URL format with cache busting
-    return `https://static-cdn.jtvnw.net/previews-ttv/live_user_${channelName}-1280x720.jpg?t=${Date.now()}`;
+    // Further reduce preview size to minimize image token cost in Gemini
+    // 320x180 is still representative enough for scene understanding
+    return `https://static-cdn.jtvnw.net/previews-ttv/live_user_${channelName}-320x180.jpg?t=${Date.now()}`;
 }
 
 /**

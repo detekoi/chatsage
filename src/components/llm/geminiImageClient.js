@@ -1,6 +1,6 @@
 // src/components/llm/geminiImageClient.js
 import logger from '../../lib/logger.js';
-import { getGeminiClient } from './geminiClient.js';
+import { getGeminiClient, getGenAIInstance } from './geminiClient.js';
 import axios from 'axios';
 
 /**
@@ -12,9 +12,18 @@ import axios from 'axios';
  */
 export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
     try {
-        const model = getGeminiClient();
-        if (!model) {
-            throw new Error('Gemini client not initialized');
+        // Prefer a lighter image-capable model for analysis to avoid heavy reasoning tokens
+        let model = null;
+        try {
+            const genAI = getGenAIInstance();
+            model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            logger.debug('Using image model: gemini-1.5-flash');
+        } catch (_) {
+            model = getGeminiClient();
+            if (!model) {
+                throw new Error('Gemini client not initialized');
+            }
+            logger.debug('Using default generative model for image analysis');
         }
 
         logger.info({ promptLength: prompt.length }, 'Generating image analysis response');
@@ -24,7 +33,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             ? imageData.toString('base64')
             : imageData;
 
-        // Prepare the request with inline image data
+        // Minimal request per working commit: image then prompt, no extra config
         const result = await model.generateContent({
             contents: [{
                 role: 'user',
@@ -33,48 +42,58 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                     { text: prompt }
                 ]
             }],
-            generationConfig: { maxOutputTokens: 380, responseMimeType: 'text/plain' }
+            generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 140, temperature: 0.2 }
         });
 
-        // Extract and process the response
         const response = result.response;
-        
-        // Check for safety blocks
-        if (response.promptFeedback?.blockReason) {
-            logger.warn({
-                blockReason: response.promptFeedback.blockReason,
-                safetyRatings: response.promptFeedback.safetyRatings,
-            }, 'Gemini image analysis request blocked due to safety settings');
-            return null;
+        const candidate = response?.candidates?.[0];
+        const parts = candidate?.content?.parts;
+        if (Array.isArray(parts) && parts.length > 0) {
+            const text = parts.map(part => part?.text || '').join('');
+            return text.trim();
         }
+        // Fallbacks: response.text() or candidate.text
+        if (typeof response?.text === 'function') {
+            const t = response.text();
+            if (typeof t === 'string' && t.trim().length > 0) return t.trim();
+        }
+        if (typeof candidate?.text === 'string' && candidate.text.trim().length > 0) {
+            return candidate.text.trim();
+        }
+        logger.warn({ finishReason: candidate?.finishReason, promptFeedback: response?.promptFeedback, usageMetadata: response?.usageMetadata }, 'Gemini image analysis response candidate missing content parts.');
 
-        const candidate = response.candidates?.[0];
-        if (!candidate) {
-            logger.warn('Gemini image analysis response missing candidates or content');
-            return null;
-        }
-        const parts = candidate.content?.parts;
-        if (!Array.isArray(parts) || parts.length === 0) {
-            // Try SDK convenience method
-            if (typeof response.text === 'function') {
-                const fallback = response.text();
-                if (typeof fallback === 'string' && fallback.trim().length > 0) {
-                    logger.info({ responseLength: fallback.length }, 'Successfully generated image analysis response');
-                    return fallback.trim();
-                }
+        // Targeted single retry for sparse/MAX_TOKENS responses with a concise instruction
+        try {
+            const shortPrompt = 'Briefly describe the in-game scene in \\u2264 140 characters. Plain text only.';
+            const retry = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { text: shortPrompt },
+                        { inlineData: { mimeType: mimeType, data: base64Data } }
+                    ]
+                }],
+                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 120, temperature: 0.2 }
+            });
+            const retryResponse = retry.response;
+            const retryCandidate = retryResponse?.candidates?.[0];
+            const retryParts = retryCandidate?.content?.parts;
+            if (Array.isArray(retryParts) && retryParts.length > 0) {
+                const retryText = retryParts.map(p => p?.text || '').join('');
+                if (retryText.trim().length > 0) return retryText.trim();
             }
-            // Try candidate.text property if available
-            if (typeof candidate.text === 'string' && candidate.text.trim().length > 0) {
-                logger.info({ responseLength: candidate.text.length }, 'Successfully generated image analysis response');
-                return candidate.text.trim();
+            if (typeof retryResponse?.text === 'function') {
+                const rt = retryResponse.text();
+                if (typeof rt === 'string' && rt.trim().length > 0) return rt.trim();
             }
-            logger.warn('Gemini image analysis response candidate missing content parts.');
-            return null;
+            if (typeof retryCandidate?.text === 'string' && retryCandidate.text.trim().length > 0) {
+                return retryCandidate.text.trim();
+            }
+            logger.warn({ finishReason: retryCandidate?.finishReason, promptFeedback: retryResponse?.promptFeedback, usageMetadata: retryResponse?.usageMetadata }, 'Retry image analysis still missing content parts.');
+        } catch (retryErr) {
+            logger.error({ err: retryErr }, 'Error during retry image analysis call');
         }
-        const text = parts.map(part => part.text || '').join('');
-        
-        logger.info({ responseLength: text.length }, 'Successfully generated image analysis response');
-        return text.trim();
+        return null;
     } catch (error) {
         logger.error({ err: error }, 'Error during image analysis with Gemini');
         return null;
