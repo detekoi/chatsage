@@ -1,7 +1,7 @@
 // src/components/commands/handlers/lurk.js
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { getGeminiClient } from '../../llm/geminiClient.js';
+import { getGeminiClient, buildContextPrompt } from '../../llm/geminiClient.js';
 import { getContextManager } from '../../context/contextManager.js';
 
 /**
@@ -24,13 +24,8 @@ const lurkHandler = {
             // Get the full context object from the context manager (proceed even if unavailable)
             const llmContext = contextManager.getContextForLLM(channelName, displayName, `is going to lurk. Reason: ${lurkReason || 'none'}`) || {};
 
-            // Build a minimal context to reduce tokens
-            const recent = (llmContext.recentChatHistory || '').toString();
-            const recentTail = recent.split('\n').slice(-4).join('\n');
-            const recentTrimmed = recentTail.length > 200 ? recentTail.slice(-200) : recentTail;
-            const summary = (llmContext.chatSummary || '').toString();
-            const summaryTrimmed = summary.length > 240 ? summary.slice(0, 240) : summary;
-            const minimalContext = `Channel: ${channelName}\nGame: ${llmContext.streamGame || ''}\nTitle: ${llmContext.streamTitle || ''}\nSummary: ${summaryTrimmed}\nRecent:\n${recentTrimmed}`;
+            // Build the comprehensive chat context using the shared helper
+            const chatContext = buildContextPrompt(llmContext);
 
             let prompt;
 
@@ -60,7 +55,7 @@ const lurkHandler = {
                 return null;
             };
             try {
-                const attempt1Prompt = `${minimalContext}\nTASK: ${prompt}`;
+                const attempt1Prompt = `${chatContext}\nTASK: ${prompt}`;
                 logger.debug({ channel: channelName, phase: 'attempt1', promptLength: attempt1Prompt.length }, 'Lurk LLM generation');
                 const result = await model.generateContent({
                     contents: [{ role: 'user', parts: [{ text: attempt1Prompt }] }],
@@ -127,12 +122,24 @@ const lurkHandler = {
                 }
             }
 
-            if (!llmResponse) {
-                logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; not sending a message.');
-                return;
+            let response;
+            if (llmResponse) {
+                response = `@${displayName}, ${llmResponse}`;
+            } else {
+                logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; using fallback.');
+                const variedFallbacks = [
+                    'happy lurking—catch you soon!',
+                    'take your time, we’ll keep the vibes going.',
+                    'fade to stealth mode unlocked.',
+                    'go do your thing—chat will be here.',
+                    'vanishing like a pro. see you after!',
+                    'snack run? mission accepted.',
+                    'muted but not forgotten. enjoy!'
+                ];
+                const alt = variedFallbacks[Math.floor(Math.random() * variedFallbacks.length)];
+                response = `@${displayName}, ${alt}`;
             }
 
-            const response = `@${displayName}, ${llmResponse}`;
             enqueueMessage(channel, response);
             logger.info(`Executed !lurk command in ${channel} for ${displayName}`);
 
