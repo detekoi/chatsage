@@ -28,8 +28,20 @@ function getLocationSelectionPrompt(mode, config, gameTitleScope, excludedLocati
         // If neither session nor config region is set, it remains 'anywhere in the world'
     }
 
-    // Extremely minimal prompt - remove exclusions temporarily to test token issue
-    const prompt = `Name a famous ${difficulty === 'easy' ? 'well-known' : difficulty === 'hard' ? 'challenging' : ''} world location.`;
+    // Add exclusion instruction if list is not empty
+    const exclusionInstruction = excludedLocations.length > 0
+      ? `\nIMPORTANT: Do NOT select any of the following recently used locations: ${excludedLocations.join(', ')}.`
+      : '';
+
+    // Add search instruction for game mode
+    const searchInstruction = mode === 'game' ? '\nIf you have access to search, use it to verify the location is from the correct game and is accurate.' : '';
+
+    // Simplified but functional prompt for location selection
+    const prompt = `Select a location for a ${difficulty} difficulty geography guessing game.
+The location scope is: ${locationScope}.${searchInstruction}
+The location should be recognizable but challenging according to the difficulty.
+Include diverse locations from different continents and cultures when possible.${exclusionInstruction}
+Return ONLY the location name. If alternate names exist, use format: "Primary Name / Alternate Name".`;
 
     logger.debug({ mode, difficulty, scope: locationScope, sessionRegionScope, excludedCount: excludedLocations.length }, "Generated location selection prompt.");
     return prompt;

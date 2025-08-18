@@ -44,8 +44,7 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
     const model = genAI.getGenerativeModel({
         model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
         generationConfig: {
-            maxOutputTokens: 150, // Account for 99+ internal reasoning tokens + actual output
-            temperature: 0.0, // Most deterministic possible
+            temperature: 0.5, // Moderate temp for variety
             candidateCount: 1
         }
     });
@@ -63,13 +62,15 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         const response = result.response;
         const candidate = response?.candidates?.[0];
         
-        // Log detailed response information for debugging
+        // Temporary detailed logging to tune token limits
         logger.debug({
             usageMetadata: result.response?.usageMetadata,
-            finishReason: candidate?.finishReason,
-            candidateIndex: candidate?.index,
-            safetyRatings: candidate?.safetyRatings
-        }, '[GeoLocation] Detailed response debug');
+            finishReason: candidate?.finishReason
+        }, '[GeoLocation] Token usage debug');
+        
+        if (candidate?.finishReason !== 'STOP') {
+            logger.warn({ finishReason: candidate?.finishReason }, '[GeoLocation] Non-STOP finish reason');
+        }
         
         if (!candidate) {
             logger.warn('[GeoLocation] No candidate found in location selection response');
