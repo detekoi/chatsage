@@ -152,7 +152,7 @@ export function initializeGeminiClient(geminiConfig) {
             ],
             generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 1024,
+                maxOutputTokens: 1500, // Increased for gemini-2.5-flash reasoning overhead
             }
         });
         logger.info('Gemini client and model initialized successfully.');
