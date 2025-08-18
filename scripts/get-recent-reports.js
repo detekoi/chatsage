@@ -207,27 +207,7 @@ function escapeHtml(unsafe) {
          .replace(/'/g, "&#039;");
 }
 
-/**
- * Extract project ID from a Firestore error message
- * @param {Error} error - The error object
- * @returns {string|null} - The extracted project ID or null if not found
- */
-function extractProjectIdFromError(error) {
-    if (!error || !error.message) return null;
-    
-    // Try to extract from common error message format
-    const projectRegex = /project ([a-z0-9-]+)/i;
-    const match = error.message.match(projectRegex);
-    if (match && match[1]) return match[1];
-    
-    // Try to extract from errorInfoMetadata if available
-    if (error.errorInfoMetadata && error.errorInfoMetadata.consumer) {
-        const consumerMatch = error.errorInfoMetadata.consumer.match(/projects\/([a-z0-9-]+)/i);
-        if (consumerMatch && consumerMatch[1]) return consumerMatch[1];
-    }
-    
-    return null;
-}
+
 
 async function main() {
     console.log(`Fetching combined reports from all game collections (limit ${TOTAL_REPORTS_LIMIT})...`);

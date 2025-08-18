@@ -3,7 +3,7 @@ import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../llm/geminiClient.js';
-import { generateQuestion, verifyAnswer, generateExplanation } from './triviaQuestionService.js';
+import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, 
@@ -237,7 +237,6 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         return;
     }
     
-    const previousState = gameState.state;
     gameState.state = 'ending';
     logger.info(`[TriviaGame][${gameState.channelName}] Round ${gameState.currentRound}/${gameState.totalRounds} ending. Reason: ${reason}`);
     
@@ -1080,7 +1079,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         try {
             await flagTriviaQuestionProblem(itemToReport.itemData.question, reason, reportedByUsername);
             logger.info(`[TriviaGameManager][${channelName}] Successfully reported single/latest question: "${itemToReport.itemData.question.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The question (\"${itemToReport.itemData.question.substring(0, 30)}...\") has been reported.` };
+            return { success: true, message: `Thanks for the feedback! The question ("${itemToReport.itemData.question.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error reporting question directly.`);
             return { success: false, message: "Sorry, an error occurred while trying to report the question." };

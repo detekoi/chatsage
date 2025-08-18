@@ -418,7 +418,7 @@ export async function flagRiddleAsProblem(riddleDocId, reason, reportedBy) {
     }
 }
 
-const MAX_RECORDS_FOR_SESSION_LOOKUP = 20; // How far back to look for a session ID
+
 
 /**
  * Gets the gameSessionId and totalRounds of the most recently completed game session.
@@ -557,7 +557,6 @@ export async function getLatestCompletedSessionInfo(channelName) {
 }
 
 // --- Recent Riddle Answers ---
-const RECENT_ANSWERS_TTL_DAYS = 3; // Shorter TTL for answers, or fewer items
 
 export async function saveRecentAnswer(channelName, answer) {
     if (!answer || typeof answer !== 'string' || answer.trim() === '') {

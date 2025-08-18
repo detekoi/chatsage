@@ -61,9 +61,7 @@ export async function initializeChannelManager() {
     }
 }
 
-export function getChannelManager() {
-    return instance;
-}
+// getChannelManager function removed - use getFirestoreDb() instead
 
 /**
  * Gets the Firestore database instance.

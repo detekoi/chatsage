@@ -405,6 +405,7 @@ async function clearChannelLeaderboardData(channelName) {
         const fieldPath = `channels.${lowerChannel}`;
         let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
 
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const snapshot = await query.get();
             if (snapshot.empty) {

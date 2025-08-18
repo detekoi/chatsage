@@ -4,7 +4,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../llm/geminiClient.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
-import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatRevealMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
+import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
 import { summarizeText } from '../llm/geminiClient.js';
 import crypto from 'crypto';
@@ -184,7 +184,6 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         logger.warn(`[GeoGame][${gameState.channelName}] Game state is already '${gameState.state}'. Ignoring transition request (Reason: ${reason}).`);
         return;
     }
-    const previousState = gameState.state;
     gameState.state = 'ending';
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound}/${gameState.totalRounds} ending. Reason: ${reason}`);
     const isMultiRound = gameState.totalRounds > 1;
@@ -232,8 +231,6 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             let baseMessageContent = "";
             const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
             if (reason === "guessed" && gameState.winner) {
-                const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
-                const timeString = seconds !== null ? ` in ${seconds}s` : '';
                 const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
                 const streakInfo = currentStreak > 1 ? ` 🔥x${currentStreak}` : '';
                 const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
@@ -408,7 +405,7 @@ async function _startNextRound(gameState) {
         if (locationAttempt?.name && !combinedExcludedLocations.has(locationAttempt.name)) {
             selectedLocation = locationAttempt;
         } else if (locationAttempt?.name) {
-             logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned an excluded location (\"${locationAttempt.name}\") for round ${gameState.currentRound}. Retrying.`);
+             logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned an excluded location ("${locationAttempt.name}") for round ${gameState.currentRound}. Retrying.`);
         } else {
              logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned null/invalid name for round ${gameState.currentRound}. Retrying.`);
         }
@@ -495,7 +492,7 @@ async function _startNextRound(gameState) {
         }
     }, roundDurationMs);
 
-    logger.info(`[GeoGame][${channelName}] Round ${gameState.currentRound} started successfully.`);
+    logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} started successfully.`);
 }
 
 
@@ -644,7 +641,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
             if (locationAttempt?.name && !excludedLocations.includes(locationAttempt.name)) {
                 selectedLocation = locationAttempt;
             } else if (locationAttempt?.name) {
-                logger.warn(`[GeoGame][${channelName}] selectLocation returned an excluded location (\"${locationAttempt.name}\") for Round 1. Retrying.`);
+                logger.warn(`[GeoGame][${channelName}] selectLocation returned an excluded location ("${locationAttempt.name}") for Round 1. Retrying.`);
             } else {
                 logger.warn(`[GeoGame][${channelName}] selectLocation returned null or invalid name for Round 1. Retrying.`);
             }

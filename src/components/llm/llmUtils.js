@@ -1,6 +1,5 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getIrcClient } from '../twitch/ircClient.js';
 import { generateStandardResponse as generateLlmResponse, buildContextPrompt, summarizeText } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
 
@@ -8,9 +7,10 @@ const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
 
 export function removeMarkdownAsterisks(text) {
-  // Remove **bold**
+  // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
   // Remove *italics*
+  // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*([^\*]+)\*/g, '$1');
   return text;
 }
@@ -28,7 +28,6 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
     logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Handling standard LLM query.`);
     try {
         const contextManager = getContextManager();
-        const ircClient = getIrcClient();
 
         // a. Get context
         const llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage);
@@ -80,7 +79,6 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);
         try {
-            const ircClient = getIrcClient();
             await sendBotResponse(channel, `@${displayName} Sorry, an error occurred while processing that.`);
         } catch (sayError) { logger.error({ err: sayError }, 'Failed to send LLM error message to chat.'); }
     }

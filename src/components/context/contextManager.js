@@ -1,7 +1,7 @@
 import logger from '../../lib/logger.js';
-import { getHelixClient, getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
+import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
-import { saveChannelLanguage, getChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
+import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
 /*

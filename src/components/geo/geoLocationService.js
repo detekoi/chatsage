@@ -2,24 +2,7 @@ import { getGeminiClient } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
 import { getLocationSelectionPrompt } from './geoPrompts.js';
 
-// --- Prompt Templates ---
-// (Can be moved to geoPrompts.js later)
-function buildLocationSelectionPrompt(mode, config, gameTitle) {
-    if (mode === 'real') {
-        return `You are the Geo-Game Location Selector. Select a real-world city, landmark, or notable place for a geography guessing game.
-- Difficulty: ${config?.difficulty || 'normal'}
-- Region Restrictions: ${config?.regionRestrictions?.length ? config.regionRestrictions.join(', ') : 'None'}
-- Avoid locations that are too obscure or too famous unless difficulty is set to hard or easy, respectively.
-- Respond ONLY with the location name, and if relevant, a pipe (|) separated list of alternate names or spellings (e.g., "New York City|NYC|The Big Apple").`;
-    } else if (mode === 'game') {
-        return `You are the Geo-Game Location Selector. Select a location, area, or landmark from the video game "${gameTitle}" for a guessing game.
-- Difficulty: ${config?.difficulty || 'normal'}
-- Avoid spoilers and overly obscure places unless difficulty is hard.
-- Respond ONLY with the location name, and if relevant, a pipe (|) separated list of alternate names or spellings (e.g., "Firelink Shrine|Shrine of Link").`;
-    } else {
-        return 'Invalid mode for location selection.';
-    }
-}
+
 
 // --- Function Calling Tool for Guess Validation ---
 const checkGuessTool = {

@@ -28,7 +28,6 @@ import {
     saveRecentAnswer,
     getRecentAnswers
 } from './riddleStorage.js';
-import config from '../../config/index.js'; // For bot's own username
 import crypto from 'crypto';
 
 // --- Default Configuration ---
@@ -75,7 +74,7 @@ GameState structure:
 
     totalRounds: number,
     currentRound: number,
-    gameSessionScores: Map<string, { displayName: string, score: number }>,
+    gameSessionScores: Map<string, { displayName: string, score: number }>, 
     // Stores SETS of keywords from riddles already used in THIS multi-round session
     gameSessionExcludedKeywordSets: Array<string[]>,
     gameSessionId: string,
@@ -649,7 +648,7 @@ async function reportLastRiddle(channelName, reason, reportedByUsername) {
     try {
         await flagRiddleAsProblem(lastRiddle.docId, reason, reportedByUsername);
         logger.info(`[RiddleGameManager][${channelName}] Successfully reported riddle: "${lastRiddle.question.substring(0, 50)}..."`);
-        return { success: true, message: `Thanks for the feedback! The riddle starting with \"${lastRiddle.question.substring(0, 30)}...\" has been reported.` };
+        return { success: true, message: `Thanks for the feedback! The riddle starting with "${lastRiddle.question.substring(0, 30)}..." has been reported.` };
     } catch (error) {
         logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting riddle via storage.`);
         return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };

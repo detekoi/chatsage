@@ -45,7 +45,7 @@ const riddleHandler = {
         let numberOfRounds = 1;
 
         switch (subCommand) {
-            case 'stop':
+            case 'stop': {
                 if (!isMod && invokingUsernameLower !== riddleManager.getCurrentGameInitiator(channelNameNoHash)) {
                     enqueueMessage(channel, `@${invokingDisplayName}, Only the game initiator, mods, or the broadcaster can stop the riddle game.`);
                     return;
@@ -61,8 +61,9 @@ const riddleHandler = {
                 enqueueMessage(channel, `@${invokingDisplayName}, ${stopResult.message}`);
                 logger.info(`[RiddleCmd] Riddle game stop requested by ${invokingDisplayName} in ${channelNameNoHash}. Result: ${stopResult.message}`);
                 break;
+            }
 
-            case 'leaderboard':
+            case 'leaderboard': {
                 try {
                     const leaderboardData = await getLeaderboard(channelNameNoHash, 5);
                     const message = formatRiddleLeaderboardMessage(leaderboardData, channelNameNoHash);
@@ -72,9 +73,10 @@ const riddleHandler = {
                     enqueueMessage(channel, `@${invokingDisplayName}, Sorry, couldn't fetch the riddle leaderboard right now.`);
                 }
                 break;
+            }
 
             case 'clearleaderboard':
-            case 'cleardata':
+            case 'cleardata': {
                 if (!isMod) {
                     enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can clear the riddle leaderboard.`);
                     return;
@@ -88,9 +90,10 @@ const riddleHandler = {
                     enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while clearing the riddle leaderboard.`);
                 }
                 break;
+            }
 
             case 'report':
-            case 'flag':
+            case 'flag': {
                 if (args.length < 2) {
                     enqueueMessage(channel, `@${invokingDisplayName}, Please provide a reason for reporting. Usage: !riddle report <your reason>`);
                     return;
@@ -102,13 +105,15 @@ const riddleHandler = {
                     enqueueMessage(channel, `@${invokingDisplayName}, ${reportInitiationResult.message}`);
                 }
                 break;
+            }
 
-            case 'help':
+            case 'help': {
                 const helpMessage = formatRiddleHelpMessage(isMod);
                 enqueueMessage(channel, `@${invokingDisplayName}, ${helpMessage}`);
                 break;
+            }
 
-            default:
+            default: {
                 // Handles:
                 // !riddle <subject>
                 // !riddle <rounds>
@@ -150,6 +155,7 @@ const riddleHandler = {
                 }
                 // Success messages are handled by the game manager
                 break;
+            }
         }
     }
 };

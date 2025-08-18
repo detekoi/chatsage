@@ -3,11 +3,11 @@ import logger from './lib/logger.js';
 import http from 'http';
 import { eventSubHandler, handleKeepAlivePing, cleanupKeepAliveTasks, initializeActiveStreamsFromPoller } from './components/twitch/eventsub.js';
 // Import Secret Manager initializer and getSecretValue
-import { initializeSecretManager, getSecretValue } from './lib/secretManager.js';
+import { initializeSecretManager } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
-import { initializeGeminiClient, getGeminiClient, generateStandardResponse as generateLlmResponse, translateText, summarizeText } from './components/llm/geminiClient.js';
-import { initializeContextManager, getContextManager, getUserTranslationState, disableUserTranslation, disableAllTranslationsInChannel } from './components/context/contextManager.js';
+import { initializeGeminiClient, translateText } from './components/llm/geminiClient.js';
+import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 
 import { startStreamInfoPolling, stopStreamInfoPolling } from './components/twitch/streamInfoPoller.js';
@@ -26,8 +26,7 @@ import { initializeRiddleGameManager, getRiddleGameManager } from './components/
 let streamInfoIntervalId = null;
 let ircClient = null;
 let channelChangeListener = null;
-const MAX_IRC_MESSAGE_LENGTH = 450; // Define globally for reuse
-const SUMMARY_TARGET_LENGTH = 400;  // Define globally for reuse
+
 const CHANNEL_SYNC_INTERVAL_MS = 300000; // 5 minutes
 
 // Helper function for checking mod/broadcaster status
@@ -40,7 +39,7 @@ function isPrivilegedUser(tags, channelName) {
 /**
  * Gracefully shuts down the application.
  */
-async function gracefulShutdown(signal) {
+async function gracefulShutdown(_signal) {
     
     const shutdownTasks = [];
     
@@ -215,7 +214,6 @@ async function main() {
         const helixClient = getHelixClient();
         const geoManager = getGeoGameManager();
         const triviaManager = getTriviaGameManager();
-        const riddleManager = getRiddleGameManager();
         // Get gemini client instance early if needed, or get inside async IIFE
         // const geminiClient = getGeminiClient();
 

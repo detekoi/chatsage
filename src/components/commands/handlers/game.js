@@ -8,7 +8,7 @@ import { buildContextPrompt, generateSearchResponse, summarizeText } from '../..
 import { fetchStreamThumbnail, getCurrentGameInfo } from '../../twitch/streamImageCapture.js';
 import { analyzeImage } from '../../llm/geminiImageClient.js';
 // Need summarizer for image analysis results
-import { triggerSummarizationIfNeeded } from '../../context/summarizer.js';
+
 // Need message queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 // Import markdown removal utility
@@ -17,87 +17,7 @@ import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 300; // Shortened to allow for formatting and mentions
 
-/**
- * Creates a summarization prompt specifically for AI image analysis results
- * @param {string|object} analysisResult - The image analysis result to summarize
- * @returns {string} Formatted prompt for summarization
- */
-function buildImageAnalysisSummaryPrompt(analysisResult) {
-    let textToSummarize;
-    
-    if (typeof analysisResult === 'string') {
-        textToSummarize = analysisResult;
-    } else {
-        // Format object into text
-        const gameName = analysisResult.game || 'Unknown';
-        const activity = analysisResult.activity || '';
-        const uiElements = analysisResult.ui_elements && analysisResult.ui_elements.length > 0
-            ? analysisResult.ui_elements.join(', ')
-            : '';
-            
-        textToSummarize = `Game: ${gameName}\nActivity: ${activity}\nUI Elements: ${uiElements}`;
-    }
-    
-    return `Summarize the following AI image analysis of a video game stream.
-Keep only the most important details and ensure your summary is under 200 characters.
-Format as: Game name | Activity description | Key UI elements (if relevant)
 
---- START OF ANALYSIS ---
-${textToSummarize}
---- END OF ANALYSIS ---
-
-Concise summary:`;
-}
-
-/**
- * Custom summarization for image analysis results
- * @param {string|object} analysisResult - The image analysis result to summarize
- * @returns {Promise<string>} Summarized text
- */
-async function summarizeImageAnalysis(analysisResult) {
-    try {
-        // If it's already a string and short enough, just return it
-        if (typeof analysisResult === 'string' && analysisResult.length <= SUMMARY_TARGET_LENGTH) {
-            return analysisResult;
-        }
-        
-        // Create messages array mimicking chat history format expected by summarizer
-        const mockMessages = [{
-            username: 'Image Analysis',
-            message: typeof analysisResult === 'string' 
-                ? analysisResult 
-                : JSON.stringify(analysisResult, null, 2)
-        }];
-        
-        // Use the existing summarization function
-        const summary = await triggerSummarizationIfNeeded('imageAnalysis', mockMessages);
-        
-        if (summary) {
-            return summary;
-        }
-        
-        // Fallback: Simple truncation if summarization fails
-        if (typeof analysisResult === 'string') {
-            return analysisResult.substring(0, SUMMARY_TARGET_LENGTH);
-        } else {
-            // Basic object formatting with truncation
-            const gameName = analysisResult.game || 'Unknown';
-            const activity = analysisResult.activity 
-                ? analysisResult.activity.substring(0, 150) 
-                : '';
-            
-            return `${gameName} | ${activity}`;
-        }
-    } catch (error) {
-        logger.error({ err: error }, 'Error summarizing image analysis');
-        // Return a simplified version on error
-        if (typeof analysisResult === 'string') {
-            return analysisResult.substring(0, SUMMARY_TARGET_LENGTH);
-        } else {
-            return analysisResult.game || 'Unknown game';
-        }
-    }
-}
 
 /**
  * Handler for the !game command.
@@ -351,7 +271,6 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
             return null;
         }
         let finalText = responseText;
-        const localSummaryTarget = SUMMARY_TARGET_LENGTH - 50;
         if (finalText.length > SUMMARY_TARGET_LENGTH) {
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
             finalText = summary?.trim() ? summary : finalText.substring(0, SUMMARY_TARGET_LENGTH - 3) + '...';
