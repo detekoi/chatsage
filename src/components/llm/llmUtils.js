@@ -65,10 +65,23 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
         // c. Generate initial response with both context and user message
         const userMessageWithContext = `The user is ${displayName}. Their message is: ${userMessage}`;
-        const initialResponseText = await generateLlmResponse(contextPrompt, userMessageWithContext);
+        let initialResponseText = await generateLlmResponse(contextPrompt, userMessageWithContext);
+
+        // If the first attempt fails, try again with a simplified prompt
         if (!initialResponseText?.trim()) {
-            logger.warn({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'LLM generated null or empty response.');
-            await sendBotResponse(channel, `@${displayName} Sorry, I couldn't come up with a reply to that.`);
+            logger.warn(`[${cleanChannel}] Initial LLM response was empty. Retrying with simplified context.`);
+            
+            // Create a simpler context without the long chat history and summary
+            const simpleContext = { ...llmContext, chatSummary: "Context is limited.", recentChatHistory: "Not available." };
+            const simpleContextPrompt = buildContextPrompt(simpleContext);
+            
+            initialResponseText = await generateLlmResponse(simpleContextPrompt, userMessageWithContext);
+        }
+
+        // If even the retry fails, provide a fallback message
+        if (!initialResponseText?.trim()) {
+            logger.error(`[${cleanChannel}] LLM generated null or empty response after retry. Sending fallback.`);
+            await sendBotResponse(channel, `@${displayName} I'm a bit stumped on that one! Try asking another way?`);
             return;
         }
 
