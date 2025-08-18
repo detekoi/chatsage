@@ -91,6 +91,12 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment)
              return null;
         }
 
+        // Check for missing content parts before trying to access them
+        if (!candidate.content?.parts?.length) {
+            logger.warn(`[${channelName}] Gemini summarization response candidate missing content parts.`);
+            return null;
+        }
+
         const summaryText = candidate.content.parts.map(part => part.text).join('');
         logger.info(`[${channelName}] Successfully generated chat summary (${summaryText.length} chars).`);
         return summaryText.trim();

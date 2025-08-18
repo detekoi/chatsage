@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
@@ -47,7 +46,7 @@ export async function initializeActiveStreamsFromPoller() {
     const channelStates = contextManager.getAllChannelStates();
     let foundLiveStreams = 0;
     
-    for (const [channelName, state] of channelStates) {
+    for (const [channelName, _state] of channelStates) {
         const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
         if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
             logger.info(`Found ${channelName} already live on startup - adding to activeStreams`);
@@ -267,7 +266,7 @@ export async function eventSubHandler(req, res, rawBody) {
         const { subscription, event } = notification;
 
         if (subscription.type === 'stream.online') {
-            const { broadcaster_user_id, broadcaster_user_name } = event;
+            const { broadcaster_user_name } = event;
             logger.info(`📡 ${broadcaster_user_name} just went live — ensuring bot is active...`);
 
             // Enforce allow-list: ignore online events for disallowed channels
@@ -311,7 +310,7 @@ export async function eventSubHandler(req, res, rawBody) {
         }
 
         if (subscription.type === 'stream.offline') {
-            const { broadcaster_user_id, broadcaster_user_name } = event;
+            const { broadcaster_user_name } = event;
             logger.info(`🔌 ${broadcaster_user_name} went offline.`);
 
             // Remove from active streams

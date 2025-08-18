@@ -1,10 +1,10 @@
 // src/components/riddle/riddleService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient, generateSearchResponse, generateStandardResponse, decideSearchWithFunctionCalling } from '../llm/geminiClient.js';
-import { getChannelInformation } from '../twitch/helixClient.js'; // To get current game
+import { getGeminiClient, decideSearchWithFunctionCalling } from '../llm/geminiClient.js';
 
-const MIN_CONFIDENCE_FOR_NO_SEARCH = 0.7; // Example threshold
+
+
 
 // Tool definition for riddle generation
 const generateRiddleTool = {

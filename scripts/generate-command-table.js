@@ -28,7 +28,7 @@ for (const [commandName, handler] of sortedEntries) {
     processedHandlers.add(handler);
 
     const aliases = sortedEntries
-        .filter(([name, h]) => h === handler)
+        .filter(([_name, h]) => h === handler)
         .map(([name]) => `!${name}`)
         .join(' / ');
 

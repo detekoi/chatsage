@@ -2,7 +2,6 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 import logger from '../../lib/logger.js';
-import config from '../../config/index.js';
 import { getCurrentTime } from '../../lib/timeUtils.js';
 
 // --- Define the System Instruction ---

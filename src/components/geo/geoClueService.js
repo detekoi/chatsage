@@ -111,15 +111,15 @@ export async function generateFinalReveal(locationName, mode = 'real', gameTitle
         outcomeInstruction = `The win has already been announced. Provide ONLY a fun, informative summary with interesting facts about "${locationName}". Do not repeat the winner's name. Do not repeat ${locationName}.`;
     } else if (reason === "timeout") {
         // Explicitly instruct LLM to announce timeout and reveal location at the start
-        outcomeInstruction = `Time ran out before anyone guessed correctly. Start your response by announcing the timeout and revealing the location was \"${locationName}\". Then, continue with a fun, informative summary.`;
+        outcomeInstruction = `Time ran out before anyone guessed correctly. Start your response by announcing the timeout and revealing the location was "${locationName}". Then, continue with a fun, informative summary.`;
     } else if (reason === "stopped") {
         // Explicitly instruct LLM to announce stop and reveal location at the start
-        outcomeInstruction = `The game was stopped manually. Start your response by stating the game was stopped and revealing the location was \"${locationName}\". Then, continue with a simple, informative summary.`;
+        outcomeInstruction = `The game was stopped manually. Start your response by stating the game was stopped and revealing the location was "${locationName}". Then, continue with a simple, informative summary.`;
     } else {
-        outcomeInstruction = `Write a fun, informative summary for the location \"${locationName}\".`; // Default
+        outcomeInstruction = `Write a fun, informative summary for the location "${locationName}".`; // Default
     }
 
-    const prompt = `You are the Geo-Game Reveal Generator. ${outcomeInstruction}${mode === 'game' && gameTitle ? ` The location is from the video game \"${gameTitle}\". Use search if available to ensure accuracy.` : ''}
+    const prompt = `You are the Geo-Game Reveal Generator. ${outcomeInstruction}${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}". Use search if available to ensure accuracy.` : ''}
 - Include a few interesting facts or context about the location.
 - Make it engaging and suitable for a Twitch chat audience.
 - Respond with a short paragraph (2-4 sentences). Do NOT use markdown formatting.`;

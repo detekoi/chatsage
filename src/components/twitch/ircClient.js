@@ -3,6 +3,7 @@ import tmi from 'tmi.js';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 import { getValidIrcToken, refreshIrcToken } from './ircAuthHelper.js';
+import { stopStreamInfoPolling } from './streamInfoPoller.js';
 
 let client = null;
 let connectionAttemptPromise = null; // For general connection attempts initiated by connectIrcClient

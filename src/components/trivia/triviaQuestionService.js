@@ -45,41 +45,14 @@ const triviaQuestionTool = {
 };
 
 // Function declaration for verifying trivia answers
-const triviaVerificationTool = {
-    functionDeclarations: [{
-        name: "verify_trivia_answer",
-        description: "Verifies if the user's answer is correct for the given trivia question.",
-        parameters: {
-            type: "OBJECT",
-            properties: {
-                is_correct: {
-                    type: "BOOLEAN",
-                    description: "Whether the user's answer is correct or not."
-                },
-                confidence: {
-                    type: "NUMBER",
-                    description: "Confidence score (0.0-1.0) that the answer is correct or incorrect."
-                },
-                reasoning: {
-                    type: "STRING",
-                    description: "Brief explanation of why the answer is correct or incorrect."
-                },
-                search_used: {
-                    type: "BOOLEAN",
-                    description: "Whether external search was required to verify the answer."
-                }
-            },
-            required: ["is_correct", "confidence", "reasoning", "search_used"]
-        }
-    }]
-};
+
 
 // --- Helper: Validate Question Factuality ---
 async function validateQuestionFactuality(question, answer, topic) {
     // Skip validation for general knowledge questions
     if (!topic || topic === 'general') return { valid: true };
     const model = getGeminiClient();
-    const prompt = `Verify if this trivia question and answer are factually accurate:\n\nQuestion: ${question}\nAnswer: ${answer}\nTopic: ${topic}\n\nUse search to verify if this contains accurate information. If this appears to be about a fictional entity or contains made-up details that don't exist, flag it as potentially hallucinated.\n\nReturn only a JSON object with: \n{ \"valid\": boolean, \"confidence\": number, \"reason\": string }`;
+    const prompt = `Verify if this trivia question and answer are factually accurate:\n\nQuestion: ${question}\nAnswer: ${answer}\nTopic: ${topic}\n\nUse search to verify if this contains accurate information. If this appears to be about a fictional entity or contains made-up details that don't exist, flag it as potentially hallucinated.\n\nReturn only a JSON object with: \n{ "valid": boolean, "confidence": number, "reason": string }`;
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -99,7 +72,7 @@ async function validateQuestionFactuality(question, answer, topic) {
 }
 
 // --- Helper: Fallback to Explicit Search ---
-async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = []) {
+async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], _channelName = null, excludedAnswers = []) {
     const model = getGeminiClient();
     const exclusionInstructionQuestions = excludedQuestions.length > 0
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
@@ -229,20 +202,7 @@ function parseQuestionText(text) {
     return parts;
 }
 
-// --- Helper: Enhance question with factual info ---
-function enhanceWithFactualInfo(parts, factualInfo, topic, difficulty) {
-    // If factualInfo contains a Q/A, prefer it
-    const factParts = parseQuestionText(factualInfo);
-    return {
-        question: factParts.question || parts.question,
-        answer: factParts.answer || parts.answer,
-        alternateAnswers: factParts.alternateAnswers.length ? factParts.alternateAnswers : parts.alternateAnswers,
-        explanation: factParts.explanation || parts.explanation || "No explanation provided.",
-        difficulty,
-        searchUsed: true,
-        topic
-    };
-}
+// enhanceWithFactualInfo function removed - was unused
 
 // --- Helper: String similarity (Levenshtein) ---
 function calculateStringSimilarity(str1, str2) {
@@ -269,22 +229,7 @@ function calculateStringSimilarity(str1, str2) {
     return 1 - (distance / maxLen);
 }
 
-// --- Helper: Format question parts ---
-function formatTriviaParts(questionText, factualInfo, topic, difficulty) {
-    const parts = parseQuestionText(questionText);
-    if (factualInfo) {
-        return enhanceWithFactualInfo(parts, factualInfo, topic, difficulty);
-    }
-    return {
-        question: parts.question || questionText,
-        answer: parts.answer || "Unknown",
-        alternateAnswers: parts.alternateAnswers || [],
-        explanation: parts.explanation || "No explanation provided.",
-        difficulty,
-        searchUsed: !!factualInfo,
-        topic
-    };
-}
+// formatTriviaParts function removed - was unused
 
 /**
  * Generates a trivia question based on topic and difficulty.

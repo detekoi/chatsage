@@ -2,9 +2,9 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
-import { getContextManager } from '../../context/contextManager.js';
+
 import { getLeaderboard } from '../../trivia/triviaStorage.js';
-import { formatHelpMessage, formatGameSessionScoresMessage } from '../../trivia/triviaMessageFormatter.js';
+import { formatHelpMessage } from '../../trivia/triviaMessageFormatter.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {
