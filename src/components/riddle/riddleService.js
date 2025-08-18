@@ -41,7 +41,17 @@ const generateRiddleTool = {
  * @returns {Promise<{question: string, answer: string, keywords: string[], difficulty: string, explanation: string, searchUsed: boolean, topic: string, requestedTopic: string}|null>}
  */
 export async function generateRiddle(topic, difficulty, excludedKeywordSets = [], channelName, excludedAnswers = []) {
-    const model = getGeminiClient();
+    // Create a fresh model instance without system instruction to avoid token overhead (like geo fix)
+    const { getGenAIInstance } = await import('../llm/geminiClient.js');
+    const genAI = getGenAIInstance();
+    const model = genAI.getGenerativeModel({
+        model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
+        generationConfig: {
+            temperature: 0.75,
+            maxOutputTokens: 1200, // Increased for gemini-2.5-flash reasoning overhead
+            candidateCount: 1
+        }
+    });
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
     let forceSearch = false; // NEW: force search for certain topics
@@ -139,18 +149,12 @@ Deliver a riddle that is clever and not too straightforward, matching the reques
     }
 
     try {
-        const generationConfig = {
-            temperature: 0.75, 
-            maxOutputTokens: 450,
-        };
-
         // Only use the generateRiddleTool here
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: finalGenerationPrompt }] }],
             tools: [generateRiddleTool],
-            toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            generationConfig,
-            systemInstruction: { parts: [{ text: "You are an AI assistant specializing in creating clever, accurate, and varied riddles."}] }
+            toolConfig: { functionCallingConfig: { mode: "ANY" } }
+            // No systemInstruction - using fresh model instance without CHAT_SAGE_SYSTEM_INSTRUCTION
         });
 
         const response = result.response;
