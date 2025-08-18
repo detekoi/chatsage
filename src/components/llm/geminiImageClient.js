@@ -16,8 +16,8 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         let model = null;
         try {
             const genAI = getGenAIInstance();
-            model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-            logger.debug('Using image model: gemini-1.5-flash');
+            model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            logger.debug('Using image model: gemini-2.0-flash');
         } catch (_) {
             model = getGeminiClient();
             if (!model) {
