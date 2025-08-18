@@ -211,7 +211,9 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: standardAnswerTools,
-            systemInstruction: { parts: [{ text: standardSystemInstruction }] }
+            toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+            systemInstruction: { parts: [{ text: standardSystemInstruction }] },
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
         });
         const response = result.response;
         const candidate = response.candidates?.[0];
@@ -241,7 +243,9 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                     const followup = await model.generateContent({
                         contents: history,
                         tools: standardAnswerTools,
-                        systemInstruction: { parts: [{ text: standardSystemInstruction }] }
+                        toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+                        systemInstruction: { parts: [{ text: standardSystemInstruction }] },
+                        generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
                     });
                     const followupResponse = followup.response;
                     const followupCandidate = followupResponse.candidates?.[0];
@@ -308,7 +312,9 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: searchTool,
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] }
+            toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+            generationConfig: { maxOutputTokens: 340, responseMimeType: 'text/plain' }
         });
 
         const response = result.response;
@@ -390,12 +396,9 @@ Based on the above, make your decision.`;
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
             tools: decideSearchTool,
-            toolConfig: {
-                functionCallingConfig: {
-                    mode: "ANY",
-                }
-            },
-            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if search is needed for a query." }] }
+            toolConfig: { functionCallingConfig: { mode: "ANY" } },
+            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if search is needed for a query." }] },
+            generationConfig: { maxOutputTokens: 64, responseMimeType: 'text/plain' }
         });
 
         const response = result.response;
@@ -455,10 +458,8 @@ Concise Summary:`;
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: summarizationPrompt }] }],
-            systemInstruction: {
-                role: "system",
-                parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }]
-            }
+            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
         });
         const response = result.response;
 
@@ -516,7 +517,10 @@ Translation:`;
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
 
     try {
-        const result = await model.generateContent(translationPrompt);
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
+        });
         const response = result.response;
 
         // Standard safety/validity checks
