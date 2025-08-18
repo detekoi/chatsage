@@ -45,8 +45,21 @@ const triviaQuestionTool = {
 };
 
 // Function declaration for verifying trivia answers
-
-
+const verifyAnswerTool = {
+    functionDeclarations: [{
+        name: "verify_trivia_answer",
+        description: "Determines if the player's input is correct for the given trivia question. Returns a structured decision.",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                is_correct: { type: "BOOLEAN", description: "True if the player's input should be accepted as correct, false otherwise." },
+                confidence: { type: "NUMBER", description: "Confidence score from 0.0 (wrong) to 1.0 (exact match)." },
+                reasoning: { type: "STRING", description: "Very brief justification for the decision." }
+            },
+            required: ["is_correct", "confidence", "reasoning"]
+        }
+    }]
+};
 
 // --- Helper: Fallback to Explicit Search ---
 async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], _channelName = null, excludedAnswers = []) {
@@ -327,8 +340,118 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
         return { is_correct: true, confidence: 1.0, reasoning: "Exact match with an alternate answer.", search_used: false };
     }
 
-    // Refined prompt for LLM verification (remains same as previous good version which is quite robust)
-    const verificationPrompt = `Your task is to determine if the "Player's Input" is a correct and acceptable answer to the "Trivia Question", given the "Official Correct Answer" and any "Alternate Official Answers".
+    // First try: Ask for strict JSON structured output (no function call required)
+    const jsonDecisionPrompt = `You are verifying if a player's input should be accepted as correct for THIS specific trivia question.
+
+Trivia Question: "${question}"
+Official Correct Answer: "${correctAnswer}"
+Alternate Official Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
+Player's Input: "${userAnswer}"
+
+Decision criteria:
+1) Accept case-insensitive exact matches to the Official or Alternate answers.
+2) Accept very close synonyms or short variations that capture the core essence of the Official answer in this question's context (e.g., "Italy" for "Italian-inspired").
+3) Reject broader categories when a specific item is expected (e.g., "Europe" vs "Paris, France").
+4) Reject related-but-different entities (e.g., wrong character from same show).
+5) Be conservative with long paraphrases; favor concise answer forms.
+
+Respond with ONLY a minified JSON object on a single line, no markdown, no code fences, exactly matching this schema:
+{"is_correct": boolean, "confidence": number, "reasoning": string}`;
+
+    try {
+        logger.debug(`[TriviaService] Verifying via JSON structured output. Correct: "${correctAnswer}", User: "${userAnswer}", Alts: "${alternateAnswers.join(',')}"`);
+        const jsonResult = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: jsonDecisionPrompt }] }],
+            systemInstruction: { parts: [{ text: "Return ONLY a single-line minified JSON object with keys is_correct (boolean), confidence (number), reasoning (string). No prose, no markdown, no code fences." }] },
+            generationConfig: {
+                temperature: 0.05,
+                maxOutputTokens: 120,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: 'object',
+                    properties: {
+                        is_correct: { type: 'boolean' },
+                        confidence: { type: 'number' },
+                        reasoning: { type: 'string' }
+                    },
+                    required: ['is_correct', 'confidence', 'reasoning']
+                }
+            }
+        });
+        // Try multiple extraction paths to get the JSON string
+        const jsonResponse = jsonResult.response;
+        const jsonCandidate = jsonResponse?.candidates?.[0];
+        let text = '';
+        // 1) parts[].text
+        if (jsonCandidate?.content?.parts && Array.isArray(jsonCandidate.content.parts)) {
+            text = jsonCandidate.content.parts.map(p => p?.text || '').join('');
+        }
+        // 2) candidate.text
+        if (!text || text.trim().length === 0) {
+            if (typeof jsonCandidate?.text === 'string') {
+                text = jsonCandidate.text;
+            }
+        }
+        // 3) response.text() convenience
+        if (!text || text.trim().length === 0) {
+            try {
+                if (jsonResponse && typeof jsonResponse.text === 'function') {
+                    const t = jsonResponse.text();
+                    if (typeof t === 'string') text = t;
+                }
+            } catch (_) { /* ignore */ }
+        }
+        // 4) response.text string property
+        if (!text || text.trim().length === 0) {
+            if (jsonResponse && typeof jsonResponse.text === 'string') {
+                text = jsonResponse.text;
+            }
+        }
+        text = (text || '').replace(/^```json\s*|```\s*$/g, '').trim();
+        // If we still have no text, treat as blocked/empty and go to deterministic fallback
+        if (!text || text.trim().length === 0) {
+            logger.warn('[TriviaService] JSON response was empty or missing; using deterministic similarity fallback.');
+            const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+            const bestAltSim = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+            const isBasicCorrect = similarity > 0.92 || bestAltSim > 0.92; // very strict acceptance without LLM
+            const reasoning = isBasicCorrect
+                ? `High string similarity (${Math.round(Math.max(similarity, bestAltSim) * 100)}%) to the official/alternate answer.`
+                : `Low similarity (${Math.round(Math.max(similarity, bestAltSim) * 100)}%) to the official/alternate answer.`;
+            return { is_correct: isBasicCorrect, confidence: Math.max(similarity, bestAltSim), reasoning, search_used: false };
+        }
+
+        // If the model accidentally prepended commentary, try to extract the first JSON object
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            text = text.slice(firstBrace, lastBrace + 1);
+        }
+        try {
+            const parsed = JSON.parse(text);
+            if (typeof parsed.is_correct === 'boolean' && typeof parsed.confidence === 'number' && typeof parsed.reasoning === 'string') {
+                // Sanitize confidence
+                const conf = Math.min(1, Math.max(0, Number(parsed.confidence)));
+                const similarityToCorrect = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+                const bestAlternateSimilarity = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+                if (parsed.is_correct && similarityToCorrect < 0.4 && bestAlternateSimilarity < 0.7) {
+                    logger.warn(`[TriviaService] JSON verified CORRECT with low similarity (${similarityToCorrect.toFixed(2)}). User: "${userAnswer}", Correct: "${correctAnswer}". Reason: "${parsed.reasoning}"`);
+                }
+                logger.info(`[TriviaService] JSON Verification - Input: "${userAnswer}", Expected: "${correctAnswer}", Verdict: ${parsed.is_correct}, Confidence: ${conf}`);
+                return { is_correct: parsed.is_correct, confidence: conf, reasoning: parsed.reasoning, search_used: false };
+            }
+        } catch (e) {
+            logger.warn({ err: e, text }, '[TriviaService] Failed to parse JSON verification; using deterministic similarity fallback.');
+            const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+            const bestAltSim = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+            const isBasicCorrect = similarity > 0.92 || bestAltSim > 0.92;
+            const reasoning = isBasicCorrect
+                ? `High string similarity (${Math.round(Math.max(similarity, bestAltSim) * 100)}%) to the official/alternate answer.`
+                : `Low similarity (${Math.round(Math.max(similarity, bestAltSim) * 100)}%) to the official/alternate answer.`;
+            return { is_correct: isBasicCorrect, confidence: Math.max(similarity, bestAltSim), reasoning, search_used: false };
+        }
+
+        // Refined prompt for LLM verification (text-based fallback)
+        const verificationPrompt = `Your task is to determine if the "Player's Input" is a correct and acceptable answer to the "Trivia Question", given the "Official Correct Answer" and any "Alternate Official Answers".
 
 Trivia Question: "${question}"
 Official Correct Answer: "${correctAnswer}"
@@ -343,21 +466,30 @@ Instructions for your decision:
 5.  **Format Match (Less Strict if Core Essence Met):** If the "Official Correct Answer" is a specific format (e.g., a date, a number), the "Player's Input" should ideally match that format. However, if the core essence is met (Point 2), slight format variations might be acceptable.
 
 Respond with ONLY the word "CORRECT" or "INCORRECT".
-On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above. Example: "Player's input 'Italy' captures the core essence of 'Italian-inspired'." or "Player's input is a different concept." or "Player's input 'Unstable' is an acceptable variation of 'Fusion Instability'."
-`;
+On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above.`;
 
-    try {
-        logger.debug(`[TriviaService] Sending to LLM for verification. Correct: "${correctAnswer}", User: "${userAnswer}", Alts: "${alternateAnswers.join(',')}"`);
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: verificationPrompt }] }],
-            generationConfig: {
-                temperature: 0.1, // Very low for high determinism in verification
-                maxOutputTokens: 120,
-            }
+            generationConfig: { temperature: 0.1, maxOutputTokens: 120 }
         });
-        const responseText = result.response.candidates[0].content.parts[0].text.trim();
+        let responseText = result.response.candidates[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
+        // Remove surrounding code fences if present
+        responseText = responseText.replace(/^```[a-zA-Z]*\s*|```\s*$/g, '').trim();
         
-        const isCorrectByLLM = responseText.toUpperCase().startsWith("CORRECT");
+        // Determine verdict by finding the first occurrence of CORRECT/INCORRECT
+        const upper = responseText.toUpperCase();
+        const idxCorrect = upper.indexOf('CORRECT');
+        const idxIncorrect = upper.indexOf('INCORRECT');
+        let isCorrectByLLM = false;
+        if (idxCorrect !== -1 && (idxIncorrect === -1 || idxCorrect < idxIncorrect)) {
+            isCorrectByLLM = true;
+        } else if (idxIncorrect !== -1) {
+            isCorrectByLLM = false;
+        } else {
+            // Fallback if no keyword found: be conservative
+            logger.warn('[TriviaService] Could not find CORRECT/INCORRECT token in LLM response. Defaulting to INCORRECT.');
+            isCorrectByLLM = false;
+        }
         let reasoningFromLLM = responseText.split("\n").slice(1).join(" ").trim();
         if (!reasoningFromLLM) {
             reasoningFromLLM = isCorrectByLLM ? "The answer is considered correct by the LLM." : "The answer is considered incorrect by the LLM.";
