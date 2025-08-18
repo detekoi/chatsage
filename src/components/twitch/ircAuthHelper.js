@@ -31,23 +31,29 @@ async function refreshIrcToken() {
         isRefreshing = false;
         return null;
     }
-    if (!refreshTokenSecretName) {
-        logger.error('Missing TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME in configuration.');
+    // In local dev, allow using a direct refresh token env var to avoid Secret Manager
+    const localRefreshToken = process.env.TWITCH_BOT_REFRESH_TOKEN;
+    if (!refreshTokenSecretName && !localRefreshToken) {
+        logger.error('Missing TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME (or TWITCH_BOT_REFRESH_TOKEN) in configuration.');
         isRefreshing = false;
         return null;
     }
 
     let refreshToken = null;
-    try {
-        refreshToken = await getSecretValue(refreshTokenSecretName);
-        if (!refreshToken) {
-            throw new Error(`Refresh token could not be retrieved from Secret Manager (${refreshTokenSecretName}).`);
+    if (localRefreshToken) {
+        logger.warn('Using TWITCH_BOT_REFRESH_TOKEN from environment (local dev mode).');
+        refreshToken = localRefreshToken;
+    } else {
+        try {
+            refreshToken = await getSecretValue(refreshTokenSecretName);
+            if (!refreshToken) {
+                throw new Error(`Refresh token could not be retrieved from Secret Manager (${refreshTokenSecretName}).`);
+            }
+        } catch (error) {
+            logger.fatal({ err: error }, 'CRITICAL: Failed to retrieve refresh token from secure storage. Manual intervention required.');
+            isRefreshing = false;
+            return null;
         }
-    } catch (error) {
-        logger.fatal({ err: error }, 'CRITICAL: Failed to retrieve refresh token from secure storage. Manual intervention required.');
-        isRefreshing = false;
-        // Maybe trigger an alert here
-        return null;
     }
 
     try {
@@ -74,13 +80,16 @@ async function refreshIrcToken() {
 
             // If Twitch returns a new refresh token, update it in Secret Manager
             if (newRefreshToken && newRefreshToken !== refreshToken) {
-                logger.info('Received a new refresh token from Twitch. Storing it in Secret Manager.');
-                
-                const success = await setSecretValue(refreshTokenSecretName, newRefreshToken);
-                if (success) {
-                    logger.info('Successfully updated refresh token in Secret Manager.');
-                } else {
-                    logger.error('Failed to update refresh token in Secret Manager. Will continue using the old token for future refreshes.');
+                if (localRefreshToken) {
+                    logger.warn('Received new refresh token, but running in local dev mode. Not updating Secret Manager. Please update TWITCH_BOT_REFRESH_TOKEN manually if desired.');
+                } else if (refreshTokenSecretName) {
+                    logger.info('Received a new refresh token from Twitch. Storing it in Secret Manager.');
+                    const success = await setSecretValue(refreshTokenSecretName, newRefreshToken);
+                    if (success) {
+                        logger.info('Successfully updated refresh token in Secret Manager.');
+                    } else {
+                        logger.error('Failed to update refresh token in Secret Manager. Will continue using the old token for future refreshes.');
+                    }
                 }
             }
 

@@ -5,6 +5,29 @@ import { sendBotResponse } from './botResponseHandler.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
+// Removes chain-of-thought or meta sections the model may emit
+function stripMetaThoughts(text) {
+    if (!text || typeof text !== 'string') return text;
+    let cleaned = text;
+    // Common prefixes we never want to send
+    const badPrefixes = [
+        /^thinking process[:\-\s]/i,
+        /^thought process[:\-\s]/i,
+        /^reasoning[:\-\s]/i,
+        /^analysis[:\-\s]/i,
+        /^deliberate[:\-\s]/i,
+        /^system prompt[:\-\s]/i,
+        /^prompt[:\-\s]/i,
+        /^instructions?[:\-\s]/i
+    ];
+    for (const re of badPrefixes) {
+        cleaned = cleaned.replace(re, '');
+    }
+    // Heuristic: remove explicit numbered "thinking" steps
+    cleaned = cleaned.replace(/^\s*\d+\)\s*(?:think|reason).+$/gim, '').trim();
+    return cleaned;
+}
+
 
 export function removeMarkdownAsterisks(text) {
   // eslint-disable-next-line no-useless-escape
@@ -51,13 +74,13 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
         // d. Check length and Summarize if needed
         let replyPrefix = `@${displayName} `; // Simple prefix
-        let finalReplyText = removeMarkdownAsterisks(initialResponseText);
+        let finalReplyText = removeMarkdownAsterisks(stripMetaThoughts(initialResponseText));
 
         if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
             replyPrefix = `@${displayName}: `; // 'Invisible' prefix that does not include "(Summary)"
 
-            const summary = await summarizeText(initialResponseText, SUMMARY_TARGET_LENGTH);
+            const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
                 finalReplyText = removeMarkdownAsterisks(summary);
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);

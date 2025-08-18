@@ -302,7 +302,10 @@ async function main() {
 
         // --- MESSAGE HANDLER ---
         ircClient.on('message', async (channel, tags, message, self) => {
-            if (self) {
+            // Robust self/bot message guard: skip any message authored by the bot account
+            const botUsername = config.twitch.username?.toLowerCase?.() || '';
+            const author = (tags.username || '').toLowerCase();
+            if (self || (botUsername && author === botUsername)) {
                 // Add self message to context ONLY
                 getContextManager().addMessage(channel.substring(1), tags.username, message, tags).catch(err => {
                     logger.error({ err, channel: channel.substring(1), user: tags.username }, 'Error adding self message to context');
@@ -546,7 +549,7 @@ async function main() {
         }
 
         // --- Setup Health Check Server with EventSub endpoint ---
-        const PORT = parseInt(process.env.PORT || process.env.port || 8080, 10);
+        const desiredPort = parseInt(process.env.PORT || process.env.port || 8080, 10);
         global.healthServer = http.createServer(async (req, res) => {
             // EventSub webhook endpoint
             if (req.method === 'POST' && req.url === '/twitch/event') {
@@ -582,9 +585,40 @@ async function main() {
             res.end('Not Found');
         });
 
-        global.healthServer.listen(PORT, () => {
-            logger.info(`Health check server listening on port ${PORT}`);
-        });
+        // Listen with a small dev-friendly fallback if the port is in use
+        async function listenWithFallback(server, port) {
+            const isDev = config.app.nodeEnv === 'development';
+            let portToTry = port;
+            for (let attempt = 0; attempt < (isDev ? 5 : 1); attempt++) {
+                try {
+                    await new Promise((resolve, reject) => {
+                        const onError = (err) => {
+                            server.off('listening', onListening);
+                            reject(err);
+                        };
+                        const onListening = () => {
+                            server.off('error', onError);
+                            resolve();
+                        };
+                        server.once('error', onError);
+                        server.once('listening', onListening);
+                        server.listen(portToTry);
+                    });
+                    logger.info(`Health check server listening on port ${portToTry}`);
+                    return portToTry;
+                } catch (err) {
+                    if (isDev && err && err.code === 'EADDRINUSE') {
+                        logger.warn(`Port ${portToTry} in use. Trying ${portToTry + 1}...`);
+                        portToTry += 1;
+                        continue;
+                    }
+                    throw err;
+                }
+            }
+            throw new Error('Failed to bind health server to an available port after several attempts.');
+        }
+
+        await listenWithFallback(global.healthServer, desiredPort);
 
         // --- Post-Connection Logging ---
         logger.info('ChatSage components initialized and event listeners attached.');

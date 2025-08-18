@@ -10,6 +10,36 @@ import { isCommandDisabled } from '../context/commandStateManager.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
+// Simple duplicate suppression to avoid double responses when a message is processed twice rapidly
+const recentCommandInvocations = new Map(); // key -> timestamp ms
+const DUPLICATE_WINDOW_MS = 20000; // 20 seconds to reliably prevent double-fires
+
+function _makeDedupKey(channelName, username, command, args, messageId = null) {
+    // Prefer messageId if available (tmi.js may provide tags.id)
+    if (messageId) {
+        return `${channelName}#${messageId}`;
+    }
+    // Fallback: compose from user+command+args
+    return `${channelName}:${username}:${command}:${args.join(' ')}`;
+}
+
+function _shouldSuppressDuplicate(key) {
+    const now = Date.now();
+    const last = recentCommandInvocations.get(key);
+    if (last && (now - last) < DUPLICATE_WINDOW_MS) {
+        return true;
+    }
+    recentCommandInvocations.set(key, now);
+    // Opportunistic cleanup of stale entries
+    if (recentCommandInvocations.size > 500) {
+        for (const [k, ts] of recentCommandInvocations) {
+            if ((now - ts) > DUPLICATE_WINDOW_MS) {
+                recentCommandInvocations.delete(k);
+            }
+        }
+    }
+    return false;
+}
 
 /**
  * Initializes the Command Processor.
@@ -131,6 +161,14 @@ async function processMessage(channelName, tags, message) {
     // --- Execute Command ---
     logger.info(`Executing command !${command} for user ${tags.username} in #${channelName}`);
     try {
+        // Duplicate suppression check (use tmi message id if present)
+        const messageId = tags['id'] || tags['message-id'] || null;
+        const dedupKey = _makeDedupKey(channelName, tags.username, command, args, messageId);
+        if (_shouldSuppressDuplicate(dedupKey)) {
+            logger.warn({ channel: channelName, user: tags.username, command, args }, 'Suppressing duplicate command invocation detected within window.');
+            return true;
+        }
+
         const context = {
             channel: `#${channelName}`, // Pass channel name with '#' for tmi.js functions
             user: tags,
