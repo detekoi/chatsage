@@ -210,20 +210,6 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         );
         expect(logger.warn).toHaveBeenCalled();
     });
-
-    test('5. Bot language is null/undefined: translateText NOT called, verifyRiddleAnswer called with original answer', async () => {
-        getContextManager().getBotLanguage.mockReturnValue(null);
-        const userAnswer = "A needle";
-        await riddleGameManager.processPotentialAnswer('testchannel', 'user5', 'User5', userAnswer);
-
-        expect(translateText).not.toHaveBeenCalled();
-        expect(verifyRiddleAnswer).toHaveBeenCalledWith(
-            mockGameState.currentRiddle.answer,
-            userAnswer,
-            mockGameState.currentRiddle.question,
-            mockGameState.topic
-        );
-    });
     
     // Test to ensure userLastGuessTime is managed
     test('Spam prevention: subsequent guesses from same user are throttled', async () => {

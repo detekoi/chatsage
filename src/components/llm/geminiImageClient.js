@@ -42,7 +42,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                     { text: prompt }
                 ]
             }],
-            generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 140, temperature: 0.2 }
+            generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
         });
 
         const response = result.response;
@@ -73,7 +73,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                         { inlineData: { mimeType: mimeType, data: base64Data } }
                     ]
                 }],
-                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 120, temperature: 0.2 }
+                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 256, temperature: 0.2 }
             });
             const retryResponse = retry.response;
             const retryCandidate = retryResponse?.candidates?.[0];

@@ -138,6 +138,13 @@ const askHandler = {
             return;
         }
 
+        // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
+        const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
+        if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
+            enqueueMessage(channel, `@${userName} Hey there! What’s on your mind?`);
+            return;
+        }
+
         logger.info(`Executing !ask command for ${userName} in ${channel} with query: "${userQuery}"`);
 
         try {
