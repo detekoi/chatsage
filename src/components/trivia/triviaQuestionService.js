@@ -67,6 +67,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         const searchResult = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: searchFactsPrompt }] }],
             tools: [{ googleSearch: {} }], // Only search tool for this call
+            generationConfig: { maxOutputTokens: 512 }
         });
         
         factualInfoText = searchResult.response?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -93,7 +94,8 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
                 functionCallingConfig: {
                     mode: "ANY",
                 }
-            }
+            },
+            generationConfig: { maxOutputTokens: 512 }
         });
 
         const functionCall = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
@@ -235,7 +237,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             },
             generationConfig: {
                 temperature: 0.7, 
-                maxOutputTokens: 400
+                maxOutputTokens: 512
             }
         });
         
@@ -350,7 +352,7 @@ On a new line, provide a VERY BRIEF (1 short sentence) justification for your de
             contents: [{ role: "user", parts: [{ text: verificationPrompt }] }],
             generationConfig: {
                 temperature: 0.1, // Very low for high determinism in verification
-                maxOutputTokens: 60,
+                maxOutputTokens: 120,
             }
         });
         const responseText = result.response.candidates[0].content.parts[0].text.trim();
@@ -421,7 +423,7 @@ Your explanation should be informative, engaging, and around 1-2 sentences long.
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: {
-                maxOutputTokens: 100, // Keep it concise
+                maxOutputTokens: 256, // Keep it concise
                 temperature: 0.7
             }
         });

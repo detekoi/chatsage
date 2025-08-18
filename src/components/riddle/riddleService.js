@@ -48,7 +48,6 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
         model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
         generationConfig: {
             temperature: 0.75,
-            maxOutputTokens: 1200, // Increased for gemini-2.5-flash reasoning overhead
             candidateCount: 1
         }
     });
