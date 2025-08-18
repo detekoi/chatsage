@@ -51,13 +51,25 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             return null;
         }
 
-        if (!response.candidates?.length || !response.candidates[0].content) {
+        const candidate = response.candidates?.[0];
+        if (!candidate) {
             logger.warn('Gemini image analysis response missing candidates or content');
             return null;
         }
-
-        const candidate = response.candidates[0];
-        const text = candidate.content.parts.map(part => part.text).join('');
+        const parts = candidate.content?.parts;
+        if (!Array.isArray(parts) || parts.length === 0) {
+            // Try SDK convenience method
+            if (typeof response.text === 'function') {
+                const fallback = response.text();
+                if (typeof fallback === 'string' && fallback.trim().length > 0) {
+                    logger.info({ responseLength: fallback.length }, 'Successfully generated image analysis response');
+                    return fallback.trim();
+                }
+            }
+            logger.warn('Gemini image analysis response candidate missing content parts.');
+            return null;
+        }
+        const text = parts.map(part => part.text || '').join('');
         
         logger.info({ responseLength: text.length }, 'Successfully generated image analysis response');
         return text.trim();
