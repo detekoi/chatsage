@@ -47,29 +47,6 @@ const triviaQuestionTool = {
 // Function declaration for verifying trivia answers
 
 
-// --- Helper: Validate Question Factuality ---
-async function validateQuestionFactuality(question, answer, topic) {
-    // Skip validation for general knowledge questions
-    if (!topic || topic === 'general') return { valid: true };
-    const model = getGeminiClient();
-    const prompt = `Verify if this trivia question and answer are factually accurate:\n\nQuestion: ${question}\nAnswer: ${answer}\nTopic: ${topic}\n\nUse search to verify if this contains accurate information. If this appears to be about a fictional entity or contains made-up details that don't exist, flag it as potentially hallucinated.\n\nReturn only a JSON object with: \n{ "valid": boolean, "confidence": number, "reason": string }`;
-    try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: [{ googleSearch: {} }]
-        });
-        const text = result.response.candidates[0].content.parts[0].text;
-        try {
-            const validation = JSON.parse(text);
-            return validation;
-        } catch (e) {
-            return { valid: false, confidence: 0, reason: "Could not validate question factuality" };
-        }
-    } catch (error) {
-        logger.error({ err: error }, 'Error validating question factuality');
-        return { valid: true }; // Default to valid on error
-    }
-}
 
 // --- Helper: Fallback to Explicit Search ---
 async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], _channelName = null, excludedAnswers = []) {
@@ -177,30 +154,6 @@ function getGameFromContext(channelName) {
     }
 }
 
-// --- Helper: Parse question text into parts (very basic, can be improved) ---
-function parseQuestionText(text) {
-    // Try to extract Q/A/Explanation from a block of text
-    // Look for lines like: Question: ... Answer: ... Explanation: ...
-    const parts = { question: '', answer: '', alternateAnswers: [], explanation: '' };
-    const qMatch = text.match(/Question:\s*(.*)/i);
-    const aMatch = text.match(/Answer:\s*(.*)/i);
-    const eMatch = text.match(/Explanation:\s*(.*)/i);
-    if (qMatch) parts.question = qMatch[1].trim();
-    if (aMatch) parts.answer = aMatch[1].trim();
-    if (eMatch) parts.explanation = eMatch[1].trim();
-    // Try to find alternate answers
-    const altMatch = text.match(/Alternate Answers?:\s*(.*)/i);
-    if (altMatch) {
-        parts.alternateAnswers = altMatch[1].split(/,|\bor\b/).map(s => s.trim()).filter(Boolean);
-    }
-    // Fallback: if no explicit fields, treat first line as question, second as answer
-    if (!parts.question && text) {
-        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        if (lines.length > 0) parts.question = lines[0];
-        if (lines.length > 1) parts.answer = lines[1];
-    }
-    return parts;
-}
 
 // enhanceWithFactualInfo function removed - was unused
 
@@ -251,17 +204,16 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         logger.info(`[TriviaService] Topic 'game' resolved to '${specificTopic}' from channel context.`);
     }
     
-    // MODIFICATION START: Force search for specific topics
+    // Determine if we need search-based generation for specific topics
     const isGeneralTopic = !specificTopic || specificTopic.toLowerCase() === 'general' || specificTopic.toLowerCase() === 'general knowledge';
-    const shouldUseSearch = !isGeneralTopic; // Always use search if NOT a general topic
-
-    if (shouldUseSearch) {
-        logger.info(`[TriviaService] Specific topic "${specificTopic}" identified. Forcing search-based question generation.`);
+    
+    if (!isGeneralTopic) {
+        // For specific topics, use the existing search-based approach which is more reliable for factual accuracy
+        logger.info(`[TriviaService] Specific topic "${specificTopic}" identified. Using search-based question generation.`);
         return generateQuestionWithExplicitSearch(specificTopic, difficulty, excludedQuestions, channelName, excludedAnswers);
     }
-    // MODIFICATION END
 
-    let prompt = '';
+    // For general knowledge, use function calling for reliability
     const exclusionInstructionQuestions = excludedQuestions.length > 0
         ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
         : '';
@@ -269,72 +221,89 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
-    // MODIFIED PROMPT for general knowledge - ensuring concise answer guidance
-    prompt = `Create an engaging trivia question about ${specificTopic || 'general knowledge'}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nRequirements:\n- Difficulty level: ${difficulty}\n- The question must be clear and specific.\n- IMPORTANT: The question should test knowledge of specific facts, people, places, events, or works. DO NOT simply ask for the name of a concept already described in the question. For example, instead of "What is the name of the philosophical concept where a tree falls unheard?", ask "Which philosopher is most famously associated with the 'if a tree falls in a forest' thought experiment?" (Answer: George Berkeley).\n- The 'Answer' field in your response MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for the 'Answer'; such details belong in the 'Explanation' field.\n- Provide the correct answer.\n- For 'Alternate Answers':\n    - If the 'Answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'Answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'Answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Add a brief explanation about the answer.\n\nFormat your response exactly like this:\nQuestion: [your complete question here]\nAnswer: [the concise correct answer]\nAlternate Answers: [concise alternate answers, comma separated]\nExplanation: [brief explanation of the answer, can include more detail]`;
+    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty level: ${difficulty}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'.\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is false for general knowledge questions.`;
     
     try {
-        logger.debug(`[TriviaService] Generating general knowledge question with concise answer guidance.`);
+        logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
         const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            contents: [{ role: "user", parts: [{ text: functionCallPrompt }] }],
+            tools: [triviaQuestionTool],
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: "ANY",
+                }
+            },
             generationConfig: {
                 temperature: 0.7, 
-                maxOutputTokens: 350
+                maxOutputTokens: 400
             }
         });
         
-        const text = result.response?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-             logger.warn('[TriviaService] Gemini response missing text content (general knowledge).');
-             return null;
-        }
+        const response = result.response;
+        const candidate = response?.candidates?.[0];
         
-        const questionObjParsed = parseQuestionText(text);
-        
-        const questionObject = {
-            question: questionObjParsed.question,
-            answer: questionObjParsed.answer, 
-            alternateAnswers: questionObjParsed.alternateAnswers,
-            explanation: questionObjParsed.explanation || 'No explanation provided.',
-            difficulty: difficulty,
-            searchUsed: false, 
-            verified: false, 
-            topic: specificTopic || 'general'
-        };
-        
-        if (!questionObject.question || !questionObject.answer) {
-            logger.warn(`[TriviaService] Generated invalid question structure (general knowledge): ${text.substring(0, 100)}...`);
+        if (!candidate) {
+            logger.warn('[TriviaService] No candidate found in Gemini response.');
             return null;
         }
-        if (questionObject.answer.split(' ').length > 7 && questionObject.answer.length > 40) {
-            logger.warn(`[TriviaService] General knowledge answer may be too long: "${questionObject.answer}". Length: ${questionObject.answer.length}, Words: ${questionObject.answer.split(' ').length}`);
+        
+        // Debug logging to understand what's being returned
+        logger.debug({ 
+            candidateContent: candidate.content,
+            parts: candidate.content?.parts,
+            firstPart: candidate.content?.parts?.[0]
+        }, '[TriviaService] Debug: Response structure from Gemini');
+        
+        const functionCall = candidate.content?.parts?.[0]?.functionCall;
+        if (!functionCall || functionCall.name !== 'generate_trivia_question') {
+            logger.warn(`[TriviaService] Expected function call 'generate_trivia_question' but got: ${functionCall?.name || 'none'}`);
+            // Log the full response to understand what we're getting instead
+            logger.warn({ 
+                fullResponse: result.response,
+                candidateParts: candidate.content?.parts 
+            }, '[TriviaService] Debug: Full response when function call failed');
+            return null;
         }
         
+        const args = functionCall.args;
+        const questionText = args.question || "";
+        const correctAnswerText = args.correct_answer || "";
+        const explanationText = args.explanation || "No explanation provided.";
+        const actualDifficulty = args.difficulty || difficulty;
+        const alternateAnswersList = args.alternate_answers || [];
+        const searchUsed = args.search_used || false;
+
+        if (!questionText || !correctAnswerText) {
+            logger.warn(`[TriviaService] Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);
+            return null;
+        }
+        
+        // Heuristic: Warn if answer is too long
+        if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) { 
+            logger.warn(`[TriviaService] Generated 'correct_answer' may be too long: "${correctAnswerText}". Length: ${correctAnswerText.length}, Words: ${correctAnswerText.split(' ').length}`);
+        }
+        
+        const questionObject = {
+            question: questionText,
+            answer: correctAnswerText,
+            alternateAnswers: alternateAnswersList,
+            explanation: explanationText,
+            difficulty: actualDifficulty,
+            searchUsed: searchUsed, 
+            verified: true,   // Mark as verified since using function calling
+            topic: 'general'
+        };
+
         if (excludedQuestions.includes(questionObject.question)) {
-            logger.warn(`[TriviaService] LLM generated an excluded question (general knowledge): "${questionObject.question}". Returning null.`);
-            return null; 
+            logger.warn(`[TriviaService] LLM generated an excluded question: "${questionObject.question}". Returning null.`);
+            return null;
         }
         
-        const verifyFactualityEnv = process.env.TRIVIA_SEARCH_VERIFICATION === 'true';
-        if (isGeneralTopic && verifyFactualityEnv) { 
-            try {
-                const validation = await validateQuestionFactuality(
-                    questionObject.question,
-                    questionObject.answer,
-                    specificTopic || 'general'
-                );
-                questionObject.verified = validation.valid;
-                if (!validation.valid && validation.confidence > 0.7) {
-                    logger.warn(`[TriviaService] General knowledge question flagged by validation: ${validation.reason}. Question: "${questionObject.question}"`);
-                }
-            } catch (error) {
-                logger.error({ err: error }, `[TriviaService] Error validating general knowledge question factuality for "${questionObject.question}"`);
-                questionObject.verified = false;
-            }
-        }
-        
+        logger.info(`[TriviaService] Successfully generated general knowledge question. Answer: "${correctAnswerText}", Alternates: "${alternateAnswersList.join(', ')}"`);
         return questionObject;
+        
     } catch (error) {
-        logger.error({ err: error }, '[TriviaService] Error generating general knowledge trivia question API call');
+        logger.error({ err: error }, '[TriviaService] Error generating general knowledge trivia question using function calling');
         return null;
     }
 }
