@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { translateText } from '../../llm/geminiClient.js';
+import { translateText } from '../../../lib/translationUtils.js';
 
 // Helper function to check mod/broadcaster status
 function isPrivilegedUser(tags, channelName) {

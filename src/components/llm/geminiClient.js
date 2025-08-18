@@ -502,67 +502,6 @@ Concise Summary:`;
     }
 }
 
-// --- Translation Function ---
-/**
- * Translates text to the target language using the Gemini API.
- * @param {string} textToTranslate - The text to translate.
- * @param {string} targetLanguage - The language to translate into (e.g., "Spanish", "Japanese").
- * @returns {Promise<string|null>} The translated text, or null on failure.
- */
-export async function translateText(textToTranslate, targetLanguage) {
-    if (!textToTranslate || !targetLanguage) {
-        logger.error('translateText called with missing text or target language.');
-        return null;
-    }
-    const model = getGeminiClient();
-
-    // Simple, direct translation prompt
-    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary. Do not wrap your translation in quotation marks:
-
-${textToTranslate}
-
-Translation:`;
-
-    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
-
-    try {
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
-            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
-        });
-        const response = result.response;
-
-        // Standard safety/validity checks
-        if (response.promptFeedback?.blockReason) {
-            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Translation prompt blocked by Gemini safety settings.');
-            return null;
-        }
-        const candidate = response.candidates?.[0];
-        if (!candidate) {
-            logger.warn('Translation response missing candidates or content.');
-            return null;
-        }
-        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
-             logger.warn({ finishReason: candidate.finishReason }, `Translation generation finished unexpectedly: ${candidate.finishReason}`);
-              if (candidate.finishReason === 'SAFETY') { logger.warn('Translation response content blocked due to safety settings.'); }
-             return null;
-        }
-        const translatedText = extractTextFromResponse(response, candidate, 'translate');
-        if (!translatedText) {
-            logger.warn('Translation response missing extractable text.');
-            return null;
-        }
-        // Only remove quotation marks if they surround the entire message
-        // This preserves quotation marks used as punctuation within the text
-        const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
-        logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
-        return cleanedText;
-
-    } catch (error) {
-        logger.error({ err: error, prompt: "[translation prompt omitted]" }, 'Error during translation Gemini API call');
-        return null;
-    }
-}
 /**
  * Uses the LLM to infer a valid IANA timezone for a given location string.
  * This is a specialized call, not a general purpose one.

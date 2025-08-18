@@ -1,6 +1,6 @@
 import logger from './logger.js';
 import { getIrcClient } from '../components/twitch/ircClient.js';
-import { translateText } from '../components/llm/geminiClient.js';
+import { translateText } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 
 // --- Module State ---

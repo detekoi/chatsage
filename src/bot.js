@@ -6,7 +6,8 @@ import { eventSubHandler, handleKeepAlivePing, cleanupKeepAliveTasks, initialize
 import { initializeSecretManager } from './lib/secretManager.js';
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
-import { initializeGeminiClient, translateText } from './components/llm/geminiClient.js';
+import { initializeGeminiClient } from './components/llm/geminiClient.js';
+import { translateText } from './lib/translationUtils.js';
 import { initializeContextManager, getContextManager } from './components/context/contextManager.js';
 import { initializeCommandProcessor, processMessage as processCommand } from './components/commands/commandProcessor.js';
 

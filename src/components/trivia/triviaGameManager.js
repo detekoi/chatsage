@@ -2,7 +2,7 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
-import { translateText } from '../llm/geminiClient.js';
+import { translateText } from '../../lib/translationUtils.js';
 import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
