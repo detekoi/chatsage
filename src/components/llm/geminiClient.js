@@ -1,3 +1,4 @@
+// src/components/llm/geminiClient.js
 // REVERTING to the standard named import style
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
@@ -153,7 +154,6 @@ export function initializeGeminiClient(geminiConfig) {
             generationConfig: {
                 temperature: 0.7,
                 maxOutputTokens: 1024,
-                responseMimeType: 'text/plain'
             }
         });
         logger.info('Gemini client and model initialized successfully.');
@@ -222,7 +222,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             tools: standardAnswerTools,
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
         });
         const response = result.response;
         const candidate = response.candidates?.[0];
@@ -254,7 +254,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                         tools: standardAnswerTools,
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-                        generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+                        generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
                     });
                     const followupResponse = followup.response;
                     const followupCandidate = followupResponse.candidates?.[0];
@@ -314,7 +314,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nTASK: Provide a direct, comprehensive answer grounded in current, factual information. Use the search tool when helpful. Do not include meta/disclaimers or sources unless explicitly asked. Don’t repeat the username. Avoid self-truncation.`;
+    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY (use search results if helpful): Direct answer in ≤340 chars. Prioritize substance; when helpful add a specific detail/fact/example, and optionally a short, tailored question. No meta/disclaimers/sources unless asked. Don’t repeat the username.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
@@ -322,7 +322,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: searchTool,
             // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
-            systemInstruction: { parts: [{ text: `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: For search-grounded answers, ignore any usual length limits. Provide a complete answer and do not self-truncate. Keep plain text.` }] },
+            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
         });
 
@@ -374,7 +374,11 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     const model = getGeminiClient();
 
     // MODIFIED: Make the prompt more robust for various types of "userQuery"
-    const decisionPrompt = `${contextPrompt}\n\nUser's effective request/topic for consideration: "${userQuery}"\n\n**TASK:**
+    const decisionPrompt = `${contextPrompt}
+
+User's effective request/topic for consideration: "${userQuery}"
+
+**TASK:**
 Your task is to determine if external web search (Google Search) is *essential* to fulfill the user's request or generate high-quality, factually accurate content about the given topic/request, especially considering any provided context or exclusion instructions.
 
 You MUST call the 'decide_if_search_needed' function with your decision.
@@ -403,7 +407,7 @@ Based on the above, make your decision.`;
             tools: decideSearchTool,
             toolConfig: { functionCallingConfig: { mode: "ANY" } },
             systemInstruction: { parts: [{ text: "You are an AI assistant that decides if search is needed for a query." }] },
-            generationConfig: { maxOutputTokens: 128, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 64, responseMimeType: 'text/plain' }
         });
 
         const response = result.response;
@@ -420,6 +424,10 @@ Based on the above, make your decision.`;
             } else {
                 logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for search decision.");
             }
+        } else {
+            logger.warn("Model did not make a function call for search decision. Defaulting to no search.");
+            const textResponse = extractTextFromResponse(response, candidate, 'decideSearch');
+            if(textResponse) logger.debug({textResponse}, "Non-function-call response received for decision prompt.");
         }
 
         return { searchNeeded: false, reasoning: "Model did not call decision function as expected." };
@@ -448,11 +456,9 @@ export async function summarizeText(textToSummarize, targetCharLength = 400) {
     const summarizationPrompt = `Please summarize the following text concisely. Aim for a summary that is approximately under ${targetCharLength} characters long, capturing the key points.
 
 Text to Summarize:
----
-START ---
+--- START ---
 ${textToSummarize}
----
-END ---
+--- END ---
 
 Concise Summary:`;
 
@@ -461,8 +467,8 @@ Concise Summary:`;
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: summarizationPrompt }] }],
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 512, responseMimeType: 'text/plain' }
+            systemInstruction: { parts: [{ text: "You are an AI assistant that summarizes text." }] },
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
         });
         const response = result.response;
 
@@ -522,7 +528,7 @@ Translation:`;
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
-            generationConfig: { maxOutputTokens: 512, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
         });
         const response = result.response;
 
