@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
+import { GoogleGenAI, Type as GenAIType } from '@google/genai';
 
 // Function declaration for generating trivia questions
 const triviaQuestionTool = {
@@ -307,7 +308,15 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
  * @returns {Promise<object>}
  */
 export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers = [], question = "") {
-    const model = getGeminiClient();
+    // Structured-output verification via @google/genai (schema-first)
+    if (!globalThis.__genaiClient) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error('GEMINI_API_KEY is not set.');
+        globalThis.__genaiClient = new GoogleGenAI({ apiKey });
+    }
+    const genaiModels = globalThis.__genaiClient.models;
+    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
+    const legacyModel = getGeminiClient();
     if (!correctAnswer || !userAnswer) {
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
@@ -340,162 +349,160 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
     }
 
     try {
-        // First attempt: function-calling for structured decision
-        const verifyTool = {
-            functionDeclarations: [{
-                name: 'report_verification',
-                description: 'Report the decision for whether the player\'s answer is correct for this specific trivia question.',
-                parameters: {
-                    type: 'OBJECT',
-                    properties: {
-                        is_correct: { type: 'BOOLEAN' },
-                        confidence: { type: 'NUMBER' },
-                        reasoning: { type: 'STRING' }
-                    },
-                    required: ['is_correct', 'confidence', 'reasoning']
-                }
-            }]
+        const extractText = (resp) => {
+            const cand = resp?.candidates?.[0];
+            if (Array.isArray(cand?.content?.parts) && cand.content.parts.length > 0) {
+                return cand.content.parts.map(p => p?.text || '').join('').trim();
+            }
+            if (cand && typeof cand.text === 'string' && cand.text.trim().length > 0) {
+                return cand.text.trim();
+            }
+            if (resp && typeof resp.text === 'function') {
+                const t = resp.text();
+                return typeof t === 'string' ? t.trim() : '';
+            }
+            if (resp && typeof resp.text === 'string') {
+                return resp.text.trim();
+            }
+            return '';
+        };
+        const coerceParsed = (resp) => {
+            try {
+                const parsed = resp?.parsed;
+                if (parsed && typeof parsed.is_correct === 'boolean') return parsed;
+            } catch (_) {}
+            return null;
+        };
+        const tryParseJsonString = (raw) => {
+            if (!raw || typeof raw !== 'string') return null;
+            try { return JSON.parse(raw); } catch (_) {}
+            const i = raw.indexOf('{');
+            const j = raw.lastIndexOf('}');
+            if (i !== -1 && j !== -1 && j > i) {
+                try { return JSON.parse(raw.substring(i, j + 1).trim()); } catch (_) {}
+            }
+            return null;
         };
 
-        const verificationPrompt = `Question: "${question}"
+        const prompt = `Question: "${question}"
 Correct Answer: "${correctAnswer}"
 Alternate Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Answer: "${userAnswer}"
 
-Decide correctness (accept exact, close synonyms, obvious misspellings). Call 'report_verification' with is_correct, confidence (0.0-1.0), and a short reasoning.`;
+Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}`;
 
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: verificationPrompt }] }],
-            tools: [verifyTool],
-            toolConfig: { functionCallingConfig: { mode: 'ANY' } },
-            systemInstruction: { parts: [{ text: 'You verify trivia answers and must call report_verification.' }] },
-            generationConfig: { temperature: 0.1, maxOutputTokens: 120 }
-        });
-
-        const candidate = result.response?.candidates?.[0];
-        const fn = candidate?.content?.parts?.[0]?.functionCall;
-        let isCorrectByLLM = false;
-        let reasoningFromLLM = '';
-        let confidenceFromLLM = 0.0;
-        if (fn?.name === 'report_verification') {
-            const args = fn.args || {};
-            if (typeof args.is_correct === 'boolean') {
-                isCorrectByLLM = args.is_correct;
-                reasoningFromLLM = (args.reasoning || '').toString().trim();
-                confidenceFromLLM = typeof args.confidence === 'number' ? args.confidence : (isCorrectByLLM ? 0.9 : 0.1);
-            }
-        }
-        if (!fn) {
-            // Fallback to strict JSON text parsing
-            const parts = candidate?.content?.parts || [];
-            let responseText = parts.map(p => p.text || '').join('').trim();
-            responseText = responseText.replace(/^```json\s*|```\s*$/g, '').trim();
-            if (!(responseText.startsWith('{') && responseText.endsWith('}'))) {
-                const i = responseText.indexOf('{');
-                const j = responseText.lastIndexOf('}');
-                if (i !== -1 && j !== -1 && j > i) responseText = responseText.substring(i, j + 1);
-            }
-            try {
-                const parsed = JSON.parse(responseText);
-                isCorrectByLLM = !!parsed.is_correct;
-                reasoningFromLLM = (parsed.reasoning || '').toString().trim();
-                confidenceFromLLM = typeof parsed.confidence === 'number' ? parsed.confidence : (isCorrectByLLM ? 0.9 : 0.1);
-            } catch (_) {
-                logger.warn('[TriviaService] Could not parse verification JSON. Defaulting to conservative result.');
-                isCorrectByLLM = false;
-                reasoningFromLLM = '';
-                confidenceFromLLM = 0.1;
-            }
-            // Fallback attempt 2: Structured output with responseSchema
-            if (reasoningFromLLM.length === 0) {
-                try {
-                    const structured = await model.generateContent({
-                        contents: [{ role: 'user', parts: [{ text: verificationPrompt }] }],
-                        generationConfig: {
-                            responseMimeType: 'application/json',
-                            responseSchema: {
-                                type: 'object',
-                                properties: {
-                                    is_correct: { type: 'boolean' },
-                                    confidence: { type: 'number' },
-                                    reasoning: { type: 'string' }
-                                },
-                                required: ['is_correct', 'confidence', 'reasoning']
-                            },
-                            temperature: 0.1,
-                            maxOutputTokens: 120
-                        }
-                    });
-                    const sText = structured.response?.candidates?.[0]?.content?.parts?.map(p => p?.text || '').join('').trim() || '';
-                    if (sText) {
-                        const parsed = JSON.parse(sText);
-                        isCorrectByLLM = !!parsed.is_correct;
-                        reasoningFromLLM = (parsed.reasoning || '').toString().trim();
-                        confidenceFromLLM = typeof parsed.confidence === 'number' ? parsed.confidence : (isCorrectByLLM ? 0.9 : 0.1);
-                    }
-                } catch (se) {
-                    logger.warn({ err: se?.message }, '[TriviaService] Structured-output attempt failed. Proceeding.');
-                }
-            }
-        }
-        if (!reasoningFromLLM || /considered (in)?correct by the LLM\./i.test(reasoningFromLLM)) {
-            try {
-                const reasoningPrompt = `Explain why the player's answer is ${isCorrectByLLM ? 'CORRECT' : 'INCORRECT'}.
-
-Question: "${question}"
+        const genWithSchema = async (maxTokens = 512, minimalPrompt = false) => {
+            const textForModel = minimalPrompt
+                ? `Question: "${question}"
 Correct Answer: "${correctAnswer}"
+Alternate Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Answer: "${userAnswer}"
 
-Write ONE short sentence (≤20 words) explaining the decision.`;
-                const reasoningResp = await model.generateContent({
-                    contents: [{ role: 'user', parts: [{ text: reasoningPrompt }] }],
-                    generationConfig: { temperature: 0.1, maxOutputTokens: 60 }
-                });
-                const rtext = reasoningResp.response?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
-                if (rtext && rtext.length > 0) {
-                    reasoningFromLLM = rtext.replace(/^```[a-zA-Z]*\s*|```\s*$/g, '').trim();
-                }
-            } catch (_) {
-                // ignore; keep fallback below
-            }
-            if (!reasoningFromLLM || reasoningFromLLM.length === 0) {
-                reasoningFromLLM = isCorrectByLLM ? "Matches the intended answer." : "Does not match the intended answer or alternates.";
-            }
-        }
-
-        const similarityToCorrect = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
-        const bestAlternateSimilarity = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
-
-        // If LLM says CORRECT, but no direct/alternate match was found earlier,
-        // and string similarity is very low, this is a high-risk acceptance.
-        // We log it but trust the LLM's reasoning based on the improved prompt.
-        if (isCorrectByLLM && similarityToCorrect < 0.4 && bestAlternateSimilarity < 0.7) { 
-             logger.warn(`[TriviaService] LLM verified as CORRECT, but string similarity to official answer is low (${similarityToCorrect.toFixed(2)}) and no strong alternate string match. User: "${userAnswer}", Correct: "${correctAnswer}". Trusting LLM reasoning: "${reasoningFromLLM}"`);
-        }
-        
-        logger.info(`[TriviaService] LLM Verification - Input: "${userAnswer}", Expected: "${correctAnswer}", LLM Verdict: ${isCorrectByLLM}, Reasoning: ${reasoningFromLLM}, Similarity: ${similarityToCorrect.toFixed(2)}`);
-        return {
-            is_correct: isCorrectByLLM,
-            confidence: isCorrectByLLM ? (similarityToCorrect > 0.85 || bestAlternateSimilarity > 0.85 ? 0.98 : 0.9) : (1.0 - Math.max(similarityToCorrect, bestAlternateSimilarity)),
-            reasoning: reasoningFromLLM,
-            search_used: false 
+Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}. Keep reasoning under 6 words.`
+                : prompt;
+            const res = await genaiModels.generateContent({
+                model: modelId,
+                contents: [{ role: 'user', parts: [{ text: textForModel }] }],
+                config: {
+                    temperature: 0.0,
+                    maxOutputTokens: maxTokens,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: GenAIType.OBJECT,
+                        properties: {
+                            is_correct: { type: GenAIType.BOOLEAN },
+                            confidence: { type: GenAIType.NUMBER },
+                            reasoning: { type: GenAIType.STRING }
+                        },
+                        propertyOrdering: ['is_correct', 'confidence', 'reasoning'],
+                        required: ['is_correct', 'confidence', 'reasoning']
+                    }
+                },
+                systemInstruction: { parts: [{ text: 'You verify trivia answers. Output ONLY JSON matching the schema; no preface.' }] }
+            });
+            return { response: res };
         };
+
+        let schemaResp;
+        try {
+            schemaResp = await genWithSchema(512, false);
+        } catch (e1) {
+            const msg = String(e1?.message || '');
+            if (/\b(500|internal error)\b/i.test(msg)) {
+                await new Promise(r => setTimeout(r, 200));
+                try { schemaResp = await genWithSchema(512, false); } catch (e2) {
+                    const msg2 = String(e2?.message || '');
+                    if (/\b(500|internal error)\b/i.test(msg2)) {
+                        await new Promise(r => setTimeout(r, 400));
+                        schemaResp = await genWithSchema(512, false);
+                    } else { throw e2; }
+                }
+            } else { throw e1; }
+        }
+
+        const fin = schemaResp?.response?.candidates?.[0]?.finishReason;
+        const respObj = schemaResp.response;
+        let structured = coerceParsed(respObj);
+        let sText = '';
+        if (respObj && typeof respObj.text === 'string' && respObj.text.trim().length > 0) sText = respObj.text.trim();
+        else sText = extractText(respObj) || '';
+        if (!sText && !structured) {
+            try {
+                const parts = Array.isArray(respObj?.candidates) ? (respObj.candidates[0]?.content?.parts || []) : [];
+                const joined = parts.map(p => p?.text || '').join('').trim();
+                if (joined) sText = joined;
+            } catch (_) {}
+        }
+        if ((!sText && !structured) || fin === 'MAX_TOKENS') {
+            try {
+                const high = await genWithSchema(1024, false);
+                const ro = high.response;
+                structured = coerceParsed(ro) || structured;
+                const textHigh = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                if (textHigh) sText = textHigh;
+            } catch (_) {}
+        }
+        if (!sText && !structured) {
+            try {
+                const min = await genWithSchema(256, true);
+                const ro = min.response;
+                structured = coerceParsed(ro) || structured;
+                const textMin = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                if (textMin) sText = textMin;
+            } catch (_) {}
+        }
+        if (structured && typeof structured.is_correct === 'boolean') {
+            return { is_correct: structured.is_correct, confidence: typeof structured.confidence === 'number' ? structured.confidence : (structured.is_correct ? 0.9 : 0.1), reasoning: structured.reasoning || '', search_used: false };
+        }
+        if (sText) {
+            let parsed = tryParseJsonString(sText);
+            const looksTruncated = sText.includes('{') && !sText.trim().endsWith('}');
+            if ((!parsed || looksTruncated) && !structured) {
+                try {
+                    const repair = await genWithSchema(1024, false);
+                    const ro = repair.response;
+                    structured = coerceParsed(ro) || structured;
+                    const textRepair = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                    if (textRepair) { sText = textRepair; parsed = tryParseJsonString(sText); }
+                } catch (_) {}
+            }
+            if (parsed && typeof parsed.is_correct === 'boolean') {
+                return { is_correct: parsed.is_correct, confidence: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.is_correct ? 0.9 : 0.1), reasoning: parsed.reasoning || '', search_used: false };
+            }
+        }
+
+        // Final conservative fallback: similarity only
+        const simToCorrect = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
+        const bestAltSim = Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? Math.max(...alternateAnswers.map(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer))) : 0;
+        const isFallbackCorrect = simToCorrect > 0.8 || bestAltSim > 0.8;
+        return { is_correct: isFallbackCorrect, confidence: isFallbackCorrect ? 0.85 : 0.15, reasoning: isFallbackCorrect ? 'Similarity/alt match (fallback).' : 'No structured result; similarity low.', search_used: false };
 
     } catch (error) {
-        logger.error({ err: error }, '[TriviaService] Error verifying answer with LLM. Falling back to basic similarity.');
+        logger.error({ err: error }, '[TriviaService] Error verifying answer with structured output. Falling back to basic similarity.');
         const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
         let isFallbackCorrect = similarity > 0.8; 
-
-        if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.8)) {
-            isFallbackCorrect = true;
-        }
-
-        return {
-            is_correct: isFallbackCorrect,
-            confidence: similarity,
-            reasoning: `Similarity check: ${Math.round(similarity * 100)}% (LLM fallback).`,
-            search_used: false
-        };
+        if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.8)) isFallbackCorrect = true;
+        return { is_correct: isFallbackCorrect, confidence: similarity, reasoning: `Similarity check: ${Math.round(similarity * 100)}% (LLM fallback).`, search_used: false };
     }
 }
 
