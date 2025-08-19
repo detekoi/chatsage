@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient, decideSearchWithFunctionCalling } from '../llm/geminiClient.js';
+import { GoogleGenAI, Type as GenAIType } from '@google/genai';
 
 
 
@@ -30,6 +31,67 @@ const generateRiddleTool = {
     }]
 };
 
+// (No function-calling in verification; we use structured output JSON)
+
+
+// Helper: prune excluded keyword sets to keep prompt small
+function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
+    const maxSets = typeof options.maxSets === 'number' ? options.maxSets : 15;
+    const maxKeywordsPerSet = typeof options.maxKeywordsPerSet === 'number' ? options.maxKeywordsPerSet : 4;
+    const maxTotalChars = typeof options.maxTotalChars === 'number' ? options.maxTotalChars : 1500; // rough cap for the instruction block
+
+    if (!Array.isArray(excludedKeywordSets) || excludedKeywordSets.length === 0) return [];
+
+    const normalize = (s) => (typeof s === 'string' ? s.trim().toLowerCase() : '')
+        .replace(/[\s]+/g, ' ')
+        .replace(/^[,;\s]+|[,;\s]+$/g, '');
+
+    // 1) Normalize, dedupe within each set, and trim per-set length
+    const normalizedSets = excludedKeywordSets
+        .map((set) => Array.isArray(set) ? set : [])
+        .map((set) => {
+            const uniq = Array.from(new Set(set.map(normalize).filter(Boolean)));
+            return uniq.slice(0, maxKeywordsPerSet);
+        })
+        .filter((set) => set.length > 0);
+
+    // 2) Dedupe identical sets (order-insensitive)
+    const signature = (set) => set.slice().sort().join('|');
+    const seen = new Set();
+    const dedupedSets = [];
+    for (const set of normalizedSets) {
+        const sig = signature(set);
+        if (!seen.has(sig)) {
+            seen.add(sig);
+            dedupedSets.push(set);
+        }
+    }
+
+    // 3) Drop sets that are strict subsets of an earlier kept set (favor earlier ones)
+    const kept = [];
+    for (const set of dedupedSets) {
+        const s = new Set(set);
+        let isSubset = false;
+        for (const k of kept) {
+            const kSet = new Set(k);
+            // set ⊆ k ?
+            isSubset = set.every((w) => kSet.has(w));
+            if (isSubset) break;
+        }
+        if (!isSubset) kept.push(set);
+    }
+
+    // 4) Prefer the earliest sets (session-specific likely come first). Cap by count.
+    let capped = kept.slice(0, maxSets);
+
+    // 5) Ensure overall character cap by trimming from the end if needed
+    const toInstruction = (sets) => sets.map((set) => `(${set.join(', ')})`).join('; ');
+    while (capped.length > 0 && toInstruction(capped).length > maxTotalChars) {
+        capped = capped.slice(0, capped.length - 1);
+    }
+
+    return capped;
+}
 
 /**
  * Generates a riddle.
@@ -80,8 +142,18 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
 
     let keywordExclusionInstruction = "";
     if (excludedKeywordSets.length > 0) {
-        const flatExcludedKeywords = excludedKeywordSets.map(set => `(${set.join(', ')})`).join('; ');
-        keywordExclusionInstruction = `\nCRITICAL KEYWORD AVOIDANCE: Avoid generating riddles that are conceptually defined by or heavily rely on the following keyword combinations/themes: [${flatExcludedKeywords}].`;
+        const prunedSets = pruneExcludedKeywordSets(excludedKeywordSets);
+        if (prunedSets.length > 0) {
+            const flatExcludedKeywords = prunedSets.map(set => `(${set.join(', ')})`).join('; ');
+            keywordExclusionInstruction = `\nCRITICAL KEYWORD AVOIDANCE: Avoid generating riddles that are conceptually defined by or heavily rely on the following keyword combinations/themes: [${flatExcludedKeywords}].`;
+            try {
+                logger.debug({
+                    beforeSets: excludedKeywordSets.length,
+                    afterSets: prunedSets.length,
+                    instructionChars: keywordExclusionInstruction.length
+                }, '[RiddleService] Pruned excluded keyword sets for prompt.');
+            } catch (_) { /* ignore structured log issues */ }
+        }
     }
 
     let answerExclusionInstruction = "";
@@ -107,36 +179,14 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     // --- Begin new search/generation separation logic ---
     let factualContextForRiddle = "";
     let finalGenerationPrompt = "";
-    // --- Enhanced riddle prompt ---
-    const baseGenerationPrompt = `You are a master riddle crafter, celebrated for your imaginative and clever puzzles. Your primary goal is to create a true RIDDLE, not a disguised trivia question.
+    // --- Simplified riddle prompt ---
+    const baseGenerationPrompt = `You are a master riddle crafter. Create a clever, metaphorical riddle about a specific aspect of "${actualTopic}". The answer should NOT be "${actualTopic}" itself, but something related to it.
 ${promptDetails}
 ${fullExclusionInstructions}
 
-A true RIDDLE uses metaphorical language, describes something in an unusual, indirect, or poetic way, or plays on words to make the solver think laterally. It should be a fun mind-bender.
-ABSOLUTELY AVOID questions that simply list factual attributes and end with "What am I?" (e.g., "I am large and blue, and cover most of the Earth..." is TRIVIA).
-INSTEAD, craft clues that are puzzling and require interpretation. Example of a good riddle: "I have cities, but no houses; forests, but no trees; and water, but no fish. What am I?" (Answer: A map).
+A true riddle uses metaphorical language. AVOID trivia questions like "I am large and blue... What am I?". INSTEAD, craft clues that are puzzling. Example: "I have cities, but no houses... What am I?" (Answer: A map).
 
-**CRITICAL FOR TOPIC-BASED RIDDLES (like "${actualTopic}"):**
-* If the topic is a specific person, place, or thing (e.g., "Kathy Bates", "Eiffel Tower", "Chrono Trigger"), the riddle's answer should **NOT** be the topic itself.
-* Instead, the riddle should be about a **specific characteristic, role, achievement, event, character, item, or concept *related to* or *within* the topic.**
-* For example, if the topic is "Kathy Bates", a good riddle might be about one of her famous characters (e.g., Annie Wilkes), a notable award she won, or a significant movie she was in. The answer would then be that specific character, award, or movie title, NOT "Kathy Bates".
-* If the topic is "Chrono Trigger", the riddle could be about a character (e.g., "Magus"), a specific gameplay mechanic (e.g., "Techs"), or a key plot element (e.g., "The Day of Lavos"). The answer should be that specific element.
-* The goal is nuance and to test knowledge *about* the topic, not just recognition of the topic's name.
-
-Clues must be factually accurate or based on commonly understood metaphors related to the answer. Avoid obscure terminology or misleading statements.
-
-You MUST call the "generate_riddle_with_answer_and_keywords" function to structure your response.
-For the function call:
-- 'riddle_question': The riddle itself, artfully phrased.
-- 'riddle_answer': The single, concise, most common answer to the riddle (which should be an aspect *of* the provided topic, not the topic itself if it's a specific entity).
-- 'keywords': 3-5 highly specific and discriminative keywords or short phrases capturing the *unique metaphorical elements or core puzzle components* of THIS riddle and THIS answer. They must help distinguish it from other riddles.
-- 'explanation': Briefly clarify the answer, especially any wordplay or metaphors used.
-- 'difficulty_generated': Your honest assessment (easy, normal, hard).
-- 'search_used': True if you actively used search to generate/verify THIS specific riddle (this will be determined by the 'useSearch' logic before this prompt is finalized).
-
-If the topic is "general knowledge," focus on classic riddle structures or common objects/concepts described in a novel, puzzling way.
-If the topic is specific (e.g., a video game), the riddle must be about elements *within* that topic, described imaginatively, and the answer should be that specific element.
-Deliver a riddle that is clever and not too straightforward, matching the requested difficulty.`;
+Call the "generate_riddle_with_answer_and_keywords" function with your response. The 'riddle_answer' must be a concise keyword or name. The 'keywords' should be specific and metaphorical.`;
 
     // --- SYSTEM_CONTEXT preface for all prompts ---
     if (useSearch && factualContextForRiddle) {
@@ -209,10 +259,98 @@ Deliver a riddle that is clever and not too straightforward, matching the reques
  * @returns {Promise<{isCorrect: boolean, reasoning: string, confidence: number}>}
  */
 export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuestion, originalTopic = null) {
+    // Prefer @google/genai for structured output; fall back to older client if needed
+    if (!globalThis.__genaiClient) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error('GEMINI_API_KEY is not set.');
+        globalThis.__genaiClient = new GoogleGenAI({ apiKey });
+    }
+    const genaiModels = globalThis.__genaiClient.models;
+    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
     const model = getGeminiClient();
+    // Helper to robustly extract text from Gemini responses
+    const extractText = (resp) => {
+        const cand = resp?.candidates?.[0];
+        if (Array.isArray(cand?.content?.parts) && cand.content.parts.length > 0) {
+            return cand.content.parts.map(p => p?.text || '').join('').trim();
+        }
+        if (cand && typeof cand.text === 'string' && cand.text.trim().length > 0) {
+            return cand.text.trim();
+        }
+        if (resp && typeof resp.text === 'function') {
+            const t = resp.text();
+            return typeof t === 'string' ? t.trim() : '';
+        }
+        if (resp && typeof resp.text === 'string') {
+            return resp.text.trim();
+        }
+        return '';
+    };
     // Normalize inputs for comparison
-    const lowerCorrectAnswer = correctAnswer.toLowerCase().trim();
-    const lowerUserAnswer = userAnswer.toLowerCase().trim();
+    const normalize = (s) => {
+        if (!s || typeof s !== 'string') return '';
+        // Basic plural/singular handling and punctuation cleanup
+        const cleaned = s
+            .toLowerCase()
+            .trim()
+            .replace(/[\-_'’`]/g, ' ')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/^[\s]*(?:the|a|an)\s+/i, '')
+            .replace(/[\s]+/g, ' ');
+        // Simple plural normalization
+        if (cleaned.endsWith('ies')) return cleaned.slice(0, -3) + 'y';
+        if (cleaned.endsWith('ses')) return cleaned.slice(0, -2); // e.g., "classes" -> "classe" (crude but helps match)
+        if (cleaned.endsWith('s') && !cleaned.endsWith('ss')) return cleaned.slice(0, -1);
+        return cleaned;
+    };
+    // Basic Levenshtein similarity for fuzzy matching
+    const calculateStringSimilarity = (str1, str2) => {
+        const s1 = normalize(str1);
+        const s2 = normalize(str2);
+        const len1 = s1.length;
+        const len2 = s2.length;
+        const maxLen = Math.max(len1, len2);
+        if (maxLen === 0) return 1.0;
+        const dp = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+        for (let i = 0; i <= len1; i++) dp[i][0] = i;
+        for (let j = 0; j <= len2; j++) dp[0][j] = j;
+        for (let i = 1; i <= len1; i++) {
+            for (let j = 1; j <= len2; j++) {
+                if (s1[i - 1] === s2[j - 1]) {
+                    dp[i][j] = dp[i - 1][j - 1];
+                } else {
+                    dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+                }
+            }
+        }
+        const distance = dp[len1][len2];
+        return 1 - (distance / maxLen);
+    };
+    // Basic root extraction for morphological variants and containment checks
+    const stripCommonSuffixes = (word) => {
+        let w = word;
+        if (w.endsWith('ies') && w.length > 4) w = w.slice(0, -3) + 'y';
+        else if (w.endsWith('ing') && w.length > 5) w = w.slice(0, -3);
+        else if (w.endsWith('ed') && w.length > 4) w = w.slice(0, -2);
+        else if (w.endsWith('ers') && w.length > 5) w = w.slice(0, -3);
+        else if (w.endsWith('er') && w.length > 4) w = w.slice(0, -2);
+        else if (w.endsWith('ness') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('ment') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('tion') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('sion') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('ity') && w.length > 5) w = w.slice(0, -3);
+        else if (w.endsWith('ally') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('al') && w.length > 4) w = w.slice(0, -2);
+        else if (w.endsWith('ous') && w.length > 5) w = w.slice(0, -3);
+        else if (w.endsWith('less') && w.length > 6) w = w.slice(0, -4);
+        else if (w.endsWith('ful') && w.length > 5) w = w.slice(0, -3);
+        else if (w.endsWith('es') && w.length > 4) w = w.slice(0, -2);
+        else if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) w = w.slice(0, -1);
+        return w;
+    };
+    const tokenize = (s) => normalize(s).split(' ').filter(Boolean);
+    const lowerCorrectAnswer = normalize(correctAnswer);
+    const lowerUserAnswer = normalize(userAnswer);
     const lowerOriginalTopic = originalTopic ? originalTopic.toLowerCase().trim() : null;
 
     let directMatch = false;
@@ -229,32 +367,34 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
         logger.info(`[RiddleService] User guessed the original topic ("${userAnswer}") but the specific answer was ("${correctAnswer}").`);
     }
 
-    const prompt = `
-Context:
-Riddle Question: "${riddleQuestion}"
-Intended Correct Answer to THIS SPECIFIC Riddle: "${correctAnswer}"
-Original Topic/Subject of the Riddle Request (if provided): "${originalTopic || 'Not provided'}"
+    // Fuzzy match pre-check to handle common misspellings/variants (e.g., "curiousity" vs "Curiosity")
+    const similarity = calculateStringSimilarity(lowerUserAnswer, lowerCorrectAnswer);
+    if (!isTopicGuessInsteadOfAspect && !directMatch) {
+        if (similarity >= 0.88) {
+            logger.info(`[RiddleService] Pre-LLM fuzzy match: User guess "${userAnswer}" is very close to "${correctAnswer}" (similarity ${similarity.toFixed(2)}). Marking as correct.`);
+            return { isCorrect: true, reasoning: "Close match (spelling/variant).", confidence: 0.95 };
+        }
+        if (similarity >= 0.80) {
+            logger.info(`[RiddleService] Pre-LLM fuzzy match: User guess "${userAnswer}" is close to "${correctAnswer}" (similarity ${similarity.toFixed(2)}). Accepting as correct with lower confidence.`);
+            return { isCorrect: true, reasoning: "Close semantic/spelling match.", confidence: 0.9 };
+        }
+        // Token/root containment heuristic (e.g., "contextual awareness" vs "context")
+        const userTokens = tokenize(userAnswer).map(stripCommonSuffixes);
+        const correctTokens = tokenize(correctAnswer).map(stripCommonSuffixes);
+        const userSet = new Set(userTokens);
+        const correctSet = new Set(correctTokens);
+        const anyContain = userTokens.some(t => correctSet.has(t)) || correctTokens.some(t => userSet.has(t));
+        if (anyContain) {
+            logger.info(`[RiddleService] Pre-LLM root/containment match between "${userAnswer}" and "${correctAnswer}". Marking as correct.`);
+            return { isCorrect: true, reasoning: "Root/containment match.", confidence: 0.9 };
+        }
+    }
 
-Player's Guess: "${userAnswer}"
+    const prompt = `Question: "${riddleQuestion}"
+Answer: "${correctAnswer}"
+Guess: "${userAnswer}"
 
-Task: Determine if the "Player's Guess" is the intended correct answer to THIS SPECIFIC riddle.
-
-Instructions for your decision:
-1.  **Exact Match:** If "Player's Guess" exactly matches (case-insensitive) the "Intended Correct Answer", it is CORRECT. Confidence: 1.0.
-2.  **Close Variations:** Accept very close synonyms, common and obvious misspellings, or minor variations (e.g., "Eiffel tower" for "The Eiffel Tower") of the "Intended Correct Answer". Confidence: 0.9-0.95.
-3.  **Topic vs. Aspect:**
-    * If an "Original Topic/Subject" was provided AND the "Intended Correct Answer" is a specific aspect *of* that topic (e.g., Topic="Kathy Bates", Answer="Annie Wilkes"),
-    * AND the "Player's Guess" is the "Original Topic/Subject" itself (e.g., guessed "Kathy Bates"),
-    * THEN the guess is INCORRECT because it's too broad and not the specific answer to *this particular riddle*. Reasoning should state this. Confidence: 0.1-0.3.
-4.  **Related but Incorrect:** If the guess is related to the "Intended Correct Answer" or "Original Topic" but is not the specific answer (e.g., another character from the same movie, a different movie by the same actor), it is INCORRECT. Reasoning should clarify the distinction. Confidence: 0.2-0.5.
-5.  **Unrelated/Clearly Wrong:** If the guess is unrelated, it is INCORRECT. Confidence: 0.0.
-
-Respond with ONLY a JSON object with the following structure:
-{
-  "is_correct": boolean, // True if the guess is considered correct for THIS SPECIFIC riddle, false otherwise.
-  "confidence": number, // A score from 0.0 (completely wrong) to 1.0 (exact match or very high confidence).
-  "reasoning": "string" // Brief explanation for the decision.
-}`;
+Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}`;
 
     try {
         // Pre-check for the specific scenario before calling LLM, if desired, for more deterministic control
@@ -275,17 +415,181 @@ Respond with ONLY a JSON object with the following structure:
             };
         }
 
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 200 } // Lower temp for more deterministic verification
-        });
-        const response = result.response;
-        const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
+        // Primary attempt: schema-based structured output with small retries on 5xx
+        const genWithSchema = async (maxTokens = 512, minimalPrompt = false) => {
+            const res = await genaiModels.generateContent({
+                model: modelId,
+                contents: [{ role: 'user', parts: [{ text: minimalPrompt ? `Question: "${riddleQuestion}"
+Answer: "${correctAnswer}"
+Guess: "${userAnswer}"
+
+Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}. Keep reasoning under 6 words.` : `${prompt}` }] }],
+                config: {
+                    temperature: 0.0,
+                    maxOutputTokens: maxTokens,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: GenAIType.OBJECT,
+                        properties: {
+                            is_correct: { type: GenAIType.BOOLEAN },
+                            confidence: { type: GenAIType.NUMBER },
+                            reasoning: { type: GenAIType.STRING }
+                        },
+                        propertyOrdering: ['is_correct', 'confidence', 'reasoning'],
+                        required: ['is_correct', 'confidence', 'reasoning']
+                    }
+                },
+                systemInstruction: {
+                    parts: [{ text: 'You are a verifier. Output ONLY JSON that matches the schema; no preface, no extra text.' }]
+                }
+            });
+            return { response: res };
+        };
+        let schemaResp;
+        try {
+            schemaResp = await genWithSchema(512, false);
+        } catch (eSchema1) {
+            const msg = String(eSchema1?.message || '');
+            if (/\b(500|internal error)\b/i.test(msg)) {
+                await new Promise(r => setTimeout(r, 200));
+                try { schemaResp = await genWithSchema(512, false); } catch (eSchema2) {
+                    const msg2 = String(eSchema2?.message || '');
+                    if (/\b(500|internal error)\b/i.test(msg2)) {
+                        await new Promise(r => setTimeout(r, 400));
+                        schemaResp = await genWithSchema(512, false);
+                    } else {
+                        throw eSchema2;
+                    }
+                }
+            } else {
+                throw eSchema1;
+            }
+        }
+        // Helper: prefer parsed from SDK; otherwise extract text
+        const coerceParsed = (resp) => {
+            try {
+                const parsed = resp?.parsed;
+                if (parsed && typeof parsed.is_correct === 'boolean') {
+                    return parsed;
+                }
+            } catch (_) { /* ignore */ }
+            return null;
+        };
+        const tryParseJsonString = (raw) => {
+            if (!raw || typeof raw !== 'string') return null;
+            try { return JSON.parse(raw); } catch (_) { /* continue */ }
+            // Attempt to extract the first {...} block
+            const first = raw.indexOf('{');
+            const last = raw.lastIndexOf('}');
+            if (first !== -1 && last !== -1 && last > first) {
+                const sliced = raw.substring(first, last + 1).trim();
+                try { return JSON.parse(sliced); } catch (_) { /* ignore */ }
+            }
+            return null;
+        };
+        // If finishReason indicates truncation or content missing, escalate retries with higher tokens and minimal prompt
+        const fin = schemaResp?.response?.candidates?.[0]?.finishReason;
+        let sText = '';
+        const respObj = schemaResp.response;
+        let structured = coerceParsed(respObj);
+        if (respObj && typeof respObj.text === 'string' && respObj.text.trim().length > 0) {
+            sText = respObj.text.trim();
+        } else {
+            sText = extractText(respObj) || '';
+        }
+        if (!sText && !structured) {
+            try {
+                const parts = Array.isArray(respObj?.candidates) ? (respObj.candidates[0]?.content?.parts || []) : [];
+                const joined = parts.map(p => p?.text || '').join('').trim();
+                if (joined) sText = joined;
+            } catch (_) { /* ignore */ }
+        }
+        if ((!sText && !structured) || fin === 'MAX_TOKENS') {
+            try {
+                // Try again with higher tokens
+                const retryHigh = await genWithSchema(1024, false);
+                const ro = retryHigh.response;
+                structured = coerceParsed(ro) || structured;
+                const textHigh = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                if (textHigh) sText = textHigh;
+            } catch (_) { /* ignore */ }
+        }
+        if (!sText && !structured) {
+            try {
+                // Minimal prompt attempt
+                const retryMin = await genWithSchema(256, true);
+                const ro = retryMin.response;
+                structured = coerceParsed(ro) || structured;
+                const textMin = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                if (textMin) sText = textMin;
+            } catch (_) { /* ignore */ }
+        }
+        if (!sText && !structured) {
+            try {
+                const preview = JSON.stringify(respObj).slice(0, 500);
+                logger.warn({ preview }, '[RiddleService] Structured output response missing text.');
+            } catch (_) {
+                logger.warn('[RiddleService] Structured output response missing text and could not stringify.');
+            }
+        }
+        // Prefer parsed object if available
+        if (structured && typeof structured.is_correct === 'boolean') {
+            if (structured.is_correct && isTopicGuessInsteadOfAspect) {
+                return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
+            }
+            return { isCorrect: structured.is_correct, reasoning: structured.reasoning || '', confidence: typeof structured.confidence === 'number' ? structured.confidence : (structured.is_correct ? 0.9 : 0.1) };
+        }
+        if (sText) {
+            let parsed = tryParseJsonString(sText);
+            // If likely truncated (no closing brace), try one more high-token retry
+            const looksTruncated = sText.includes('{') && !sText.trim().endsWith('}');
+            if ((!parsed || looksTruncated) && !structured) {
+                try {
+                    const retryRepair = await genWithSchema(1024, false);
+                    const ro = retryRepair.response;
+                    structured = coerceParsed(ro) || structured;
+                    const textRepair = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
+                    if (textRepair) {
+                        sText = textRepair;
+                        parsed = tryParseJsonString(sText);
+                    }
+                } catch (_) { /* ignore */ }
+            }
+            
+            if (parsed && typeof parsed.is_correct === 'boolean') {
+                if (parsed.is_correct && isTopicGuessInsteadOfAspect) {
+                    return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
+                }
+                return { isCorrect: parsed.is_correct, reasoning: parsed.reasoning || '', confidence: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.is_correct ? 0.9 : 0.1) };
+            } else if (sText) {
+                logger.warn({ preview: sText.slice(0, 200) }, '[RiddleService] Schema parse failed.');
+            }
+        }
+
+        // Fallback attempt 1: ask for strict JSON (no schema)
+        let text = '';
+        // Reuse the same prompt but request JSON explicitly
+        try {
+            const plainJsonResp = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nRespond ONLY as JSON: {"is_correct": true|false, "confidence": number, "reasoning": string}` }] }],
+                generationConfig: { temperature: 0.0, maxOutputTokens: 80, responseMimeType: 'text/plain' }
+            });
+            text = extractText(plainJsonResp.response);
+        } catch (_) { text = ''; }
 
         if (text) {
             try {
-                const cleanedText = text.replace(/^```json\s*|```\s*$/g, '').trim();
-                const parsed = JSON.parse(cleanedText);
+                // Try direct JSON parse first
+                let candidateText = text.replace(/^```json\s*|```\s*$/g, '').trim();
+                // If still not pure JSON, try extracting the first {...} block
+                if (!(candidateText.startsWith('{') && candidateText.endsWith('}'))) {
+                    const firstBrace = candidateText.indexOf('{');
+                    const lastBrace = candidateText.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        candidateText = candidateText.substring(firstBrace, lastBrace + 1).trim();
+                    }
+                }
+                const parsed = JSON.parse(candidateText);
                 if (typeof parsed.is_correct === 'boolean' && typeof parsed.confidence === 'number' && typeof parsed.reasoning === 'string') {
                     // Additional check: if LLM says correct, but it was a topic guess, override if we are strict
                     if (parsed.is_correct && isTopicGuessInsteadOfAspect) {
@@ -307,14 +611,116 @@ Respond with ONLY a JSON object with the following structure:
                 logger.error({ err: e, text }, '[RiddleService] Failed to parse JSON from answer verification');
             }
         }
-        // Fallback if LLM fails to provide valid JSON or structured response
-        logger.warn('[RiddleService] Answer verification failed to get structured response, falling back to basic string comparison against correct answer only.');
+
+        // Fallback attempt 2: Structured output via responseSchema (per Gemini structured output docs)
+        try {
+            const structured = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'object',
+                        properties: {
+                            is_correct: { type: 'boolean' },
+                            confidence: { type: 'number' },
+                            reasoning: { type: 'string' }
+                        },
+                        required: ['is_correct', 'confidence', 'reasoning']
+                    },
+                    temperature: 0.1,
+                    maxOutputTokens: 120
+                }
+            });
+            const sResp = structured.response;
+            const sCand = sResp?.candidates?.[0];
+            const sText = sCand?.content?.parts?.map(p => p?.text || '').join('').trim() || '';
+            if (sText) {
+                const parsed = JSON.parse(sText);
+                if (typeof parsed.is_correct === 'boolean') {
+                    if (parsed.is_correct && isTopicGuessInsteadOfAspect) {
+                        return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
+                    }
+                    return { isCorrect: parsed.is_correct, reasoning: parsed.reasoning || '', confidence: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.is_correct ? 0.9 : 0.1) };
+                }
+            }
+        } catch (se) {
+            logger.warn({ err: se?.message }, '[RiddleService] Structured-output attempt failed. Proceeding to basic fallback.');
+        }
+        // Function-calling fallback per docs (last-ditch structured decision)
+        try {
+            const verifyDecisionTool = {
+                functionDeclarations: [{
+                    name: "report_verification",
+                    description: "Report whether the guess is correct for this specific riddle.",
+                    parameters: {
+                        type: "OBJECT",
+                        properties: {
+                            is_correct: { type: "BOOLEAN" },
+                            confidence: { type: "NUMBER" },
+                            reasoning: { type: "STRING" }
+                        },
+                        required: ["is_correct", "confidence", "reasoning"]
+                    }
+                }]
+            };
+            const fcPrompt = `Question: "${riddleQuestion}"\nAnswer: "${correctAnswer}"\nGuess: "${userAnswer}"\nCall report_verification with your decision.`;
+            const callOnce = async () => {
+                return await model.generateContent({
+                    contents: [{ role: 'user', parts: [{ text: fcPrompt }] }],
+                    tools: [verifyDecisionTool],
+                    toolConfig: { functionCallingConfig: { mode: 'ANY' } },
+                    generationConfig: { temperature: 0.0, maxOutputTokens: 64 }
+                });
+            };
+            let fcResp;
+            try {
+                fcResp = await callOnce();
+            } catch (eFc1) {
+                const msg = String(eFc1?.message || '');
+                if (/\b(500|internal error)\b/i.test(msg)) {
+                    await new Promise(r => setTimeout(r, 200));
+                    fcResp = await callOnce();
+                } else {
+                    throw eFc1;
+                }
+            }
+            const fn = fcResp?.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+            if (fn?.name === 'report_verification') {
+                const args = fn.args || {};
+                if (typeof args.is_correct === 'boolean') {
+                    if (args.is_correct && isTopicGuessInsteadOfAspect) {
+                        return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
+                    }
+                    return { isCorrect: !!args.is_correct, reasoning: (args.reasoning || '').toString(), confidence: typeof args.confidence === 'number' ? args.confidence : (args.is_correct ? 0.9 : 0.1) };
+                }
+            }
+        } catch (eFc) {
+            logger.warn({ err: eFc?.message }, '[RiddleService] Function-calling fallback failed.');
+        }
+
+        // Regex-based parse fallback from any textual response
+        try {
+            const result2 = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nOutput strictly as JSON with keys is_correct, confidence, reasoning.` }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 160 }
+            });
+            const resp2 = result2.response;
+            const cand2 = resp2?.candidates?.[0];
+            const t2 = cand2?.content?.parts?.map(p => p?.text || '').join('\n') || '';
+            const text2 = t2.replace(/^```json\s*|```\s*$/g, '').trim();
+            const m = text2.match(/"?is_?correct"?\s*[:=]\s*(true|false)/i);
+            if (m) {
+                const isCorrectFromRegex = m[1].toLowerCase() === 'true';
+                if (isCorrectFromRegex && isTopicGuessInsteadOfAspect) {
+                    return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
+                }
+                return { isCorrect: isCorrectFromRegex, reasoning: isCorrectFromRegex ? 'Regex parse: correct' : 'Regex parse: incorrect', confidence: isCorrectFromRegex ? 0.85 : 0.15 };
+            }
+        } catch (_) { /* ignore */ }
+        // Final fallback if nothing structured could be parsed
+        logger.warn('[RiddleService] Answer verification failed to get structured response, using final basic comparison.');
         const isBasicCorrect = lowerUserAnswer === lowerCorrectAnswer;
-        return {
-            isCorrect: isBasicCorrect,
-            reasoning: isBasicCorrect ? "Exact match (fallback)." : "Incorrect (fallback).",
-            confidence: isBasicCorrect ? 0.9 : 0.1 // Slightly lower confidence for exact match in fallback
-        };
+        return { isCorrect: isBasicCorrect, reasoning: isBasicCorrect ? 'Exact match (final fallback).' : 'Incorrect (final fallback).', confidence: isBasicCorrect ? 0.85 : 0.1 };
 
     } catch (error) {
         logger.error({ err: error }, '[RiddleService] Error verifying riddle answer with LLM');

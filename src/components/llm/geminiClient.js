@@ -373,32 +373,17 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: "Empty query" };
     const model = getGeminiClient();
 
-    // MODIFIED: Make the prompt more robust for various types of "userQuery"
+    // SIMPLIFIED: Make the prompt more concise
     const decisionPrompt = `${contextPrompt}
 
-User's effective request/topic for consideration: "${userQuery}"
+User request: "${userQuery}"
 
-**TASK:**
-Your task is to determine if external web search (Google Search) is *essential* to fulfill the user's request or generate high-quality, factually accurate content about the given topic/request, especially considering any provided context or exclusion instructions.
+Determine if web search is essential for this request. Call 'decide_if_search_needed' function.
 
-You MUST call the 'decide_if_search_needed' function with your decision.
-Do NOT attempt to answer or fulfill the user's request directly in this step.
+Search needed for: real-time info, specific facts, niche topics, video game details, insufficient context.
+No search needed for: general knowledge, broad creative topics, time/date queries.
 
-**CRITERIA FOR REQUIRING SEARCH (set search_required: true):**
-* The request involves real-time information (e.g., news, current events after late 2023, weather, stock prices).
-* The request is about specific, obscure facts, or niche topics not commonly known.
-* The request pertains to rapidly changing information.
-* The request is for generating content (like a riddle or trivia) about a specific named entity (person, place, game, movie, book, etc.) where up-to-date or nuanced details are important for quality and accuracy.
-* The request involves video game guidance or specific game lore details.
-* The provided context (if any) is insufficient to confidently answer.
-
-**CRITERIA FOR NOT REQUIRING SEARCH (set search_required: false):**
-* The request is for general knowledge that is widely known and stable.
-* The request is about creative generation on a very broad topic where specific facts are less critical than the creative output itself (unless accuracy is stressed).
-* The request can be fully answered using the provided context or general knowledge.
-* The user's query is ONLY for the current time or date (this is handled by a different tool, so search is not needed for the decision function itself).
-
-Based on the above, make your decision.`;
+Make your decision.`;
 
     logger.debug({ promptLength: decisionPrompt.length, userQueryFromCaller: userQuery }, 'Attempting function calling decision for search');
     try {
@@ -452,15 +437,13 @@ export async function summarizeText(textToSummarize, targetCharLength = 400) {
     }
     const model = getGeminiClient(); // Ensures model is initialized
 
-    // Construct a prompt specifically for summarization with a length constraint
-    const summarizationPrompt = `Please summarize the following text concisely. Aim for a summary that is approximately under ${targetCharLength} characters long, capturing the key points.
+    // Simplified summarization prompt
+    const summarizationPrompt = `Summarize the following chat in under ${targetCharLength} characters. Keep it concrete and mention the main topic(s) and any game events. No markdown.
 
-Text to Summarize:
---- START ---
+CHAT:
 ${textToSummarize}
---- END ---
 
-Concise Summary:`;
+SUMMARY:`;
 
     logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
 
@@ -487,11 +470,21 @@ Concise Summary:`;
               if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
              return null;
         }
-        const summary = extractTextFromResponse(response, candidate, 'summarize');
-        if (!summary) {
-            logger.warn('Summarization response missing extractable text.');
-            return null;
+        let summary = extractTextFromResponse(response, candidate, 'summarize');
+        if (!summary || summary.trim().length === 0) {
+            // Fallback: simple heuristic extract (first and last few messages compressed)
+            logger.warn('Summarization response missing extractable text. Using fallback summarizer.');
+            try {
+                const lines = textToSummarize.split('\n').filter(Boolean);
+                const head = lines.slice(0, 3).join(' · ');
+                const tail = lines.slice(-3).join(' · ');
+                const fallback = [head, tail].filter(Boolean).join(' ... ');
+                summary = fallback.slice(0, Math.max(60, targetCharLength));
+            } catch (_) {
+                summary = null;
+            }
         }
+        if (!summary) return null;
         logger.info({ originalLength: textToSummarize.length, summaryLength: summary.length }, 'Successfully generated summary from Gemini.');
         return summary.trim();
 
