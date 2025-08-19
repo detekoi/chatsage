@@ -425,7 +425,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
 Answer: "${correctAnswer}"
 Guess: "${userAnswer}"
 
-Return JSON ONLY: {"is_correct": boolean}.`;
+Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning under 6 words.`;
                 })() : `${prompt}` }] }],
                 config: {
                     temperature: 0.0,
@@ -434,10 +434,11 @@ Return JSON ONLY: {"is_correct": boolean}.`;
                     responseSchema: {
                         type: GenAIType.OBJECT,
                         properties: {
-                            is_correct: { type: GenAIType.BOOLEAN }
+                            is_correct: { type: GenAIType.BOOLEAN },
+                            reasoning: { type: GenAIType.STRING }
                         },
-                        propertyOrdering: ['is_correct'],
-                        required: ['is_correct']
+                        propertyOrdering: ['is_correct', 'reasoning'],
+                        required: ['is_correct', 'reasoning']
                     }
                 },
                 systemInstruction: {
