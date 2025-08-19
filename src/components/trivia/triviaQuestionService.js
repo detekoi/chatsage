@@ -56,8 +56,8 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
-    // STEP 1: Search for facts about the topic - MODIFIED PROMPT
-    const searchFactsPrompt = `First, find varied and interesting factual information about "${topic}" that can be used to create an engaging ${difficulty} trivia question. \nFocus on:\n- Key characters, items, or locations and their unique attributes or significance.\n- Notable plot points, events, or in-world lore details.\n- Interesting "behind-the-scenes" facts, development trivia, or real-world connections (but avoid simple release dates unless they are exceptionally trivia-worthy for a specific reason).\n- Unique mechanics, abilities, or concepts specific to the topic.\n${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn a collection of diverse facts as a text block. Do not call any functions in this step.`;
+    // STEP 1: Search for facts about the topic - SIMPLIFIED PROMPT
+    const searchFactsPrompt = `Find interesting facts about "${topic}" for a ${difficulty} trivia question. Focus on characters, plot points, lore, and unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn facts as text. Do not call functions.`;
     let factualInfoText = "";
 
     try {
@@ -80,8 +80,8 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         return null; 
     }
 
-    // STEP 2: Use the gathered facts to generate a structured question via function call - MODIFIED PROMPT
-    const generateQuestionPrompt = `Using ONLY the following factual information about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nCRITICAL: Generate an engaging trivia question based SOLELY on these facts.\nPrioritize questions that test knowledge about characters, plot, lore, or unique details, rather than just specific dates.\n${exclusionInstructionQuestions}${exclusionInstructionAnswers} \nDifficulty level: ${difficulty}.\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'. For example, if the question is "What is the name of Steven's pink, magical companion who has a pocket dimension in his mane?", the 'correct_answer' should be "Lion". If the question asks for a concept like "when Gems combine their forms", the 'correct_answer' should be "Fusion", not "The process by which Gems combine their physical forms".\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is true.\n`;
+    // STEP 2: Use the gathered facts to generate a structured question via function call - SIMPLIFIED PROMPT
+    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nDifficulty: ${difficulty}.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'.`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
@@ -221,7 +221,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
-    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty level: ${difficulty}.\nAvoid overly obscure or simple date-based questions. Focus on interesting facts, characters, plot points, lore, or unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nYou MUST call the 'generate_trivia_question' function to structure your response. \nWhen calling 'generate_trivia_question':\n- The 'correct_answer' MUST be the most common, VERY CONCISE, and "guessable" keyword, name, or specific term (ideally 1-3 words, max 5 words). AVOID long descriptive sentences for 'correct_answer'; such details belong in the 'explanation'.\n- For 'alternate_answers':\n    - If the 'correct_answer' is a short phrase like "Fusion Instability", include common, highly related, and shorter variations like "Instability" or "Unstable" as alternates if they make sense as a standalone answer to the question.\n    - If 'correct_answer' is "Italian-inspired", include "Italy" as an alternate.\n    - If 'correct_answer' is "Ghibli films and Mediterranean landscapes", alternates could include "Ghibli and Mediterranean" or potentially "Ghibli films" and "Mediterranean landscapes" IF the question could be reasonably answered by naming just one. Be discerning.\n- Ensure the 'search_used' field is false for general knowledge questions.`;
+    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'.`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
@@ -312,8 +312,22 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
 
-    const lowerUserAnswer = userAnswer.toLowerCase().trim();
-    const lowerCorrectAnswer = correctAnswer.toLowerCase().trim();
+    const normalize = (s) => {
+        if (!s || typeof s !== 'string') return '';
+        const cleaned = s
+            .toLowerCase()
+            .trim()
+            .replace(/[\-_'’`]/g, ' ')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/^[\s]*(?:the|a|an)\s+/i, '')
+            .replace(/[\s]+/g, ' ');
+        if (cleaned.endsWith('ies')) return cleaned.slice(0, -3) + 'y';
+        if (cleaned.endsWith('ses')) return cleaned.slice(0, -2);
+        if (cleaned.endsWith('s') && !cleaned.endsWith('ss')) return cleaned.slice(0, -1);
+        return cleaned;
+    };
+    const lowerUserAnswer = normalize(userAnswer);
+    const lowerCorrectAnswer = normalize(correctAnswer);
 
     if (lowerUserAnswer === lowerCorrectAnswer) {
         logger.debug(`[TriviaService] Exact match: User "${lowerUserAnswer}" vs Correct "${lowerCorrectAnswer}"`);
@@ -326,60 +340,113 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
     }
 
     try {
-        // Single LLM call with strict CORRECT/INCORRECT instruction
-        const verificationPrompt = `Your task is to determine if the "Player's Input" is a correct and acceptable answer to the "Trivia Question", given the "Official Correct Answer" and any "Alternate Official Answers".
+        // First attempt: function-calling for structured decision
+        const verifyTool = {
+            functionDeclarations: [{
+                name: 'report_verification',
+                description: 'Report the decision for whether the player\'s answer is correct for this specific trivia question.',
+                parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                        is_correct: { type: 'BOOLEAN' },
+                        confidence: { type: 'NUMBER' },
+                        reasoning: { type: 'STRING' }
+                    },
+                    required: ['is_correct', 'confidence', 'reasoning']
+                }
+            }]
+        };
 
-Trivia Question: "${question}"
-Official Correct Answer: "${correctAnswer}"
-Alternate Official Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
-Player's Input: "${userAnswer}"
+        const verificationPrompt = `Question: "${question}"
+Correct Answer: "${correctAnswer}"
+Alternate Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
+Player's Answer: "${userAnswer}"
 
-Instructions for your decision:
-1.  **Direct Match:** If "Player's Input" exactly matches (case-insensitive) the "Official Correct Answer" or any "Alternate Official Answers", it is CORRECT.
-2.  **Core Essence/Synonym:** If "Player's Input" captures the fundamental core essence or is a very close synonym of the "Official Correct Answer", it can be considered CORRECT. For example, if the official answer is "Italian-inspired architecture" and the question is about inspiration, "Italy" or "Italian architecture" could be acceptable. If the official answer is "The Eiffel Tower", then "Eiffel Tower" is CORRECT. If the official answer is "The colors red and green", "red and green" is correct, but "red" alone is INCORRECT. If the official answer is "Fusion Instability", an input like "Instability" or "Unstable" should be considered CORRECT if it conveys the core concept in context of the question.
-3.  **Partial but Insufficient:** If "Player's Input" is only a small part of a multi-part "Official Correct Answer" and misses other key components (e.g., Player says "Europe" when answer is "Paris, France"), or if it's a broader category when a specific item is expected (e.g., Player says "a dog" when answer is "Golden Retriever"), it is INCORRECT.
-4.  **Substantially Different/Unrelated:** If "Player's Input" is factually incorrect, refers to something entirely different, or is merely a comment about the question/game and not an attempt to answer, it is INCORRECT.
-5.  **Format Match (Less Strict if Core Essence Met):** If the "Official Correct Answer" is a specific format (e.g., a date, a number), the "Player's Input" should ideally match that format. However, if the core essence is met (Point 2), slight format variations might be acceptable.
-
-Respond with ONLY the word "CORRECT" or "INCORRECT".
-On a new line, provide a VERY BRIEF (1 short sentence) justification for your decision, focusing on why the Player's Input is or isn't an acceptable match based on the criteria above.`;
+Decide correctness (accept exact, close synonyms, obvious misspellings). Call 'report_verification' with is_correct, confidence (0.0-1.0), and a short reasoning.`;
 
         const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: verificationPrompt }] }],
+            contents: [{ role: 'user', parts: [{ text: verificationPrompt }] }],
+            tools: [verifyTool],
+            toolConfig: { functionCallingConfig: { mode: 'ANY' } },
+            systemInstruction: { parts: [{ text: 'You verify trivia answers and must call report_verification.' }] },
             generationConfig: { temperature: 0.1, maxOutputTokens: 120 }
         });
-        let responseText = result.response.candidates[0]?.content?.parts?.map(p => p.text || '').join('').trim() || '';
-        // Remove surrounding code fences if present
-        responseText = responseText.replace(/^```[a-zA-Z]*\s*|```\s*$/g, '').trim();
-        
-        // Determine verdict by finding the first occurrence of CORRECT/INCORRECT
-        const upper = responseText.toUpperCase();
-        const idxCorrect = upper.indexOf('CORRECT');
-        const idxIncorrect = upper.indexOf('INCORRECT');
+
+        const candidate = result.response?.candidates?.[0];
+        const fn = candidate?.content?.parts?.[0]?.functionCall;
         let isCorrectByLLM = false;
-        if (idxCorrect !== -1 && (idxIncorrect === -1 || idxCorrect < idxIncorrect)) {
-            isCorrectByLLM = true;
-        } else if (idxIncorrect !== -1) {
-            isCorrectByLLM = false;
-        } else {
-            // Fallback if no keyword found: be conservative
-            logger.warn('[TriviaService] Could not find CORRECT/INCORRECT token in LLM response. Defaulting to INCORRECT.');
-            isCorrectByLLM = false;
+        let reasoningFromLLM = '';
+        let confidenceFromLLM = 0.0;
+        if (fn?.name === 'report_verification') {
+            const args = fn.args || {};
+            if (typeof args.is_correct === 'boolean') {
+                isCorrectByLLM = args.is_correct;
+                reasoningFromLLM = (args.reasoning || '').toString().trim();
+                confidenceFromLLM = typeof args.confidence === 'number' ? args.confidence : (isCorrectByLLM ? 0.9 : 0.1);
+            }
         }
-        let reasoningFromLLM = responseText.split("\n").slice(1).join(" ").trim();
+        if (!fn) {
+            // Fallback to strict JSON text parsing
+            const parts = candidate?.content?.parts || [];
+            let responseText = parts.map(p => p.text || '').join('').trim();
+            responseText = responseText.replace(/^```json\s*|```\s*$/g, '').trim();
+            if (!(responseText.startsWith('{') && responseText.endsWith('}'))) {
+                const i = responseText.indexOf('{');
+                const j = responseText.lastIndexOf('}');
+                if (i !== -1 && j !== -1 && j > i) responseText = responseText.substring(i, j + 1);
+            }
+            try {
+                const parsed = JSON.parse(responseText);
+                isCorrectByLLM = !!parsed.is_correct;
+                reasoningFromLLM = (parsed.reasoning || '').toString().trim();
+                confidenceFromLLM = typeof parsed.confidence === 'number' ? parsed.confidence : (isCorrectByLLM ? 0.9 : 0.1);
+            } catch (_) {
+                logger.warn('[TriviaService] Could not parse verification JSON. Defaulting to conservative result.');
+                isCorrectByLLM = false;
+                reasoningFromLLM = '';
+                confidenceFromLLM = 0.1;
+            }
+            // Fallback attempt 2: Structured output with responseSchema
+            if (reasoningFromLLM.length === 0) {
+                try {
+                    const structured = await model.generateContent({
+                        contents: [{ role: 'user', parts: [{ text: verificationPrompt }] }],
+                        generationConfig: {
+                            responseMimeType: 'application/json',
+                            responseSchema: {
+                                type: 'object',
+                                properties: {
+                                    is_correct: { type: 'boolean' },
+                                    confidence: { type: 'number' },
+                                    reasoning: { type: 'string' }
+                                },
+                                required: ['is_correct', 'confidence', 'reasoning']
+                            },
+                            temperature: 0.1,
+                            maxOutputTokens: 120
+                        }
+                    });
+                    const sText = structured.response?.candidates?.[0]?.content?.parts?.map(p => p?.text || '').join('').trim() || '';
+                    if (sText) {
+                        const parsed = JSON.parse(sText);
+                        isCorrectByLLM = !!parsed.is_correct;
+                        reasoningFromLLM = (parsed.reasoning || '').toString().trim();
+                        confidenceFromLLM = typeof parsed.confidence === 'number' ? parsed.confidence : (isCorrectByLLM ? 0.9 : 0.1);
+                    }
+                } catch (se) {
+                    logger.warn({ err: se?.message }, '[TriviaService] Structured-output attempt failed. Proceeding.');
+                }
+            }
+        }
         if (!reasoningFromLLM || /considered (in)?correct by the LLM\./i.test(reasoningFromLLM)) {
             try {
-                const reasoningPrompt = `Given the following trivia context, write ONE short sentence explaining why the Player's Input is ${isCorrectByLLM ? 'CORRECT' : 'INCORRECT'}.
+                const reasoningPrompt = `Explain why the player's answer is ${isCorrectByLLM ? 'CORRECT' : 'INCORRECT'}.
 
-Trivia Question: "${question}"
-Official Correct Answer: "${correctAnswer}"
-Alternate Official Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
-Player's Input: "${userAnswer}"
+Question: "${question}"
+Correct Answer: "${correctAnswer}"
+Player's Answer: "${userAnswer}"
 
-Rules:
-- Do not output CORRECT/INCORRECT; only the explanation sentence.
-- Be specific (e.g., "unrelated to X", "broader than Y", "misses key term Z").
-- ≤ 20 words.`;
+Write ONE short sentence (≤20 words) explaining the decision.`;
                 const reasoningResp = await model.generateContent({
                     contents: [{ role: 'user', parts: [{ text: reasoningPrompt }] }],
                     generationConfig: { temperature: 0.1, maxOutputTokens: 60 }
