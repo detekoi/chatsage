@@ -419,11 +419,14 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         const genWithSchema = async (maxTokens = 512, minimalPrompt = false) => {
             const res = await genaiModels.generateContent({
                 model: modelId,
-                contents: [{ role: 'user', parts: [{ text: minimalPrompt ? `Question: "${riddleQuestion}"
+                contents: [{ role: 'user', parts: [{ text: minimalPrompt ? (() => {
+                    const q = typeof riddleQuestion === 'string' && riddleQuestion.length > 300 ? (riddleQuestion.slice(0, 300) + '...') : riddleQuestion;
+                    return `Question: "${q}"
 Answer: "${correctAnswer}"
 Guess: "${userAnswer}"
 
-Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}. Keep reasoning under 6 words.` : `${prompt}` }] }],
+Return JSON ONLY: {"is_correct": boolean}.`;
+                })() : `${prompt}` }] }],
                 config: {
                     temperature: 0.0,
                     maxOutputTokens: maxTokens,
@@ -431,12 +434,10 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                     responseSchema: {
                         type: GenAIType.OBJECT,
                         properties: {
-                            is_correct: { type: GenAIType.BOOLEAN },
-                            confidence: { type: GenAIType.NUMBER },
-                            reasoning: { type: GenAIType.STRING }
+                            is_correct: { type: GenAIType.BOOLEAN }
                         },
-                        propertyOrdering: ['is_correct', 'confidence', 'reasoning'],
-                        required: ['is_correct', 'confidence', 'reasoning']
+                        propertyOrdering: ['is_correct'],
+                        required: ['is_correct']
                     }
                 },
                 systemInstruction: {
@@ -447,16 +448,16 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         };
         let schemaResp;
         try {
-            schemaResp = await genWithSchema(512, false);
+            schemaResp = await genWithSchema(512, true);
         } catch (eSchema1) {
             const msg = String(eSchema1?.message || '');
             if (/\b(500|internal error)\b/i.test(msg)) {
                 await new Promise(r => setTimeout(r, 200));
-                try { schemaResp = await genWithSchema(512, false); } catch (eSchema2) {
+                try { schemaResp = await genWithSchema(512, true); } catch (eSchema2) {
                     const msg2 = String(eSchema2?.message || '');
                     if (/\b(500|internal error)\b/i.test(msg2)) {
                         await new Promise(r => setTimeout(r, 400));
-                        schemaResp = await genWithSchema(512, false);
+                        schemaResp = await genWithSchema(512, true);
                     } else {
                         throw eSchema2;
                     }
@@ -507,7 +508,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         if ((!sText && !structured) || fin === 'MAX_TOKENS') {
             try {
                 // Try again with higher tokens
-                const retryHigh = await genWithSchema(1024, false);
+                const retryHigh = await genWithSchema(1024, true);
                 const ro = retryHigh.response;
                 structured = coerceParsed(ro) || structured;
                 const textHigh = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
@@ -534,6 +535,9 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         }
         // Prefer parsed object if available
         if (structured && typeof structured.is_correct === 'boolean') {
+            try {
+                logger.info(`[RiddleService] Structured verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${structured.is_correct} (conf ${typeof structured.confidence === 'number' ? structured.confidence : 'n/a'}). Reason: ${structured.reasoning || ''}`);
+            } catch (_) { /* ignore */ }
             if (structured.is_correct && isTopicGuessInsteadOfAspect) {
                 return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
             }
@@ -557,6 +561,9 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             }
             
             if (parsed && typeof parsed.is_correct === 'boolean') {
+                try {
+                    logger.info(`[RiddleService] Parsed-json verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${parsed.is_correct} (conf ${typeof parsed.confidence === 'number' ? parsed.confidence : 'n/a'}). Reason: ${parsed.reasoning || ''}`);
+                } catch (_) { /* ignore */ }
                 if (parsed.is_correct && isTopicGuessInsteadOfAspect) {
                     return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
                 }
@@ -637,6 +644,9 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             if (sText) {
                 const parsed = JSON.parse(sText);
                 if (typeof parsed.is_correct === 'boolean') {
+                    try {
+                        logger.info(`[RiddleService] Legacy-structured verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${parsed.is_correct} (conf ${typeof parsed.confidence === 'number' ? parsed.confidence : 'n/a'}). Reason: ${parsed.reasoning || ''}`);
+                    } catch (_) { /* ignore */ }
                     if (parsed.is_correct && isTopicGuessInsteadOfAspect) {
                         return { isCorrect: false, reasoning: `The guess "${userAnswer}" is the general topic. The specific answer is "${correctAnswer}".`, confidence: 0.25 };
                     }

@@ -472,6 +472,9 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             } catch (_) {}
         }
         if (structured && typeof structured.is_correct === 'boolean') {
+            try {
+                logger.info(`[TriviaService] Structured verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${structured.is_correct} (conf ${typeof structured.confidence === 'number' ? structured.confidence : 'n/a'}). Reason: ${structured.reasoning || ''}`);
+            } catch (_) {}
             return { is_correct: structured.is_correct, confidence: typeof structured.confidence === 'number' ? structured.confidence : (structured.is_correct ? 0.9 : 0.1), reasoning: structured.reasoning || '', search_used: false };
         }
         if (sText) {
@@ -487,6 +490,9 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                 } catch (_) {}
             }
             if (parsed && typeof parsed.is_correct === 'boolean') {
+                try {
+                    logger.info(`[TriviaService] Parsed-json verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${parsed.is_correct} (conf ${typeof parsed.confidence === 'number' ? parsed.confidence : 'n/a'}). Reason: ${parsed.reasoning || ''}`);
+                } catch (_) {}
                 return { is_correct: parsed.is_correct, confidence: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.is_correct ? 0.9 : 0.1), reasoning: parsed.reasoning || '', search_used: false };
             }
         }
