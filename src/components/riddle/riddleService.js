@@ -303,52 +303,25 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
         if (cleaned.endsWith('s') && !cleaned.endsWith('ss')) return cleaned.slice(0, -1);
         return cleaned;
     };
-    // Basic Levenshtein similarity for fuzzy matching
-    const calculateStringSimilarity = (str1, str2) => {
-        const s1 = normalize(str1);
-        const s2 = normalize(str2);
+    // Simple edit-distance for fuzzy matching
+    const computeEditDistance = (a, b) => {
+        const s1 = normalize(a);
+        const s2 = normalize(b);
         const len1 = s1.length;
         const len2 = s2.length;
-        const maxLen = Math.max(len1, len2);
-        if (maxLen === 0) return 1.0;
+        if (len1 === 0) return len2;
+        if (len2 === 0) return len1;
         const dp = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
         for (let i = 0; i <= len1; i++) dp[i][0] = i;
         for (let j = 0; j <= len2; j++) dp[0][j] = j;
         for (let i = 1; i <= len1; i++) {
             for (let j = 1; j <= len2; j++) {
-                if (s1[i - 1] === s2[j - 1]) {
-                    dp[i][j] = dp[i - 1][j - 1];
-                } else {
-                    dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-                }
+                if (s1[i - 1] === s2[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+                else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
             }
         }
-        const distance = dp[len1][len2];
-        return 1 - (distance / maxLen);
+        return dp[len1][len2];
     };
-    // Basic root extraction for morphological variants and containment checks
-    const stripCommonSuffixes = (word) => {
-        let w = word;
-        if (w.endsWith('ies') && w.length > 4) w = w.slice(0, -3) + 'y';
-        else if (w.endsWith('ing') && w.length > 5) w = w.slice(0, -3);
-        else if (w.endsWith('ed') && w.length > 4) w = w.slice(0, -2);
-        else if (w.endsWith('ers') && w.length > 5) w = w.slice(0, -3);
-        else if (w.endsWith('er') && w.length > 4) w = w.slice(0, -2);
-        else if (w.endsWith('ness') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('ment') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('tion') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('sion') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('ity') && w.length > 5) w = w.slice(0, -3);
-        else if (w.endsWith('ally') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('al') && w.length > 4) w = w.slice(0, -2);
-        else if (w.endsWith('ous') && w.length > 5) w = w.slice(0, -3);
-        else if (w.endsWith('less') && w.length > 6) w = w.slice(0, -4);
-        else if (w.endsWith('ful') && w.length > 5) w = w.slice(0, -3);
-        else if (w.endsWith('es') && w.length > 4) w = w.slice(0, -2);
-        else if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) w = w.slice(0, -1);
-        return w;
-    };
-    const tokenize = (s) => normalize(s).split(' ').filter(Boolean);
     const lowerCorrectAnswer = normalize(correctAnswer);
     const lowerUserAnswer = normalize(userAnswer);
     const lowerOriginalTopic = originalTopic ? originalTopic.toLowerCase().trim() : null;
@@ -367,26 +340,23 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
         logger.info(`[RiddleService] User guessed the original topic ("${userAnswer}") but the specific answer was ("${correctAnswer}").`);
     }
 
-    // Fuzzy match pre-check to handle common misspellings/variants (e.g., "curiousity" vs "Curiosity")
-    const similarity = calculateStringSimilarity(lowerUserAnswer, lowerCorrectAnswer);
+    // Simplified fuzzy pre-check for common misspellings/near-variants
     if (!isTopicGuessInsteadOfAspect && !directMatch) {
-        if (similarity >= 0.88) {
-            logger.info(`[RiddleService] Pre-LLM fuzzy match: User guess "${userAnswer}" is very close to "${correctAnswer}" (similarity ${similarity.toFixed(2)}). Marking as correct.`);
-            return { isCorrect: true, reasoning: "Close match (spelling/variant).", confidence: 0.95 };
+        const distance = computeEditDistance(lowerUserAnswer, lowerCorrectAnswer);
+        const maxLen = Math.max(lowerUserAnswer.length, lowerCorrectAnswer.length);
+        if (distance <= 1) {
+            logger.info(`[RiddleService] Pre-LLM fuzzy: edit distance ${distance} (<=1). Accepting as correct.`);
+            return { isCorrect: true, reasoning: "Minor typo.", confidence: 0.95 };
         }
-        if (similarity >= 0.80) {
-            logger.info(`[RiddleService] Pre-LLM fuzzy match: User guess "${userAnswer}" is close to "${correctAnswer}" (similarity ${similarity.toFixed(2)}). Accepting as correct with lower confidence.`);
-            return { isCorrect: true, reasoning: "Close semantic/spelling match.", confidence: 0.9 };
+        if (maxLen >= 6 && distance <= 2) {
+            logger.info(`[RiddleService] Pre-LLM fuzzy: edit distance ${distance} (<=2) on length ${maxLen}. Accepting as correct.`);
+            return { isCorrect: true, reasoning: "Close variant.", confidence: 0.9 };
         }
-        // Token/root containment heuristic (e.g., "contextual awareness" vs "context")
-        const userTokens = tokenize(userAnswer).map(stripCommonSuffixes);
-        const correctTokens = tokenize(correctAnswer).map(stripCommonSuffixes);
-        const userSet = new Set(userTokens);
-        const correctSet = new Set(correctTokens);
-        const anyContain = userTokens.some(t => correctSet.has(t)) || correctTokens.some(t => userSet.has(t));
-        if (anyContain) {
-            logger.info(`[RiddleService] Pre-LLM root/containment match between "${userAnswer}" and "${correctAnswer}". Marking as correct.`);
-            return { isCorrect: true, reasoning: "Root/containment match.", confidence: 0.9 };
+        // Simple substring containment for short answers
+        if ((lowerUserAnswer.length >= 4 && lowerCorrectAnswer.includes(lowerUserAnswer)) ||
+            (lowerCorrectAnswer.length >= 4 && lowerUserAnswer.includes(lowerCorrectAnswer))) {
+            logger.info(`[RiddleService] Pre-LLM substring containment between "${userAnswer}" and "${correctAnswer}". Accepting as correct.`);
+            return { isCorrect: true, reasoning: "Substring match.", confidence: 0.88 };
         }
     }
 
