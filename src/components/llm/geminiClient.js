@@ -338,6 +338,20 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
             logger.warn('Search-grounded Gemini response missing candidates or content.');
             return null;
         }
+        // Transparency: log grounding metadata if present
+        const groundingMetadata = candidate.groundingMetadata || response.candidates?.[0]?.groundingMetadata;
+        if (groundingMetadata) {
+            const sources = Array.isArray(groundingMetadata.groundingChunks)
+                ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
+                : undefined;
+            logger.info({
+                usedGoogleSearch: true,
+                webSearchQueries: groundingMetadata.webSearchQueries,
+                sources
+            }, 'Search grounding metadata.');
+        } else {
+            logger.info({ usedGoogleSearch: false }, 'No search grounding metadata present.');
+        }
         if (candidate.citationMetadata?.citationSources?.length > 0) {
             logger.info({ citations: candidate.citationMetadata.citationSources }, 'Gemini response included search citations.');
         }
@@ -389,6 +403,20 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
         }
         const candidate = response.candidates?.[0];
         if (!candidate) return null;
+        // Transparency: log grounding metadata if present
+        const groundingMetadata = candidate.groundingMetadata || response.candidates?.[0]?.groundingMetadata;
+        if (groundingMetadata) {
+            const sources = Array.isArray(groundingMetadata.groundingChunks)
+                ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
+                : undefined;
+            logger.info({
+                usedGoogleSearch: true,
+                webSearchQueries: groundingMetadata.webSearchQueries,
+                sources
+            }, 'Unified: search grounding metadata.');
+        } else {
+            logger.info({ usedGoogleSearch: false }, 'Unified: no search grounding metadata present.');
+        }
         if (candidate.citationMetadata?.citationSources?.length > 0) {
             logger.info({ citations: candidate.citationMetadata.citationSources }, 'Unified response included citations.');
         }
