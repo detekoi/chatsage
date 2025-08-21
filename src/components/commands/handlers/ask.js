@@ -3,9 +3,7 @@ import { getContextManager } from '../../context/contextManager.js';
 // Import the relevant functions from geminiClient
 import {
     buildContextPrompt,
-    decideSearchWithFunctionCalling,
-    generateStandardResponse,
-    generateSearchResponse,
+    generateUnifiedResponse,
     summarizeText,
     fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
@@ -175,37 +173,18 @@ const askHandler = {
                     }
                 } else {
                     // Failed to get IANA from LLM, even though regex matched a location.
-                    logger.warn(`[${channelName}] Regex extracted location "${locationForTime}", but LLM failed to find IANA. Falling back to general query.`);
+                    logger.warn(`[${channelName}] Regex extracted location "${locationForTime}", but LLM failed to find IANA. Using unified generation.`);
                     const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-                    const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQueryWithContext);
-                    let responseText = null;
-                    if (decisionResult.searchNeeded) {
-                        responseText = await generateSearchResponse(contextPrompt, userQueryWithContext);
-                    } else {
-                        responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
-                    }
+                    const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
                     await handleAskResponseFormatting(channel, userName, responseText, userQuery);
                 }
                 return; // Time query handled (or attempt failed)
             }
 
-            // --- Not a regex-matched time query. Proceed with general !ask logic. ---
-            logger.debug(`[${channelName}] Query not matched by time regexes. Proceeding with general handling for: "${userQuery}"`);
+            // --- Not a regex-matched time query. Use unified generation (model decides search + tools). ---
+            logger.debug(`[${channelName}] Query not matched by time regexes. Using unified generation for: "${userQuery}"`);
             const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-            const decisionResult = await decideSearchWithFunctionCalling(contextPrompt, userQueryWithContext);
-            logger.info({ decisionResult }, `Search decision made for general query: "${userQuery}"`);
-
-            let responseText = null;
-            if (decisionResult.searchNeeded) {
-                logger.info(`Proceeding with search-grounded response for query: "${userQuery}"`);
-                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext);
-                logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Search response received for query: "${userQuery}"`);
-            } else {
-                logger.info(`Proceeding with standard (no search) response for query: "${userQuery}"`);
-                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
-                logger.info({ responseLength: responseText?.length, responsePreview: responseText?.substring(0, 50) }, `Standard response received for query: "${userQuery}"`);
-            }
-
+            const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
             await handleAskResponseFormatting(channel, userName, responseText, userQuery);
 
         } catch (error) {

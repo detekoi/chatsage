@@ -68,18 +68,18 @@ const decideSearchTool = {
             name: "decide_if_search_needed",
             description: "Determines if external web search is required to provide an accurate, up-to-date, and factual answer to the user's query, considering the provided chat context and stream information. Call this ONLY when confidence in answering from internal knowledge is low OR the query explicitly asks for current/real-time information, specific obscure facts, or details about rapidly changing topics.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     user_query: {
-                        type: "STRING",
+                        type: "string",
                         description: "The specific question or query the user asked."
                     },
                     reasoning: {
-                         type: "STRING",
+                         type: "string",
                          description: "A brief explanation (1 sentence) why search is deemed necessary or not necessary based on the query and context."
                     },
                      search_required: {
-                         type: "BOOLEAN",
+                         type: "boolean",
                          description: "Set to true if search is necessary, false otherwise."
                      }
                 },
@@ -95,10 +95,10 @@ const standardAnswerTools = {
             name: "getCurrentTime",
             description: "Get the current date and time for a *specific, validated IANA timezone string*. If a user mentions a location (e.g., 'San Diego'), first use 'get_iana_timezone_for_location_tool' to resolve it to an IANA timezone, then call this function with that IANA string. Defaults to UTC if no timezone is provided.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     timezone: {
-                        type: "STRING",
+                        type: "string",
                         description: "REQUIRED if a specific location's time is needed. The IANA timezone name (e.g., 'America/Los_Angeles', 'Europe/Paris')."
                     }
                 },
@@ -108,10 +108,10 @@ const standardAnswerTools = {
             name: "get_iana_timezone_for_location_tool",
             description: "Resolves a human-readable location name (city, region) into its standard IANA timezone string. This should be called BEFORE calling 'getCurrentTime' if a user specifies a location.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     location_name: {
-                        type: "STRING",
+                        type: "string",
                         description: "The city or location name mentioned by the user (e.g., 'San Diego', 'Paris')."
                     }
                 },
@@ -219,7 +219,8 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
         // 1. Initial call with only answer tools AND the CRITICAL INSTRUCTION
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-            tools: standardAnswerTools,
+            // IMPORTANT: tools must be an array; otherwise function calling may be ignored
+            tools: [standardAnswerTools],
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
             generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
@@ -251,7 +252,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                     logger.debug({ history }, "Sending function call result back to model.");
                     const followup = await model.generateContent({
                         contents: history,
-                        tools: standardAnswerTools,
+                        tools: [standardAnswerTools],
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
                         generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
@@ -361,6 +362,43 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
         return null;
     }
 }
+// --- NEW: Unified generation that lets the model decide to search or use tools ---
+/**
+ * Generates a response with BOTH googleSearch grounding and your function tools enabled.
+ * The model decides when to search and when to call tools in a single request.
+ * @param {string} contextPrompt
+ * @param {string} userQuery
+ * @returns {Promise<string|null>}
+ */
+export async function generateUnifiedResponse(contextPrompt, userQuery) {
+    if (!userQuery?.trim()) return null;
+    const model = getGeminiClient();
+    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY: ≤340 chars, direct, grounded if needed. No meta.`;
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+            // IMPORTANT: Do not combine googleSearch tool with function calling / function tools in this SDK
+            tools: [ { googleSearch: {} } ],
+            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+        });
+        const response = result.response;
+        if (response.promptFeedback?.blockReason) {
+            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Unified request blocked.');
+            return null;
+        }
+        const candidate = response.candidates?.[0];
+        if (!candidate) return null;
+        if (candidate.citationMetadata?.citationSources?.length > 0) {
+            logger.info({ citations: candidate.citationMetadata.citationSources }, 'Unified response included citations.');
+        }
+        const text = extractTextFromResponse(response, candidate, 'unified');
+        return text?.trim() || null;
+    } catch (err) {
+        logger.error({ err }, 'Error during unified generateContent call');
+        return null;
+    }
+}
 
 // --- NEW: Function to Decide Search using Function Calling ---
 /**
@@ -378,30 +416,36 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
 
 User request: "${userQuery}"
 
-Determine if web search is essential for this request. Call 'decide_if_search_needed' function.
+You MUST decide by calling the function decide_if_search_needed with arguments { user_query, reasoning, search_required }.
+Do NOT answer in text. Do NOT output anything except the function call.
 
 Search needed for: real-time info, specific facts, niche topics, video game details, insufficient context.
-No search needed for: general knowledge, broad creative topics, time/date queries.
-
-Make your decision.`;
+No search needed for: general knowledge, broad creative topics, time/date queries.`;
 
     logger.debug({ promptLength: decisionPrompt.length, userQueryFromCaller: userQuery }, 'Attempting function calling decision for search');
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            tools: decideSearchTool,
+            // tools must be an array; otherwise the SDK may ignore function declarations
+            tools: [decideSearchTool],
             toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if search is needed for a query." }] },
-            generationConfig: { maxOutputTokens: 64, responseMimeType: 'text/plain' }
+            systemInstruction: { parts: [{ text: "You are an AI assistant that MUST return a function call to decide if web search is needed. Never answer with free text." }] },
+            generationConfig: { temperature: 0, maxOutputTokens: 64, responseMimeType: 'text/plain' }
         });
 
         const response = result.response;
         const candidate = response?.candidates?.[0];
 
-        if (candidate?.content?.parts?.[0]?.functionCall) {
-            const functionCall = candidate.content.parts[0].functionCall;
+        // Find the first functionCall in any part
+        const partsWithFn = candidate?.content?.parts?.filter(p => p?.functionCall) || [];
+        if (partsWithFn.length > 0) {
+            const functionCall = partsWithFn[0].functionCall;
             if (functionCall.name === 'decide_if_search_needed') {
-                const args = functionCall.args;
+                let args = functionCall.args;
+                // Some SDK surfaces args as a JSON string; parse if needed
+                if (typeof args === 'string') {
+                    try { args = JSON.parse(args); } catch (_) {}
+                }
                 const searchRequired = args?.search_required === true;
                 const reasoning = args?.reasoning || "No reasoning provided by model.";
                 logger.info({ search_required: searchRequired, reasoning: reasoning, called_args: args }, 'Function call decision received.');
@@ -410,16 +454,132 @@ Make your decision.`;
                 logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for search decision.");
             }
         } else {
-            logger.warn("Model did not make a function call for search decision. Defaulting to no search.");
+            logger.warn("Model did not make a function call for search decision.");
             const textResponse = extractTextFromResponse(response, candidate, 'decideSearch');
             if(textResponse) logger.debug({textResponse}, "Non-function-call response received for decision prompt.");
+            // Heuristic fallback: decide based on query keywords
+            const heuristic = inferSearchNeedByHeuristic(userQuery);
+            if (heuristic.searchNeeded) {
+                logger.info({ reason: heuristic.reasoning }, 'Heuristic indicates search is needed.');
+                return heuristic;
+            }
         }
 
-        return { searchNeeded: false, reasoning: "Model did not call decision function as expected." };
+        return { searchNeeded: false, reasoning: "Model did not call decision function; heuristic did not require search." };
 
     } catch (error) {
         logger.error({ err: error }, 'Error during function calling decision API call');
         return { searchNeeded: false, reasoning: "API Error during decision" };
+    }
+}
+
+// Lightweight keyword-based fallback when function-calling is skipped
+function inferSearchNeedByHeuristic(userQuery) {
+    if (!userQuery || typeof userQuery !== 'string') return { searchNeeded: false, reasoning: 'Invalid query' };
+    const q = userQuery.toLowerCase();
+    const searchKeywords = [
+        'news', 'latest', 'update', 'updates', 'today', 'tonight', 'this week', 'this weekend', 'new', 'breaking',
+        'release date', 'released', 'announced', 'announcement', 'earnings', 'score', 'final score', 'who won', 'winner',
+        'price today', 'stock today', 'crypto', 'patch notes', 'season', 'episode', 'live', 'trending',
+        'current', 'current information', 'up to date', 'current status'
+    ];
+    if (searchKeywords.some(k => q.includes(k))) {
+        return { searchNeeded: true, reasoning: 'Query contains real-time/news-related keywords.' };
+    }
+    // If the query contains a very recent year, lean toward search
+    const yearMatch = q.match(/\b(2024|2025|2026)\b/);
+    if (yearMatch) {
+        return { searchNeeded: true, reasoning: 'Query references a recent year; likely needs up-to-date info.' };
+    }
+    // Proper noun + news pattern (simple heuristic)
+    if (/\b[a-z]+\s+news\b/i.test(userQuery)) {
+        return { searchNeeded: true, reasoning: 'Entity + "news" suggests current events.' };
+    }
+    return { searchNeeded: false, reasoning: 'No signals indicating need for web search.' };
+}
+
+// NEW: Structured-output decision as an additional robust path
+export async function decideSearchWithStructuredOutput(contextPrompt, userQuery) {
+    if (!userQuery?.trim()) return { searchNeeded: false, reasoning: 'Empty query' };
+    const model = getGeminiClient();
+
+    const schema = {
+        type: 'object',
+        properties: {
+            searchNeeded: { type: 'boolean' },
+            reasoning: { type: 'string' }
+        },
+        required: ['searchNeeded', 'reasoning']
+    };
+
+    const prompt = `${contextPrompt}
+
+User request: "${userQuery}"
+
+Task: Decide if a web search is REQUIRED to answer accurately and up-to-date.
+Return STRICT JSON ONLY matching the schema: { searchNeeded: boolean, reasoning: string }.
+
+Guidelines:
+- Mark searchNeeded = true for: news, trending topics, "what's going on with X", weather in a location, live scores, stock/crypto price, release dates, patch notes, schedules, current events, or anything time-sensitive or niche.
+- Mark searchNeeded = false for: general knowledge, evergreen facts, definitions, opinions, creative prompts, math that does not need realtime data.
+
+Examples (just for guidance, do not repeat):
+- "weather in CDMX" -> {"searchNeeded": true, "reasoning": "Weather is time-sensitive and location-specific."}
+- "lil nas x news" -> {"searchNeeded": true, "reasoning": "News requires up-to-date information."}
+- "what's going on with south park" -> {"searchNeeded": true, "reasoning": "TV updates are current events and change over time."}
+- "who won euro 2024" -> {"searchNeeded": true, "reasoning": "Recent sports result requires verification."}
+- "how do black holes form" -> {"searchNeeded": false, "reasoning": "General scientific knowledge."}
+- "write a haiku about rain" -> {"searchNeeded": false, "reasoning": "Creative writing."}
+
+Output JSON only.`;
+
+    try {
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            systemInstruction: { parts: [{ text: 'You emit only strict JSON per the provided schema.' }] },
+            generationConfig: {
+                temperature: 0,
+                maxOutputTokens: 80,
+                responseMimeType: 'application/json',
+                responseSchema: schema
+            }
+        });
+        const response = result.response;
+        const candidate = response?.candidates?.[0];
+        const jsonText = extractTextFromResponse(response, candidate, 'structured-decision');
+        if (!jsonText) return { searchNeeded: false, reasoning: 'Empty structured response' };
+        let parsed = null;
+        try { parsed = JSON.parse(jsonText); } catch (_) {
+            // Try a simple fix for truncated JSON (missing closing brace)
+            try { parsed = JSON.parse(jsonText.trim().endsWith('}') ? jsonText : (jsonText + '}')); } catch (__) { parsed = null; }
+        }
+        if (parsed && typeof parsed.searchNeeded === 'boolean') {
+            logger.info({ decisionPath: 'structured', parsed }, 'Structured decision produced result.');
+            return { searchNeeded: parsed.searchNeeded, reasoning: parsed.reasoning || 'No reasoning provided.' };
+        }
+        // If JSON parsing failed or missing boolean, attempt to read an explicit boolean token
+        const boolMatch = /\b(true|false)\b/i.exec(jsonText);
+        if (boolMatch) {
+            const boolVal = boolMatch[1].toLowerCase() === 'true';
+            logger.info({ decisionPath: 'structured-parsed-bool', boolVal, raw: jsonText }, 'Parsed boolean from structured text.');
+            // Extract a short reasoning string if present
+            const reasonMatch = /"reasoning"\s*:\s*"([^"]+)/i.exec(jsonText);
+            const reasoning = reasonMatch ? reasonMatch[1] : 'Parsed boolean from text.';
+            return { searchNeeded: boolVal, reasoning };
+        }
+        // As a last resort, infer from the reasoning text emitted by the model
+        const lower = jsonText.toLowerCase();
+        const realtimeSignals = ['weather', 'news', "what's going on", 'going on with', 'today', 'this week', 'release', 'patch notes', 'live score', 'stock', 'crypto'];
+        const inferred = realtimeSignals.some(k => lower.includes(k));
+        if (inferred) {
+            logger.info({ decisionPath: 'structured-inferred', raw: jsonText }, 'Inferred searchNeeded=true from model reasoning text.');
+            return { searchNeeded: true, reasoning: 'Inferred from reasoning: time-sensitive topic.' };
+        }
+        logger.warn({ jsonText }, 'Structured decision parsing failed; falling back to heuristic.');
+        return inferSearchNeedByHeuristic(userQuery);
+    } catch (err) {
+        logger.error({ err }, 'Error during structured decision call');
+        return inferSearchNeedByHeuristic(userQuery);
     }
 }
 
