@@ -2,6 +2,7 @@ import logger from './logger.js';
 import { getIrcClient } from '../components/twitch/ircClient.js';
 import { translateText } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
+import { summarizeText } from '../components/llm/geminiClient.js';
 
 // --- Module State ---
 const messageQueue = [];
@@ -9,8 +10,10 @@ let isSending = false;
 
 // Minimum delay between sending messages (in milliseconds)
 const IRC_SEND_INTERVAL_MS = 1100;
-// Max length for IRC messages (conservative)
-const MAX_IRC_MESSAGE_LENGTH = 450;
+// Twitch IRC message limit is 500 characters
+const MAX_IRC_MESSAGE_LENGTH = 500;
+// Target length for summaries (should be less than MAX_IRC_MESSAGE_LENGTH)
+const SUMMARY_TARGET_LENGTH = 400;
 
 
 // --- Internal Helper ---
@@ -104,7 +107,7 @@ async function _translateIfNeeded(channelName, text) {
 /**
  * Adds a message to the rate-limited send queue.
  * Translates the message if the channel has a language setting.
- * Truncates message if it exceeds MAX_IRC_MESSAGE_LENGTH.
+ * Summarizes message if it exceeds MAX_IRC_MESSAGE_LENGTH.
  * @param {string} channel Channel name with '#'.
  * @param {string} text Message text.
  * @param {boolean} [skipTranslation=false] If true, skips translation even if channel has language setting.
@@ -123,10 +126,29 @@ async function enqueueMessage(channel, text, skipTranslation = false) {
         finalText = await _translateIfNeeded(channelName, text);
     }
 
-    // Truncate if necessary before queueing
+    // Handle length limits with summarization fallback
     if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.warn(`Message too long (${finalText.length} chars), truncating before queueing.`);
-        finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        logger.info(`Message too long (${finalText.length} chars), attempting summarization before queueing.`);
+        
+        try {
+            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
+            if (summary?.trim()) {
+                finalText = summary;
+                logger.info(`Message summarization successful (${finalText.length} chars).`);
+            } else {
+                logger.warn(`Summarization failed. Falling back to truncation.`);
+                finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+            }
+        } catch (error) {
+            logger.error({ err: error }, 'Error during message summarization. Falling back to truncation.');
+            finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        }
+        
+        // Final safety check in case summarization still produced too long text
+        if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+            logger.warn(`Summarized message still too long (${finalText.length} chars), truncating.`);
+            finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        }
     }
 
     messageQueue.push({ channel, text: finalText });
