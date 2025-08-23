@@ -115,7 +115,8 @@ async function _getOrCreateGameState(channelName) {
             gameSessionScores: new Map(),
             gameSessionExcludedQuestions: new Set(),
             gameSessionExcludedAnswers: new Set(),
-            streakMap: new Map()
+            streakMap: new Map(),
+            guessCache: new Map() // Cache for incorrect guesses this round
         });
     } else {
         // Ensure new fields exist on potentially older state objects
@@ -128,6 +129,9 @@ async function _getOrCreateGameState(channelName) {
         }
         if (!state.streakMap) {
             state.streakMap = new Map();
+        }
+        if (!state.guessCache) {
+            state.guessCache = new Map();
         }
     }
     return activeGames.get(channelName);
@@ -173,6 +177,7 @@ async function _resetGameToIdle(gameState) {
     newState.gameSessionExcludedQuestions = new Set();
     newState.gameSessionExcludedAnswers = new Set();
     newState.streakMap = new Map();
+    newState.guessCache = new Map();
 }
 
 /**
@@ -399,6 +404,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.startTime = null;
         gameState.answers = [];
         gameState.winner = null;
+        gameState.guessCache.clear(); // Clear guess cache for next round
         
         // Start next round after delay
         setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
@@ -518,6 +524,7 @@ async function _startNextRound(gameState) {
     // 2. Start Round
     gameState.startTime = Date.now();
     gameState.state = 'inProgress';
+    gameState.guessCache.clear(); // Clear cache for the new round
     
     // 3. Send Question
     const questionMessage = formatQuestionMessage(
@@ -575,6 +582,13 @@ async function _handleAnswer(channelName, username, displayName, message) {
     const userAnswer = message.trim();
     if (!userAnswer) return;
 
+    // Check the cache for this normalized answer first
+    const normalizedUserAnswer = userAnswer.toLowerCase().trim();
+    if (gameState.guessCache.has(normalizedUserAnswer)) {
+        logger.debug(`[TriviaGame][${channelName}] Answer "${userAnswer}" found in incorrect guess cache. Skipping LLM verification.`);
+        return; // It's a known wrong answer for this round, do nothing.
+    }
+
     logger.debug(`[TriviaGame][${channelName}] Processing answer: "${userAnswer}" from ${username}`);
     gameState.answers.push({ username, displayName, answer: userAnswer, timestamp: new Date() });
 
@@ -618,6 +632,13 @@ async function _handleAnswer(channelName, username, displayName, message) {
             gameState.state = 'guessed';
             const timeTakenMs = Date.now() - gameState.startTime;
             _transitionToEnding(gameState, "guessed", timeTakenMs);
+        } else {
+            // Cache the incorrect answer to prevent re-verification
+            gameState.guessCache.set(normalizedUserAnswer, {
+                result: verificationResult,
+                timestamp: Date.now()
+            });
+            logger.debug(`[TriviaGame][${channelName}] Caching incorrect guess: "${userAnswer}"`);
         }
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Error validating answer "${userAnswer}" (verified as "${answerToVerify}") from ${username}.`);
@@ -668,6 +689,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.gameSessionExcludedQuestions = new Set();
     gameState.gameSessionExcludedAnswers = new Set();
     gameState.streakMap = new Map();
+    gameState.guessCache = new Map();
     _clearTimers(gameState);
     
     logger.info(`[TriviaGame][${channelName}] Starting new game. Topic: ${topic || 'General'}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
