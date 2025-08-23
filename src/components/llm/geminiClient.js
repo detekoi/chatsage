@@ -623,7 +623,12 @@ export async function summarizeText(textToSummarize, targetCharLength = 400) {
         logger.error('summarizeText called with invalid textToSummarize.');
         return null;
     }
-    const model = getGeminiClient(); // Ensures model is initialized
+    // Use a fresh, persona-less model instance for this non-conversational utility task
+    const genAI = getGenAIInstance();
+    const model = genAI.getGenerativeModel({
+        model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
+        generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
+    });
 
     // Simplified summarization prompt
     const summarizationPrompt = `Summarize the following chat in under ${targetCharLength} characters. Keep it concrete and mention the main topic(s) and any game events. No markdown.
@@ -638,8 +643,7 @@ SUMMARY:`;
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: summarizationPrompt }] }],
-            systemInstruction: { parts: [{ text: "You are an AI assistant that summarizes text." }] },
-            generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
+            // No systemInstruction to minimize token overhead
         });
         const response = result.response;
 
@@ -694,7 +698,15 @@ export async function fetchIanaTimezoneForLocation(locationName) {
     logger.error('fetchIanaTimezoneForLocation called with invalid locationName.');
     return null;
   }
-  const model = getGeminiClient(); // Ensure model is initialized
+  // Use a fresh, persona-less model instance for this specialized lookup
+  const genAI = getGenAIInstance();
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 50,
+    }
+  });
 
   // Highly specific prompt for IANA timezone, including edge cases
   const prompt = `What is the IANA timezone for "${locationName}"?
@@ -723,11 +735,7 @@ Respond with ONLY the valid IANA timezone string. If the location is ambiguous, 
   try {
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: "You are an assistant that provides IANA timezone names for locations." }] },
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 50,
-      }
+      // No systemInstruction to minimize token overhead
     });
     const response = result.response;
 
