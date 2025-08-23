@@ -4,7 +4,7 @@ import { getGeminiClient, getGenAIInstance } from './geminiClient.js';
 import axios from 'axios';
 
 /**
- * Analyzes an image using Gemini 2.0 Flash and returns the response
+ * Analyzes an image using Gemini 2.5 Flash and returns the response
  * @param {Buffer} imageData - The image data as a Buffer
  * @param {string} prompt - The prompt to send along with the image
  * @param {string} mimeType - The MIME type of the image (default: 'image/jpeg')
@@ -17,10 +17,10 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         try {
             const genAI = getGenAIInstance();
             model = genAI.getGenerativeModel({
-                model: 'gemini-2.0-flash',
+                model: 'gemini-2.5-flash',
                 generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
             });
-            logger.debug('Using image model: gemini-2.0-flash');
+            logger.debug('Using image model: gemini-2.5-flash');
         } catch (_) {
             model = getGeminiClient();
             if (!model) {
@@ -71,8 +71,9 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                 contents: [{
                     role: 'user',
                     parts: [
-                        { text: shortPrompt },
-                        { inlineData: { mimeType: mimeType, data: base64Data } }
+                        // Per docs, place the image before the text prompt when using a single image
+                        { inlineData: { mimeType: mimeType, data: base64Data } },
+                        { text: shortPrompt }
                     ]
                 }]
             });
