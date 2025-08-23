@@ -12,11 +12,14 @@ import axios from 'axios';
  */
 export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
     try {
-        // Prefer a lighter image-capable model for analysis to avoid heavy reasoning tokens
+        // Prefer a lighter image-capable, persona-less model for analysis to avoid heavy reasoning tokens
         let model = null;
         try {
             const genAI = getGenAIInstance();
-            model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            model = genAI.getGenerativeModel({
+                model: 'gemini-2.0-flash',
+                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
+            });
             logger.debug('Using image model: gemini-2.0-flash');
         } catch (_) {
             model = getGeminiClient();
@@ -41,8 +44,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                     { inlineData: { mimeType: mimeType, data: base64Data } },
                     { text: prompt }
                 ]
-            }],
-            generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
+            }]
         });
 
         const response = result.response;
@@ -72,8 +74,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                         { text: shortPrompt },
                         { inlineData: { mimeType: mimeType, data: base64Data } }
                     ]
-                }],
-                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 256, temperature: 0.2 }
+                }]
             });
             const retryResponse = retry.response;
             const retryCandidate = retryResponse?.candidates?.[0];
