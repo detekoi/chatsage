@@ -178,6 +178,30 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
 
     // --- Begin new search/generation separation logic ---
     let factualContextForRiddle = "";
+    
+    // Perform actual search when useSearch is true
+    if (useSearch) {
+        const searchFactsPrompt = `Find interesting and unique facts about "${actualTopic}" suitable for a riddle. Focus on specific details, characteristics, and unique aspects that could inspire creative riddle clues.`;
+        try {
+            logger.info(`[RiddleService] Performing search for facts about "${actualTopic}"`);
+            const searchResult = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: searchFactsPrompt }] }],
+                tools: [{ googleSearch: {} }],
+                generationConfig: { maxOutputTokens: 512 }
+            });
+            
+            const searchText = searchResult.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (searchText && searchText.trim() !== "") {
+                factualContextForRiddle = searchText.trim();
+                logger.info(`[RiddleService] Successfully retrieved facts for "${actualTopic}". Length: ${factualContextForRiddle.length}`);
+            } else {
+                logger.warn(`[RiddleService] Search returned no factual information for topic "${actualTopic}".`);
+            }
+        } catch (searchError) {
+            logger.error({ err: searchError, topic: actualTopic }, `[RiddleService] Error during factual search for riddle generation.`);
+        }
+    }
+    
     let finalGenerationPrompt = "";
     // --- Simplified riddle prompt ---
     const baseGenerationPrompt = `You are a master riddle crafter. Create a clever, metaphorical riddle about a specific aspect of "${actualTopic}". The answer should NOT be "${actualTopic}" itself, but something related to it.
