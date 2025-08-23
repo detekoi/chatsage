@@ -64,6 +64,7 @@ interface GameState {
 
     // --- NEW FIELDS ---
     streakMap: Map<string, number>; // username -> consecutive correct guesses
+    guessCache: Map<string, {result: Object, timestamp: number}>; // Cache for incorrect guesses this round
 
     // --- PHASE 1 ---
     gameSessionId: string | null; // Add this field
@@ -127,6 +128,7 @@ async function _getOrCreateGameState(channelName) {
             incorrectGuessReasons: [],
             lastPlayedLocation: null,
             streakMap: new Map(),
+            guessCache: new Map(),
             gameSessionId: null,
             totalRounds: 1,
             currentRound: 1,
@@ -136,6 +138,7 @@ async function _getOrCreateGameState(channelName) {
     } else {
         const state = activeGames.get(channelName);
         if (!state.streakMap) state.streakMap = new Map();
+        if (!state.guessCache) state.guessCache = new Map();
         if (state.lastPlayedLocation === undefined) state.lastPlayedLocation = null;
         state.config = { ...DEFAULT_CONFIG, ...state.config };
     }
@@ -168,6 +171,7 @@ async function _resetGameToIdle(gameState) {
     newState.incorrectGuessReasons = [];
     newState.initiatorUsername = null;
     newState.streakMap = new Map();
+    newState.guessCache = new Map();
     newState.totalRounds = 1;
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
@@ -464,6 +468,7 @@ async function _startNextRound(gameState) {
 
     // Transition to 'inProgress' for the new round
     gameState.state = 'inProgress';
+    gameState.guessCache.clear(); // Clear cache for the new round
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} transitioned to inProgress.`);
 
     // 4. Schedule Subsequent Clues and Round End Timer (same logic as before)
@@ -598,6 +603,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     gameState.currentRound = 1;
     gameState.streakMap = new Map();
     gameState.gameSessionScores = new Map();
+    gameState.guessCache = new Map();
     gameState.gameSessionExcludedLocations = new Set(); // Reset for the new game session
     _clearTimers(gameState); // Ensure no stray timers
 
@@ -684,6 +690,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
 
         // Transition to 'inProgress'
         gameState.state = 'inProgress';
+        gameState.guessCache.clear(); // Clear cache for the new round
         logger.info(`[GeoGame][${channelName}] Game (Round 1) transitioned to inProgress.`);
 
         // 4. Schedule Subsequent Clues and Round End Timer (Round 1)
@@ -743,6 +750,13 @@ async function _handleGuess(channelName, username, displayName, guess) {
     const trimmedGuess = guess.trim();
     if (!trimmedGuess) return;
 
+    // Check the cache for this normalized guess first
+    const normalizedGuess = trimmedGuess.toLowerCase().trim();
+    if (gameState.guessCache.has(normalizedGuess)) {
+        logger.debug(`[GeoGame][${channelName}] Guess "${trimmedGuess}" found in incorrect guess cache. Skipping LLM verification.`);
+        return; // It's a known wrong guess for this round, do nothing.
+    }
+
     logger.debug(`[GeoGame][${channelName}] Processing guess for round ${gameState.currentRound}: "${trimmedGuess}" from ${username}`);
     gameState.guesses.push({ username, displayName, guess: trimmedGuess, timestamp: new Date(), round: gameState.currentRound });
 
@@ -783,6 +797,13 @@ async function _handleGuess(channelName, username, displayName, guess) {
             const timeTakenMs = Date.now() - gameState.startTime;
             _transitionToEnding(gameState, "guessed", timeTakenMs);
         } else {
+            // Cache the incorrect guess to prevent re-verification
+            gameState.guessCache.set(normalizedGuess, {
+                result: validationResult,
+                timestamp: Date.now()
+            });
+            logger.debug(`[GeoGame][${channelName}] Caching incorrect guess: "${trimmedGuess}"`);
+
             const reason = validationResult?.reasoning?.trim();
             if (reason) {
                  if (!gameState.incorrectGuessReasons.includes(reason)) {

@@ -79,6 +79,7 @@ GameState structure:
     gameSessionExcludedKeywordSets: Array<string[]>,
     gameSessionId: string,
     gameSessionExcludedAnswers: Array<string>,
+    guessCache: Map<string, {result: Object, timestamp: number}>, // Cache for incorrect guesses this round
 }
 */
 
@@ -108,6 +109,7 @@ async function _getOrCreateGameState(channelName) {
             gameSessionScores: new Map(),
             gameSessionExcludedKeywordSets: [],
             gameSessionExcludedAnswers: [],
+            guessCache: new Map(),
         });
     } else {
         // Ensure config is up-to-date if manager was re-initialized
@@ -151,6 +153,7 @@ async function _resetGameToIdle(gameState) {
     newState.gameSessionScores = new Map();
     newState.gameSessionExcludedKeywordSets = [];
     newState.gameSessionExcludedAnswers = [];
+    newState.guessCache = new Map();
 }
 
 function _calculatePoints(gameState, timeElapsedMs) {
@@ -382,6 +385,7 @@ async function _startNextRound(gameState) {
     gameState.currentRiddle = generatedRiddle;
     gameState.startTime = Date.now();
     gameState.state = 'inProgress'; // Set state before sending message
+    gameState.guessCache.clear(); // Clear cache for the new round
 
     const questionMsg = formatRiddleQuestionMessage(
         gameState.currentRound,
@@ -418,6 +422,13 @@ async function _handleAnswer(channelName, username, displayName, message) {
 
     const userAnswer = message.trim();
     if (!userAnswer) return;
+
+    // Check the cache for this normalized answer first
+    const normalizedUserAnswer = userAnswer.toLowerCase().trim();
+    if (gameState.guessCache.has(normalizedUserAnswer)) {
+        logger.debug(`[RiddleGameManager][${channelName}] Answer "${userAnswer}" found in incorrect guess cache. Skipping LLM verification.`);
+        return; // It's a known wrong answer for this round, do nothing.
+    }
 
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
 
@@ -461,6 +472,13 @@ async function _handleAnswer(channelName, username, displayName, message) {
             gameState.winner = { username: username.toLowerCase(), displayName };
             const timeTakenMs = Date.now() - gameState.startTime;
             await _transitionToEnding(gameState, "answered", timeTakenMs);
+        } else {
+            // Cache the incorrect answer to prevent re-verification
+            gameState.guessCache.set(normalizedUserAnswer, {
+                result: verification,
+                timestamp: Date.now()
+            });
+            logger.debug(`[RiddleGameManager][${channelName}] Caching incorrect guess: "${userAnswer}"`);
         }
     } catch (error) {
         logger.error({ err: error }, `[RiddleGameManager][${channelName}] Error verifying answer from ${displayName}.`);
@@ -494,6 +512,7 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     gameState.gameSessionScores = new Map();
     gameState.gameSessionExcludedKeywordSets = []; // Fresh set for new game
     gameState.gameSessionExcludedAnswers = [];
+    gameState.guessCache = new Map();
     gameState.currentRiddle = null;
     gameState.startTime = null;
     gameState.winner = null;

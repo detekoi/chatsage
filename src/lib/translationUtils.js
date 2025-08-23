@@ -1,6 +1,22 @@
 import logger from './logger.js';
 import { getGeminiClient } from '../components/llm/geminiClient.js';
 
+// Translation cache with LRU-style eviction and time-based expiration
+const translationCache = new Map();
+const MAX_CACHE_SIZE = 200;
+const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Periodic cleanup of expired entries
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of translationCache) {
+        if (now - value.timestamp > CACHE_EXPIRY_MS) {
+            translationCache.delete(key);
+        }
+    }
+    logger.debug(`Translation cache cleanup: ${translationCache.size} entries remaining`);
+}, 4 * 60 * 60 * 1000); // Clean up every 4 hours
+
 // Enhanced text extraction function similar to lurk command fixes
 function extractTextFromResponse(response, candidate) {
     if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
@@ -26,6 +42,20 @@ export async function translateText(textToTranslate, targetLanguage) {
     if (!textToTranslate || !targetLanguage) {
         logger.error('translateText called with missing text or target language.');
         return null;
+    }
+
+    // Create cache key with normalized inputs
+    const cacheKey = `${targetLanguage.toLowerCase()}:${textToTranslate.toLowerCase().trim()}`;
+    const now = Date.now();
+    
+    // Check cache first
+    const cachedEntry = translationCache.get(cacheKey);
+    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_EXPIRY_MS)) {
+        // Move to end (LRU behavior)
+        translationCache.delete(cacheKey);
+        translationCache.set(cacheKey, cachedEntry);
+        logger.debug(`[TranslationCache] Cache hit for: "${textToTranslate.substring(0, 30)}..."`);
+        return cachedEntry.translation;
     }
     const model = getGeminiClient();
 
@@ -103,6 +133,23 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     // Only remove quotation marks if they surround the entire message
     const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
+    
+    // Cache the successful translation
+    if (cleanedText && cleanedText.length > 0) {
+        // Implement LRU eviction if cache is full
+        if (translationCache.size >= MAX_CACHE_SIZE) {
+            const oldestKey = translationCache.keys().next().value;
+            translationCache.delete(oldestKey);
+            logger.debug(`[TranslationCache] Evicted oldest entry: "${oldestKey.substring(0, 30)}..."`);
+        }
+        
+        translationCache.set(cacheKey, {
+            translation: cleanedText,
+            timestamp: now
+        });
+        logger.debug(`[TranslationCache] Cached translation for: "${textToTranslate.substring(0, 30)}..." (cache size: ${translationCache.size})`);
+    }
+    
     logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
     return cleanedText;
 }
