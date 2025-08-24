@@ -94,7 +94,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
         logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
-        replyPrefix = `@${userName}: `; // Changed to a more concise prefix that does not include "(Summary)"
+        replyPrefix = `@${userName}: `; // concise prefix
 
         const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
         if (summary?.trim()) {
@@ -103,7 +103,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
         } else {
             logger.warn(`Summarization failed for !ask response. Falling back to truncation.`);
             const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
-            finalReplyText = responseText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
+            finalReplyText = finalReplyText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
         }
     }
 

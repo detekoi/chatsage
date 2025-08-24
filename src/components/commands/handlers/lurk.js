@@ -31,16 +31,17 @@ const lurkHandler = {
 
             if (lurkReason) {
                 // Prompt that focuses on the user's reason for lurking
-                prompt = `A Twitch user named "${displayName}" is about to start lurking. Their reason is: "${lurkReason}". Based on the recent chat conversation, generate a short, friendly, and encouraging send-off for them. Wish them well with their task and try to connect it to the ongoing chat topic. Keep it concise, positive, and under 25 words.`;
+                prompt = `A Twitch user named "${displayName}" is about to start lurking. Their reason is: "${lurkReason}". Based on the recent chat conversation, write a short, friendly, encouraging send-off that weaves in their reason with a fun twist (metaphor, alliteration, or a tiny onomatopoeia). Keep it under 25 words.`;
             } else {
                 // Prompt for a general lurk command, using chat context
-                prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, generate a short, friendly, and personalized send-off. Make the response feel like a natural continuation of the current chat. Keep it concise, positive, and under 25 words.`;
+                prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, write a short, friendly, personalized send-off that riffs on the current topic. Add a small dash of wordplay or imagery. Keep it under 25 words.`;
             }
             
             // Use the globally configured Gemini model (from GEMINI_MODEL_ID)
             const model = getGeminiClient();
-            const systemInstruction = `Reply with a single playful plain-text line for a Twitch lurk send-off. No usernames or @handles. Keep it under 22 words. Avoid clichés like "Enjoy the lurk" or "We'll be here when you get back." Vary phrasing and rhythm.`;
+            const systemInstruction = `Reply with a single playful plain-text line for an original Twitch lurk send-off. No usernames or @handles. Under 20 words. Favor vivid verbs, concrete sensory imagery, or tiny onomatopoeia. Vary rhythm and structure.`;
             let llmResponse = null;
+
             const extractText = (response, candidate) => {
                 if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
                     const joined = candidate.content.parts.map(p => p?.text || '').join('').trim();
@@ -72,7 +73,7 @@ const lurkHandler = {
                     modelVersion: response?.modelVersion,
                     hasText: !!text
                 }, 'Lurk LLM attempt1 result');
-                llmResponse = text && text.length > 0 ? text : null;
+                if (!llmResponse) llmResponse = text && text.length > 0 ? text : null;
             } catch (e) {
                 logger.warn({ err: e }, 'Lurk LLM attempt1 failed.');
             }
@@ -80,7 +81,7 @@ const lurkHandler = {
             // Attempt 2: simplified prompt without context to further reduce tokens
             if (!llmResponse) {
                 try {
-                    const attempt2Prompt = `TASK: ${prompt}\nCONSTRAINTS: One playful line, under 20 words, no usernames or @handles, plain text.`;
+                    const attempt2Prompt = `TASK: ${prompt}\nCONSTRAINTS: One playful line, under 18 words, no usernames or @handles, plain text.`;
                     logger.debug({ channel: channelName, phase: 'attempt2', promptLength: attempt2Prompt.length }, 'Lurk LLM generation');
                     const result2 = await model.generateContent({
                         contents: [{ role: 'user', parts: [{ text: attempt2Prompt }] }],
@@ -105,7 +106,7 @@ const lurkHandler = {
             };
             if (llmResponse && seemsTruncated(llmResponse)) {
                 try {
-                    const attempt3Prompt = `TASK: ${prompt}\nCONSTRAINTS: One playful line, under 22 words, end with a complete sentence.`;
+                    const attempt3Prompt = `TASK: ${prompt}\nCONSTRAINTS: One playful line, under 20 words, end with a complete sentence.`;
                     logger.debug({ channel: channelName, phase: 'attempt3', promptLength: attempt3Prompt.length }, 'Lurk LLM generation');
                     const result3 = await model.generateContent({
                         contents: [{ role: 'user', parts: [{ text: attempt3Prompt }] }],
@@ -128,13 +129,22 @@ const lurkHandler = {
             } else {
                 logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; using fallback.');
                 const variedFallbacks = [
-                    'happy lurking—catch you soon!',
-                    'take your time, we’ll keep the vibes going.',
-                    'fade to stealth mode unlocked.',
-                    'go do your thing—chat will be here.',
-                    'vanishing like a pro. see you after!',
-                    'snack run? mission accepted.',
-                    'muted but not forgotten. enjoy!'
+                    'slipping into stealth mode—crunch, crunch, cone patrol.',
+                    'vanishing act engaged; we’ll keep the stage warm.',
+                    'xp farm in the shadows—report back with sprinkles.',
+                    'brb in ghost chat—footsteps soft, vibes loud.',
+                    'silent tab open, chaos in spirit.',
+                    'cloak equipped, snack quest accepted.',
+                    'lurkmobile rolling—headlights off, radar on.',
+                    'soft shoes on tile—*shff shff*—stealth engaged.',
+                    'threading the shadows with sprinkles in tow.',
+                    'tab open, volume low, mischief high.',
+                    'dusting the dojo: sweep, swipe, swoosh.',
+                    'blanket fort protocol active—whisper ping when needed.',
+                    'moonwalk to afk; crumbs as waypoints.',
+                    'charging crystals in the background—zap when ready.',
+                    'kitchen boss fight: sponge, soap, victory fanfare.',
+                    'Z-catch initiated—dreams set to widescreen.'
                 ];
                 const alt = variedFallbacks[Math.floor(Math.random() * variedFallbacks.length)];
                 response = `@${displayName}, ${alt}`;
