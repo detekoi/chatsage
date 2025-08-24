@@ -387,14 +387,14 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
 export async function generateUnifiedResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY: ≤340 chars, direct, grounded if needed. No meta.`;
+    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. No meta.`;
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             // IMPORTANT: Do not combine googleSearch tool with function calling / function tools in this SDK
             tools: [ { googleSearch: {} } ],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 768, responseMimeType: 'text/plain' }
         });
         const response = result.response;
         if (response.promptFeedback?.blockReason) {
@@ -631,12 +631,12 @@ export async function summarizeText(textToSummarize, targetCharLength = 400) {
     });
 
     // Simplified summarization prompt
-    const summarizationPrompt = `Summarize the following chat in under ${targetCharLength} characters. Keep it concrete and mention the main topic(s) and any game events. No markdown.
+    const summarizationPrompt = `Rewrite the following text to fit under ${targetCharLength} characters for Twitch chat. Keep the main idea and avoid repetition. Plain text only, no markdown.
 
-CHAT:
+TEXT:
 ${textToSummarize}
 
-SUMMARY:`;
+REWRITE:`;
 
     logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
 
