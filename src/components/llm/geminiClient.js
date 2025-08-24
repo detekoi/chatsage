@@ -30,11 +30,7 @@ let generativeModel = null;
 
 // Helper to extract text from Gemini responses in a robust way
 function extractTextFromResponse(response, candidate, logContext = 'response') {
-    // Preferred path: parts array present
-    const parts = candidate?.content?.parts;
-    if (Array.isArray(parts) && parts.length > 0) {
-        return parts.map(part => part.text || '').join('').trim();
-    }
+    // Prefer SDK-provided text fields where available
     // Some SDK variants expose candidate.text directly
     if (candidate && typeof candidate.text === 'string' && candidate.text.trim().length > 0) {
         return candidate.text.trim();
@@ -44,18 +40,21 @@ function extractTextFromResponse(response, candidate, logContext = 'response') {
         const text = response.text();
         return typeof text === 'string' ? text.trim() : null;
     }
+    // Parts array present: prefer the first non-empty text part to avoid accidental duplication when
+    // SDK splits content into multiple similar parts.
+    const parts = candidate?.content?.parts;
+    if (Array.isArray(parts) && parts.length > 0) {
+        for (const part of parts) {
+            const t = typeof part?.text === 'string' ? part.text.trim() : '';
+            if (t.length > 0) return t;
+        }
+        return '';
+    }
     // Newer SDKs may expose response.text as a string property
     if (response && typeof response.text === 'string' && response.text.trim().length > 0) {
         return response.text.trim();
     }
-    // As a last resort, try joining any parts array if present but empty-like
-    if (candidate?.content && 'parts' in candidate.content && Array.isArray(candidate.content.parts)) {
-        try {
-            return candidate.content.parts.map(part => part?.text || '').join('').trim();
-        } catch (_) {
-            // ignore
-        }
-    }
+    // As a last resort, nothing extractable
     // Nothing we can extract
     logger.warn({ logContext }, 'Could not extract text from Gemini response.');
     return null;
