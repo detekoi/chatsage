@@ -48,6 +48,20 @@ function extractTextFromResponse(response, candidate, logContext = 'response') {
             const t = typeof part?.text === 'string' ? part.text.trim() : '';
             if (t.length > 0) return t;
         }
+        // Last-resort: deduplicate and join any text-bearing parts into a single string
+        const texts = parts.map(p => (typeof p?.text === 'string' ? p.text.trim() : '')).filter(Boolean);
+        if (texts.length > 0) {
+            const combined = texts.join(' ');
+            const sentences = combined.split(/(?<=[.!?])\s+/).filter(Boolean);
+            const seen = new Set();
+            const uniqueSentences = [];
+            for (const s of sentences) {
+                const st = s.trim();
+                if (!seen.has(st)) { seen.add(st); uniqueSentences.push(st); }
+            }
+            const deduped = (uniqueSentences.length > 0 ? uniqueSentences.join(' ') : combined).trim();
+            if (deduped.length > 0) return deduped;
+        }
         return '';
     }
     // Newer SDKs may expose response.text as a string property
