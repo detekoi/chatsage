@@ -2,17 +2,16 @@
 
 // --- Imports ---
 // ... keep necessary imports for components UNDER TEST and their DIRECT dependencies ...
-import { createIrcClient, getIrcClient, connectIrcClient } from '../../src/components/twitch/ircClient';
+import { createIrcClient, connectIrcClient } from '../../src/components/twitch/ircClient';
 // Removed helix client imports here
-import { initializeGeminiClient, getGeminiClient, decideSearchWithFunctionCalling, generateStandardResponse, generateSearchResponse } from '../../src/components/llm/geminiClient';
-import { initializeContextManager, getContextManager } from '../../src/components/context/contextManager';
-import { initializeCommandProcessor, processMessage } from '../../src/components/commands/commandProcessor';
+import { initializeGeminiClient, decideSearchWithFunctionCalling, generateStandardResponse, generateSearchResponse } from '../../src/components/llm/geminiClient';
+import { initializeContextManager } from '../../src/components/context/contextManager';
+import { initializeCommandProcessor } from '../../src/components/commands/commandProcessor';
 import { initializeIrcSender, enqueueMessage } from '../../src/lib/ircSender';
-import { getValidIrcToken, refreshIrcToken } from '../../src/components/twitch/ircAuthHelper';
-import logger from '../../src/lib/logger';
+import { getValidIrcToken } from '../../src/components/twitch/ircAuthHelper';
 import config from '../../src/config/index.js';
 import { initializeSecretManager, getSecretValue } from '../../src/lib/secretManager';
-import { getAppAccessToken, clearCachedAppAccessToken } from '../../src/components/twitch/auth'; // Keep for mocking auth setup if needed by other modules
+import { getAppAccessToken } from '../../src/components/twitch/auth'; // Keep for mocking auth setup if needed by other modules
 
 // --- Mocks ---
 jest.mock('tmi.js');
@@ -35,7 +34,7 @@ TmiClient.mockImplementation(() => mockTmiClient);
 describe('ChatSage Integration Tests', () => {
     beforeAll(async () => {
         // Mock secrets/auth needed by OTHER initializers
-        getSecretValue.mockImplementation(async (secretName) => { /* ... */ });
+        getSecretValue.mockImplementation(async (_secretName) => { /* ... */ });
         getValidIrcToken.mockResolvedValue('oauth:mock-irc-token');
         getAppAccessToken.mockResolvedValue('mock-app-token'); // Keep if needed by e.g., ircClient init
 

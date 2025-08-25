@@ -4,7 +4,6 @@ import { getContextManager } from '../../../../src/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
 import { verifyRiddleAnswer } from '../../../../src/components/riddle/riddleService.js';
 import logger from '../../../../src/lib/logger.js';
-import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
 // Mock dependencies
 jest.mock('../../../../src/context/contextManager.js');

@@ -50,7 +50,6 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
 
         // Modify initialize to use the test-controlled map
         // This is a common pattern for testing singletons or modules with internal state.
-        const originalInitialize = geoGameManager.initialize;
         geoGameManager.initialize = async () => {
             internalActiveGamesGeoMap.clear();
             // If originalInitialize did more (like loading global configs), mock or replicate that here.

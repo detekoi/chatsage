@@ -7,6 +7,7 @@ import { getSecretValue, setSecretValue } from '../../lib/secretManager.js'; // 
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 
 // Store the currently active access token in memory for the session
+// eslint-disable-next-line no-unused-vars
 let currentAccessToken = null;
 let isRefreshing = false; // Simple lock to prevent concurrent refreshes
 
