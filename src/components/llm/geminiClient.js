@@ -485,7 +485,7 @@ No search needed for: general knowledge, broad creative topics, time/date querie
                 let args = functionCall.args;
                 // Some SDK surfaces args as a JSON string; parse if needed
                 if (typeof args === 'string') {
-                    try { args = JSON.parse(args); } catch (_) {}
+                    try { args = JSON.parse(args); } catch (_) { /* Ignore parse errors, use original string */ }
                 }
                 const searchRequired = args?.search_required === true;
                 const reasoning = args?.reasoning || "No reasoning provided by model.";

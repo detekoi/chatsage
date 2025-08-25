@@ -186,7 +186,7 @@ async function recordGameResult(gameDetails) {
  * @returns {Promise<void>}
  * @private
  */
-async function _saveQuestionToBank(question, answer, topic = 'general', difficulty = 'normal', searchUsed = false, verified = false) {
+async function _saveQuestionToBank(question, answer, topic = 'general', difficulty = 'normal', searchUsed = false, _verified = false) {
     const db = _getDb();
     const questionHash = Buffer.from(question || 'Unknown question').toString('base64').substring(0, 40);
     const docRef = db.collection(QUESTIONS_COLLECTION).doc(questionHash);
@@ -497,6 +497,7 @@ async function clearChannelLeaderboardData(channelName) {
         const fieldPath = `channels.${lowerChannel}`;
         let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
         
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const snapshot = await query.get();
             if (snapshot.empty) {

@@ -40,7 +40,6 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         triviaGameManager = getTriviaGameManager();
 
         // Test-specific adaptation for initialize and accessing activeGames
-        const originalInitializeTrivia = triviaGameManager.initialize;
         triviaGameManager.initialize = async () => {
             internalActiveGamesTriviaMap.clear();
             // if originalInitializeTrivia did more, mock/replicate here

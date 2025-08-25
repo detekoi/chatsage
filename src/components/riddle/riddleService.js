@@ -70,7 +70,6 @@ function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
     // 3) Drop sets that are strict subsets of an earlier kept set (favor earlier ones)
     const kept = [];
     for (const set of dedupedSets) {
-        const s = new Set(set);
         let isSubset = false;
         for (const k of kept) {
             const kSet = new Set(k);
@@ -317,7 +316,7 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
         const cleaned = s
             .toLowerCase()
             .trim()
-            .replace(/[\-_'’`]/g, ' ')
+            .replace(/[-_''`]/g, ' ')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/^[\s]*(?:the|a|an)\s+/i, '')
             .replace(/[\s]+/g, ' ');

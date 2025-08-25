@@ -46,7 +46,7 @@ export async function initializeActiveStreamsFromPoller() {
     const channelStates = contextManager.getAllChannelStates();
     let foundLiveStreams = 0;
     
-    for (const [channelName, _state] of channelStates) {
+    for (const [channelName] of channelStates) {
         const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
         if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
             logger.info(`Found ${channelName} already live on startup - adding to activeStreams`);

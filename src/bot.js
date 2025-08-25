@@ -118,6 +118,41 @@ async function gracefulShutdown(_signal) {
 }
 
 /**
+ * Helper function to listen with port fallback in development.
+ */
+async function listenWithFallback(server, port) {
+    const isDev = config.app.nodeEnv === 'development';
+    let portToTry = port;
+    for (let attempt = 0; attempt < (isDev ? 5 : 1); attempt++) {
+        try {
+            await new Promise((resolve, reject) => {
+                const onError = (err) => {
+                    server.off('listening', onListening);
+                    reject(err);
+                };
+                const onListening = () => {
+                    server.off('error', onError);
+                    resolve();
+                };
+                server.once('error', onError);
+                server.once('listening', onListening);
+                server.listen(portToTry);
+            });
+            logger.info(`Health check server listening on port ${portToTry}`);
+            return portToTry;
+        } catch (err) {
+            if (isDev && err && err.code === 'EADDRINUSE') {
+                logger.warn(`Port ${portToTry} in use. Trying ${portToTry + 1}...`);
+                portToTry += 1;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error('Failed to bind health server to an available port after several attempts.');
+}
+
+/**
  * Main application function.
  */
 async function main() {
@@ -587,37 +622,6 @@ async function main() {
         });
 
         // Listen with a small dev-friendly fallback if the port is in use
-        async function listenWithFallback(server, port) {
-            const isDev = config.app.nodeEnv === 'development';
-            let portToTry = port;
-            for (let attempt = 0; attempt < (isDev ? 5 : 1); attempt++) {
-                try {
-                    await new Promise((resolve, reject) => {
-                        const onError = (err) => {
-                            server.off('listening', onListening);
-                            reject(err);
-                        };
-                        const onListening = () => {
-                            server.off('error', onError);
-                            resolve();
-                        };
-                        server.once('error', onError);
-                        server.once('listening', onListening);
-                        server.listen(portToTry);
-                    });
-                    logger.info(`Health check server listening on port ${portToTry}`);
-                    return portToTry;
-                } catch (err) {
-                    if (isDev && err && err.code === 'EADDRINUSE') {
-                        logger.warn(`Port ${portToTry} in use. Trying ${portToTry + 1}...`);
-                        portToTry += 1;
-                        continue;
-                    }
-                    throw err;
-                }
-            }
-            throw new Error('Failed to bind health server to an available port after several attempts.');
-        }
 
         await listenWithFallback(global.healthServer, desiredPort);
 

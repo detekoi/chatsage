@@ -1,4 +1,4 @@
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { Firestore } from '@google-cloud/firestore';
 import { initializeStorage, recordGameResult, StorageError } from '../../../../src/components/geo/geoStorage.js';
 
 // --- Mocks ---

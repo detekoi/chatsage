@@ -316,7 +316,6 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
     }
     const genaiModels = globalThis.__genaiClient.models;
     const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
-    const legacyModel = getGeminiClient();
     if (!correctAnswer || !userAnswer) {
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
@@ -326,7 +325,7 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
         const cleaned = s
             .toLowerCase()
             .trim()
-            .replace(/[\-_'’`]/g, ' ')
+            .replace(/[-_''`]/g, ' ')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/^[\s]*(?:the|a|an)\s+/i, '')
             .replace(/[\s]+/g, ' ');
@@ -370,16 +369,16 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
             try {
                 const parsed = resp?.parsed;
                 if (parsed && typeof parsed.is_correct === 'boolean') return parsed;
-            } catch (_) {}
+            } catch (_) { /* Ignore errors */ }
             return null;
         };
         const tryParseJsonString = (raw) => {
             if (!raw || typeof raw !== 'string') return null;
-            try { return JSON.parse(raw); } catch (_) {}
+            try { return JSON.parse(raw); } catch (_) { /* Ignore parse errors */ }
             const i = raw.indexOf('{');
             const j = raw.lastIndexOf('}');
             if (i !== -1 && j !== -1 && j > i) {
-                try { return JSON.parse(raw.substring(i, j + 1).trim()); } catch (_) {}
+                try { return JSON.parse(raw.substring(i, j + 1).trim()); } catch (_) { /* Ignore parse errors */ }
             }
             return null;
         };
@@ -451,7 +450,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                 const parts = Array.isArray(respObj?.candidates) ? (respObj.candidates[0]?.content?.parts || []) : [];
                 const joined = parts.map(p => p?.text || '').join('').trim();
                 if (joined) sText = joined;
-            } catch (_) {}
+            } catch (_) { /* Ignore errors */ }
         }
         if ((!sText && !structured) || fin === 'MAX_TOKENS') {
             try {
@@ -460,7 +459,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                 structured = coerceParsed(ro) || structured;
                 const textHigh = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                 if (textHigh) sText = textHigh;
-            } catch (_) {}
+            } catch (_) { /* Ignore errors */ }
         }
         if (!sText && !structured) {
             try {
@@ -469,12 +468,12 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                 structured = coerceParsed(ro) || structured;
                 const textMin = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                 if (textMin) sText = textMin;
-            } catch (_) {}
+            } catch (_) { /* Ignore errors */ }
         }
         if (structured && typeof structured.is_correct === 'boolean') {
             try {
                 logger.info(`[TriviaService] Structured verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${structured.is_correct} (conf ${typeof structured.confidence === 'number' ? structured.confidence : 'n/a'}). Reason: ${structured.reasoning || ''}`);
-            } catch (_) {}
+            } catch (_) { /* Ignore errors */ }
             return { is_correct: structured.is_correct, confidence: typeof structured.confidence === 'number' ? structured.confidence : (structured.is_correct ? 0.9 : 0.1), reasoning: structured.reasoning || '', search_used: false };
         }
         if (sText) {
@@ -487,12 +486,12 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                     structured = coerceParsed(ro) || structured;
                     const textRepair = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                     if (textRepair) { sText = textRepair; parsed = tryParseJsonString(sText); }
-                } catch (_) {}
+                } catch (_) { /* Ignore errors */ }
             }
             if (parsed && typeof parsed.is_correct === 'boolean') {
                 try {
                     logger.info(`[TriviaService] Parsed-json verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${parsed.is_correct} (conf ${typeof parsed.confidence === 'number' ? parsed.confidence : 'n/a'}). Reason: ${parsed.reasoning || ''}`);
-                } catch (_) {}
+                } catch (_) { /* Ignore errors */ }
                 return { is_correct: parsed.is_correct, confidence: typeof parsed.confidence === 'number' ? parsed.confidence : (parsed.is_correct ? 0.9 : 0.1), reasoning: parsed.reasoning || '', search_used: false };
             }
         }

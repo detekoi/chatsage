@@ -336,7 +336,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo) 
 
             const finalMessage = prefix + responseText;
             // Defensive: avoid sending meta thought/regurgitation if present
-            const scrubbed = finalMessage.replace(/^@[^,]+,\s*(Thinking Process|Reasoning|Analysis)[:\-].*$/i, `@${userName}, `).trim();
+            const scrubbed = finalMessage.replace(/^@[^,]+,\s*(Thinking Process|Reasoning|Analysis)[::-].*$/i, `@${userName}, `).trim();
             enqueueMessage(channel, scrubbed);
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
@@ -389,7 +389,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
         // 4. Format and Send Response
         let replyPrefix = `@${userName}: `;
         let finalReplyText = removeMarkdownAsterisks(searchResultText)
-            .replace(/^(Thinking Process|Reasoning|Analysis)[:\-].*$/i, '')
+            .replace(/^(Thinking Process|Reasoning|Analysis)[::-].*$/i, '')
             .trim();
 
         // Check length and Summarize/Truncate if needed
