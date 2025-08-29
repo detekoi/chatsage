@@ -14,11 +14,11 @@ const helpHandler = {
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user } = context;
-        const displayName = user['display-name'] || user.username;
 
         try {
-            const response = `@${displayName}, you can find my command list here: ${HELP_URL}`;
-            enqueueMessage(channel, response);
+            const response = `You can find my command list here: ${HELP_URL}`;
+            const replyToId = user?.id || user?.['message-id'] || null;
+            enqueueMessage(channel, response, { replyToId });
             logger.info(`Executed !help command in ${channel} for ${user.username}`);
         } catch (error) {
             logger.error({ err: error, channel: channel, user: user.username }, `Failed to enqueue help response.`);

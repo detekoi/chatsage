@@ -23,10 +23,11 @@ const searchHandler = {
         const userQuery = args.join(' ').trim();
         const channelName = channel.substring(1); // Remove #
         const userName = user['display-name'] || user.username; // Get username for replies
+        const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager(); // Get context manager
 
         if (!userQuery) {
-            enqueueMessage(channel, `@${userName}, please provide something to search for. Usage: !search <your query>`);
+            enqueueMessage(channel, `Please provide something to search for. Usage: !search <your query>`, { replyToId });
             return;
         }
 
@@ -37,7 +38,7 @@ const searchHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `searching for: ${userQuery}`); // Get context object
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !search command from user ${userName}.`);
-                enqueueMessage(channel, `@${userName}, sorry, I couldn't retrieve the current context to perform the search.`);
+                enqueueMessage(channel, `Sorry, I couldn't retrieve the current context to perform the search.`, { replyToId });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
@@ -47,17 +48,17 @@ const searchHandler = {
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
-                enqueueMessage(channel, `@${userName}, sorry, I couldn't find information about "${userQuery}" right now.`);
+                enqueueMessage(channel, `Sorry, I couldn't find information about "${userQuery}" right now.`, { replyToId });
                 return; // Exit if no initial response
             }
 
             // 3. Format the initial reply and check length (prefix simplified)
-            let replyPrefix = `@${userName} `; // Simpler prefix for search results
             let finalReplyText = initialResponseText;
+            // Strip mistaken @mentions of the user if present
+            finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
 
-            if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
+            if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial search response too long (${finalReplyText.length} chars). Attempting summarization.`);
-                replyPrefix = `@${userName}: `; // Changed to a more concise prefix that does not include "(Summary)"
 
                 const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
 
@@ -66,7 +67,7 @@ const searchHandler = {
                     logger.info(`Summarization successful (${finalReplyText.length} chars).`);
                 } else {
                     logger.warn(`Summarization failed for query: "${userQuery}". Falling back to intelligent truncation.`);
-                    const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
+                    const availableLength = MAX_IRC_MESSAGE_LENGTH - 3;
                     
                     if (availableLength > 0) {
                         let truncated = initialResponseText.substring(0, availableLength);
@@ -104,16 +105,16 @@ const searchHandler = {
             }
 
             // 4. Final length check & Send
-            let finalMessage = replyPrefix + finalReplyText;
+            let finalMessage = finalReplyText;
             if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
                 finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
-            enqueueMessage(channel, finalMessage);
+            enqueueMessage(channel, finalMessage, { replyToId });
 
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);
-            enqueueMessage(channel, `@${userName}, sorry, an error occurred while searching.`);
+            enqueueMessage(channel, `Sorry, an error occurred while searching.`, { replyToId });
         }
     },
 };
