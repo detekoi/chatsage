@@ -475,13 +475,14 @@ async function main() {
                 } else {
                     // Check permission if target is not self
                     if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
-                        enqueueMessage(channel, `@${displayName}, Only mods/broadcaster can stop translation for others.`);
+                        enqueueMessage(channel, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
                     } else {
                         const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
+                        const replyToId = tags?.id || tags?.['message-id'] || null;
                         if (targetUserForStop === lowerUsername) { // Message for self stop
-                            enqueueMessage(channel, wasStopped ? `@${displayName}, Translation stopped.` : `@${displayName}, Translation was already off.`);
+                            enqueueMessage(channel, wasStopped ? `Translation stopped.` : `Translation was already off.`, { replyToId });
                         } else { // Message for mod stopping someone else
-                            enqueueMessage(channel, wasStopped ? `@${displayName}, Stopped translation for ${targetUserForStop}.` : `@${displayName}, Translation was already off for ${targetUserForStop}.`);
+                            enqueueMessage(channel, wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`, { replyToId });
                         }
                     }
                 }
@@ -541,8 +542,9 @@ async function main() {
                     try {
                         const translatedText = await translateText(message, userState.targetLanguage);
                         if (translatedText) {
-                            const reply = `🌐💬 @${displayName}: ${translatedText}`;
-                            enqueueMessage(channel, reply);
+                            const reply = `🌐💬 ${translatedText}`;
+                            const replyToId = tags?.id || tags?.['message-id'] || null;
+                            enqueueMessage(channel, reply, { replyToId });
                         } else {
                             logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
                         }
