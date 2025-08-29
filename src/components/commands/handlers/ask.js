@@ -101,9 +101,41 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
             finalReplyText = summary;
             logger.info(`Summarization successful (${finalReplyText.length} chars).`);
         } else {
-            logger.warn(`Summarization failed for !ask response. Falling back to truncation.`);
+            logger.warn(`Summarization failed for !ask response. Falling back to intelligent truncation.`);
             const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
-            finalReplyText = finalReplyText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
+            
+            if (availableLength > 0) {
+                let truncated = finalReplyText.substring(0, availableLength);
+                
+                // Try to find sentence endings first
+                const sentenceEndRegex = /[.!?][^.!?]*$/;
+                const sentenceMatch = truncated.match(sentenceEndRegex);
+                
+                if (sentenceMatch) {
+                    const endIndex = availableLength - sentenceMatch[0].length + 1;
+                    truncated = finalReplyText.substring(0, endIndex > 0 ? endIndex : 0);
+                } else {
+                    // Try to find a comma or other natural break
+                    const commaBreakRegex = /,[^,]*$/;
+                    const commaMatch = truncated.match(commaBreakRegex);
+                    
+                    if (commaMatch) {
+                        const endIndex = availableLength - commaMatch[0].length + 1;
+                        truncated = finalReplyText.substring(0, endIndex > 0 ? endIndex : 0);
+                    } else {
+                        // Find the last space to avoid cutting off mid-word
+                        const lastSpaceIndex = truncated.lastIndexOf(' ');
+                        if (lastSpaceIndex > availableLength * 0.8) {
+                            truncated = finalReplyText.substring(0, lastSpaceIndex);
+                        }
+                        // If no good break point, keep the substring truncation
+                    }
+                }
+                
+                finalReplyText = truncated + '...';
+            } else {
+                finalReplyText = '...';
+            }
         }
     }
 
