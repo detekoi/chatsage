@@ -33,6 +33,7 @@ const gameHandler = {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
         const userName = user['display-name'] || user.username;
+        const replyToId = user?.id || user?.['message-id'] || null;
 
         // --- Argument Parsing ---
         let analysisRequested = false;
@@ -60,14 +61,14 @@ const gameHandler = {
         try {
             // --- Execute Image Analysis if requested ---
             if (analysisRequested) {
-                await handleImageAnalysis(channel, channelName, userName);
+                await handleImageAnalysis(channel, channelName, userName, replyToId);
                 // If both analysis and help are requested, add a small delay to avoid message overlap
                 if (helpRequested) await new Promise(resolve => setTimeout(resolve, 1200));
             }
 
             // --- Execute Help Search if requested ---
             if (helpRequested) {
-                await handleGameHelpRequest(channel, channelName, userName, helpQuery);
+                await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId);
                 return;
             }
 
@@ -75,17 +76,17 @@ const gameHandler = {
             if (!analysisRequested && !helpRequested) {
                 const gameInfo = await getCurrentGameInfo(channelName);
                 if (gameInfo && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') {
-                    await handleGameInfoResponse(channel, channelName, userName, gameInfo);
+                    await handleGameInfoResponse(channel, channelName, userName, gameInfo, replyToId);
                 } else {
                     logger.info(`[${channelName}] No current game set in context for basic !game command.`);
-                    enqueueMessage(channel, `@${userName}, I don't see a game set for the stream right now.`);
+                    enqueueMessage(channel, `I don't see a game set for the stream right now.`, { replyToId });
                 }
                 return;
             }
 
         } catch (error) {
             logger.error({ err: error, command: 'game', analysisRequested, helpRequested }, `Error executing !game command flow.`);
-            enqueueMessage(channel, `@${userName}, sorry, an error occurred while processing the !game command.`);
+            enqueueMessage(channel, `Sorry, an error occurred while processing the !game command.`, { replyToId });
         }
     },
 };
@@ -96,7 +97,7 @@ const gameHandler = {
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
  */
-async function handleImageAnalysis(channel, channelName, userName) {
+async function handleImageAnalysis(channel, channelName, userName, replyToId) {
     try {
         // Removed confirmation message to reduce chat verbosity
         // Get the official game info from the API/context FIRST
@@ -104,7 +105,7 @@ async function handleImageAnalysis(channel, channelName, userName) {
         const officialGameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
         
         if (!officialGameName) {
-            enqueueMessage(channel, `@${userName}, couldn't determine the current game. The channel might not be streaming a game.`);
+            enqueueMessage(channel, `Couldn't determine the current game. The channel might not be streaming a game.`, { replyToId });
             return;
         }
         
@@ -112,7 +113,7 @@ async function handleImageAnalysis(channel, channelName, userName) {
         const thumbnailBuffer = await fetchStreamThumbnail(channelName);
         
         if (!thumbnailBuffer) {
-            enqueueMessage(channel, `@${userName}, couldn't fetch the stream thumbnail. The channel might be offline.`);
+            enqueueMessage(channel, `Couldn't fetch the stream thumbnail. The channel might be offline.`, { replyToId });
             return;
         }
         
@@ -124,7 +125,7 @@ async function handleImageAnalysis(channel, channelName, userName) {
         const initialAnalysisResult = await analyzeImage(thumbnailBuffer, initialAnalysisPrompt);
 
         if (!initialAnalysisResult || initialAnalysisResult.trim().length === 0) {
-            enqueueMessage(channel, `@${userName}, AI couldn't analyze the ${officialGameName} gameplay initially.`);
+            enqueueMessage(channel, `AI couldn't analyze the ${officialGameName} gameplay initially.`, { replyToId });
             return;
         }
         logger.debug(`[${channelName}] Initial analysis for ${officialGameName}: "${initialAnalysisResult.substring(0,100)}..."`);
@@ -168,7 +169,7 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
         }
 
         // --- Step 3: Process and Format Final Result ---
-        const prefixLength = `@${userName}, In ${officialGameName}: `.length;
+        const prefixLength = `In ${officialGameName}: `.length;
         const availableChars = MAX_IRC_MESSAGE_LENGTH - prefixLength - 3; // -3 for potential ellipsis
 
         let description = verifiedAnalysisResult; // Start with the verified/refined result
@@ -233,19 +234,19 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
         }
 
         // --- Step 4: Send Final Message ---
-        const gameResponse = `@${userName}: ${description}`;
+        const gameResponse = `${description}`;
 
         // Final length check for IRC limits (shouldn't be needed with above logic, but safety first)
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
             const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
-            enqueueMessage(channel, truncated);
+            enqueueMessage(channel, truncated, { replyToId });
         } else {
-            enqueueMessage(channel, gameResponse);
+            enqueueMessage(channel, gameResponse, { replyToId });
         }
         
     } catch (error) {
         logger.error({ err: error }, 'Error in image analysis for !game command');
-        enqueueMessage(channel, `@${userName}, sorry, there was an error analyzing the stream.`);
+        enqueueMessage(channel, `Sorry, there was an error analyzing the stream.`, { replyToId });
     }
 }
 
