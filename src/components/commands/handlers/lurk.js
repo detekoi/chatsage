@@ -125,7 +125,7 @@ const lurkHandler = {
 
             let response;
             if (llmResponse) {
-                response = `@${displayName}, ${llmResponse}`;
+                response = `${llmResponse}`;
             } else {
                 logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; using fallback.');
                 const variedFallbacks = [
@@ -147,10 +147,11 @@ const lurkHandler = {
                     'Z-catch initiated—dreams set to widescreen.'
                 ];
                 const alt = variedFallbacks[Math.floor(Math.random() * variedFallbacks.length)];
-                response = `@${displayName}, ${alt}`;
+                response = `${alt}`;
             }
 
-            enqueueMessage(channel, response);
+            const replyToId = user?.id || user?.['message-id'] || null;
+            enqueueMessage(channel, response, { replyToId });
             logger.info(`Executed !lurk command in ${channel} for ${displayName}`);
 
         } catch (error) {
