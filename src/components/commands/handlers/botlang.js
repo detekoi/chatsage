@@ -22,12 +22,13 @@ const botLangHandler = {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
         const invokingDisplayName = user['display-name'] || user.username;
+        const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
         
         // Check permissions - only mods and broadcaster can use this
         const isModOrBroadcaster = isPrivilegedUser(user, channelName);
         if (!isModOrBroadcaster) {
-            enqueueMessage(channel, `@${invokingDisplayName}, Sorry, only mods or the broadcaster can change the bot's language.`);
+            enqueueMessage(channel, `Sorry, only mods or the broadcaster can change the bot's language.`, { replyToId });
             return;
         }
         
@@ -36,9 +37,9 @@ const botLangHandler = {
             // Show current status and usage info
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Bot is currently set to speak ${currentLanguage}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`);
+                enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
             } else {
-                enqueueMessage(channel, `@${invokingDisplayName}, Bot is currently set to speak English (default). Use "!botlang <language>" to change.`);
+                enqueueMessage(channel, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
             }
             return;
         }
@@ -49,9 +50,9 @@ const botLangHandler = {
         if (action === 'status') {
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Bot is currently set to speak ${currentLanguage}.`);
+                enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}.`, { replyToId });
             } else {
-                enqueueMessage(channel, `@${invokingDisplayName}, Bot is currently set to speak English (default).`);
+                enqueueMessage(channel, `Bot is currently set to speak English (default).`, { replyToId });
             }
             return;
         }
@@ -59,7 +60,7 @@ const botLangHandler = {
         // Handle turning off translation
         if (action === 'off' || action === 'default' || action === 'english') {
             contextManager.setBotLanguage(channelName, null);
-            enqueueMessage(channel, `@${invokingDisplayName}, Bot language has been reset to English (default).`);
+            enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
             return;
         }
         
@@ -72,7 +73,7 @@ const botLangHandler = {
             const translatedTest = await translateText(testMessage, targetLanguage);
             
             if (!translatedTest || translatedTest.trim().length === 0) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`);
+                enqueueMessage(channel, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
                 return;
             }
             
@@ -80,19 +81,19 @@ const botLangHandler = {
             contextManager.setBotLanguage(channelName, targetLanguage);
             
             // Confirm in both languages
-            const confirmMessage = `@${invokingDisplayName}, Bot language has been set to ${targetLanguage}. All bot responses will now be in ${targetLanguage}. Use "!botlang off" to reset.`;
-            const translatedConfirm = await translateText(confirmMessage, targetLanguage);
+            const baseConfirm = `Bot language has been set to ${targetLanguage}. All bot responses will now be in ${targetLanguage}. Use "!botlang off" to reset.`;
+            const translatedConfirm = await translateText(baseConfirm, targetLanguage);
             
-            // First send in English (with skipTranslation=true to avoid double translation)
-            await enqueueMessage(channel, confirmMessage, true);
+            // First send in English (skip translation)
+            await enqueueMessage(channel, baseConfirm, { replyToId, skipTranslation: true });
             
-            // Then send the translated confirmation (also with skipTranslation=true)
+            // Then send the translated confirmation (skip translation)
             if (translatedConfirm && translatedConfirm.trim().length > 0) {
-                await enqueueMessage(channel, translatedConfirm, true);
+                await enqueueMessage(channel, translatedConfirm, { replyToId, skipTranslation: true });
             }
         } catch (error) {
             logger.error({ err: error, targetLanguage }, 'Error setting bot language');
-            enqueueMessage(channel, `@${invokingDisplayName}, Sorry, an error occurred while setting the bot language.`);
+            enqueueMessage(channel, `Sorry, an error occurred while setting the bot language.`, { replyToId });
         }
     },
 };

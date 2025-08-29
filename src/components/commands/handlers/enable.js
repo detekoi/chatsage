@@ -14,10 +14,11 @@ async function execute(context) {
     const channelName = channel.substring(1); // Remove the '#' prefix
     const username = user.username;
     const displayName = user['display-name'] || username;
+    const replyToId = user?.id || user?.['message-id'] || null;
 
     // Check if command name was provided
     if (args.length === 0) {
-        await ircClient.say(channel, `@${displayName}, Usage: !enable <commandName>. Example: !enable trivia`);
+        await ircClient.say(channel, `Usage: !enable <commandName>. Example: !enable trivia`);
         return;
     }
 
@@ -26,7 +27,7 @@ async function execute(context) {
     // Validate that the command exists
     if (!isValidCommand(commandToEnable, commandHandlers)) {
         const availableCommands = getAllAvailableCommands(commandHandlers);
-        await ircClient.say(channel, `@${displayName}, Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`);
+        await ircClient.say(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`);
         return;
     }
 
@@ -36,10 +37,10 @@ async function execute(context) {
         const result = await enableCommandForChannel(channelName, commandToEnable);
         
         if (result.success) {
-            await ircClient.say(channel, `@${displayName}, ${result.message}`);
+            await ircClient.say(channel, `${result.message}`);
             logger.info(`[EnableCommand] Successfully enabled command '${commandToEnable}' in channel ${channelName} by ${username}`);
         } else {
-            await ircClient.say(channel, `@${displayName}, ${result.message}`);
+            await ircClient.say(channel, `${result.message}`);
             logger.warn(`[EnableCommand] Failed to enable command '${commandToEnable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {
@@ -50,7 +51,7 @@ async function execute(context) {
             command: commandToEnable
         }, `[EnableCommand] Error enabling command '${commandToEnable}' in channel ${channelName}`);
         
-        await ircClient.say(channel, `@${displayName}, Sorry, there was an error enabling the command. Please try again later.`);
+        await ircClient.say(channel, `Sorry, there was an error enabling the command. Please try again later.`);
     }
 }
 
