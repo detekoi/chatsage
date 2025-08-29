@@ -53,6 +53,7 @@ const trivia = {
         const channelName = channel.substring(1);
         const invokingUsernameLower = user.username;
         const invokingDisplayName = user['display-name'] || user.username;
+        const replyToId = user?.id || user?.['message-id'] || null;
         const isModOrBroadcaster = isPrivilegedUser(user, channelName);
         const triviaManager = getTriviaGameManager();
 
@@ -89,7 +90,7 @@ const trivia = {
             const currentGameInitiator = triviaManager.getCurrentGameInitiator(channelName);
 
             if (!currentGameInitiator) {
-                enqueueMessage(channel, `@${invokingDisplayName}, There is no active Trivia game to stop.`);
+                enqueueMessage(channel, `There is no active Trivia game to stop.`, { replyToId });
                 return;
             }
 
@@ -99,13 +100,13 @@ const trivia = {
                 logger.info(`[Trivia] Stop requested by ${invokingDisplayName}, result: ${result.message}`);
                 // Message to chat is handled by stopGame/transitionToEnding
             } else {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only the game initiator, mods, or the broadcaster can stop the current game.`);
+                enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
             }
             return;
         } else if (subCommand === 'config') {
             // !trivia config ... -> Configure game settings
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can configure the game.`);
+                enqueueMessage(channel, `Only mods or the broadcaster can configure the game.`, { replyToId });
                 return;
             }
             
@@ -140,26 +141,26 @@ const trivia = {
             }
             
             if (Object.keys(options).length === 0) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Usage: !trivia config difficulty <easy|normal|hard> time <seconds> duration <minutes> topic <list> scoring <true|false> points <value> timebonus <true|false> difficultymultiplier <true|false>`);
+                enqueueMessage(channel, `Usage: !trivia config difficulty <easy|normal|hard> time <seconds> duration <minutes> topic <list> scoring <true|false> points <value> timebonus <true|false> difficultymultiplier <true|false>`, { replyToId });
                 return;
             }
             
             const result = await triviaManager.configureGame(channelName, options);
-            enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+            enqueueMessage(channel, `${result.message}`, { replyToId });
             return;
         } else if (subCommand === 'resetconfig') {
             // !trivia resetconfig -> Reset game configuration to defaults
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can reset the game configuration.`);
+                enqueueMessage(channel, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
                 return;
             }
             
             try {
                 const result = await triviaManager.resetChannelConfig(channelName);
-                enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+                enqueueMessage(channel, `${result.message}`, { replyToId });
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error calling resetChannelConfig from trivia handler.');
-                enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred while trying to reset the configuration.`);
+                enqueueMessage(channel, `An unexpected error occurred while trying to reset the configuration.`, { replyToId });
             }
             return;
         } else if (subCommand === 'leaderboard') {
@@ -167,34 +168,34 @@ const trivia = {
             try {
                 const leaderboardData = await getLeaderboard(channelName, 5);
                 const message = formatLeaderboardMessage(leaderboardData, channelName);
-                enqueueMessage(channel, message);
+                enqueueMessage(channel, message, { replyToId });
                 logger.info(`[Trivia] Displayed leaderboard for channel ${channelName}`);
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error fetching or formatting trivia leaderboard.');
-                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, couldn't fetch the leaderboard right now.`);
+                enqueueMessage(channel, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId });
             }
             return;
         } else if (subCommand === 'clearleaderboard' || subCommand === 'resetstats') {
             // !trivia clearleaderboard -> Clear the leaderboard
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can clear the leaderboard.`);
+                enqueueMessage(channel, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
                 return;
             }
             
-            enqueueMessage(channel, `@${invokingDisplayName}, Attempting to clear Trivia leaderboard data for this channel. This may take a moment...`);
+            enqueueMessage(channel, `Attempting to clear Trivia leaderboard data for this channel. This may take a moment...`, { replyToId });
             
             try {
                 const result = await triviaManager.clearLeaderboard(channelName);
-                enqueueMessage(channel, `@${invokingDisplayName}, ${result.message}`);
+                enqueueMessage(channel, `${result.message}`, { replyToId });
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error calling clearLeaderboard from trivia handler.');
-                enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred while trying to clear the leaderboard.`);
+                enqueueMessage(channel, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId });
             }
             return;
         } else if (subCommand === 'report' || subCommand === 'flag') {
             // !trivia report [reason...]
             if (args.length < 2) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Please provide a reason for reporting. Usage: !trivia report <your reason>`);
+                enqueueMessage(channel, `Please provide a reason for reporting. Usage: !trivia report <your reason>`, { replyToId });
                 return;
             }
             const reason = args.slice(1).join(' ');
@@ -202,19 +203,19 @@ const trivia = {
             try {
                 const reportInitiationResult = await triviaManager.initiateReportProcess(channelName, reason, invokingUsernameLower);
                 if (reportInitiationResult.message) {
-                    enqueueMessage(channel, `@${invokingDisplayName}, ${reportInitiationResult.message}`);
+                    enqueueMessage(channel, `${reportInitiationResult.message}`, { replyToId });
                 } else if (!reportInitiationResult.success) {
-                    enqueueMessage(channel, `@${invokingDisplayName}, Could not process your report request at this time.`);
+                    enqueueMessage(channel, `Could not process your report request at this time.`, { replyToId });
                 }
             } catch (error) {
                 logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error calling initiateReportProcess for Trivia.');
-                enqueueMessage(channel, `@${invokingDisplayName}, An error occurred while trying to initiate the report.`);
+                enqueueMessage(channel, `An error occurred while trying to initiate the report.`, { replyToId });
             }
             return;
         } else if (subCommand === 'help') {
             // !trivia help -> Show help information
             const helpMessage = formatHelpMessage(isModOrBroadcaster);
-            enqueueMessage(channel, `@${invokingDisplayName}, ${helpMessage}`);
+            enqueueMessage(channel, `${helpMessage}`, { replyToId });
             return;
         } else {
             // !trivia <topic> [rounds] -> Start a topic-specific game
@@ -244,7 +245,7 @@ const trivia = {
         // Validate number of rounds
         const MAX_ROUNDS = 10; // Example max
         if (numberOfRounds > MAX_ROUNDS) {
-            enqueueMessage(channel, `@${invokingDisplayName}, Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`);
+            enqueueMessage(channel, `Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`, { replyToId });
             numberOfRounds = MAX_ROUNDS;
         }
         
@@ -255,13 +256,13 @@ const trivia = {
             const result = await triviaManager.startGame(channelName, topic, invokingUsernameLower, numberOfRounds);
             
             if (!result.success) {
-                enqueueMessage(channel, `@${invokingDisplayName}, ${result.error}`);
+            enqueueMessage(channel, `${result.error}`, { replyToId });
             }
             // Success messages are handled by the game manager through its own enqueueMessage calls
-        } catch (error) {
+            } catch (error) {
             logger.error({ err: error }, "Unhandled error starting trivia game from command handler.");
-            enqueueMessage(channel, `@${invokingDisplayName}, An unexpected error occurred trying to start the game.`);
-        }
+            enqueueMessage(channel, `An unexpected error occurred trying to start the game.`, { replyToId });
+            }
     }
 };
 
