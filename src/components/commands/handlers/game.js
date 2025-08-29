@@ -309,12 +309,12 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
  * @param {string} userName - Display name of requesting user
  * @param {object} gameInfo - Game information from context
  */
-async function handleGameInfoResponse(channel, channelName, userName, gameInfo) {
+async function handleGameInfoResponse(channel, channelName, userName, gameInfo, replyToId) {
     try {
         const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
         if (!gameName) {
-            enqueueMessage(channel, `@${userName}, I couldn't determine the current game.`);
+            enqueueMessage(channel, `I couldn't determine the current game.`, { replyToId });
             return;
         }
 
@@ -324,8 +324,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo) 
         if (additionalInfo) {
             // We have additional info, format the response *just* with that
             let responseText = additionalInfo;
-            const prefix = `@${userName}, `;
-            const maxTextLength = MAX_IRC_MESSAGE_LENGTH - prefix.length - 3;
+            const maxTextLength = MAX_IRC_MESSAGE_LENGTH - 3;
 
             // Truncate *only the additional info text* if necessary
             if (responseText.length > maxTextLength) {
@@ -335,19 +334,18 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo) 
                 responseText = removeMarkdownAsterisks(responseText);
             }
 
-            const finalMessage = prefix + responseText;
             // Defensive: avoid sending meta thought/regurgitation if present
-            const scrubbed = finalMessage.replace(/^@[^,]+,\s*(Thinking Process|Reasoning|Analysis)[::-].*$/i, `@${userName}, `).trim();
-            enqueueMessage(channel, scrubbed);
+            const scrubbed = responseText.replace(/^(Thinking Process|Reasoning|Analysis)[:-].*$/i, '').trim();
+            enqueueMessage(channel, scrubbed, { replyToId });
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
             logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
-            enqueueMessage(channel, `@${userName}, currently playing ${gameName}. Try "!game [your question]" for specific help with the game.`);
+            enqueueMessage(channel, `Currently playing ${gameName}. Try "!game [your question]" for specific help with the game.`, { replyToId });
         }
     } catch (error) {
         logger.error({ err: error }, 'Error handling game info response (concise version)');
         const gameName = gameInfo?.gameName || 'Unknown';
-        enqueueMessage(channel, `@${userName}, Current game: ${gameName}`);
+        enqueueMessage(channel, `Current game: ${gameName}`, { replyToId });
     }
 }
 
