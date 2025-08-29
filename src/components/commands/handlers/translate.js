@@ -26,12 +26,13 @@ const translateHandler = {
         const channelName = channel.substring(1);
         const invokingUsernameLower = user.username;
         const invokingDisplayName = user['display-name'] || user.username;
+        const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
         const isModOrBroadcaster = isPrivilegedUser(user, channelName);
 
         // --- Input Validation ---
         if (args.length === 0) {
-            enqueueMessage(channel, `@${invokingDisplayName}, Usage: !translate <language> | !translate stop | !translate <lang> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)`);
+            enqueueMessage(channel, `Usage: !translate <language> | !translate stop | !translate <lang> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)`, { replyToId });
             return;
         }
 
@@ -41,15 +42,15 @@ const translateHandler = {
         // --- Handle !translate stop all ---
         if (isStopAction && args.length > 1 && args[1].toLowerCase() === 'all') {
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop all translations.`);
+                enqueueMessage(channel, `Only mods or the broadcaster can stop all translations.`, { replyToId });
                 return;
             }
             try {
                 const count = contextManager.disableAllTranslationsInChannel(channelName);
-                enqueueMessage(channel, `@${invokingDisplayName}, Okay, stopped translations globally for ${count} user(s).`);
+                enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
             } catch (e) {
                 logger.error({ err: e, channel: channelName }, 'Error disabling all translations.');
-                enqueueMessage(channel, `@${invokingDisplayName}, Sorry, an error occurred trying to stop all translations.`);
+                enqueueMessage(channel, `Sorry, an error occurred trying to stop all translations.`, { replyToId });
             }
             return;
         }
@@ -63,7 +64,7 @@ const translateHandler = {
             if (args.length > 1) {
                 const potentialUsername = args[1].toLowerCase().replace(/^@/, '');
                 if (!isModOrBroadcaster) {
-                    enqueueMessage(channel, `@${invokingDisplayName}, Only mods or the broadcaster can stop translation for other users.`);
+                    enqueueMessage(channel, `Only mods or the broadcaster can stop translation for other users.`, { replyToId });
                     return;
                 }
                 targetUsernameLower = potentialUsername;
@@ -96,7 +97,7 @@ const translateHandler = {
                     } catch (e) {
                         logger.error({ err: e, potentialUsername }, 'Error checking username with Twitch API');
                         // Error out for clarity when API fails
-                        enqueueMessage(channel, `@${invokingDisplayName}, Error checking username. Could not process command.`);
+                        enqueueMessage(channel, `Error checking username. Could not process command.`, { replyToId });
                         return;
                     }
                 }
@@ -119,29 +120,29 @@ const translateHandler = {
                 // Disable translation
                 const wasTranslating = contextManager.disableUserTranslation(channelName, targetUsernameLower);
                 const stopMessage = wasTranslating
-                    ? `@${invokingDisplayName}, Okay, stopped translating messages for ${effectiveDisplayName}.`
-                    : `@${invokingDisplayName}, Translation was already off for ${effectiveDisplayName}.`;
-                enqueueMessage(channel, stopMessage);
+                    ? `Okay, stopped translating messages for ${effectiveDisplayName}.`
+                    : `Translation was already off for ${effectiveDisplayName}.`;
+                enqueueMessage(channel, stopMessage, { replyToId });
             } else {
                 // Enable translation
                 if (!language) {
-                    enqueueMessage(channel, `@${invokingDisplayName}, Please specify a language.`);
+                    enqueueMessage(channel, `Please specify a language.`, { replyToId });
                     return;
                 }
                 contextManager.enableUserTranslation(channelName, targetUsernameLower, language);
                 const baseConfirmation = `Okay, translating messages for ${effectiveDisplayName} into ${language}. Use "!translate stop${targetUsernameLower !== invokingUsernameLower ? ' ' + targetUsernameLower : ''}" to disable.`;
                 const translatedConfirmation = await translateText(baseConfirmation, language);
-                let finalConfirmation = `@${invokingDisplayName}, ${baseConfirmation}`;
+                let finalConfirmation = `${baseConfirmation}`;
                 if (translatedConfirmation?.trim()) {
                     finalConfirmation += ` / ${translatedConfirmation}`;
                 } else {
                     logger.warn(`Could not translate confirmation message into ${language}.`);
                 }
-                enqueueMessage(channel, finalConfirmation);
+                enqueueMessage(channel, finalConfirmation, { replyToId });
             }
         } catch (e) {
             logger.error({ err: e, action, language, targetUsernameLower }, 'Error executing translate command action.');
-            enqueueMessage(channel, `@${invokingDisplayName}, Sorry, an error occurred while processing the translate command.`);
+            enqueueMessage(channel, `Sorry, an error occurred while processing the translate command.`, { replyToId });
         }
     },
 };
