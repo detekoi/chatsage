@@ -45,13 +45,19 @@ async function _processMessageQueue() {
     }
 
     while (messageQueue.length > 0) {
-        const { channel, text } = messageQueue.shift(); // Get FIFO message
-        logger.debug(`Sending queued message to ${channel}: "${text.substring(0, 30)}..."`);
+        const { channel, text, replyToId } = messageQueue.shift(); // Get FIFO message
+        logger.debug(`Sending queued message to ${channel}: "${text.substring(0, 30)}..." (replyTo: ${replyToId || 'none'})`);
         try {
-            await ircClient.say(channel, text);
+            if (replyToId && typeof ircClient.raw === 'function') {
+                const chan = channel.startsWith('#') ? channel : `#${channel}`;
+                const line = `@reply-parent-msg-id=${replyToId} PRIVMSG ${chan} :${text}`;
+                await ircClient.raw(line);
+            } else {
+                await ircClient.say(channel, text);
+            }
             await sleep(IRC_SEND_INTERVAL_MS); // Wait AFTER send
         } catch (error) {
-            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."` }, 'Failed to send queued message.');
+            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null }, 'Failed to send queued message.');
             // Optionally re-queue with retry logic or just log and drop
             await sleep(IRC_SEND_INTERVAL_MS); // Still wait even on error
         }
@@ -110,12 +116,25 @@ async function _translateIfNeeded(channelName, text) {
  * Summarizes message if it exceeds MAX_IRC_MESSAGE_LENGTH.
  * @param {string} channel Channel name with '#'.
  * @param {string} text Message text.
- * @param {boolean} [skipTranslation=false] If true, skips translation even if channel has language setting.
+ * @param {object|boolean} [options={}] Optional params or legacy boolean for skipTranslation.
+ * @param {string|null} [options.replyToId=null] The ID of the message to reply to.
+ * @param {boolean} [options.skipTranslation=false] If true, skips translation.
  */
-async function enqueueMessage(channel, text, skipTranslation = false) {
+async function enqueueMessage(channel, text, options = {}) {
     if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
         logger.warn({channel, text}, 'Attempted to queue invalid message.');
         return;
+    }
+
+    let replyToId = null;
+    let skipTranslation = false;
+
+    // Backward compatibility: third param can be boolean skipTranslation
+    if (typeof options === 'boolean') {
+        skipTranslation = options;
+    } else if (options && typeof options === 'object') {
+        replyToId = options.replyToId || null;
+        skipTranslation = !!options.skipTranslation;
     }
     
     let finalText = text;
@@ -151,7 +170,7 @@ async function enqueueMessage(channel, text, skipTranslation = false) {
         }
     }
 
-    messageQueue.push({ channel, text: finalText });
+    messageQueue.push({ channel, text: finalText, replyToId });
     logger.debug(`Message queued for ${channel}. Queue size: ${messageQueue.length}`);
 
     // Trigger processing if not already running

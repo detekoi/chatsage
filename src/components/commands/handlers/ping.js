@@ -13,12 +13,13 @@ const pingHandler = {
     permission: 'everyone', // Anyone can use this command
     execute: async (context) => {
         const { channel, user } = context;
-        const response = `Pong! @${user['display-name'] || user.username}`;
+        const replyToId = user?.id || user?.['id'] || user?.['message-id'] || null;
+        const response = 'Pong!';
 
         logger.info({ channel, user: user.username }, `[PingCommand] PRE-ENQUEUE: Preparing ping response for ${user.username}`);
         
         try {
-            enqueueMessage(channel, response);
+            enqueueMessage(channel, response, { replyToId });
             logger.info({ channel, user: user.username }, `[PingCommand] POST-ENQUEUE: Successfully called enqueueMessage`);
             
             logger.info(`Executed !ping command in ${channel} for ${user.username}`);

@@ -77,24 +77,22 @@ function extractLocationFromTimeQuery(userQuery) {
  * @param {string | null} responseText - The LLM response text.
  * @param {string} userQuery - The original query for context.
  */
-async function handleAskResponseFormatting(channel, userName, responseText, userQuery) {
+async function handleAskResponseFormatting(channel, userName, responseText, userQuery, replyToId) {
     logger.info({ responseText: responseText?.substring(0, 100), userQuery }, `handleAskResponseFormatting called for ${userName}`);
     
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
-        enqueueMessage(channel, `@${userName}, sorry, I couldn't find or generate an answer for that right now.`);
+        enqueueMessage(channel, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
         return;
     }
 
-    let replyPrefix = `@${userName} `;
     let finalReplyText = responseText;
 
     // Strip any mistaken prefixes from the LLM response
     finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
 
-    if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
+    if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
         logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
-        replyPrefix = `@${userName}: `; // concise prefix
 
         const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
         if (summary?.trim()) {
@@ -102,7 +100,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
             logger.info(`Summarization successful (${finalReplyText.length} chars).`);
         } else {
             logger.warn(`Summarization failed for !ask response. Falling back to intelligent truncation.`);
-            const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
+            const availableLength = MAX_IRC_MESSAGE_LENGTH - 3;
             
             if (availableLength > 0) {
                 let truncated = finalReplyText.substring(0, availableLength);
@@ -139,13 +137,13 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
         }
     }
 
-    let finalMessage = replyPrefix + finalReplyText;
+    let finalMessage = finalReplyText;
     if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
         logger.warn(`Final !ask reply too long (${finalMessage.length} chars). Truncating sharply.`);
         finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
     }
 
-    enqueueMessage(channel, finalMessage);
+    enqueueMessage(channel, finalMessage, { replyToId });
 }
 
 /**
@@ -164,14 +162,14 @@ const askHandler = {
         const contextManager = getContextManager();
 
         if (!userQuery) {
-            enqueueMessage(channel, `@${userName}, please ask a question after the command. Usage: !ask <your question>`);
+            enqueueMessage(channel, `Please ask a question after the command. Usage: !ask <your question>`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
         // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
         if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
-            enqueueMessage(channel, `@${userName} Hey there! What’s on your mind?`);
+            enqueueMessage(channel, `Hey there! What’s on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
@@ -199,16 +197,16 @@ const askHandler = {
                     // --- Step 3: Get current time using the IANA timezone ---
                     const timeResult = getCurrentTime({ timezone: ianaTimezone });
                     if (timeResult.currentTime) {
-                        await handleAskResponseFormatting(channel, userName, `The current time in ${locationForTime} is ${timeResult.currentTime}.`, userQuery);
+                        await handleAskResponseFormatting(channel, userName, `The current time in ${locationForTime} is ${timeResult.currentTime}.`, userQuery, user?.id || user?.['message-id'] || null);
                     } else {
-                        await handleAskResponseFormatting(channel, userName, timeResult.error || `Sorry, I couldn't get the time for ${locationForTime} (using IANA: ${ianaTimezone}).`, userQuery);
+                        await handleAskResponseFormatting(channel, userName, timeResult.error || `Sorry, I couldn't get the time for ${locationForTime} (using IANA: ${ianaTimezone}).`, userQuery, user?.id || user?.['message-id'] || null);
                     }
                 } else {
                     // Failed to get IANA from LLM, even though regex matched a location.
                     logger.warn(`[${channelName}] Regex extracted location "${locationForTime}", but LLM failed to find IANA. Using unified generation.`);
                     const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
                     const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
-                    await handleAskResponseFormatting(channel, userName, responseText, userQuery);
+                    await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
                 }
                 return; // Time query handled (or attempt failed)
             }
@@ -217,11 +215,11 @@ const askHandler = {
             logger.debug(`[${channelName}] Query not matched by time regexes. Using unified generation for: "${userQuery}"`);
             const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
             const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
-            await handleAskResponseFormatting(channel, userName, responseText, userQuery);
+            await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 
         } catch (error) {
             logger.error({ err: error, command: 'ask', query: userQuery }, `Error executing !ask command.`);
-            enqueueMessage(channel, `@${userName}, sorry, an error occurred while processing your question.`);
+            enqueueMessage(channel, `Sorry, an error occurred while processing your question.`, { replyToId: user?.id || user?.['message-id'] || null });
         }
     },
 };
