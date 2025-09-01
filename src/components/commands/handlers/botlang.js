@@ -21,7 +21,6 @@ const botLangHandler = {
     execute: async (context) => {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
-        const invokingDisplayName = user['display-name'] || user.username;
         const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
         
