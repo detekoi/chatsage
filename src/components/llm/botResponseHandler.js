@@ -9,13 +9,26 @@ import { getContextManager } from '../context/contextManager.js';
  * 
  * @param {string} channel Channel name with '#'.
  * @param {string} message Message to send.
- * @param {boolean} [skipTranslation=false] If true, skips translation even if channel has a setting.
+ * @param {object|boolean} [options=false] Options object or legacy boolean for skipTranslation.
+ * @param {boolean} [options.skipTranslation=false] If true, skips translation even if channel has a setting.
+ * @param {string|null} [options.replyToId=null] The ID of the message to reply to.
  * @returns {Promise<void>}
  */
-export async function sendBotResponse(channel, message, skipTranslation = false) {
+export async function sendBotResponse(channel, message, options = false) {
     if (!channel || !message) {
         logger.warn('sendBotResponse called with missing channel or message');
         return;
+    }
+    
+    // Handle backward compatibility and extract options
+    let skipTranslation = false;
+    let replyToId = null;
+    
+    if (typeof options === 'boolean') {
+        skipTranslation = options;
+    } else if (options && typeof options === 'object') {
+        skipTranslation = !!options.skipTranslation;
+        replyToId = options.replyToId || null;
     }
     
     const channelName = channel.replace(/^#/, ''); // Remove # if present
@@ -32,7 +45,7 @@ export async function sendBotResponse(channel, message, skipTranslation = false)
     }
     
     // Use the enqueueMessage function which handles translation internally
-    await enqueueMessage(formattedChannel, message, skipTranslation);
+    await enqueueMessage(formattedChannel, message, { skipTranslation, replyToId });
 }
 
 /**

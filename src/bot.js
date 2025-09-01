@@ -471,7 +471,8 @@ async function main() {
                 // Execute stop logic (permission check happens in command/here)
                 if (stopGlobally) { // Already checked permission above
                     const count = contextManager.disableAllTranslationsInChannel(cleanChannel);
-                    enqueueMessage(channel, `@${displayName}, Okay, stopped translations globally for ${count} user(s).`);
+                    const replyToId = tags?.id || tags?.['message-id'] || null;
+                    enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
                 } else {
                     // Check permission if target is not self
                     if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
@@ -563,7 +564,8 @@ async function main() {
                     const userMessageContent = message.substring(mentionPrefix.length).trim();
                     if (userMessageContent) {
                         logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
-                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention")
+                        const replyToId = tags?.id || tags?.['message-id'] || null;
+                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention", replyToId)
                             .catch(err => logger.error({ err }, "Error in async mention handler call"));
                     } else {
                         logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);

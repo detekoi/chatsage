@@ -355,8 +355,9 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
  * @param {string} helpQuery - The specific question the user asked
+ * @param {string|null} replyToId - The ID of the message to reply to
  */
-async function handleGameHelpRequest(channel, channelName, userName, helpQuery) {
+async function handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId = null) {
     logger.info(`[${channelName}] Handling game help request from ${userName}: "${helpQuery}"`);
     try {
         // 1. Get Current Game Name
@@ -364,7 +365,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
         const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
         if (!gameName) {
-            enqueueMessage(channel, `@${userName}, I couldn't determine the current game to search for help. Please ensure the stream category is set.`);
+            enqueueMessage(channel, `I couldn't determine the current game to search for help. Please ensure the stream category is set.`, { replyToId });
             return;
         }
 
@@ -381,18 +382,17 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
 
         if (!searchResultText || searchResultText.trim().length === 0) {
             logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}".`);
-            enqueueMessage(channel, `@${userName}, Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`);
+            enqueueMessage(channel, `Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`, { replyToId });
             return;
         }
 
         // 4. Format and Send Response
-        let replyPrefix = `@${userName}: `;
         let finalReplyText = removeMarkdownAsterisks(searchResultText)
             .replace(/^(Thinking Process|Reasoning|Analysis)[::-].*$/i, '')
             .trim();
 
         // Check length and Summarize/Truncate if needed
-        if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
+        if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`[${channelName}] Help response too long (${finalReplyText.length} chars). Attempting summarization.`);
             const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
@@ -400,23 +400,21 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
                 logger.info(`[${channelName}] Help response summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`[${channelName}] Summarization failed for help response. Falling back to truncation.`);
-                const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
-                finalReplyText = finalReplyText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
+                finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
         }
 
         // Final length check
-        let finalMessage = replyPrefix + finalReplyText;
-        if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-             logger.warn(`[${channelName}] Final help reply too long (${finalMessage.length} chars). Truncating sharply.`);
-             finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
+             logger.warn(`[${channelName}] Final help reply too long (${finalReplyText.length} chars). Truncating sharply.`);
+             finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
         }
         
-        enqueueMessage(channel, finalMessage);
+        enqueueMessage(channel, finalReplyText, { replyToId });
 
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: userName, helpQuery }, `Error processing game help request.`);
-        enqueueMessage(channel, `@${userName}, Sorry, an error occurred while searching for help with "${helpQuery}".`);
+        enqueueMessage(channel, `Sorry, an error occurred while searching for help with "${helpQuery}".`, { replyToId });
     }
 }
 

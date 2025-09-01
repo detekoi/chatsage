@@ -46,8 +46,9 @@ export function removeMarkdownAsterisks(text) {
  * @param {string} lowerUsername - User's lowercase username.
  * @param {string} userMessage - The user's message/prompt for the LLM.
  * @param {string} triggerType - For logging ("mention" or "command").
+ * @param {string|null} replyToId - The ID of the message to reply to.
  */
-export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention") {
+export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null) {
     logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Handling standard LLM query.`);
     try {
         const contextManager = getContextManager();
@@ -81,17 +82,15 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // If even the retry fails, provide a fallback message
         if (!initialResponseText?.trim()) {
             logger.error(`[${cleanChannel}] LLM generated null or empty response after retry. Sending fallback.`);
-            await sendBotResponse(channel, `@${displayName} I'm a bit stumped on that one! Try asking another way?`);
+            await sendBotResponse(channel, `I'm a bit stumped on that one! Try asking another way?`, { replyToId });
             return;
         }
 
         // d. Check length and Summarize if needed
-        let replyPrefix = `@${displayName} `; // Simple prefix
         let finalReplyText = removeMarkdownAsterisks(stripMetaThoughts(initialResponseText));
 
-        if ((replyPrefix.length + finalReplyText.length) > MAX_IRC_MESSAGE_LENGTH) {
+        if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
-            replyPrefix = `@${displayName}: `; // 'Invisible' prefix that does not include "(Summary)"
 
             const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
@@ -99,23 +98,21 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to truncation.`);
-                const availableLength = MAX_IRC_MESSAGE_LENGTH - replyPrefix.length - 3;
-                finalReplyText = initialResponseText.substring(0, availableLength < 0 ? 0 : availableLength) + '...';
+                finalReplyText = initialResponseText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
         }
 
         // e. Final length check and Send
-        let finalMessage = replyPrefix + finalReplyText;
-        if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-             logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
-             finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
+             logger.warn(`Final reply (even after summary/truncation) too long (${finalReplyText.length} chars). Truncating sharply.`);
+             finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
         }
-        await sendBotResponse(channel, finalMessage);
+        await sendBotResponse(channel, finalReplyText, { replyToId });
 
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);
         try {
-            await sendBotResponse(channel, `@${displayName} Sorry, an error occurred while processing that.`);
+            await sendBotResponse(channel, `Sorry, an error occurred while processing that.`, { replyToId });
         } catch (sayError) { logger.error({ err: sayError }, 'Failed to send LLM error message to chat.'); }
     }
 }

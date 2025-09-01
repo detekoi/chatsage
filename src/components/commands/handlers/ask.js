@@ -11,7 +11,7 @@ import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
-// Define IRC message length limit (be conservative to account for @username: prefix)
+// Define IRC message length limit
 const MAX_IRC_MESSAGE_LENGTH = 450;
 // Target length for summaries (should be less than MAX_IRC_MESSAGE_LENGTH)
 const SUMMARY_TARGET_LENGTH = 400;
@@ -179,7 +179,7 @@ const askHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !ask command.`);
-                enqueueMessage(channel, `@${userName}, sorry, I couldn't retrieve the current context.`);
+                enqueueMessage(channel, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext);
