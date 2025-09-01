@@ -684,25 +684,25 @@ TEXT:\n${textToSummarize}`;
               if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
              return null;
         }
-        // Structured extraction: parse JSON summary field
-        let jsonText = null;
-        try {
-            // Prefer SDK text aggregation for JSON
-            if (typeof response.text === 'function') {
-                jsonText = response.text();
-            } else if (candidate?.content?.parts?.[0]?.text) {
-                jsonText = candidate.content.parts[0].text;
-            }
-        } catch (_) { /* ignore */ }
-
+        // Enhanced structured extraction with better error handling
+        const jsonText = extractTextFromResponse(response, candidate, 'summarize-structured');
         let parsedSummary = null;
+        
         if (jsonText && typeof jsonText === 'string') {
             try {
                 const obj = JSON.parse(jsonText);
-                if (obj && typeof obj.summary === 'string') {
+                if (obj && typeof obj.summary === 'string' && obj.summary.trim().length > 0) {
                     parsedSummary = obj.summary.trim();
                 }
-            } catch (_) { /* fall through to fallback */ }
+            } catch (parseError) {
+                // Try to extract summary from malformed JSON
+                logger.debug({ jsonText, parseError: parseError.message }, 'JSON parse failed, attempting recovery');
+                const summaryMatch = jsonText.match(/"summary"\s*:\s*"([^"]*)/i);
+                if (summaryMatch && summaryMatch[1]) {
+                    parsedSummary = summaryMatch[1].trim();
+                    logger.debug('Recovered summary from malformed JSON via regex');
+                }
+            }
         }
 
         let summary = parsedSummary;

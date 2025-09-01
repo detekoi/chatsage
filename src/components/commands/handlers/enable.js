@@ -13,8 +13,6 @@ async function execute(context) {
     const { channel, user, args, ircClient, logger } = context;
     const channelName = channel.substring(1); // Remove the '#' prefix
     const username = user.username;
-    const displayName = user['display-name'] || username;
-    const replyToId = user?.id || user?.['message-id'] || null;
 
     // Check if command name was provided
     if (args.length === 0) {

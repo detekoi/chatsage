@@ -373,8 +373,8 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery) 
         const llmContext = contextManager.getContextForLLM(channelName, userName, helpQuery);
         const contextPrompt = buildContextPrompt(llmContext || {});
         
-        // Formulate a query targeting walkthroughs/help
-        const helpSearchQuery = `Find the best and most effective strategy or walkthrough information for the game "${gameName}" regarding this specific problem: "${helpQuery}"`;
+        // Formulate a query targeting walkthroughs/help with conciseness requirement
+        const helpSearchQuery = `Find the best and most effective strategy or walkthrough information for the game "${gameName}" regarding this specific problem: "${helpQuery}". Please keep the response concise and under 450 characters.`;
 
         // 3. Call Search-Grounded LLM
         const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
