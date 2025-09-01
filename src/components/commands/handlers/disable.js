@@ -1,6 +1,7 @@
 // src/components/commands/handlers/disable.js
 import { disableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 
 /**
  * Handler for the !disable command.
@@ -10,14 +11,14 @@ import commandHandlers from './index.js';
  * Example: !disable trivia
  */
 async function execute(context) {
-    const { channel, user, args, ircClient, logger } = context;
+    const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove the '#' prefix
     const username = user.username;
-    const displayName = user['display-name'] || username;
+    const replyToId = user?.id || user?.['message-id'] || null;
 
     // Check if command name was provided
     if (args.length === 0) {
-        await ircClient.say(channel, `@${displayName}, Usage: !disable <commandName>. Example: !disable trivia`);
+        enqueueMessage(channel, `Usage: !disable <commandName>. Example: !disable trivia`, { replyToId });
         return;
     }
 
@@ -26,7 +27,7 @@ async function execute(context) {
     // Validate that the command exists
     if (!isValidCommand(commandToDisable, commandHandlers)) {
         const availableCommands = getAllAvailableCommands(commandHandlers);
-        await ircClient.say(channel, `@${displayName}, Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`);
+        enqueueMessage(channel, `Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
         return;
     }
 
@@ -36,10 +37,10 @@ async function execute(context) {
         const result = await disableCommandForChannel(channelName, commandToDisable);
         
         if (result.success) {
-            await ircClient.say(channel, `@${displayName}, ${result.message}`);
+            enqueueMessage(channel, result.message, { replyToId });
             logger.info(`[DisableCommand] Successfully disabled command '${commandToDisable}' in channel ${channelName} by ${username}`);
         } else {
-            await ircClient.say(channel, `@${displayName}, ${result.message}`);
+            enqueueMessage(channel, result.message, { replyToId });
             logger.warn(`[DisableCommand] Failed to disable command '${commandToDisable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {
@@ -50,7 +51,7 @@ async function execute(context) {
             command: commandToDisable
         }, `[DisableCommand] Error disabling command '${commandToDisable}' in channel ${channelName}`);
         
-        await ircClient.say(channel, `@${displayName}, Sorry, there was an error disabling the command. Please try again later.`);
+        enqueueMessage(channel, `Sorry, there was an error disabling the command. Please try again later.`, { replyToId });
     }
 }
 
