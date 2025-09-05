@@ -194,6 +194,51 @@ export function getGeminiClient() {
     return generativeModel;
 }
 
+// --- NEW: Channel-scoped Chat Sessions ---
+// Maintain a persistent chat per Twitch channel to enable multi-turn context.
+// This aligns with the Gemini chat API guidance to create a chat and send messages on it.
+const channelChatSessions = new Map();
+
+/**
+ * Returns an existing chat session for the given channel or creates a new one.
+ * The session is initialized with the long-lived systemInstruction (persona) and empty history.
+ * @param {string} channelName - Clean channel name without '#'
+ * @returns {import('@google/generative-ai').ChatSession}
+ */
+export function getOrCreateChatSession(channelName) {
+    if (!channelName || typeof channelName !== 'string') {
+        throw new Error('getOrCreateChatSession requires a valid channelName');
+    }
+    if (channelChatSessions.has(channelName)) {
+        return channelChatSessions.get(channelName);
+    }
+
+    const model = getGeminiClient();
+    // startChat takes an object with systemInstruction and optional history
+    const chat = model.startChat({
+        systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+        // Enable Google Search grounding inside the chat session
+        tools: [ { googleSearch: {} } ],
+        history: []
+    });
+    channelChatSessions.set(channelName, chat);
+    logger.info({ channelName, toolsEnabled: ['googleSearch'] }, 'Created new Gemini chat session for channel');
+    return chat;
+}
+
+/**
+ * Resets/clears a chat session for the given channel.
+ * The next call to getOrCreateChatSession will recreate it fresh.
+ * @param {string} channelName
+ */
+export function resetChatSession(channelName) {
+    if (!channelName || typeof channelName !== 'string') return;
+    if (channelChatSessions.has(channelName)) {
+        channelChatSessions.delete(channelName);
+        logger.info({ channelName }, 'Reset Gemini chat session for channel');
+    }
+}
+
 // --- UPDATED Prompt Builder (Context only) ---
 /**
  * Constructs the context part of the prompt. Persona and task are handled elsewhere.

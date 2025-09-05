@@ -556,19 +556,28 @@ async function main() {
                 return;
             }
 
-            // --- Mention Check ---
-            // Check only if: not self, not any game command, not translate cmd, not stop request, not already translated
+            // --- Mention or Reply-to-Bot Check ---
+            // Trigger chat when the message mentions the bot OR is a native Twitch reply to the bot
             if (!self && !wasTranslateCommand && !wasGeoCommand && !wasTriviaCommand && !wasRiddleCommand && !isStopRequest) {
-                const mentionPrefix = `@${config.twitch.username.toLowerCase()}`;
-                if (message.toLowerCase().startsWith(mentionPrefix)) {
-                    const userMessageContent = message.substring(mentionPrefix.length).trim();
+                const botLower = config.twitch.username.toLowerCase();
+                const mentionPrefix = `@${botLower}`;
+                const lowerMsg = message.toLowerCase();
+                const isMention = lowerMsg.startsWith(mentionPrefix);
+                const isReplyToBot = (tags && tags['reply-parent-user-login'] && tags['reply-parent-user-login'].toLowerCase() === botLower) || false;
+
+                if ((isMention || isReplyToBot) && !message.startsWith('!')) {
+                    let userMessageContent = message;
+                    if (isMention) {
+                        userMessageContent = message.substring(mentionPrefix.length).trim();
+                    }
                     if (userMessageContent) {
-                        logger.info({ channel: cleanChannel, user: lowerUsername }, 'Bot mentioned, triggering standard LLM query...');
+                        const triggerType = isReplyToBot ? 'reply' : 'mention';
+                        logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'Bot interaction detected, triggering standard LLM query...');
                         const replyToId = tags?.id || tags?.['message-id'] || null;
-                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, "mention", replyToId)
-                            .catch(err => logger.error({ err }, "Error in async mention handler call"));
+                        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId)
+                            .catch(err => logger.error({ err }, 'Error in async interaction handler call'));
                     } else {
-                        logger.debug(`Ignoring empty mention for ${displayName} in ${cleanChannel}`);
+                        logger.debug(`Ignoring empty mention/reply from ${displayName} in ${cleanChannel}`);
                     }
                 }
             }
