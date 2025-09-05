@@ -34,6 +34,12 @@ for (const [commandName, handler] of sortedEntries) {
 
     const description = handler.description || 'No description available.';
     const usage = handler.usage || `!${commandName}`;
+    const permission = handler.permission || 'everyone';
+    
+    // Format permission display
+    const permissionDisplay = permission === 'moderator' ? 'Mod Only' : 
+                             permission === 'broadcaster' ? 'Broadcaster Only' : 
+                             'Everyone';
 
     const escapeHtml = (unsafe) => {
         return unsafe
@@ -46,6 +52,7 @@ for (const [commandName, handler] of sortedEntries) {
     htmlOutput += `                <td>${escapeHtml(aliases)}</td>\n`;
     htmlOutput += `                <td>${escapeHtml(description)}</td>\n`;
     htmlOutput += `                <td><code>${escapeHtml(usage)}</code></td>\n`;
+    htmlOutput += `                <td>${escapeHtml(permissionDisplay)}</td>\n`;
     htmlOutput += `            </tr>\n`;
 }
 

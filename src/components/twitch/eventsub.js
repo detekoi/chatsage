@@ -5,6 +5,9 @@ import { getIrcClient, connectIrcClient } from './ircClient.js';
 import { isChannelAllowed } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';
+import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
+import { enqueueMessage } from '../../lib/ircSender.js';
+import { notifyStreamOnline } from '../autoChat/autoChatManager.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -307,6 +310,8 @@ export async function eventSubHandler(req, res, rawBody) {
                     throw error;
                 }
             }
+            // Inform AutoChatManager so it can greet once
+            try { notifyStreamOnline(broadcaster_user_name); } catch (_) {}
         }
 
         if (subscription.type === 'stream.offline') {
@@ -331,6 +336,16 @@ export async function eventSubHandler(req, res, rawBody) {
             }
             
             try {
+                // Optionally send a short farewell before parting
+                try {
+                    const cfg = await getChannelAutoChatConfig(broadcaster_user_name);
+                    if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
+                        const channel = `#${broadcaster_user_name}`;
+                        await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
+                    }
+                } catch (e) {
+                    logger.debug({ err: e }, 'Farewell send skipped or failed');
+                }
                 const ircClient = getIrcClient();
                 if (ircClient && ircClient.readyState() === 'OPEN') {
                     const channelToPart = `#${broadcaster_user_name}`;

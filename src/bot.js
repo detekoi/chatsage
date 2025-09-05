@@ -20,6 +20,8 @@ import { initializeTriviaGameManager, getTriviaGameManager } from './components/
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges, isChannelAllowed } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
+import { initializeAutoChatStorage } from './components/context/autoChatStorage.js';
+import { startAutoChatManager, notifyUserMessage } from './components/autoChat/autoChatManager.js';
 import { initializeCommandStateManager, shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
 import { initializeRiddleGameManager, getRiddleGameManager } from './components/riddle/riddleGameManager.js';
@@ -215,6 +217,9 @@ async function main() {
         logger.info('Initializing Language Storage...');
         await initializeLanguageStorage();
 
+        logger.info('Initializing Auto-Chat Storage...');
+        await initializeAutoChatStorage();
+
         logger.info('Initializing Command State Manager...');
         await initializeCommandStateManager();
 
@@ -312,6 +317,14 @@ async function main() {
                 helixClient, // Pass already retrieved instance
                 contextManager // Pass already retrieved instance
             );
+
+            // Start Auto-Chat manager after polling begins
+            try {
+                await startAutoChatManager();
+                logger.info('Auto-Chat Manager started.');
+            } catch (err) {
+                logger.error({ err }, 'Failed to start Auto-Chat Manager');
+            }
             
             // After starting stream polling, check for streams that are already live
             // Wait a bit to give the first poll cycle a chance to run
@@ -494,6 +507,12 @@ async function main() {
             contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                 logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
             });
+            // Notify AutoChatManager about activity
+            try {
+                notifyUserMessage(cleanChannel, Date.now());
+            } catch (e) {
+                logger.debug({ e }, 'notifyUserMessage failed (AutoChatManager may not be running)');
+            }
 
             // 2. Process commands (but !translate stop was handled above)
             let wasTranslateCommand = message.trim().toLowerCase().startsWith('!translate '); // Keep this simple check
