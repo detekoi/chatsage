@@ -1,6 +1,6 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { generateStandardResponse as generateLlmResponse, buildContextPrompt, summarizeText } from './geminiClient.js';
+import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
@@ -64,19 +64,31 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // b. Build context prompt string
         const contextPrompt = buildContextPrompt(llmContext);
 
-        // c. Generate initial response with both context and user message
-        const userMessageWithContext = `The user is ${displayName}. Their message is: ${userMessage}`;
-        let initialResponseText = await generateLlmResponse(contextPrompt, userMessageWithContext);
+        // c. Use persistent chat session per channel (multi-turn)
+        const chatSession = getOrCreateChatSession(cleanChannel);
+        const perTurnContext = contextPrompt;
+        const messageForChat = `${perTurnContext}\nUSER: ${displayName} says: ${userMessage}`;
+        const chatResult = await chatSession.sendMessage(messageForChat);
+        let initialResponseText = chatResult?.response?.text ? chatResult.response.text() : chatResult?.text?.();
 
-        // If the first attempt fails, try again with a simplified prompt
-        if (!initialResponseText?.trim()) {
-            logger.warn(`[${cleanChannel}] Initial LLM response was empty. Retrying with simplified context.`);
-            
-            // Create a simpler context without the long chat history and summary
-            const simpleContext = { ...llmContext, chatSummary: "Context is limited.", recentChatHistory: "Not available." };
-            const simpleContextPrompt = buildContextPrompt(simpleContext);
-            
-            initialResponseText = await generateLlmResponse(simpleContextPrompt, userMessageWithContext);
+        // Log Google Search grounding metadata and citations if present
+        try {
+          const responseObj = chatResult?.response;
+          const candidate = responseObj?.candidates?.[0];
+          const groundingMetadata = candidate?.groundingMetadata || responseObj?.candidates?.[0]?.groundingMetadata;
+          if (groundingMetadata) {
+            const sources = Array.isArray(groundingMetadata.groundingChunks)
+              ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
+              : undefined;
+            logger.info({ usedGoogleSearch: true, webSearchQueries: groundingMetadata.webSearchQueries, sources }, '[StandardChat] Search grounding metadata.');
+          } else {
+            logger.info({ usedGoogleSearch: false }, '[StandardChat] No search grounding metadata present.');
+          }
+          if (candidate?.citationMetadata?.citationSources?.length > 0) {
+            logger.info({ citations: candidate.citationMetadata.citationSources }, '[StandardChat] Response included citations.');
+          }
+        } catch (logErr) {
+          logger.debug({ err: logErr }, '[StandardChat] Skipped grounding/citation logging due to unexpected response shape.');
         }
 
         // If even the retry fails, provide a fallback message

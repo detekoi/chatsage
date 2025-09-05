@@ -5,7 +5,8 @@ import {
     buildContextPrompt,
     generateUnifiedResponse,
     summarizeText,
-    fetchIanaTimezoneForLocation
+    fetchIanaTimezoneForLocation,
+    getOrCreateChatSession
 } from '../../llm/geminiClient.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
@@ -211,10 +212,18 @@ const askHandler = {
                 return; // Time query handled (or attempt failed)
             }
 
-            // --- Not a regex-matched time query. Use unified generation (model decides search + tools). ---
-            logger.debug(`[${channelName}] Query not matched by time regexes. Using unified generation for: "${userQuery}"`);
-            const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-            const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
+            // --- Not a regex-matched time query. Use persistent chat session per channel. ---
+            logger.debug(`[${channelName}] Query not matched by time regexes. Using persistent chat session.`);
+
+            // Ensure a chat session exists for this channel with system instructions held once
+            const chatSession = getOrCreateChatSession(channelName);
+
+            // Build a concise per-turn message that includes only fresh context and the user message
+            const perTurnContext = contextPrompt;
+            const message = `${perTurnContext}\nUSER: ${userName} says: ${userQuery}`;
+
+            const chatResult = await chatSession.sendMessage(message);
+            const responseText = chatResult?.response?.text ? chatResult.response.text() : chatResult?.text?.();
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 
         } catch (error) {

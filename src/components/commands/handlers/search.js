@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
-import { buildContextPrompt, generateSearchResponse, summarizeText } from '../../llm/geminiClient.js';
+import { buildContextPrompt, summarizeText, getOrCreateChatSession } from '../../llm/geminiClient.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
 // Define IRC message length limit (be conservative)
@@ -43,8 +43,31 @@ const searchHandler = {
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
 
-            // 2. Get search response using the correct function and arguments
-            const initialResponseText = await generateSearchResponse(contextPrompt, userQuery); // Pass BOTH context and query
+            // 2. Use the persistent chat session with googleSearch tool enabled
+            const chatSession = getOrCreateChatSession(channelName);
+            const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"`;
+            const result = await chatSession.sendMessage(fullPrompt);
+            const response = result?.response;
+            const initialResponseText = response?.text ? response.text() : result?.text?.();
+
+            // Log Google Search grounding metadata and citations if present
+            try {
+                const candidate = response?.candidates?.[0];
+                const groundingMetadata = candidate?.groundingMetadata || response?.candidates?.[0]?.groundingMetadata;
+                if (groundingMetadata) {
+                    const sources = Array.isArray(groundingMetadata.groundingChunks)
+                        ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
+                        : undefined;
+                    logger.info({ usedGoogleSearch: true, webSearchQueries: groundingMetadata.webSearchQueries, sources }, '[SearchCmd] Search grounding metadata.');
+                } else {
+                    logger.info({ usedGoogleSearch: false }, '[SearchCmd] No search grounding metadata present.');
+                }
+                if (candidate?.citationMetadata?.citationSources?.length > 0) {
+                    logger.info({ citations: candidate.citationMetadata.citationSources }, '[SearchCmd] Response included citations.');
+                }
+            } catch (logErr) {
+                logger.debug({ err: logErr }, '[SearchCmd] Skipped grounding/citation logging due to unexpected response shape.');
+            }
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
