@@ -22,6 +22,7 @@ import geo from './geo.js';
 import trivia from './trivia.js';
 import botLang from './botlang.js';
 import lurk from './lurk.js';
+import auto from './auto.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -65,6 +66,7 @@ const commandHandlers = {
     riddle: riddle,
     botlang: botLang,
     lurk: lurk,
+    auto: auto,
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)

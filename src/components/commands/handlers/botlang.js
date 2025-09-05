@@ -3,12 +3,7 @@ import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText } from '../../../lib/translationUtils.js';
 
-// Helper function to check mod/broadcaster status
-function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+// Helper function removed - permission checking now handled by command system
 
 /**
  * Handler for the !botlang command to set the language for the bot in a channel.
@@ -17,19 +12,14 @@ const botLangHandler = {
     name: 'botlang',
     description: 'Set the language for the bot in this channel. Only mods/broadcaster can use this command.',
     usage: '!botlang <language> | !botlang off | !botlang status',
-    permission: 'everyone',  // Allow everyone to pass initial permission check
+    permission: 'moderator',  // Only mods and broadcasters can use this command
     execute: async (context) => {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
         const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
         
-        // Check permissions - only mods and broadcaster can use this
-        const isModOrBroadcaster = isPrivilegedUser(user, channelName);
-        if (!isModOrBroadcaster) {
-            enqueueMessage(channel, `Sorry, only mods or the broadcaster can change the bot's language.`, { replyToId });
-            return;
-        }
+        // Permission checking is now handled by the command system
         
         // Handle different command variations
         if (args.length === 0) {
