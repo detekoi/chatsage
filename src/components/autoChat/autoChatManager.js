@@ -61,7 +61,10 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     const context = getContextManager().getContextForLLM(channelName, 'system', 'game-change');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. Provide one surprising fact or a super useful beginner tip about ${newGame}. ≤30 words.`;
-    const text = await generateSearchResponse(contextPrompt, prompt) || await generateStandardResponse(contextPrompt, prompt);
+    // Prefer grounded facts; require grounding to avoid hallucinated facts
+    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true })
+        || await generateSearchResponse(contextPrompt, prompt)
+        || await generateStandardResponse(contextPrompt, prompt);
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
         state.lastAutoAtMs = now();
@@ -107,7 +110,10 @@ async function maybeHandleTopicShift(channelName) {
 
     const contextPrompt = buildContextPrompt(context);
     const prompt = `The conversation topic changed. Provide ONE concise, interesting fact or helpful insight related to the new topic. ≤28 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
+    // Prefer grounded facts on topic shifts; require grounding first, then relax, then fallback
+    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true })
+        || await generateSearchResponse(contextPrompt, prompt)
+        || await generateStandardResponse(contextPrompt, prompt);
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
         state.lastAutoAtMs = now();

@@ -370,8 +370,11 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
  * @param {string} userQuery - The user's query.
  * @returns {Promise<string | null>} Resolves with the generated text response, or null.
  */
-export async function generateSearchResponse(contextPrompt, userQuery) {
+export async function generateSearchResponse(contextPrompt, userQuery, requireGroundingOrOptions = {}) {
     if (!userQuery?.trim()) { return null; }
+    const requireGrounding = typeof requireGroundingOrOptions === 'boolean'
+        ? requireGroundingOrOptions
+        : !!requireGroundingOrOptions?.requireGrounding;
     const model = getGeminiClient();
     const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY (use search results if helpful): Direct answer in ≤340 chars. Prioritize substance; when helpful add a specific detail/fact/example, and optionally a short, tailored question. No meta/disclaimers/sources unless asked. Don’t repeat the username.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
@@ -412,6 +415,16 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
         }
         if (candidate.citationMetadata?.citationSources?.length > 0) {
             logger.info({ citations: candidate.citationMetadata.citationSources }, 'Gemini response included search citations.');
+        }
+
+        // If strict grounding is required, ensure we have some grounding signal (metadata or citations)
+        if (requireGrounding) {
+            const hasGroundingChunks = Array.isArray(groundingMetadata?.groundingChunks) && groundingMetadata.groundingChunks.length > 0;
+            const hasCitations = Array.isArray(candidate.citationMetadata?.citationSources) && candidate.citationMetadata.citationSources.length > 0;
+            if (!hasGroundingChunks && !hasCitations) {
+                logger.warn('Strict grounding required, but no grounding metadata or citations present. Suppressing response.');
+                return null;
+            }
         }
 
         if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
