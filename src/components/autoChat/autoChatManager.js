@@ -54,7 +54,7 @@ async function maybeSendGreeting(channelName) {
 async function maybeHandleGameChange(channelName, prevGame, newGame) {
     const cfg = await getChannelAutoChatConfig(channelName);
     if (cfg.mode === 'off' || cfg.categories.facts !== true) return;
-    const minGapMin = Math.max(getAggressivenessMinGapMinutes(cfg.mode), cfg.frequencyMinutes);
+    const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     const state = getState(channelName);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
 
@@ -75,7 +75,7 @@ async function maybeHandleLull(channelName) {
     const cfg = await getChannelAutoChatConfig(channelName);
     if (cfg.mode === 'off' || cfg.categories.questions !== true) return;
     const state = getState(channelName);
-    const minGapMin = Math.max(getAggressivenessMinGapMinutes(cfg.mode), cfg.frequencyMinutes);
+    const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     // Detect lull: no message for X minutes depending on mode
     const lullThresholdMin = cfg.mode === 'high' ? 3 : cfg.mode === 'medium' ? 5 : 8;
     const lastMessageAtMs = state.lastMessageAtMs || 0;
@@ -105,7 +105,7 @@ async function maybeHandleTopicShift(channelName) {
     if (state.lastSummaryHash === undefined) { state.lastSummaryHash = currentHash; return; }
     if (currentHash === state.lastSummaryHash) return; // no shift
 
-    const minGapMin = Math.max(getAggressivenessMinGapMinutes(cfg.mode), cfg.frequencyMinutes);
+    const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     const contextPrompt = buildContextPrompt(context);

@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getChannelAutoChatConfig, saveChannelAutoChatConfig, normalizeConfig } from '../../context/autoChatStorage.js';
 
-const helpText = 'Usage: !auto [off|low|medium|high] or !auto-config frequency:<minutes> greetings:[on|off] facts:[on|off] questions:[on|off]';
+const helpText = 'Usage: !auto [off|low|medium|high] or !auto-config greetings:[on|off] facts:[on|off] questions:[on|off]';
 
 async function execute({ channel, user, args, logger: log }) {
     const channelName = channel.substring(1);
@@ -13,7 +13,7 @@ async function execute({ channel, user, args, logger: log }) {
         const cfg = await getChannelAutoChatConfig(channelName);
         log.info({ channelName, cfg }, '[!auto] Current auto-chat config');
         const cats = cfg.categories;
-        const parts = [`mode=${cfg.mode}`, `freq=${cfg.frequencyMinutes}m`, `cats=${['greetings','facts','questions'].filter(k => cats[k]).join('+') || 'none'}`];
+        const parts = [`mode=${cfg.mode}`, `cats=${['greetings','facts','questions'].filter(k => cats[k]).join('+') || 'none'}`];
         return this.reply(channel, `Auto-chat: ${parts.join(', ')}. ${helpText}`);
     }
 
@@ -32,17 +32,14 @@ async function execute({ channel, user, args, logger: log }) {
             const [k, vRaw] = kv.split(':');
             const key = (k || '').toLowerCase();
             const v = (vRaw || '').toLowerCase();
-            if (key === 'frequency' || key === 'freq') {
-                const n = parseInt(v, 10);
-                if (Number.isFinite(n) && n > 0) cfg.frequencyMinutes = n;
-            } else if (['greetings','facts','questions'].includes(key)) {
+            if (['greetings','facts','questions'].includes(key)) {
                 cfg.categories[key] = (v === 'on' || v === 'true' || v === 'yes' || v === '1');
             }
         }
         const clean = normalizeConfig(cfg);
         await saveChannelAutoChatConfig(channelName, clean);
         const cats = clean.categories;
-        return this.reply(channel, `Updated auto-chat: mode=${clean.mode}, freq=${clean.frequencyMinutes}m, cats=${['greetings','facts','questions'].filter(k => cats[k]).join('+') || 'none'}`);
+        return this.reply(channel, `Updated auto-chat: mode=${clean.mode}, cats=${['greetings','facts','questions'].filter(k => cats[k]).join('+') || 'none'}`);
     }
 
     return this.reply(channel, helpText);
