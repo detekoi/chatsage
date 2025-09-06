@@ -29,7 +29,6 @@ function _getDb() {
 // Default config when none stored
 export const DEFAULT_AUTO_CHAT_CONFIG = Object.freeze({
     mode: 'off', // 'off' | 'low' | 'medium' | 'high'
-    frequencyMinutes: 15, // best-effort min spacing between auto messages
     categories: {
         greetings: true,
         facts: true,
@@ -92,14 +91,12 @@ export function normalizeConfig(input) {
     const mode = ['off', 'low', 'medium', 'high'].includes((cfg.mode || '').toLowerCase())
         ? cfg.mode.toLowerCase()
         : 'off';
-    let frequencyMinutes = parseInt(cfg.frequencyMinutes, 10);
-    if (!Number.isFinite(frequencyMinutes) || frequencyMinutes <= 0) frequencyMinutes = 15;
     const categories = {
         greetings: cfg.categories?.greetings !== false,
         facts: cfg.categories?.facts !== false,
         questions: cfg.categories?.questions !== false,
     };
-    return { mode, frequencyMinutes, categories };
+    return { mode, categories };
 }
 
 
