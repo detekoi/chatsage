@@ -10,7 +10,7 @@ let intervalId = null;
 const TICK_MS = 60 * 1000; // 1 minute cadence
 
 // Internal per-channel runtime state (not persisted)
-const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart }
+const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion }
 
 function now() { return Date.now(); }
 
@@ -86,8 +86,8 @@ async function maybeHandleLull(channelName) {
     if (!context) return;
     const contextPrompt = buildContextPrompt(context);
     const topic = context.chatSummary || context.streamGame || 'the stream';
-    const prompt = `Chat has been quiet. Based on the current topic "${topic}", ask ONE engaging, open-ended question to re-spark conversation. ≤20 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt);
+    const prompt = `Chat has been quiet. Based on the current topic "${topic}", ask ONE engaging, open-ended question to re-spark conversation. ≤20 words. Do not ask the same question as "${state.lastQuestion}"`;
+    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true });
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
         state.lastAutoAtMs = now();
@@ -109,7 +109,7 @@ async function maybeHandleTopicShift(channelName) {
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     const contextPrompt = buildContextPrompt(context);
-    const prompt = `The conversation topic changed. Provide ONE concise, interesting fact or helpful insight related to the new topic. ≤28 words.`;
+    const prompt = `The conversation topic changed. Provide ONE concise, interesting fact or helpful insight related to the new topic. ≤28 words. Do not repeat the fact: "${state.lastQuestion}"`;
     // Prefer grounded facts on topic shifts; require grounding first, then relax, then fallback
     const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true })
         || await generateSearchResponse(contextPrompt, prompt)
@@ -192,5 +192,3 @@ export function stopAutoChatManager() {
         logger.info('[AutoChatManager] Stopped');
     }
 }
-
-
