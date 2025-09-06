@@ -469,6 +469,14 @@ async function _startNextRound(gameState) {
     const combinedExcludedQuestions = new Set([...gameState.gameSessionExcludedQuestions, ...recentChannelQuestions]);
     const finalExcludedQuestionsArray = Array.from(combinedExcludedQuestions);
     const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
+    // Also avoid having the topic itself as the answer (tautology)
+    if (gameState.topic && typeof gameState.topic === 'string') {
+        const t = gameState.topic.trim();
+        if (t.length > 0) {
+            finalExcludedAnswersArray.push(t);
+            finalExcludedAnswersArray.push(t.toLowerCase());
+        }
+    }
     
     while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
         try {
@@ -731,6 +739,14 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         }
         const finalExcludedQuestionsArray = Array.from(gameState.gameSessionExcludedQuestions);
         const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
+        // Also avoid having the topic itself as the answer (tautology)
+        if (topic && typeof topic === 'string') {
+            const t = topic.trim();
+            if (t.length > 0) {
+                finalExcludedAnswersArray.push(t);
+                finalExcludedAnswersArray.push(t.toLowerCase());
+            }
+        }
         while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
             try {
                  // --- Pass excluded questions and answers to generateQuestion ---

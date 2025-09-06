@@ -54,15 +54,23 @@ const triviaQuestionTool = {
 // --- Helper: Fallback to Explicit Search ---
 async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQuestions = [], _channelName = null, excludedAnswers = []) {
     const model = getGeminiClient();
-    const exclusionInstructionQuestions = excludedQuestions.length > 0
-        ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
-        : '';
-    const exclusionInstructionAnswers = excludedAnswers.length > 0
-        ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
+    const exclusionInstructions = [];
+    if (excludedQuestions.length > 0) {
+        exclusionInstructions.push(`Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}`);
+    }
+    if (excludedAnswers.length > 0) {
+        exclusionInstructions.push(`AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}`);
+    }
+    exclusionInstructions.push(`Do not make the correct answer exactly the topic itself`);
+    if (excludedAnswers.length > 0) {
+        exclusionInstructions.push(`Aim for variety`);
+    }
+    const exclusionInstructionText = exclusionInstructions.length > 0 
+        ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
     // STEP 1: Search for facts about the topic - SIMPLIFIED PROMPT
-    const searchFactsPrompt = `Find reliable, neutral facts about "${topic}" suitable for a ${difficulty} trivia question. Focus on clear, verifiable details and relationships between entities (avoid conflating entity types, like a person vs. a role, a work vs. its creator).${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn facts as text. Do not call functions.`;
+    const searchFactsPrompt = `Find reliable, neutral facts about "${topic}" suitable for a ${difficulty} trivia question. Focus on clear, verifiable details and relationships between entities (avoid conflating entity types, like a person vs. a role, a work vs. its creator).${exclusionInstructionText}\nReturn facts as text. Do not call functions.`;
     let factualInfoText = "";
 
     try {
@@ -86,7 +94,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - SIMPLIFIED PROMPT
-    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nDifficulty: ${difficulty}.\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
+    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionText}\nDifficulty: ${difficulty}.\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
@@ -221,14 +229,22 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
     }
 
     // For general knowledge, use function calling for reliability
-    const exclusionInstructionQuestions = excludedQuestions.length > 0
-        ? `\nIMPORTANT: Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}.`
-        : '';
-    const exclusionInstructionAnswers = excludedAnswers.length > 0
-        ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
+    const exclusionInstructions = [];
+    if (excludedQuestions.length > 0) {
+        exclusionInstructions.push(`Do NOT generate any of the following questions again: ${excludedQuestions.map(q => `"${q}"`).join(', ')}`);
+    }
+    if (excludedAnswers.length > 0) {
+        exclusionInstructions.push(`AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}`);
+    }
+    exclusionInstructions.push(`Do not make the correct answer exactly the topic itself`);
+    if (excludedAnswers.length > 0) {
+        exclusionInstructions.push(`Aim for variety`);
+    }
+    const exclusionInstructionText = exclusionInstructions.length > 0 
+        ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
-    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
+    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionText}\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
