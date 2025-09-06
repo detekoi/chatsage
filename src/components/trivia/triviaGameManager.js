@@ -481,7 +481,14 @@ async function _startNextRound(gameState) {
                 finalExcludedAnswersArray // Pass excluded answers
             );
             // --- End modification ---
-            if (question && question.question && question.answer) {
+            if (
+                question &&
+                question.question &&
+                typeof question.question === 'string' &&
+                question.question.trim().length >= 10 &&
+                question.answer &&
+                String(question.answer).trim().length > 0
+            ) {
                 // Double-check if the generated question is somehow still excluded
                 if (combinedExcludedQuestions.has(question.question)) {
                      logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded question (attempt ${retries + 1}). Retrying.`);
@@ -512,13 +519,16 @@ async function _startNextRound(gameState) {
         return;
     }
     
-    // Add basic validation to ensure we have a complete question
-    if (!gameState.currentQuestion.question || 
-        gameState.currentQuestion.question.length < 10 || 
-        !gameState.currentQuestion.answer) {
-        
-        logger.error(`[TriviaGame][${gameState.channelName}] Generated question is invalid: ${JSON.stringify(gameState.currentQuestion)}`);
-        throw new Error("Generated question was incomplete or invalid. Please try again.");
+    // Final guard: if somehow invalid slipped through, end this round gracefully
+    if (!gameState.currentQuestion?.question ||
+        typeof gameState.currentQuestion.question !== 'string' ||
+        gameState.currentQuestion.question.trim().length < 10 ||
+        !gameState.currentQuestion?.answer ||
+        String(gameState.currentQuestion.answer).trim().length === 0) {
+        logger.error(`[TriviaGame][${gameState.channelName}] Generated question failed final validation: ${JSON.stringify(gameState.currentQuestion)}`);
+        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Generated question was invalid. Ending the game.`);
+        await _transitionToEnding(gameState, "question_error");
+        return;
     }
     
     // 2. Start Round
@@ -618,7 +628,8 @@ async function _handleAnswer(channelName, username, displayName, message) {
             gameState.currentQuestion.answer,
             answerToVerify, // Use the potentially translated answer
             gameState.currentQuestion.alternateAnswers || [],
-            gameState.currentQuestion.question
+            gameState.currentQuestion.question,
+            gameState.topic || 'general'
         );
 
         if (gameState.state !== 'inProgress') {
@@ -731,7 +742,14 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                     finalExcludedAnswersArray // Pass excluded answers
                 );
                  // --- End modification ---
-                if (question && question.question && question.answer) {
+                if (
+                    question &&
+                    question.question &&
+                    typeof question.question === 'string' &&
+                    question.question.trim().length >= 10 &&
+                    question.answer &&
+                    String(question.answer).trim().length > 0
+                ) {
                      // Double-check if the generated question is somehow still excluded
                     if (finalExcludedQuestionsArray.includes(question.question)) {
                          logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded question for Round 1 (attempt ${retries + 1}). Retrying.`);
@@ -758,13 +776,14 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             throw new Error(`Failed to generate a valid question after ${MAX_QUESTION_RETRIES} attempts.`);
         }
         
-        // Add basic validation to ensure we have a complete question
-        if (!gameState.currentQuestion.question || 
-            gameState.currentQuestion.question.length < 10 || 
-            !gameState.currentQuestion.answer) {
-            
-            logger.error(`[TriviaGame][${channelName}] Generated question is invalid: ${JSON.stringify(gameState.currentQuestion)}`);
-            throw new Error("Generated question was incomplete or invalid. Please try again.");
+        // Final guard: if somehow invalid slipped through, end gracefully
+        if (!gameState.currentQuestion?.question ||
+            typeof gameState.currentQuestion.question !== 'string' ||
+            gameState.currentQuestion.question.trim().length < 10 ||
+            !gameState.currentQuestion?.answer ||
+            String(gameState.currentQuestion.answer).trim().length === 0) {
+            logger.error(`[TriviaGame][${channelName}] Generated first question failed final validation: ${JSON.stringify(gameState.currentQuestion)}`);
+            throw new Error("Generated first question was invalid.");
         }
         
         // Starting the round
