@@ -7,7 +7,7 @@ import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
 import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
          formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, 
-         updatePlayerScore, getRecentQuestions, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId } from './triviaStorage.js';
+         updatePlayerScore, getRecentQuestions, getRecentAnswers, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId } from './triviaStorage.js';
 import crypto from 'crypto';
 
 // --- Default Configuration ---
@@ -33,6 +33,28 @@ const activeGames = new Map(); // channelName -> GameState
 
 const pendingTriviaReports = new Map();
 const PENDING_TRIVIA_REPORT_TIMEOUT_MS = 60000;
+
+// --- Question Deduplication Helpers ---
+function _tokenizeForSignature(text) {
+    if (!text || typeof text !== 'string') return [];
+    const lower = text.toLowerCase();
+    const cleaned = lower.replace(/[^a-z0-9\s]/g, ' ');
+    const rawTokens = cleaned.split(/\s+/).filter(Boolean);
+    const STOPWORDS = new Set([
+        'the','a','an','and','or','but','if','then','else','when','where','why','how','what','which','who','whom','whose','is','are','was','were','be','been','being','of','to','in','for','on','by','with','about','into','over','after','before','between','during','from','as','at','that','this','these','those','do','does','did','done','has','have','had','having','many','much','number','count'
+    ]);
+    const tokens = rawTokens
+        .map(t => t.trim())
+        .filter(t => t.length > 1 && !STOPWORDS.has(t));
+    // Simple stemming for plurals
+    return tokens.map(t => (t.endsWith('s') && !t.endsWith('ss') ? t.slice(0, -1) : t));
+}
+
+function _buildQuestionSignature(text) {
+    const tokens = _tokenizeForSignature(text);
+    const uniqueSorted = Array.from(new Set(tokens)).sort();
+    return uniqueSorted.join('|');
+}
 
 /*
 GameState structure:
@@ -116,7 +138,8 @@ async function _getOrCreateGameState(channelName) {
             gameSessionExcludedQuestions: new Set(),
             gameSessionExcludedAnswers: new Set(),
             streakMap: new Map(),
-            guessCache: new Map() // Cache for incorrect guesses this round
+            guessCache: new Map(), // Cache for incorrect guesses this round
+            questionSignatureSet: new Set() // Track normalized signatures to avoid paraphrased duplicates
         });
     } else {
         // Ensure new fields exist on potentially older state objects
@@ -132,6 +155,9 @@ async function _getOrCreateGameState(channelName) {
         }
         if (!state.guessCache) {
             state.guessCache = new Map();
+        }
+        if (!state.questionSignatureSet) {
+            state.questionSignatureSet = new Set();
         }
     }
     return activeGames.get(channelName);
@@ -458,9 +484,15 @@ async function _startNextRound(gameState) {
     let questionGenerated = false;
     let retries = 0;
     let recentChannelQuestions = [];
+    let recentChannelAnswers = [];
     // Fetch recent questions (globally for the channel, beyond the current session)
     try {
         recentChannelQuestions = await getRecentQuestions(gameState.channelName, gameState.topic, RECENT_QUESTION_FETCH_LIMIT); // Fetch last N questions
+        try {
+            recentChannelAnswers = await getRecentAnswers(gameState.channelName, gameState.topic, RECENT_QUESTION_FETCH_LIMIT);
+        } catch (error) {
+            logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel answers for exclusion.`);
+        }
         logger.debug(`[TriviaGame][${gameState.channelName}] Retrieved ${recentChannelQuestions.length} recent channel questions to potentially exclude.`);
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel questions for exclusion.`);
@@ -468,7 +500,7 @@ async function _startNextRound(gameState) {
     // Combine session exclusions with recent channel exclusions
     const combinedExcludedQuestions = new Set([...gameState.gameSessionExcludedQuestions, ...recentChannelQuestions]);
     const finalExcludedQuestionsArray = Array.from(combinedExcludedQuestions);
-    const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
+    const finalExcludedAnswersArray = Array.from(new Set([...gameState.gameSessionExcludedAnswers, ...recentChannelAnswers]));
     // Also avoid having the topic itself as the answer (tautology)
     if (gameState.topic && typeof gameState.topic === 'string') {
         const t = gameState.topic.trim();
@@ -498,7 +530,8 @@ async function _startNextRound(gameState) {
                 String(question.answer).trim().length > 0
             ) {
                 // Double-check if the generated question is somehow still excluded
-                if (combinedExcludedQuestions.has(question.question)) {
+                const qSig = _buildQuestionSignature(question.question);
+                if (combinedExcludedQuestions.has(question.question) || gameState.questionSignatureSet.has(qSig)) {
                      logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded question (attempt ${retries + 1}). Retrying.`);
                      retries++;
                      await new Promise(resolve => setTimeout(resolve, 500));
@@ -507,6 +540,7 @@ async function _startNextRound(gameState) {
                     // No need to add to exclusion set here, it's added in _transitionToEnding
                     questionGenerated = true;
                     logger.info(`[TriviaGame][${gameState.channelName}] Question generated for round ${gameState.currentRound}.`);
+                    gameState.questionSignatureSet.add(qSig);
                 }
             } else {
                 logger.warn(`[TriviaGame][${gameState.channelName}] Failed to generate valid question (attempt ${retries + 1}).`);
@@ -727,9 +761,15 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         let retries = 0;
         let questionGenerated = false;
         let recentChannelQuestions = [];
+        let recentChannelAnswers = [];
         // Fetch recent questions for the first round
         try {
             recentChannelQuestions = await getRecentQuestions(channelName, topic, RECENT_QUESTION_FETCH_LIMIT); // Fetch last N
+            try {
+                recentChannelAnswers = await getRecentAnswers(channelName, topic, RECENT_QUESTION_FETCH_LIMIT);
+            } catch (error) {
+                logger.error({ err: error }, `[TriviaGame][${channelName}] Error fetching recent answers for Round 1 exclusion.`);
+            }
             gameState.gameSessionExcludedQuestions = new Set(recentChannelQuestions); // Initialize session set
             logger.debug(`[TriviaGame][${channelName}] Retrieved ${recentChannelQuestions.length} recent questions to exclude for Round 1.`);
         } catch (error) {
@@ -738,7 +778,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.gameSessionExcludedQuestions = new Set();
         }
         const finalExcludedQuestionsArray = Array.from(gameState.gameSessionExcludedQuestions);
-        const finalExcludedAnswersArray = Array.from(gameState.gameSessionExcludedAnswers);
+        const finalExcludedAnswersArray = Array.from(new Set([...gameState.gameSessionExcludedAnswers, ...recentChannelAnswers]));
         // Also avoid having the topic itself as the answer (tautology)
         if (topic && typeof topic === 'string') {
             const t = topic.trim();
@@ -767,7 +807,8 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                     String(question.answer).trim().length > 0
                 ) {
                      // Double-check if the generated question is somehow still excluded
-                    if (finalExcludedQuestionsArray.includes(question.question)) {
+                    const qSig = _buildQuestionSignature(question.question);
+                    if (finalExcludedQuestionsArray.includes(question.question) || gameState.questionSignatureSet.has(qSig)) {
                          logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded question for Round 1 (attempt ${retries + 1}). Retrying.`);
                          retries++;
                          await new Promise(resolve => setTimeout(resolve, 500));
@@ -776,6 +817,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                         // Don't add to exclusion set here, done in _transitionToEnding
                         questionGenerated = true;
                         logger.info(`[TriviaGame][${channelName}] First question generated successfully.`);
+                        gameState.questionSignatureSet.add(qSig);
                     }
                 } else {
                     logger.warn(`[TriviaGame][${channelName}] Failed to generate valid first question (attempt ${retries + 1}).`);

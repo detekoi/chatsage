@@ -94,7 +94,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - SIMPLIFIED PROMPT
-    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionText}\nDifficulty: ${difficulty}.\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
+    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionText}\nDifficulty: ${difficulty}.\nBe precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
@@ -118,6 +118,27 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
             const actualDifficulty = args.difficulty || difficulty;
             const alternateAnswersList = args.alternate_answers || [];
             const category = args.category || "";
+
+            // Guard: prevent answer leakage in question text
+            const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+            const qNorm = normalize(questionText);
+            const leakMatches = [];
+            const checkLeak = (ans) => {
+                const a = normalize(ans);
+                if (!a || a.length < 3) return false;
+                const re = new RegExp(`(^| )${a}( |$)`);
+                return re.test(qNorm);
+            };
+            if (checkLeak(correctAnswerText)) leakMatches.push(correctAnswerText);
+            if (Array.isArray(alternateAnswersList)) {
+                for (const alt of alternateAnswersList) {
+                    if (checkLeak(alt)) { leakMatches.push(alt); break; }
+                }
+            }
+            if (leakMatches.length > 0) {
+                logger.warn(`[TriviaService-ExplicitSearch] Step 2: Question leaks answer in text (matches: ${leakMatches.join(', ')}). Rejecting.`);
+                return null;
+            }
 
             if (!questionText || !correctAnswerText) {
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: Func call 'generate_trivia_question' missing Q or A. Args: ${JSON.stringify(args)}`);
@@ -244,7 +265,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
-    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionText}\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
+    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionText}\nBe precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
@@ -285,6 +306,27 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         const alternateAnswersList = args.alternate_answers || [];
         const searchUsed = args.search_used || false;
         const category = args.category || "";
+
+        // Guard: prevent answer leakage in question text
+        const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const qNorm = normalize(questionText);
+        const leakMatches = [];
+        const checkLeak = (ans) => {
+            const a = normalize(ans);
+            if (!a || a.length < 3) return false;
+            const re = new RegExp(`(^| )${a}( |$)`);
+            return re.test(qNorm);
+        };
+        if (checkLeak(correctAnswerText)) leakMatches.push(correctAnswerText);
+        if (Array.isArray(alternateAnswersList)) {
+            for (const alt of alternateAnswersList) {
+                if (checkLeak(alt)) { leakMatches.push(alt); break; }
+            }
+        }
+        if (leakMatches.length > 0) {
+            logger.warn(`[TriviaService] Question leaks answer in text (matches: ${leakMatches.join(', ')}). Rejecting.`);
+            return null;
+        }
 
         if (!questionText || !correctAnswerText) {
             logger.warn(`[TriviaService] Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);

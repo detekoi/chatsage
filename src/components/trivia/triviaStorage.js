@@ -479,6 +479,65 @@ async function getRecentQuestions(channelName, topic = null, limit = 30) {
 }
 
 /**
+ * Gets recent answers used in a channel, optionally filtered by topic.
+ * Useful for excluding repeat answers within a window.
+ * @param {string} channelName - Channel name (without #).
+ * @param {string|null} topic - Topic filter (optional).
+ * @param {number} limit - Number of answers to inspect (history rows).
+ * @returns {Promise<string[]>} Array of recent answers (lowercased, unique).
+ */
+async function getRecentAnswers(channelName, topic = null, limit = 30) {
+    const db = _getDb();
+    const colRef = db.collection(HISTORY_COLLECTION);
+    const lowerChannelName = channelName.toLowerCase();
+    const recentAnswers = new Set();
+
+    try {
+        let query = colRef.where('channel', '==', lowerChannelName);
+
+        if (topic && topic !== 'general') {
+            query = query.where('topic', '==', topic);
+        }
+
+        let snapshot;
+        try {
+            snapshot = await query.orderBy('timestamp', 'desc').limit(limit).get();
+        } catch (indexError) {
+            if (indexError.code === 5 && indexError.message.includes('index')) {
+                logger.warn({ channel: lowerChannelName, topic, indexError: indexError.message }, `[TriviaStorage] Firestore index likely missing for getRecentAnswers query. Performance may be impacted.`);
+                if (topic && topic !== 'general') {
+                    logger.warn(`[TriviaStorage] Retrying getRecentAnswers without topic filter for ${lowerChannelName}.`);
+                    query = colRef.where('channel', '==', lowerChannelName).orderBy('timestamp', 'desc').limit(limit * 2);
+                    snapshot = await query.get();
+                } else {
+                    throw indexError;
+                }
+            } else {
+                throw indexError;
+            }
+        }
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const ans = typeof data.answer === 'string' ? data.answer.trim() : '';
+            if (ans) {
+                if (topic && topic !== 'general' && data.topic !== topic) {
+                    // skip non-matching topic if we fell back
+                } else {
+                    recentAnswers.add(ans.toLowerCase());
+                }
+            }
+        });
+
+        logger.debug(`[TriviaStorage] Found ${recentAnswers.size} unique recent answers for channel ${lowerChannelName}${topic ? ` and topic ${topic}` : ''} within last ${limit} results.`);
+        return Array.from(recentAnswers);
+    } catch (error) {
+        logger.error({ err: error, channel: lowerChannelName, topic }, `[TriviaStorage] Error getting recent answers`);
+        throw new StorageError(`Failed to get recent answers for ${lowerChannelName}`, error);
+    }
+}
+
+/**
  * Clears leaderboard data for a channel.
  * @param {string} channelName - Channel name.
  * @returns {Promise<{success: boolean, message: string, clearedCount: number}>} Result.
@@ -674,6 +733,7 @@ export {
     getPlayerStats,
     getLeaderboard,
     getRecentQuestions,
+    getRecentAnswers,
     clearChannelLeaderboardData,
     getLatestCompletedSessionInfo,
     flagTriviaQuestionByDocId
