@@ -38,9 +38,13 @@ const triviaQuestionTool = {
                 search_used: {
                     type: "BOOLEAN",
                     description: "Whether external search was required to ensure accuracy."
+                },
+                category: {
+                    type: "STRING",
+                    description: "A specific category for the answer (e.g., Person, Location, Event, Work Title, Scientific Term). Keep generic and domain-agnostic."
                 }
             },
-            required: ["question", "correct_answer", "explanation", "difficulty", "search_used"]
+            required: ["question", "correct_answer", "explanation", "difficulty", "search_used", "category"]
         }
     }]
 };
@@ -58,7 +62,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         : '';
 
     // STEP 1: Search for facts about the topic - SIMPLIFIED PROMPT
-    const searchFactsPrompt = `Find interesting facts about "${topic}" for a ${difficulty} trivia question. Focus on characters, plot points, lore, and unique details.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn facts as text. Do not call functions.`;
+    const searchFactsPrompt = `Find reliable, neutral facts about "${topic}" suitable for a ${difficulty} trivia question. Focus on clear, verifiable details and relationships between entities (avoid conflating entity types, like a person vs. a role, a work vs. its creator).${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nReturn facts as text. Do not call functions.`;
     let factualInfoText = "";
 
     try {
@@ -82,7 +86,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - SIMPLIFIED PROMPT
-    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nDifficulty: ${difficulty}.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'.`;
+    const generateQuestionPrompt = `Using these facts about "${topic}":\n\nFACTS:\n${factualInfoText}\n\nGenerate an engaging trivia question.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nDifficulty: ${difficulty}.\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: true'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
 
     try {
         logger.debug(`[TriviaService-ExplicitSearch] Step 2: Generating structured question for "${topic}" with updated concise answer/alternate guidance.`);
@@ -105,6 +109,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
             const explanationText = args.explanation || "No explanation provided.";
             const actualDifficulty = args.difficulty || difficulty;
             const alternateAnswersList = args.alternate_answers || [];
+            const category = args.category || "";
 
             if (!questionText || !correctAnswerText) {
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: Func call 'generate_trivia_question' missing Q or A. Args: ${JSON.stringify(args)}`);
@@ -123,7 +128,8 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
                 difficulty: actualDifficulty,
                 searchUsed: true, 
                 verified: true,   // Mark as verified since it is search-based
-                topic: topic
+                topic: topic,
+                category
             };
 
             if (excludedQuestions.includes(questionObject.question)) {
@@ -222,7 +228,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: Also, AVOID generating a question if its most likely concise answer is one of these recently used answers: ${excludedAnswers.map(a => `"${a}"`).join(', ')}. Aim for variety.`
         : '';
 
-    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'.`;
+    const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionQuestions}${exclusionInstructionAnswers}\nBe precise about entity types and relationships.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
     
     try {
         logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
@@ -262,6 +268,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         const actualDifficulty = args.difficulty || difficulty;
         const alternateAnswersList = args.alternate_answers || [];
         const searchUsed = args.search_used || false;
+        const category = args.category || "";
 
         if (!questionText || !correctAnswerText) {
             logger.warn(`[TriviaService] Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);
@@ -281,7 +288,8 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             difficulty: actualDifficulty,
             searchUsed: searchUsed, 
             verified: true,   // Mark as verified since using function calling
-            topic: 'general'
+            topic: 'general',
+            category
         };
 
         if (excludedQuestions.includes(questionObject.question)) {
@@ -307,7 +315,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
  * @param {string} question
  * @returns {Promise<object>}
  */
-export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers = [], question = "") {
+export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers = [], question = "", topic = "") {
     // Structured-output verification via @google/genai (schema-first)
     if (!globalThis.__genaiClient) {
         const apiKey = process.env.GEMINI_API_KEY;
@@ -383,7 +391,8 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
             return null;
         };
 
-        const prompt = `Question: "${question}"
+        const prompt = `Topic: ${topic || 'general'}
+Question: "${question}"
 Correct Answer: "${correctAnswer}"
 Alternate Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Answer: "${userAnswer}"
@@ -392,7 +401,8 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
 
         const genWithSchema = async (maxTokens = 512, minimalPrompt = false) => {
             const textForModel = minimalPrompt
-                ? `Question: "${question}"
+                ? `Topic: ${topic || 'general'}
+Question: "${question}"
 Correct Answer: "${correctAnswer}"
 Alternate Answers: ${Array.isArray(alternateAnswers) && alternateAnswers.length > 0 ? alternateAnswers.map(a => `"${a}"`).join(', ') : 'None'}
 Player's Answer: "${userAnswer}"
