@@ -10,7 +10,7 @@ let intervalId = null;
 const TICK_MS = 60 * 1000; // 1 minute cadence
 
 // Internal per-channel runtime state (not persisted)
-const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion }
+const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion, lastAutoKind }
 
 function now() { return Date.now(); }
 
@@ -33,6 +33,28 @@ function hashString(s) {
     return h;
 }
 
+function choose(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function recordAutoText(state, text) {
+    if (!state) return;
+    if (typeof text === 'string' && /\?\s*$/.test(text)) {
+        state.lastQuestion = text;
+        state.lastAutoKind = 'question';
+    } else {
+        state.lastAutoKind = 'statement';
+    }
+}
+
+function randomChance(probability) {
+    return Math.random() < probability;
+}
+
+function endsWithQuestion(text) {
+    return typeof text === 'string' && /\?\s*$/.test(text);
+}
+
 async function maybeSendGreeting(channelName) {
     // Greet once per stream start
     const cfg = await getChannelAutoChatConfig(channelName);
@@ -46,6 +68,7 @@ async function maybeSendGreeting(channelName) {
     const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
+        recordAutoText(state, text);
         state.greetedOnStart = true;
         state.lastAutoAtMs = now();
     }
@@ -60,13 +83,27 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
 
     const context = getContextManager().getContextForLLM(channelName, 'system', 'game-change');
     const contextPrompt = buildContextPrompt(context);
-    const prompt = `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. Provide one surprising fact or a super useful beginner tip about ${newGame}. ≤30 words.`;
-    // Prefer grounded facts; require grounding to avoid hallucinated facts
-    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true })
-        || await generateSearchResponse(contextPrompt, prompt)
-        || await generateStandardResponse(contextPrompt, prompt);
+    const styles = ['playful tease', 'nostalgia nod', 'challenge question', 'inside-gamer banter', 'hype line'];
+    const style = choose(styles);
+    const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.6);
+    let prompt = requireQuestion
+        ? `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${style} tone, ask ONE short, fun question to chat about ${newGame}. ≤30 words. Must end with a question mark. Avoid trivia, "did you know", or "fun fact".`
+        : `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${style} tone, make ONE playful, light remark (not a fact dump) about ${newGame}. ≤30 words. Avoid "did you know"/"fun fact" and lecturing.`;
+    // Prefer creative riff first; fall back to grounded if needed
+    let text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    // Constraint guard: if failed question constraint, try alternate once
+    if (text && (requireQuestion && !endsWithQuestion(text))) {
+        const altStyle = choose(styles.filter(s => s !== style));
+        prompt = requireQuestion
+            ? `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${altStyle} tone, ask ONE playful question to chat about ${newGame}. ≤28 words. Must end with a question mark. No trivia language.`
+            : `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${altStyle} tone, add ONE witty, conversational riff (no facts lecture) about ${newGame}. ≤28 words. No "did you know".`;
+        text = await generateStandardResponse(contextPrompt, prompt)
+            || await generateSearchResponse(contextPrompt, prompt);
+    }
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
+        recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
 }
@@ -86,10 +123,20 @@ async function maybeHandleLull(channelName) {
     if (!context) return;
     const contextPrompt = buildContextPrompt(context);
     const topic = context.chatSummary || context.streamGame || 'the stream';
-    const prompt = `Chat has been quiet. Based on the current topic "${topic}", ask ONE engaging, open-ended question to re-spark conversation. ≤20 words. Do not ask the same question as "${state.lastQuestion}"`;
-    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true });
+    const styles = ['goofy', 'curious', 'nostalgic', 'contrarian-but-kind', 'light challenge'];
+    const style = choose(styles);
+    let prompt = `Chat has been quiet. In a ${style} tone and based on "${topic}", ask ONE fun, open-ended question to re-spark conversation. ≤20 words. Must end with a question mark. Avoid repeating: "${state.lastQuestion}" and avoid "did you know".`;
+    let text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text && (!endsWithQuestion(text))) {
+        const altStyle = choose(styles.filter(s => s !== style));
+        prompt = `Chat is quiet. In a ${altStyle} tone on "${topic}", ask ONE playful, open question (≤18 words). Must end with a question mark. No trivia phrasing.`;
+        text = await generateStandardResponse(contextPrompt, prompt)
+            || await generateSearchResponse(contextPrompt, prompt);
+    }
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
+        recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
 }
@@ -109,13 +156,25 @@ async function maybeHandleTopicShift(channelName) {
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     const contextPrompt = buildContextPrompt(context);
-    const prompt = `The conversation topic changed. Provide ONE concise, interesting fact or helpful insight related to the new topic. ≤28 words. Do not repeat the fact: "${state.lastQuestion}"`;
-    // Prefer grounded facts on topic shifts; require grounding first, then relax, then fallback
-    const text = await generateSearchResponse(contextPrompt, prompt, { requireGrounding: true })
-        || await generateSearchResponse(contextPrompt, prompt)
-        || await generateStandardResponse(contextPrompt, prompt);
+    const styles = ['witty aside', 'playful question', 'observational humor', 'curious follow-up'];
+    const style = choose(styles);
+    const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.55);
+    let prompt = requireQuestion
+        ? `Topic shifted. In a ${style} tone, ask ONE short, fun, open-ended question tied to the new topic. ≤28 words. Must end with a question mark. Avoid "did you know"/"fun fact". Don’t repeat: "${state.lastQuestion}"`
+        : `Topic shifted. In a ${style} tone, make ONE witty, conversational riff (not a trivia dump) tied to the new topic. ≤28 words. Avoid "did you know"/lecturing. Don’t repeat: "${state.lastQuestion}"`;
+    let text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text && (requireQuestion && !endsWithQuestion(text))) {
+        const altStyle = choose(styles.filter(s => s !== style));
+        prompt = requireQuestion
+            ? `New topic. In a ${altStyle} tone, ask ONE playful, open question. ≤26 words. Must end with a question mark. No trivia phrasing. Don’t repeat: "${state.lastQuestion}"`
+            : `New topic. In a ${altStyle} tone, add ONE light, witty remark (no facts lecture). ≤26 words. No "did you know". Don’t repeat: "${state.lastQuestion}"`;
+        text = await generateStandardResponse(contextPrompt, prompt)
+            || await generateSearchResponse(contextPrompt, prompt);
+    }
     if (text) {
         await enqueueMessage(`#${channelName}`, text);
+        recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
     state.lastSummaryHash = currentHash;
