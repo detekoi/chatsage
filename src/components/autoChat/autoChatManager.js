@@ -317,3 +317,28 @@ export function stopAutoChatManager() {
         logger.info('[AutoChatManager] Stopped');
     }
 }
+
+// --- Ad Break notifier ---
+export async function notifyAdBreak(channelName, adEvent) {
+    try {
+        const cfg = await getChannelAutoChatConfig(channelName);
+        if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) return;
+
+        const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-break');
+        if (!context) return;
+        const contextPrompt = buildContextPrompt(context);
+        const adLength = adEvent?.duration_seconds || adEvent?.duration || 60;
+        const gameName = context.streamGame || 'the stream';
+
+        const prompt = `An ad break of ${adLength} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
+        const text = await generateStandardResponse(contextPrompt, prompt)
+            || await generateSearchResponse(contextPrompt, prompt);
+        if (!text) return;
+
+        await enqueueMessage(`#${channelName}`, text);
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    } catch (error) {
+        logger.error({ err: error, channelName }, '[AutoChatManager] Error during ad break notification');
+    }
+}

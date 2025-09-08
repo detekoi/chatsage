@@ -147,6 +147,25 @@ export async function subscribeChannelRaid(broadcasterUserId) {
     return await makeHelixRequest('post', '/eventsub/subscriptions', body);
 }
 
+export async function subscribeChannelAdBreakBegin(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+    const body = {
+        type: 'channel.ad_break.begin',
+        version: '1',
+        condition: { broadcaster_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
+    if (result.success) {
+        logger.info({ broadcasterUserId }, 'Successfully subscribed to channel.ad_break.begin');
+    }
+    return result;
+}
+
 export async function subscribeAllManagedChannels() {
     try {
         const { getActiveManagedChannels } = await import('./channelManager.js');
@@ -171,6 +190,8 @@ export async function subscribeAllManagedChannels() {
 
                 const onlineSubResult = await subscribeStreamOnline(userResponse.id);
                 const offlineSubResult = await subscribeStreamOffline(userResponse.id);
+                // Ad break notifications are optional per-broadcaster, so attempt subscription but ignore errors
+                try { await subscribeChannelAdBreakBegin(userResponse.id); } catch (_) {}
 
                 if (onlineSubResult.success && offlineSubResult.success) {
                     results.successful.push({ channel: channelName, userId: userResponse.id });
@@ -187,5 +208,29 @@ export async function subscribeAllManagedChannels() {
     } catch (error) {
         logger.error({ err: error }, 'Error in subscribeAllManagedChannels');
         return { successful: [], failed: [], total: 0, error: error.message };
+    }
+}
+
+export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId, enabled) {
+    try {
+        const subsRes = await getEventSubSubscriptions();
+        const subs = subsRes?.data?.data || [];
+        const existing = subs.filter(s => s.type === 'channel.ad_break.begin' && (s.condition?.broadcaster_id === String(broadcasterUserId) || s.condition?.broadcaster_user_id === String(broadcasterUserId)));
+
+        if (enabled) {
+            if (existing.length > 0) {
+                logger.info({ broadcasterUserId }, 'Ad break subscription already exists');
+                return { success: true, already: true };
+            }
+            return await subscribeChannelAdBreakBegin(broadcasterUserId);
+        } else {
+            for (const sub of existing) {
+                try { await deleteEventSubSubscription(sub.id); } catch (_) {}
+            }
+            return { success: true, deleted: existing.length };
+        }
+    } catch (e) {
+        logger.error({ err: e, broadcasterUserId, enabled }, 'ensureAdBreakSubscriptionForBroadcaster failed');
+        return { success: false, error: e.message };
     }
 }

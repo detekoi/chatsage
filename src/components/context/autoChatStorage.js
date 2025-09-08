@@ -34,6 +34,7 @@ export const DEFAULT_AUTO_CHAT_CONFIG = Object.freeze({
         facts: true,
         questions: true,
         celebrations: true,
+        ads: false,
     },
 });
 
@@ -97,8 +98,24 @@ export function normalizeConfig(input) {
         facts: cfg.categories?.facts !== false,
         questions: cfg.categories?.questions !== false,
         celebrations: cfg.categories?.celebrations !== false,
+        ads: cfg.categories?.ads === true, // opt-in only
     };
     return { mode, categories };
+}
+
+// Listener for real-time config changes (used to react to ads toggle)
+export function onAutoChatConfigChanges(callback) {
+    const db = _getDb();
+    const col = db.collection(AUTO_CHAT_COLLECTION);
+    return col.onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            const raw = change.doc.data() || {};
+            const cfg = normalizeConfig(raw);
+            const channelName = (raw.channelName || change.doc.id || '').toLowerCase();
+            if (!channelName) return;
+            try { callback({ type: change.type, channelName, config: cfg }); } catch (_) {}
+        });
+    });
 }
 
 
