@@ -190,6 +190,72 @@ export function notifyStreamOnline(channelName) {
     state.greetedOnStart = false;
 }
 
+// --- Celebration Handlers (follows, subscriptions, raids) ---
+async function maybeSendFollowCelebration(channelName) {
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    const context = getContextManager().getContextForLLM(channelName, 'system', 'event-follow');
+    const contextPrompt = buildContextPrompt(context);
+    const prompt = `A new follower joined the channel. Write ONE warm, concise celebration message using current stream/game and chat vibe. Do NOT reveal or guess the username. ≤22 words.`;
+    const text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text) {
+        await enqueueMessage(`#${channelName}`, text);
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    }
+}
+
+async function maybeSendSubscriptionCelebration(channelName) {
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
+    const contextPrompt = buildContextPrompt(context);
+    const prompt = `A new subscription just happened. Write ONE short, hype thank-you that references current stream context. Do NOT reveal or guess the subscriber's username. ≤22 words.`;
+    const text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text) {
+        await enqueueMessage(`#${channelName}`, text);
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    }
+}
+
+async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount) {
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    const context = getContextManager().getContextForLLM(channelName, 'system', 'event-raid');
+    const contextPrompt = buildContextPrompt(context);
+    const viewersPhrase = typeof viewerCount === 'number' && viewerCount > 0 ? `${viewerCount} viewers` : 'raiders';
+    const safeRaider = raiderUserName || 'the raiding streamer';
+    const prompt = `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic and invites raiders to hang out. ≤24 words.`;
+    const text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text) {
+        await enqueueMessage(`#${channelName}`, text);
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    }
+}
+
+export async function notifyFollow(channelName) {
+    try {
+        await maybeSendFollowCelebration(channelName);
+    } catch (_) {}
+}
+
+export async function notifySubscription(channelName) {
+    try {
+        await maybeSendSubscriptionCelebration(channelName);
+    } catch (_) {}
+}
+
+export async function notifyRaid(channelName, raiderUserName, viewerCount) {
+    try {
+        await maybeSendRaidCelebration(channelName, raiderUserName, viewerCount);
+    } catch (_) {}
+}
+
 export async function startAutoChatManager() {
     if (intervalId) {
         logger.warn('[AutoChatManager] Already running');

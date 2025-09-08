@@ -100,6 +100,53 @@ export async function deleteAllEventSubSubscriptions() {
     logger.info(`Deleted ${subscriptions.length} subscriptions.`);
 }
 
+// Optional helpers to subscribe to celebration-related events
+export async function subscribeChannelFollow(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+    const body = {
+        type: 'channel.follow',
+        version: '2',
+        condition: { broadcaster_user_id: broadcasterUserId, moderator_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    // Version 2 requires moderator_user_id for the broadcaster or a moderator of the channel
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
+export async function subscribeChannelSubscribe(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+    const body = {
+        type: 'channel.subscribe',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
+export async function subscribeChannelRaid(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+    const body = {
+        type: 'channel.raid',
+        version: '1',
+        condition: { to_broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
 export async function subscribeAllManagedChannels() {
     try {
         const { getActiveManagedChannels } = await import('./channelManager.js');

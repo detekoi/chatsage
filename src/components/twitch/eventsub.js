@@ -7,7 +7,7 @@ import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js'
 import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
-import { notifyStreamOnline } from '../autoChat/autoChatManager.js';
+import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid } from '../autoChat/autoChatManager.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -15,6 +15,38 @@ let keepAliveTaskName = null;
 let consecutiveFailedChecks = 0;
 const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling down
 const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+// Idempotency and replay protection (in-memory window)
+const processedEventIds = new Map(); // messageId -> timestamp(ms)
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+
+function pruneOldProcessedIds(nowTs) {
+    for (const [id, ts] of processedEventIds) {
+        if (nowTs - ts > TEN_MINUTES_MS) {
+            processedEventIds.delete(id);
+        }
+    }
+}
+
+function shouldProcessEvent(req) {
+    const messageId = req.headers['twitch-eventsub-message-id'];
+    const timestampHeader = req.headers['twitch-eventsub-message-timestamp'];
+    if (!messageId || !timestampHeader) return false;
+    const nowTs = Date.now();
+    const msgTs = Date.parse(timestampHeader);
+    if (Number.isFinite(msgTs) && (nowTs - msgTs) > TEN_MINUTES_MS) {
+        logger.warn({ messageId, timestampHeader }, 'Dropping EventSub message older than 10 minutes (replay guard)');
+        return false;
+    }
+    if (processedEventIds.has(messageId)) {
+        logger.warn({ messageId }, 'Dropping duplicate EventSub message (already processed)');
+        return false;
+    }
+    // Record and prune
+    processedEventIds.set(messageId, nowTs);
+    if (processedEventIds.size > 1000) pruneOldProcessedIds(nowTs);
+    return true;
+}
 
 /**
  * Cleans up any existing keep-alive tasks on startup to prevent orphaned tasks
@@ -254,6 +286,7 @@ export async function eventSubHandler(req, res, rawBody) {
 
     const notification = JSON.parse(rawBody);
     const messageType = req.headers['twitch-eventsub-message-type'];
+    const subscriptionType = req.headers['twitch-eventsub-subscription-type'];
 
     if (messageType !== 'webhook_callback_verification') res.writeHead(200).end();
 
@@ -266,6 +299,9 @@ export async function eventSubHandler(req, res, rawBody) {
     }
 
     if (messageType === 'notification') {
+        if (!shouldProcessEvent(req)) {
+            return; // Already responded 200 above; just ignore processing
+        }
         const { subscription, event } = notification;
 
         if (subscription.type === 'stream.online') {
@@ -356,6 +392,54 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
             } catch (error) {
                 logger.error({ err: error, channel: broadcaster_user_name }, 'Error trying to part channel via EventSub offline notification.');
+            }
+        }
+
+        // --- Celebrations: follows (no username), subscriptions (no username), raids (raider username allowed) ---
+        if (subscription.type === 'channel.follow') {
+            try {
+                const channelName = event?.broadcaster_user_name || event?.to_broadcaster_user_name || null;
+                if (!channelName) {
+                    logger.warn({ event }, '[EventSub] channel.follow missing broadcaster name');
+                    return;
+                }
+                const allowed = await isChannelAllowed(channelName);
+                if (!allowed) return;
+                await notifyFollow(channelName.toLowerCase());
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.follow');
+            }
+        }
+
+        if (subscription.type === 'channel.subscribe') {
+            try {
+                const channelName = event?.broadcaster_user_name || null;
+                if (!channelName) {
+                    logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster name');
+                    return;
+                }
+                const allowed = await isChannelAllowed(channelName);
+                if (!allowed) return;
+                await notifySubscription(channelName.toLowerCase());
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.subscribe');
+            }
+        }
+
+        if (subscription.type === 'channel.raid') {
+            try {
+                const toName = event?.to_broadcaster_user_name || null;
+                const fromName = event?.from_broadcaster_user_name || 'a streamer';
+                const viewers = event?.viewers || 0;
+                if (!toName) {
+                    logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_name');
+                    return;
+                }
+                const allowed = await isChannelAllowed(toName);
+                if (!allowed) return;
+                await notifyRaid(toName.toLowerCase(), fromName, viewers);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.raid');
             }
         }
     }
