@@ -20,7 +20,9 @@ import { initializeTriviaGameManager, getTriviaGameManager } from './components/
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges, isChannelAllowed } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
-import { initializeAutoChatStorage } from './components/context/autoChatStorage.js';
+import { initializeAutoChatStorage, onAutoChatConfigChanges } from './components/context/autoChatStorage.js';
+import { getUsersByLogin } from './components/twitch/helixClient.js';
+import { ensureAdBreakSubscriptionForBroadcaster } from './components/twitch/twitchSubs.js';
 import { startAutoChatManager, notifyUserMessage } from './components/autoChat/autoChatManager.js';
 import { initializeCommandStateManager, shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
@@ -661,6 +663,22 @@ async function main() {
         logger.info('ChatSage components initialized and event listeners attached.');
         // Log the *actual* channels joined
         logger.info(`Ready and listening to channels: ${ircClient.getChannels().join(', ')}`);
+
+        // React to auto-chat config changes so ads toggle takes effect promptly
+        try {
+            onAutoChatConfigChanges(async ({ channelName, config }) => {
+                try {
+                    const users = await getUsersByLogin([channelName]);
+                    const id = users?.[0]?.id;
+                    if (!id) return;
+                    await ensureAdBreakSubscriptionForBroadcaster(id, !!config.categories?.ads);
+                } catch (e) {
+                    logger.warn({ err: e, channelName }, 'Failed to reconcile ad-break subscription on config change');
+                }
+            });
+        } catch (e) {
+            logger.warn({ err: e }, 'Failed to attach auto-chat config change listener');
+        }
 
     } catch (error) {
         logger.fatal({ err: error }, 'Fatal error during ChatSage initialization.');

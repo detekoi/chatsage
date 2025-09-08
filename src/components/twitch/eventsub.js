@@ -7,7 +7,7 @@ import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js'
 import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
-import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid } from '../autoChat/autoChatManager.js';
+import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -440,6 +440,21 @@ export async function eventSubHandler(req, res, rawBody) {
                 await notifyRaid(toName.toLowerCase(), fromName, viewers);
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.raid');
+            }
+        }
+
+        if (subscription.type === 'channel.ad_break.begin') {
+            try {
+                const channelName = event?.broadcaster_user_name || event?.broadcaster_user_login || null;
+                if (!channelName) {
+                    logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster name');
+                    return;
+                }
+                const allowed = await isChannelAllowed(channelName);
+                if (!allowed) return;
+                await notifyAdBreak(channelName.toLowerCase(), event);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
             }
         }
     }

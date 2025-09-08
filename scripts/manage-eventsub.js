@@ -4,6 +4,9 @@
 // Utility script to manage Twitch EventSub subscriptions
 
 import { subscribeAllManagedChannels, getEventSubSubscriptions, deleteEventSubSubscription } from '../src/components/twitch/twitchSubs.js';
+import { initializeAutoChatStorage, getChannelAutoChatConfig } from '../src/components/context/autoChatStorage.js';
+import { getUsersByLogin } from '../src/components/twitch/helixClient.js';
+import { subscribeChannelAdBreakBegin } from '../src/components/twitch/twitchSubs.js';
 import { initializeSecretManager } from '../src/lib/secretManager.js';
 import { initializeChannelManager } from '../src/components/twitch/channelManager.js';
 import { initializeHelixClient } from '../src/components/twitch/helixClient.js';
@@ -55,6 +58,33 @@ async function subscribeAll() {
             console.log(`- ${fail.channel}: ${fail.error}`);
         });
     }
+}
+
+async function subscribeAdsForEnabledChannels() {
+    logger.info('Subscribing all managed channels with ads enabled to channel.ad_break.begin...');
+    const { getActiveManagedChannels } = await import('../src/components/twitch/channelManager.js');
+    const activeChannels = await getActiveManagedChannels();
+    let success = 0;
+    let failed = 0;
+    for (const channelName of activeChannels) {
+        try {
+            const cfg = await getChannelAutoChatConfig(channelName);
+            if (!cfg?.categories?.ads) continue;
+            const userResponseArray = await getUsersByLogin([channelName]);
+            const userId = userResponseArray?.[0]?.id;
+            if (!userId) {
+                logger.warn({ channelName }, 'Cannot subscribe ads: missing user id');
+                failed++;
+                continue;
+            }
+            const r = await subscribeChannelAdBreakBegin(userId);
+            if (r?.success) success++; else failed++;
+        } catch (e) {
+            logger.error({ err: e, channelName }, 'Error subscribing ad break');
+            failed++;
+        }
+    }
+    console.log(`Ad break subscriptions result: success=${success}, failed=${failed}`);
 }
 
 async function deleteSubscription(subscriptionId) {
@@ -130,6 +160,10 @@ Examples:
                 break;
             case 'subscribe-all':
                 await subscribeAll();
+                break;
+            case 'subscribe-ads':
+                await initializeAutoChatStorage();
+                await subscribeAdsForEnabledChannels();
                 break;
             case 'delete':
                 if (!arg) {
