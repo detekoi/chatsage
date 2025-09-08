@@ -33,6 +33,7 @@ export const DEFAULT_AUTO_CHAT_CONFIG = Object.freeze({
         greetings: true,
         facts: true,
         questions: true,
+        celebrations: true,
     },
 });
 
@@ -95,6 +96,7 @@ export function normalizeConfig(input) {
         greetings: cfg.categories?.greetings !== false,
         facts: cfg.categories?.facts !== false,
         questions: cfg.categories?.questions !== false,
+        celebrations: cfg.categories?.celebrations !== false,
     };
     return { mode, categories };
 }
