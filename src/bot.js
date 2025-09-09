@@ -20,13 +20,12 @@ import { initializeTriviaGameManager, getTriviaGameManager } from './components/
 import { initializeStorage as initializeTriviaStorage } from './components/trivia/triviaStorage.js';
 import { initializeChannelManager, getActiveManagedChannels, syncManagedChannelsWithIrc, listenForChannelChanges, isChannelAllowed } from './components/twitch/channelManager.js';
 import { initializeLanguageStorage } from './components/context/languageStorage.js';
-import { initializeAutoChatStorage, onAutoChatConfigChanges } from './components/context/autoChatStorage.js';
-import { getUsersByLogin } from './components/twitch/helixClient.js';
-import { ensureAdBreakSubscriptionForBroadcaster } from './components/twitch/twitchSubs.js';
+import { initializeAutoChatStorage } from './components/context/autoChatStorage.js';
 import { startAutoChatManager, notifyUserMessage } from './components/autoChat/autoChatManager.js';
 import { initializeCommandStateManager, shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { initializeRiddleStorage } from './components/riddle/riddleStorage.js';
 import { initializeRiddleGameManager, getRiddleGameManager } from './components/riddle/riddleGameManager.js';
+import { startAdSchedulePoller, stopAdSchedulePoller } from './components/twitch/adSchedulePoller.js';
 
 let streamInfoIntervalId = null;
 let ircClient = null;
@@ -327,6 +326,12 @@ async function main() {
             } catch (err) {
                 logger.error({ err }, 'Failed to start Auto-Chat Manager');
             }
+            try {
+                await startAdSchedulePoller();
+                logger.info('Ad Schedule Poller started.');
+            } catch (err) {
+                logger.error({ err }, 'Failed to start Ad Schedule Poller');
+            }
             
             // After starting stream polling, check for streams that are already live
             // Wait a bit to give the first poll cycle a chance to run
@@ -342,6 +347,7 @@ async function main() {
         ircClient.on('disconnected', (reason) => {
             logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
             stopStreamInfoPolling(streamInfoIntervalId);
+            try { stopAdSchedulePoller(); } catch (_) {}
             
             // Clean up Firestore listener ONLY if it was started
             if (config.app.nodeEnv !== 'development' && channelChangeListener) {
@@ -664,21 +670,7 @@ async function main() {
         // Log the *actual* channels joined
         logger.info(`Ready and listening to channels: ${ircClient.getChannels().join(', ')}`);
 
-        // React to auto-chat config changes so ads toggle takes effect promptly
-        try {
-            onAutoChatConfigChanges(async ({ channelName, config }) => {
-                try {
-                    const users = await getUsersByLogin([channelName]);
-                    const id = users?.[0]?.id;
-                    if (!id) return;
-                    await ensureAdBreakSubscriptionForBroadcaster(id, !!config.categories?.ads);
-                } catch (e) {
-                    logger.warn({ err: e, channelName }, 'Failed to reconcile ad-break subscription on config change');
-                }
-            });
-        } catch (e) {
-            logger.warn({ err: e }, 'Failed to attach auto-chat config change listener');
-        }
+        // Ad-break subscription reconciliation is handled by the web UI after setting changes.
 
     } catch (error) {
         logger.fatal({ err: error }, 'Fatal error during ChatSage initialization.');

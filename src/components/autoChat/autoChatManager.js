@@ -364,3 +364,24 @@ export async function notifyAdBreak(channelName, adEvent) {
         logger.error({ err: error, channelName }, '[AutoChatManager] Error during ad break notification');
     }
 }
+
+export async function notifyAdSoon(channelName, secondsUntil) {
+    try {
+        const cfg = await getChannelAutoChatConfig(channelName);
+        if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) return;
+        const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-soon');
+        if (!context) return;
+        const contextPrompt = buildContextPrompt(context);
+        const gameName = context.streamGame || 'the stream';
+        const secs = Math.max(5, Math.round(secondsUntil || 60));
+        const prompt = `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`;
+        const text = await generateStandardResponse(contextPrompt, prompt)
+            || await generateSearchResponse(contextPrompt, prompt);
+        if (!text) return;
+        await enqueueMessage(`#${channelName}`, text);
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    } catch (error) {
+        logger.error({ err: error, channelName }, '[AutoChatManager] Error during ad soon notification');
+    }
+}
