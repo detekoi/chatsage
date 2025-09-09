@@ -83,12 +83,18 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
 
     const context = getContextManager().getContextForLLM(channelName, 'system', 'game-change');
     const contextPrompt = buildContextPrompt(context);
-    const styles = ['playful tease', 'nostalgia nod', 'challenge question', 'inside-gamer banter', 'hype line'];
+    const styles = [
+        'make a sharp comparison between the two games (mechanics, pacing, vibe)',
+        'offer a bold, friendly prediction about the first session in the new game',
+        'share a concise, surprising fact about the new game (no trivia tone)',
+        'ask an open-ended question that invites a story or opinion'
+    ];
     const style = choose(styles);
+    const baseConstraints = `One sentence. ≤28 words. Relaxed, confident, witty. No trivia phrasing ("did you know"/"fun fact"). No emojis. Don’t repeat: "${state.lastQuestion}" or cliches like "OMG, PS2 nostalgia!". Do not attribute quotes to specific users.`;
     const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.6);
     let prompt = requireQuestion
-        ? `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${style} tone, ask ONE short, fun question to chat about ${newGame}. ≤30 words. Must end with a question mark. Avoid trivia, "did you know", or "fun fact".`
-        : `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${style} tone, make ONE playful, light remark (not a fact dump) about ${newGame}. ≤30 words. Avoid "did you know"/"fun fact" and lecturing.`;
+        ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Ask ONE open-ended question that makes a specific connection or invites a story about "${newGame}". Must end with a question mark. Avoid generic questions.`
+        : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} ${style}. Make it specific to "${newGame}" and, if relevant, connect it to "${prevGame}". Avoid generic hype or fact-dumps.`;
     // Prefer creative riff first; fall back to grounded if needed
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
@@ -96,8 +102,8 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     if (text && (requireQuestion && !endsWithQuestion(text))) {
         const altStyle = choose(styles.filter(s => s !== style));
         prompt = requireQuestion
-            ? `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${altStyle} tone, ask ONE playful question to chat about ${newGame}. ≤28 words. Must end with a question mark. No trivia language.`
-            : `Streamer switched from ${prevGame || 'Unknown'} to ${newGame}. In a ${altStyle} tone, add ONE witty, conversational riff (no facts lecture) about ${newGame}. ≤28 words. No "did you know".`;
+            ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Ask ONE playful, open question specific to "${newGame}". ≤26 words. Must end with a question mark. No trivia phrasing.`
+            : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Add ONE witty, conversational riff (no facts lecture) about "${newGame}". ≤26 words. No "did you know".`;
         text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
     }
@@ -123,14 +129,24 @@ async function maybeHandleLull(channelName) {
     if (!context) return;
     const contextPrompt = buildContextPrompt(context);
     const topic = context.chatSummary || context.streamGame || 'the stream';
-    const styles = ['goofy', 'curious', 'nostalgic', 'contrarian-but-kind', 'light challenge'];
+    const styles = [
+        'introduce a fresh but related angle on the current topic',
+        'offer a thought-provoking, non-obvious observation',
+        'share a light personal (bot) opinion with a wink',
+        'set up a small prompt that encourages storytelling'
+    ];
     const style = choose(styles);
-    let prompt = `Chat has been quiet. In a ${style} tone and based on "${topic}", ask ONE fun, open-ended question to re-spark conversation. ≤20 words. Must end with a question mark. Avoid repeating: "${state.lastQuestion}" and avoid "did you know".`;
+    const baseConstraints = `One sentence. ≤25 words. Relaxed, confident, not anxious. No meta about the lull. No emojis. Don’t repeat: "${state.lastQuestion}". Do not attribute to specific users.`;
+    // Prefer statement nudge over question to avoid anxious vibe, unless last auto was statement
+    const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.45);
+    let prompt = requireQuestion
+        ? `Chat is quiet. Based on "${topic}", ${baseConstraints} Ask ONE open-ended question that invites a short story or opinion (not yes/no, not trivia). Must end with a question mark.`
+        : `Chat is quiet. Based on "${topic}", ${baseConstraints} ${style}. Make it feel like a natural nudge, not a forced icebreaker. No trivia tone or filler.`;
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
-    if (text && (!endsWithQuestion(text))) {
+    if (text && (requireQuestion && !endsWithQuestion(text))) {
         const altStyle = choose(styles.filter(s => s !== style));
-        prompt = `Chat is quiet. In a ${altStyle} tone on "${topic}", ask ONE playful, open question (≤18 words). Must end with a question mark. No trivia phrasing.`;
+        prompt = `Chat is quiet. On "${topic}", ${baseConstraints} Ask ONE playful, open question (≤22 words). Must end with a question mark. No trivia phrasing.`;
         text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
     }
@@ -156,19 +172,25 @@ async function maybeHandleTopicShift(channelName) {
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     const contextPrompt = buildContextPrompt(context);
-    const styles = ['witty aside', 'playful question', 'observational humor', 'curious follow-up'];
+    const styles = [
+        'acknowledge the shift with a witty aside that links old and new',
+        'share a concise, relevant piece of context about the new topic (no trivia tone)',
+        'offer a playful opinion or hot take on the new topic',
+        'ask an open-ended question that builds on what was just said'
+    ];
     const style = choose(styles);
+    const baseConstraints = `One sentence. ≤28 words. Natural, conversational, and specific. No trivia phrasing. No emojis. Don’t repeat: "${state.lastQuestion}". Do not invent usernames or attribute quotes unless explicitly provided.`;
     const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.55);
     let prompt = requireQuestion
-        ? `Topic shifted. In a ${style} tone, ask ONE short, fun, open-ended question tied to the new topic. ≤28 words. Must end with a question mark. Avoid "did you know"/"fun fact". Don’t repeat: "${state.lastQuestion}"`
-        : `Topic shifted. In a ${style} tone, make ONE witty, conversational riff (not a trivia dump) tied to the new topic. ≤28 words. Avoid "did you know"/lecturing. Don’t repeat: "${state.lastQuestion}"`;
+        ? `Topic shifted. ${baseConstraints} Ask ONE open-ended question that shows you noticed the pivot and, if relevant, connects the new topic to the prior one. Must end with a question mark.`
+        : `Topic shifted. ${baseConstraints} ${style}. If possible, connect the new topic to the prior one to show you followed the thread. Avoid generic hype or fact-dumps.`;
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text && (requireQuestion && !endsWithQuestion(text))) {
         const altStyle = choose(styles.filter(s => s !== style));
         prompt = requireQuestion
-            ? `New topic. In a ${altStyle} tone, ask ONE playful, open question. ≤26 words. Must end with a question mark. No trivia phrasing. Don’t repeat: "${state.lastQuestion}"`
-            : `New topic. In a ${altStyle} tone, add ONE light, witty remark (no facts lecture). ≤26 words. No "did you know". Don’t repeat: "${state.lastQuestion}"`;
+            ? `New topic. ${baseConstraints} Ask ONE playful, open question that builds on what was just said. ≤26 words. Must end with a question mark. No trivia phrasing.`
+            : `New topic. ${baseConstraints} Add ONE light, witty remark (no facts lecture). ≤26 words. No "did you know".`;
         text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
     }
