@@ -57,6 +57,7 @@ function loadConfig() {
                 : [],
             clientId: process.env.TWITCH_CLIENT_ID,
             clientSecret: process.env.TWITCH_CLIENT_SECRET,
+            publicUrl: process.env.PUBLIC_URL,
         },
 
         // Google Gemini API

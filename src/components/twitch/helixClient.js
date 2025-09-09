@@ -290,3 +290,24 @@ export {
     getUsersByLogin,
     getLiveStreams,
 };
+
+// Helper: get ad schedule with broadcaster user token
+export async function getAdScheduleForBroadcaster(broadcasterId, userAccessToken, clientId) {
+    if (!broadcasterId || !userAccessToken || !clientId) {
+        throw new Error('Missing params for getAdScheduleForBroadcaster');
+    }
+    try {
+        const response = await axios.get(`${TWITCH_HELIX_URL}/channels/ads`, {
+            params: { broadcaster_id: String(broadcasterId) },
+            headers: {
+                Authorization: `Bearer ${userAccessToken}`,
+                'Client-ID': clientId,
+            },
+            timeout: 15000,
+        });
+        return response.data;
+    } catch (error) {
+        logger.error({ err: { message: error.message, code: error.code }, broadcasterId }, 'Failed to get ad schedule');
+        throw error;
+    }
+}
