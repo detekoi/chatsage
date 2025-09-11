@@ -205,7 +205,7 @@ const channelChatSessions = new Map();
  * @param {string} channelName - Clean channel name without '#'
  * @returns {import('@google/generative-ai').ChatSession}
  */
-export function getOrCreateChatSession(channelName) {
+export function getOrCreateChatSession(channelName, initialContext = null) {
     if (!channelName || typeof channelName !== 'string') {
         throw new Error('getOrCreateChatSession requires a valid channelName');
     }
@@ -214,15 +214,26 @@ export function getOrCreateChatSession(channelName) {
     }
 
     const model = getGeminiClient();
+    
+    // Combine the base persona with the initial stream/chat context.
+    let finalSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+    if (initialContext) {
+        finalSystemInstruction += `
+
+--- IMPORTANT SESSION CONTEXT ---
+${initialContext}`;
+    }
+    
     // startChat takes an object with systemInstruction and optional history
     const chat = model.startChat({
-        systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+        systemInstruction: { parts: [{ text: finalSystemInstruction }] },
         // Enable Google Search grounding inside the chat session
         tools: [ { googleSearch: {} } ],
-        history: []
+        history: [] // History starts empty
     });
+
     channelChatSessions.set(channelName, chat);
-    logger.info({ channelName, toolsEnabled: ['googleSearch'] }, 'Created new Gemini chat session for channel');
+    logger.info({ channelName, toolsEnabled: ['googleSearch'], hasInitialContext: !!initialContext }, 'Created new Gemini chat session for channel');
     return chat;
 }
 
