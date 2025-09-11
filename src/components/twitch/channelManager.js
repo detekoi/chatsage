@@ -2,6 +2,7 @@
 import { Firestore } from '@google-cloud/firestore';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
+import { ensureAdBreakSubscriptionForBroadcaster } from './twitchSubs.js';
 
 // --- Firestore Client Initialization ---
 let db = null; // Firestore database instance
@@ -261,6 +262,21 @@ export async function syncManagedChannelsWithIrc(ircClient) {
                             })
                     );
                 }
+
+                // Handle ad break subscriptions
+                const { adNotificationsEnabled, twitchUserAccessToken, twitchUserId } = channelData;
+                if (isActive && adNotificationsEnabled && twitchUserAccessToken && twitchUserId) {
+                    promises.push(
+                        ensureAdBreakSubscriptionForBroadcaster(twitchUserId, true, twitchUserAccessToken)
+                            .catch(e => logger.error({ err: e, channel: channelName }, 'Error ensuring ad break subscription during sync'))
+                    );
+                } else if (isActive && !adNotificationsEnabled && twitchUserId) {
+                    promises.push(
+                        ensureAdBreakSubscriptionForBroadcaster(twitchUserId, false)
+                            .catch(e => logger.error({ err: e, channel: channelName }, 'Error ensuring ad break subscription during sync'))
+                    );
+                }
+
             } else {
                 logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName' during sync. Skipping.`);
             }
@@ -303,7 +319,8 @@ export function listenForChannelChanges(ircClient) {
                         type: change.type,
                         channelName: channelData.channelName, // Now safe
                         isActive: !!channelData.isActive,
-                        docId: change.doc.id // For logging
+                        docId: change.doc.id, // For logging
+                        channelData: channelData // Pass the whole data object
                     });
                 } else {
                     logger.warn({ docId: change.doc.id }, `[ChannelManager] Firestore listener detected change in document missing valid 'channelName'. Skipping processing for this change.`);
@@ -314,13 +331,29 @@ export function listenForChannelChanges(ircClient) {
                 logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);
                 
                 // Process the VALID changes
-                changes.forEach(change => {
+                changes.forEach(async (change) => {
                     if (change.type === 'added' || change.type === 'modified') {
                         syncChannelWithIrc(ircClient, change.channelName, change.isActive)
                             .catch(err => {
                                 logger.error({ err, channel: change.channelName, docId: change.docId },
                                     `[ChannelManager] Error processing channel change via listener`);
                             });
+                        
+                        const { adNotificationsEnabled, twitchUserAccessToken, twitchUserId } = change.channelData;
+
+                        if (adNotificationsEnabled && twitchUserAccessToken && twitchUserId) {
+                            try {
+                                await ensureAdBreakSubscriptionForBroadcaster(twitchUserId, true, twitchUserAccessToken);
+                            } catch (e) {
+                                logger.error({ err: e, channel: change.channelName }, 'Error ensuring ad break subscription');
+                            }
+                        } else if (!adNotificationsEnabled && twitchUserId) {
+                            try {
+                                await ensureAdBreakSubscriptionForBroadcaster(twitchUserId, false);
+                            } catch (e) {
+                                logger.error({ err: e, channel: change.channelName }, 'Error ensuring ad break subscription');
+                            }
+                        }
                     }
                     // Optionally handle 'removed' type if needed
                 });
