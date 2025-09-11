@@ -206,12 +206,21 @@ export async function syncChannelWithIrc(ircClient, channelName, isActive) {
     }
 }
 
+let isSyncing = false;
+
 /**
  * Synchronizes the IRC client's joined channels with the active managed channels.
  * @param {Object} ircClient - The TMI.js client instance
  * @returns {Promise<{joined: string[], parted: string[]}>} Channels joined and parted
  */
 export async function syncManagedChannelsWithIrc(ircClient) {
+    if (isSyncing) {
+        logger.warn('[ChannelManager] Sync already in progress. Skipping.');
+        return;
+    }
+
+    isSyncing = true;
+
     try {
         const db = _getDb();
         const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION).get();
@@ -267,6 +276,8 @@ export async function syncManagedChannelsWithIrc(ircClient) {
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error syncing managed channels with IRC.");
         throw new ChannelManagerError("Failed to sync managed channels with IRC.", error);
+    } finally {
+        isSyncing = false;
     }
 }
 
