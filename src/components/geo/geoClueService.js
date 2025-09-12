@@ -29,7 +29,7 @@ export async function generateInitialClue(locationName, difficulty = 'normal', m
             generateOptions.tools = [{ googleSearch: {} }];
         }
         const result = await model.generateContent(generateOptions);
-        const response = result.response;
+        const response = result;
         if (!response.candidates?.length || !response.candidates[0].content) {
             logger.warn('[GeoClue] No candidates/content in initial clue response');
             return null;
@@ -83,7 +83,7 @@ export async function generateFollowUpClue(locationName, previousClues = [], mod
             generateOptions.tools = [{ googleSearch: {} }];
         }
         const result = await model.generateContent(generateOptions);
-        const response = result.response;
+        const response = result;
         if (!response.candidates?.length || !response.candidates[0].content) {
             logger.warn('[GeoClue] No candidates/content in follow-up clue response');
             return null;
@@ -135,7 +135,7 @@ export async function generateFinalReveal(locationName, mode = 'real', gameTitle
             generateOptions.tools = [{ googleSearch: {} }];
         }
         const result = await model.generateContent(generateOptions);
-        const response = result.response;
+        const response = result;
         if (!response.candidates?.length || !response.candidates[0].content) {
             logger.warn('[GeoClue] No candidates/content in final reveal response');
             return null;

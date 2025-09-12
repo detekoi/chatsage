@@ -75,7 +75,7 @@ export async function translateText(textToTranslate, targetLanguage) {
                 responseMimeType: 'text/plain'
             }
         });
-        const response = result.response;
+        const response = result;
         const candidate = response?.candidates?.[0];
 
         if (response.promptFeedback?.blockReason) {
@@ -109,7 +109,7 @@ export async function translateText(textToTranslate, targetLanguage) {
                     responseMimeType: 'text/plain'
                 }
             });
-            const response2 = result2.response;
+            const response2 = result2;
             const candidate2 = response2?.candidates?.[0];
             
             if (candidate2 && candidate2.finishReason !== 'SAFETY') {

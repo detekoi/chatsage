@@ -38,33 +38,32 @@ const checkGuessTool = {
 export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = [], sessionRegionScope = null) {
     const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations, sessionRegionScope);
     
-    // Create a fresh model instance without any system instruction to avoid token overhead
+    // Create a fresh AI instance without any system instruction to avoid token overhead
     const { getGenAIInstance } = await import('../llm/geminiClient.js');
-    const genAI = getGenAIInstance();
-    const model = genAI.getGenerativeModel({
-        model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
-        generationConfig: {
-            temperature: 0.5, // Moderate temp for variety
-            candidateCount: 1
-        }
-    });
+    const ai = getGenAIInstance();
+    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
     
     logger.debug({ mode, gameTitle, sessionRegionScope, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const generateOptions = {
-            contents: [{ role: 'user', parts: [{ text: prompt }] }]
+            model: modelId,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.5, // Moderate temp for variety
+                candidateCount: 1
+            }
         };
         if (mode === 'game') {
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
             generateOptions.tools = [{ googleSearch: {} }];
         }
-        const result = await model.generateContent(generateOptions);
-        const response = result.response;
+        const result = await ai.models.generateContent(generateOptions);
+        const response = result;
         const candidate = response?.candidates?.[0];
         
         // Temporary detailed logging to tune token limits
         logger.debug({
-            usageMetadata: result.response?.usageMetadata,
+            usageMetadata: result?.usageMetadata,
             finishReason: candidate?.finishReason
         }, '[GeoLocation] Token usage debug');
         
@@ -150,7 +149,7 @@ export async function validateGuess(targetName, guess, alternateNames = []) {
             toolConfig: { functionCallingConfig: { mode: 'ANY' } },
             // systemInstruction: { parts: [{ text: 'Your only task is to call the check_guess function based on the user prompt. Do not generate conversational text.' }] }
         });
-        const response = result.response;
+        const response = result;
         const candidate = response?.candidates?.[0];
 
         if (candidate?.content?.parts?.[0]?.functionCall?.name === 'check_guess') {

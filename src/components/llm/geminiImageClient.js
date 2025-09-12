@@ -16,10 +16,12 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         let model = null;
         try {
             const genAI = getGenAIInstance();
-            model = genAI.getGenerativeModel({
-                model: 'gemini-2.5-flash',
-                generationConfig: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
-            });
+            // Store the AI instance and model config for later use
+            model = {
+                ai: genAI,
+                modelId: 'gemini-2.5-flash',
+                config: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
+            };
             logger.debug('Using image model: gemini-2.5-flash');
         } catch (_) {
             model = getGeminiClient();
@@ -37,17 +39,35 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             : imageData;
 
         // Minimal request per working commit: image then prompt, no extra config
-        const result = await model.generateContent({
-            contents: [{
-                role: 'user',
-                parts: [
-                    { inlineData: { mimeType: mimeType, data: base64Data } },
-                    { text: prompt }
-                ]
-            }]
-        });
+        // Use the appropriate model based on what was initialized
+        let result;
+        if (model.ai && model.modelId) {
+            // Use the newer pattern with direct AI instance
+            result = await model.ai.models.generateContent({
+                model: model.modelId,
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { inlineData: { mimeType: mimeType, data: base64Data } },
+                        { text: prompt }
+                    ]
+                }],
+                config: model.config
+            });
+        } else {
+            // Fallback to wrapper model
+            result = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { inlineData: { mimeType: mimeType, data: base64Data } },
+                        { text: prompt }
+                    ]
+                }]
+            });
+        }
 
-        const response = result.response;
+        const response = result;
         const candidate = response?.candidates?.[0];
         const parts = candidate?.content?.parts;
         if (Array.isArray(parts) && parts.length > 0) {

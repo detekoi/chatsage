@@ -81,7 +81,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
             generationConfig: { maxOutputTokens: 512 }
         });
         
-        factualInfoText = searchResult.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+        factualInfoText = searchResult?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!factualInfoText || factualInfoText.trim() === "") {
             logger.warn(`[TriviaService-ExplicitSearch] Step 1: No factual information returned from search for topic "${topic}".`);
             return null;
@@ -109,7 +109,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
             generationConfig: { maxOutputTokens: 512 }
         });
 
-        const functionCall = result.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+        const functionCall = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
         if (functionCall?.name === 'generate_trivia_question') {
             const args = functionCall.args;
             const questionText = args.question || "";
@@ -168,7 +168,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
             logger.info(`[TriviaService-ExplicitSearch] Step 2: Successfully generated question for topic "${topic}". Answer: "${correctAnswerText}", Alternates: "${alternateAnswersList.join(', ')}"`);
             return questionObject;
         }
-        logger.warn(`[TriviaService-ExplicitSearch] Step 2: Model did not call 'generate_trivia_question' for topic "${topic}". Resp: ${JSON.stringify(result.response)}`);
+        logger.warn(`[TriviaService-ExplicitSearch] Step 2: Model did not call 'generate_trivia_question' for topic "${topic}". Resp: ${JSON.stringify(result)}`);
         return null;
     } catch (error) {
         logger.error({ err: error, topic }, `[TriviaService-ExplicitSearch] Step 2: Error generating structured question for topic "${topic}".`);
@@ -283,7 +283,7 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             }
         });
         
-        const response = result.response;
+        const response = result;
         const candidate = response?.candidates?.[0];
         
         if (!candidate) {
@@ -507,8 +507,8 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             } else { throw e1; }
         }
 
-        const fin = schemaResp?.response?.candidates?.[0]?.finishReason;
-        const respObj = schemaResp.response;
+        const fin = schemaResp?.candidates?.[0]?.finishReason;
+        const respObj = schemaResp;
         let structured = coerceParsed(respObj);
         let sText = '';
         if (respObj && typeof respObj.text === 'string' && respObj.text.trim().length > 0) sText = respObj.text.trim();
@@ -523,7 +523,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         if ((!sText && !structured) || fin === 'MAX_TOKENS') {
             try {
                 const high = await genWithSchema(1024, false);
-                const ro = high.response;
+                const ro = high;
                 structured = coerceParsed(ro) || structured;
                 const textHigh = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                 if (textHigh) sText = textHigh;
@@ -532,7 +532,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         if (!sText && !structured) {
             try {
                 const min = await genWithSchema(256, true);
-                const ro = min.response;
+                const ro = min;
                 structured = coerceParsed(ro) || structured;
                 const textMin = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                 if (textMin) sText = textMin;
@@ -550,7 +550,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             if ((!parsed || looksTruncated) && !structured) {
                 try {
                     const repair = await genWithSchema(1024, false);
-                    const ro = repair.response;
+                    const ro = repair;
                     structured = coerceParsed(ro) || structured;
                     const textRepair = typeof ro.text === 'string' && ro.text.trim().length > 0 ? ro.text.trim() : (extractText(ro) || (Array.isArray(ro?.candidates) ? (ro.candidates[0]?.content?.parts || []).map(p => p?.text || '').join('').trim() : ''));
                     if (textRepair) { sText = textRepair; parsed = tryParseJsonString(sText); }
@@ -608,7 +608,7 @@ Your explanation should be informative, engaging, and around 1-2 sentences long.
             }
         });
         
-        const response = result.response;
+        const response = result;
         if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             return response.candidates[0].content.parts[0].text.trim();
         }

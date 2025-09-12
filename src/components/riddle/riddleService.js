@@ -102,16 +102,10 @@ function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
  * @returns {Promise<{question: string, answer: string, keywords: string[], difficulty: string, explanation: string, searchUsed: boolean, topic: string, requestedTopic: string}|null>}
  */
 export async function generateRiddle(topic, difficulty, excludedKeywordSets = [], channelName, excludedAnswers = []) {
-    // Create a fresh model instance without system instruction to avoid token overhead (like geo fix)
+    // Create a fresh AI instance without system instruction to avoid token overhead (like geo fix)
     const { getGenAIInstance } = await import('../llm/geminiClient.js');
-    const genAI = getGenAIInstance();
-    const model = genAI.getGenerativeModel({
-        model: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash',
-        generationConfig: {
-            temperature: 0.75,
-            candidateCount: 1
-        }
-    });
+    const ai = getGenAIInstance();
+    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
     let forceSearch = false; // NEW: force search for certain topics
@@ -183,13 +177,18 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
         const searchFactsPrompt = `Find interesting and unique facts about "${actualTopic}" suitable for a riddle. Focus on specific details, characteristics, and unique aspects that could inspire creative riddle clues.`;
         try {
             logger.info(`[RiddleService] Performing search for facts about "${actualTopic}"`);
-            const searchResult = await model.generateContent({
+            const searchResult = await ai.models.generateContent({
+                model: modelId,
                 contents: [{ role: "user", parts: [{ text: searchFactsPrompt }] }],
                 tools: [{ googleSearch: {} }],
-                generationConfig: { maxOutputTokens: 512 }
+                config: { 
+                    temperature: 0.75,
+                    candidateCount: 1,
+                    maxOutputTokens: 512 
+                }
             });
             
-            const searchText = searchResult.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+            const searchText = searchResult?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (searchText && searchText.trim() !== "") {
                 factualContextForRiddle = searchText.trim();
                 logger.info(`[RiddleService] Successfully retrieved facts for "${actualTopic}". Length: ${factualContextForRiddle.length}`);
@@ -222,14 +221,19 @@ Call the "generate_riddle_with_answer_and_keywords" function with your response.
 
     try {
         // Only use the generateRiddleTool here
-        const result = await model.generateContent({
+        const result = await ai.models.generateContent({
+            model: modelId,
             contents: [{ role: "user", parts: [{ text: finalGenerationPrompt }] }],
             tools: [generateRiddleTool],
-            toolConfig: { functionCallingConfig: { mode: "ANY" } }
-            // No systemInstruction - using fresh model instance without CHAT_SAGE_SYSTEM_INSTRUCTION
+            toolConfig: { functionCallingConfig: { mode: "ANY" } },
+            config: {
+                temperature: 0.75,
+                candidateCount: 1
+            }
+            // No systemInstruction - using fresh AI instance without CHAT_SAGE_SYSTEM_INSTRUCTION
         });
 
-        const response = result.response;
+        const response = result;
         const candidate = response?.candidates?.[0];
 
         if (candidate?.content?.parts?.[0]?.functionCall?.name === 'generate_riddle_with_answer_and_keywords') {
@@ -483,9 +487,9 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
             return null;
         };
         // If finishReason indicates truncation or content missing, escalate retries with higher tokens and minimal prompt
-        const fin = schemaResp?.response?.candidates?.[0]?.finishReason;
+        const fin = schemaResp?.candidates?.[0]?.finishReason;
         let sText = '';
-        const respObj = schemaResp.response;
+        const respObj = schemaResp;
         let structured = coerceParsed(respObj);
         if (respObj && typeof respObj.text === 'string' && respObj.text.trim().length > 0) {
             sText = respObj.text.trim();
@@ -575,7 +579,7 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
                 contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nRespond ONLY as JSON: {"is_correct": true|false, "confidence": number, "reasoning": string}` }] }],
                 generationConfig: { temperature: 0.0, maxOutputTokens: 80, responseMimeType: 'text/plain' }
             });
-            text = extractText(plainJsonResp.response);
+            text = extractText(plainJsonResp);
         } catch (_) { text = ''; }
 
         if (text) {
@@ -688,7 +692,7 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
                     throw eFc1;
                 }
             }
-            const fn = fcResp?.response?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+            const fn = fcResp?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
             if (fn?.name === 'report_verification') {
                 const args = fn.args || {};
                 if (typeof args.is_correct === 'boolean') {
@@ -708,7 +712,7 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
                 contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nOutput strictly as JSON with keys is_correct, confidence, reasoning.` }] }],
                 generationConfig: { temperature: 0.1, maxOutputTokens: 160 }
             });
-            const resp2 = result2.response;
+            const resp2 = result2;
             const cand2 = resp2?.candidates?.[0];
             const t2 = cand2?.content?.parts?.map(p => p?.text || '').join('\n') || '';
             const text2 = t2.replace(/^```json\s*|```\s*$/g, '').trim();
