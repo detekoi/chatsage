@@ -298,6 +298,14 @@ async function main() {
         logger.info('Initializing Riddle Game Manager...');
         await initializeRiddleGameManager();
 
+        // Start Ad Schedule Poller before IRC connects so we always log its activity
+        try {
+            await startAdSchedulePoller();
+            logger.info('Ad Schedule Poller started (pre-IRC).');
+        } catch (err) {
+            logger.error({ err }, 'Failed to start Ad Schedule Poller (pre-IRC)');
+        }
+
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
         const helixClient = getHelixClient();
