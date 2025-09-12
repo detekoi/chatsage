@@ -1,8 +1,6 @@
 import logger from '../../lib/logger.js';
-import config from '../../config/index.js';
 import { getContextManager } from '../context/contextManager.js';
 import { notifyAdSoon } from '../autoChat/autoChatManager.js';
-import { getUsersByLogin } from './helixClient.js';
 import axios from 'axios';
 import { getSecretValue, initializeSecretManager } from '../../lib/secretManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
@@ -22,7 +20,7 @@ async function fetchAdScheduleFromWebUi(channelName) {
             }
             initializeSecretManager();
             token = (await getSecretValue(token)) || '';
-        } catch (_) {}
+        } catch (e) { /* ignore */ }
     }
     if (!base) throw new Error('WEBUI_BASE_URL not set');
     if (!token) throw new Error('WEBUI_INTERNAL_TOKEN not set');
@@ -80,8 +78,6 @@ export async function startAdSchedulePoller() {
 
 export function stopAdSchedulePoller() {
     if (intervalId) { clearInterval(intervalId); intervalId = null; }
-    for (const [ch, t] of timers) { clearTimeout(t); }
+    for (const t of timers.values()) { clearTimeout(t); }
     timers.clear();
 }
-
-

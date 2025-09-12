@@ -354,7 +354,7 @@ async function main() {
         ircClient.on('disconnected', (reason) => {
             logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
             stopStreamInfoPolling(streamInfoIntervalId);
-            try { stopAdSchedulePoller(); } catch (_) {}
+            try { stopAdSchedulePoller(); } catch (e) { /* ignore */ }
             
             // Clean up Firestore listener ONLY if it was started
             if (config.app.nodeEnv !== 'development' && channelChangeListener) {
@@ -523,11 +523,7 @@ async function main() {
                 logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
             });
             // Notify AutoChatManager about activity
-            try {
-                notifyUserMessage(cleanChannel, Date.now());
-            } catch (e) {
-                logger.debug({ e }, 'notifyUserMessage failed (AutoChatManager may not be running)');
-            }
+            try { notifyUserMessage(cleanChannel, Date.now()); } catch (e) { /* ignore */ }
 
             // 2. Process commands (but !translate stop was handled above)
             let wasTranslateCommand = message.trim().toLowerCase().startsWith('!translate '); // Keep this simple check

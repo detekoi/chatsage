@@ -1,10 +1,8 @@
-import logger from '../../../lib/logger.js';
-import { getContextManager } from '../../context/contextManager.js';
 import { getChannelAutoChatConfig, saveChannelAutoChatConfig, normalizeConfig } from '../../context/autoChatStorage.js';
 
 const helpText = 'Usage: !auto [off|low|medium|high] or !auto-config greetings:[on|off] facts:[on|off] questions:[on|off] ads:[on|off]';
 
-async function execute({ channel, user, args, logger: log }) {
+async function execute({ channel, _user, args, logger: log }) {
     const channelName = channel.substring(1);
     // Permission checking is handled by the command system
 
@@ -56,5 +54,3 @@ export default {
     permission: 'moderator',
     description: 'Configure auto-chat mode and options.'
 };
-
-

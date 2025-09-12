@@ -113,7 +113,7 @@ export function onAutoChatConfigChanges(callback) {
             const cfg = normalizeConfig(raw);
             const channelName = (raw.channelName || change.doc.id || '').toLowerCase();
             if (!channelName) return;
-            try { callback({ type: change.type, channelName, config: cfg }); } catch (_) {}
+            try { callback({ type: change.type, channelName, config: cfg }); } catch (e) { /* ignore */ }
         });
     });
 }

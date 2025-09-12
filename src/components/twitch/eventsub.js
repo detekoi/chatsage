@@ -286,7 +286,6 @@ export async function eventSubHandler(req, res, rawBody) {
 
     const notification = JSON.parse(rawBody);
     const messageType = req.headers['twitch-eventsub-message-type'];
-    const subscriptionType = req.headers['twitch-eventsub-subscription-type'];
 
     if (messageType !== 'webhook_callback_verification') res.writeHead(200).end();
 
@@ -347,7 +346,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
             }
             // Inform AutoChatManager so it can greet once
-            try { notifyStreamOnline(broadcaster_user_name); } catch (_) {}
+            try { notifyStreamOnline(broadcaster_user_name); } catch (e) { /* ignore */ }
         }
 
         if (subscription.type === 'stream.offline') {

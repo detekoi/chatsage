@@ -1,8 +1,8 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getOrCreateChatSession, buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/geminiClient.js';
-import { getChannelAutoChatConfig, DEFAULT_AUTO_CHAT_CONFIG } from '../context/autoChatStorage.js';
+import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/geminiClient.js';
+import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 
 // AutoChatManager periodically scans channel state and emits context-aware messages
 
@@ -100,7 +100,6 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
         || await generateSearchResponse(contextPrompt, prompt);
     // Constraint guard: if failed question constraint, try alternate once
     if (text && (requireQuestion && !endsWithQuestion(text))) {
-        const altStyle = choose(styles.filter(s => s !== style));
         prompt = requireQuestion
             ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Ask ONE playful, open question specific to "${newGame}". ≤26 words. Must end with a question mark. No trivia phrasing.`
             : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Add ONE witty, conversational riff (no facts lecture) about "${newGame}". ≤26 words. No "did you know".`;
@@ -145,7 +144,6 @@ async function maybeHandleLull(channelName) {
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text && (requireQuestion && !endsWithQuestion(text))) {
-        const altStyle = choose(styles.filter(s => s !== style));
         prompt = `Chat is quiet. On "${topic}", ${baseConstraints} Ask ONE playful, open question (≤22 words). Must end with a question mark. No trivia phrasing.`;
         text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
@@ -187,7 +185,6 @@ async function maybeHandleTopicShift(channelName) {
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text && (requireQuestion && !endsWithQuestion(text))) {
-        const altStyle = choose(styles.filter(s => s !== style));
         prompt = requireQuestion
             ? `New topic. ${baseConstraints} Ask ONE playful, open question that builds on what was just said. ≤26 words. Must end with a question mark. No trivia phrasing.`
             : `New topic. ${baseConstraints} Add ONE light, witty remark (no facts lecture). ≤26 words. No "did you know".`;
@@ -263,19 +260,19 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
 export async function notifyFollow(channelName) {
     try {
         await maybeSendFollowCelebration(channelName);
-    } catch (_) {}
+    } catch (e) { /* ignore */ }
 }
 
 export async function notifySubscription(channelName) {
     try {
         await maybeSendSubscriptionCelebration(channelName);
-    } catch (_) {}
+    } catch (e) { /* ignore */ }
 }
 
 export async function notifyRaid(channelName, raiderUserName, viewerCount) {
     try {
         await maybeSendRaidCelebration(channelName, raiderUserName, viewerCount);
-    } catch (_) {}
+    } catch (e) { /* ignore */ }
 }
 
 export async function startAutoChatManager() {

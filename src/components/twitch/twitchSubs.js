@@ -235,7 +235,7 @@ export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId,
             return await subscribeChannelAdBreakBegin(broadcasterUserId, userAccessToken);
         } else {
             for (const sub of existing) {
-                try { await deleteEventSubSubscription(sub.id); } catch (_) {}
+                try { await deleteEventSubSubscription(sub.id); } catch (e) { /* ignore */ }
             }
             return { success: true, deleted: existing.length };
         }
