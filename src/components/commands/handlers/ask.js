@@ -222,8 +222,8 @@ const askHandler = {
             const perTurnContext = contextPrompt;
             const message = `${perTurnContext}\nUSER: ${userName} says: ${userQuery}`;
 
-            const chatResult = await chatSession.sendMessage(message);
-            const responseText = chatResult?.response?.text ? chatResult.response.text() : chatResult?.text?.();
+            const chatResult = await chatSession.sendMessage({ message });
+            const responseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 
         } catch (error) {

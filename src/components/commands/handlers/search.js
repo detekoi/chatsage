@@ -46,14 +46,13 @@ const searchHandler = {
             // 2. Use the persistent chat session with googleSearch tool enabled
             const chatSession = getOrCreateChatSession(channelName);
             const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"`;
-            const result = await chatSession.sendMessage(fullPrompt);
-            const response = result?.response;
-            const initialResponseText = response?.text ? response.text() : result?.text?.();
+            const result = await chatSession.sendMessage({ message: fullPrompt });
+            const initialResponseText = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
 
             // Log Google Search grounding metadata and citations if present
             try {
-                const candidate = response?.candidates?.[0];
-                const groundingMetadata = candidate?.groundingMetadata || response?.candidates?.[0]?.groundingMetadata;
+                const candidate = result?.candidates?.[0];
+                const groundingMetadata = candidate?.groundingMetadata || result?.candidates?.[0]?.groundingMetadata;
                 if (groundingMetadata) {
                     const sources = Array.isArray(groundingMetadata.groundingChunks)
                         ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)

@@ -40,9 +40,8 @@ const lurkHandler = {
             // Use the persistent chat session and send one concise prompt including context
             const chatSession = getOrCreateChatSession(channelName);
             const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One playful plain-text line, no usernames or @handles, ≤20 words.`;
-            const result = await chatSession.sendMessage(fullPrompt);
-            const responseObj = result?.response;
-            let llmResponse = responseObj?.text ? responseObj.text() : result?.text?.();
+            const result = await chatSession.sendMessage({ message: fullPrompt });
+            let llmResponse = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
 
             let response;
             if (llmResponse && llmResponse.trim()) {

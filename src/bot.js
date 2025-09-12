@@ -170,6 +170,46 @@ async function main() {
         logger.info(`Starting ChatSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
+        // --- Start HTTP server EARLY so Cloud Run sees the container as ready ---
+        const desiredPort = parseInt(process.env.PORT || process.env.port || 8080, 10);
+        if (!global.healthServer) {
+            global.healthServer = http.createServer(async (req, res) => {
+                // EventSub webhook endpoint
+                if (req.method === 'POST' && req.url === '/twitch/event') {
+                    const chunks = [];
+                    req.on('data', c => chunks.push(c));
+                    req.on('end', () => eventSubHandler(req, res, Buffer.concat(chunks)));
+                    return;
+                }
+
+                // Keep-alive ping endpoint (called by Cloud Tasks)
+                if (req.method === 'POST' && req.url === '/keep-alive') {
+                    try {
+                        await handleKeepAlivePing();
+                        res.writeHead(200, { 'Content-Type': 'text/plain' });
+                        res.end('OK');
+                    } catch (error) {
+                        logger.error({ err: error }, 'Error handling keep-alive ping');
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Internal Server Error');
+                    }
+                    return;
+                }
+
+                // Health check endpoints (respond quickly)
+                if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {
+                    res.writeHead(200, { 'Content-Type': 'text/plain' });
+                    res.end(req.method === 'HEAD' ? undefined : 'OK');
+                    return;
+                }
+
+                // 404 for everything else
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            });
+            await listenWithFallback(global.healthServer, desiredPort);
+        }
+
         // --- Initialize Core Components (Order matters) ---
         
         // 1. Initialize Secret Manager FIRST
@@ -627,46 +667,7 @@ async function main() {
             logger.info('LAZY_CONNECT enabled - IRC client will connect on first EventSub trigger');
         }
 
-        // --- Setup Health Check Server with EventSub endpoint ---
-        const desiredPort = parseInt(process.env.PORT || process.env.port || 8080, 10);
-        global.healthServer = http.createServer(async (req, res) => {
-            // EventSub webhook endpoint
-            if (req.method === 'POST' && req.url === '/twitch/event') {
-                const chunks = [];
-                req.on('data', c => chunks.push(c));
-                req.on('end', () => eventSubHandler(req, res, Buffer.concat(chunks)));
-                return;
-            }
-
-            // Keep-alive ping endpoint (called by Cloud Tasks)
-            if (req.method === 'POST' && req.url === '/keep-alive') {
-                try {
-                    await handleKeepAlivePing();
-                    res.writeHead(200, { 'Content-Type': 'text/plain' });
-                    res.end('OK');
-                } catch (error) {
-                    logger.error({ err: error }, 'Error handling keep-alive ping');
-                    res.writeHead(500, { 'Content-Type': 'text/plain' });
-                    res.end('Internal Server Error');
-                }
-                return;
-            }
-
-            // Health check endpoints (respond quickly)
-            if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
-                res.end(req.method === 'HEAD' ? undefined : 'OK');
-                return;
-            }
-
-            // 404 for everything else
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Not Found');
-        });
-
-        // Listen with a small dev-friendly fallback if the port is in use
-
-        await listenWithFallback(global.healthServer, desiredPort);
+        // HTTP server already started above; endpoints are available during initialization
 
         // --- Post-Connection Logging ---
         logger.info('ChatSage components initialized and event listeners attached.');

@@ -263,3 +263,27 @@ A `Dockerfile` is provided for building a container image of the application.
     docker run --rm --env-file ./.env -it chatsage:latest
     ```
     *(Ensure your `.env` file is populated correctly)*
+
+## Deploying to Cloud Run (locally)
+
+For a local deploy that mirrors the GitHub Actions workflow, use the portable script:
+
+```bash
+scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service chatsage
+```
+
+Notes:
+- The script uses the same env and secret mappings as `.github/workflows/deploy-cloud-run.yml`.
+- You must be authenticated with `gcloud` and have access to the project’s secrets.
+- On first deploy, `PUBLIC_URL` can be empty. After deploy, the script prints the URL; set `PUBLIC_URL` to that value and redeploy for EventSub callbacks.
+
+Examples:
+
+```bash
+# First deploy
+scripts/deploy-cloud-run.sh
+
+# After you get the URL, redeploy with PUBLIC_URL set
+PUBLIC_URL="https://chatsage-XXXX-uc.a.run.app" \
+  scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service chatsage
+```

@@ -67,12 +67,12 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // c. Use persistent chat session, passing context for initialization
         const chatSession = getOrCreateChatSession(cleanChannel, contextPrompt);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
-        const chatResult = await chatSession.sendMessage(messageForChat);
-        let initialResponseText = chatResult?.response?.text ? chatResult.response.text() : chatResult?.text?.();
+        const chatResult = await chatSession.sendMessage({ message: messageForChat });
+        let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
 
         // Log Google Search grounding metadata and citations if present
         try {
-          const responseObj = chatResult?.response;
+          const responseObj = chatResult;
           const candidate = responseObj?.candidates?.[0];
           const groundingMetadata = candidate?.groundingMetadata || responseObj?.candidates?.[0]?.groundingMetadata;
           if (groundingMetadata) {
