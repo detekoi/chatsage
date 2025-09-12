@@ -9,11 +9,11 @@ import {
     getHelixClient,
     getChannelInformation,
     getUsersByLogin
-} from '../../../../src/components/twitch/helixClient';
+} from '../../../../src/components/twitch/helixClient.js';
 import axios from 'axios';
-import { getAppAccessToken, clearCachedAppAccessToken } from '../../../../src/components/twitch/auth';
-import logger from '../../../../src/lib/logger';
-import mockHelixResponses from '../../../fixtures/helixResponses.json';
+import { getAppAccessToken, clearCachedAppAccessToken } from '../../../../src/components/twitch/auth.js';
+import logger from '../../../../src/lib/logger.js';
+import mockHelixResponses from '../../../fixtures/helixResponses.json' with { type: 'json' };
 
 describe('Helix Client Unit Tests', () => {
     let mockAxiosInstance;

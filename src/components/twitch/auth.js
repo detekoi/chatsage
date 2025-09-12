@@ -7,6 +7,7 @@ import { sleep } from '../../lib/timeUtils.js'; // Assuming you have a sleep uti
 // Module-level cache for the token and its expiry time
 let cachedToken = null;
 let tokenExpiryTime = null; // Store expiry timestamp (in milliseconds)
+let tokenFetchPromise = null; // Promise for ongoing token fetch to prevent concurrent requests
 
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before actual expiry
@@ -134,6 +135,7 @@ async function fetchNewAppAccessToken() {
 
 /**
  * Gets a valid Twitch App Access Token, fetching a new one if necessary.
+ * Prevents concurrent token fetches by reusing ongoing fetch promises.
  * @returns {Promise<string>} Resolves with a valid access token.
  * @throws {Error} If unable to retrieve a valid token.
  */
@@ -143,15 +145,35 @@ async function getAppAccessToken() {
     if (cachedToken && tokenExpiryTime && now < tokenExpiryTime) {
         logger.debug('Using cached Twitch App Access Token.');
         return cachedToken;
-    } else {
-        if (cachedToken) {
-             logger.info('Cached Twitch App Access Token expired or nearing expiry. Fetching new token...');
-        } else {
-             logger.info('No cached Twitch App Access Token found. Fetching new token...');
-        }
-        // fetchNewAppAccessToken will update cachedToken and tokenExpiryTime on success
-        return await fetchNewAppAccessToken();
     }
+
+    // If a token fetch is already in progress, return the same promise
+    if (tokenFetchPromise) {
+        logger.debug('Token fetch already in progress, waiting for existing fetch to complete...');
+        return await tokenFetchPromise;
+    }
+
+    // Start a new token fetch
+    if (cachedToken) {
+        logger.info('Cached Twitch App Access Token expired or nearing expiry. Fetching new token...');
+    } else {
+        logger.info('No cached Twitch App Access Token found. Fetching new token...');
+    }
+
+    // Create and store the fetch promise
+    tokenFetchPromise = fetchNewAppAccessToken()
+        .then(token => {
+            // Clear the promise when done
+            tokenFetchPromise = null;
+            return token;
+        })
+        .catch(error => {
+            // Clear the promise on error as well
+            tokenFetchPromise = null;
+            throw error;
+        });
+
+    return await tokenFetchPromise;
 }
 
 /**
@@ -162,6 +184,7 @@ function clearCachedAppAccessToken() {
     logger.warn('Clearing cached Twitch App Access Token due to external trigger (e.g., 401 error).');
     cachedToken = null;
     tokenExpiryTime = null;
+    tokenFetchPromise = null; // Also clear any ongoing fetch promise
 }
 
 // Export the primary functions needed by other modules
