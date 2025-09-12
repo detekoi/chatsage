@@ -4,7 +4,8 @@ import { getGeminiClient, getGenAIInstance } from './geminiClient.js';
 import axios from 'axios';
 
 /**
- * Analyzes an image using Gemini 2.5 Flash and returns the response
+ * Analyzes an image using Gemini's image understanding capabilities
+ * Follows Google's image understanding documentation: https://ai.google.dev/gemini-api/docs/image-understanding
  * @param {Buffer} imageData - The image data as a Buffer
  * @param {string} prompt - The prompt to send along with the image
  * @param {string} mimeType - The MIME type of the image (default: 'image/jpeg')
@@ -16,13 +17,14 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         let model = null;
         try {
             const genAI = getGenAIInstance();
+            const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
             // Store the AI instance and model config for later use
             model = {
                 ai: genAI,
-                modelId: 'gemini-2.5-flash',
+                modelId: modelId,
                 config: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
             };
-            logger.debug('Using image model: gemini-2.5-flash');
+            logger.debug(`Using image model: ${modelId}`);
         } catch (_) {
             model = getGeminiClient();
             if (!model) {
@@ -42,16 +44,14 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         // Use the appropriate model based on what was initialized
         let result;
         if (model.ai && model.modelId) {
-            // Use the newer pattern with direct AI instance
+            // Use the newer pattern with direct AI instance following Google's image understanding docs
             result = await model.ai.models.generateContent({
                 model: model.modelId,
-                contents: [{
-                    role: 'user',
-                    parts: [
-                        { inlineData: { mimeType: mimeType, data: base64Data } },
-                        { text: prompt }
-                    ]
-                }],
+                contents: [
+                    // Per Google's docs: image data and text prompt as separate parts
+                    { inlineData: { mimeType: mimeType, data: base64Data } },
+                    prompt
+                ],
                 config: model.config
             });
         } else {
@@ -86,18 +86,33 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
 
         // Targeted single retry for sparse/MAX_TOKENS responses with a concise instruction
         try {
-            const shortPrompt = 'Briefly describe the in-game scene in \\u2264 140 characters. Plain text only.';
-            const retry = await model.generateContent({
-                contents: [{
-                    role: 'user',
-                    parts: [
-                        // Per docs, place the image before the text prompt when using a single image
+            const shortPrompt = 'Briefly describe the in-game scene in ≤ 140 characters. Plain text only.';
+            let retry;
+            if (model.ai && model.modelId) {
+                // Use the newer pattern with direct AI instance following Google's image understanding docs
+                retry = await model.ai.models.generateContent({
+                    model: model.modelId,
+                    contents: [
+                        // Per Google's docs: image data and text prompt as separate parts
                         { inlineData: { mimeType: mimeType, data: base64Data } },
-                        { text: shortPrompt }
-                    ]
-                }]
-            });
-            const retryResponse = retry.response;
+                        shortPrompt
+                    ],
+                    config: { ...model.config, maxOutputTokens: 200 }
+                });
+            } else {
+                // Fallback to wrapper model
+                retry = await model.generateContent({
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            // Per docs, place the image before the text prompt when using a single image
+                            { inlineData: { mimeType: mimeType, data: base64Data } },
+                            { text: shortPrompt }
+                        ]
+                    }]
+                });
+            }
+            const retryResponse = retry;
             const retryCandidate = retryResponse?.candidates?.[0];
             const retryParts = retryCandidate?.content?.parts;
             if (Array.isArray(retryParts) && retryParts.length > 0) {
