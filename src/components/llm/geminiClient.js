@@ -749,7 +749,7 @@ TEXT:\n${textToSummarize}`;
                 maxOutputTokens: 320
             }
         });
-        const response = result.response;
+        const response = result;
 
         // Standard safety/validity checks
         if (response.promptFeedback?.blockReason) {
@@ -871,7 +871,7 @@ Respond with ONLY the valid IANA timezone string. If the location is ambiguous, 
         maxOutputTokens: 50
       }
     });
-    const response = result.response;
+    const response = result;
 
     if (response.promptFeedback?.blockReason || !response.candidates?.length || !response.candidates[0].content) {
       logger.warn({ locationName, response }, 'Gemini response for IANA timezone was blocked, empty, or invalid.');
