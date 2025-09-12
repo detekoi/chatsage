@@ -83,6 +83,13 @@ async function gracefulShutdown(_signal) {
         stopStreamInfoPolling(streamInfoIntervalId);
         logger.info('Stream info polling stopped.');
     }
+    // Stop Ad Schedule Poller if running
+    try {
+        stopAdSchedulePoller();
+        logger.info('Ad Schedule Poller stopped.');
+    } catch (e) {
+        logger.warn({ err: e }, 'Failed to stop Ad Schedule Poller during shutdown.');
+    }
     
     // Clear message queue before disconnecting
     clearMessageQueue();
