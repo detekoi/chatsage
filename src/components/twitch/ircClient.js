@@ -224,7 +224,8 @@ async function handleAuthenticationFailure() {
  */
 async function connectIrcClient() {
     if (!client) {
-        throw new Error('IRC Client has not been created. Call createIrcClient first.');
+        logger.warn('connectIrcClient called before client creation. Creating IRC client now to satisfy on-demand connect...');
+        await createIrcClient(config.twitch);
     }
 
     // Check the general connectionAttemptPromise lock

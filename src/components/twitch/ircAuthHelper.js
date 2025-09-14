@@ -45,15 +45,27 @@ async function refreshIrcToken() {
         logger.warn('Using TWITCH_BOT_REFRESH_TOKEN from environment (local dev mode).');
         refreshToken = localRefreshToken;
     } else {
-        try {
-            refreshToken = await getSecretValue(refreshTokenSecretName);
-            if (!refreshToken) {
-                throw new Error(`Refresh token could not be retrieved from Secret Manager (${refreshTokenSecretName}).`);
+        // Add resilience: bounded retries around Secret Manager access with backoff and a per-attempt timeout
+        const maxAttempts = 3;
+        const baseDelayMs = 1000;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                refreshToken = await getSecretValue(refreshTokenSecretName);
+                if (!refreshToken) {
+                    throw new Error(`Secret Manager returned empty value for ${refreshTokenSecretName}`);
+                }
+                break; // success
+            } catch (error) {
+                const isLast = attempt === maxAttempts;
+                logger.error({ err: { message: error?.message } }, `Failed to retrieve refresh token from Secret Manager (attempt ${attempt}/${maxAttempts}).`);
+                if (isLast) {
+                    logger.fatal({ err: error }, 'CRITICAL: Failed to retrieve refresh token from secure storage after retries.');
+                    isRefreshing = false;
+                    return null;
+                }
+                const delay = baseDelayMs * Math.pow(2, attempt - 1);
+                await new Promise(r => setTimeout(r, delay));
             }
-        } catch (error) {
-            logger.fatal({ err: error }, 'CRITICAL: Failed to retrieve refresh token from secure storage. Manual intervention required.');
-            isRefreshing = false;
-            return null;
         }
     }
 
