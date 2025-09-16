@@ -114,24 +114,16 @@ export async function initializeActiveStreamsFromPoller() {
 export async function handleKeepAlivePing() {
     logger.info('Keep-alive ping received.');
 
-    // Validate EventSub active streams against stream poller data
+    // First, sync our active streams with the latest info from the poller.
+    // This adds any streams the poller sees as live that EventSub might have missed.
+    try {
+        await initializeActiveStreamsFromPoller();
+    } catch (e) {
+        logger.warn({ err: e }, 'initializeActiveStreamsFromPoller failed during keep-alive; continuing with best-effort state');
+    }
+
     const contextManager = getContextManager();
     const channelStates = contextManager.getAllChannelStates();
-    const actuallyActiveStreams = new Set();
-    
-    // Check which EventSub streams are actually live according to the poller
-    for (const streamName of activeStreams) {
-        const context = contextManager.getContextForLLM(streamName, 'system', 'keep-alive-validation');
-        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
-            actuallyActiveStreams.add(streamName);
-        } else {
-            logger.warn(`EventSub thinks ${streamName} is live, but poller shows it's offline. Removing from active streams.`);
-        }
-    }
-    
-    // Clean up phantom EventSub entries
-    activeStreams.clear();
-    actuallyActiveStreams.forEach(stream => activeStreams.add(stream));
 
     // Check for recent chat activity and poller-detected active streams
     let recentChatActivity = false;
@@ -167,28 +159,20 @@ export async function handleKeepAlivePing() {
         }
     }
 
-    // Check validated EventSub streams first
-    if (activeStreams.size > 0) {
-        logger.info(`Keep-alive check passed: ${activeStreams.size} stream(s) are active (EventSub: ${actuallyActiveStreams.size}, Poller: ${pollerActiveCount}).`);
-        consecutiveFailedChecks = 0; // Reset failure counter
-        try {
-            keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
-        } catch (error) {
-            logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
-        }
-        return;
-    }
-
-    // Determine if we should keep the instance alive based on activity
-    const shouldStayAlive = recentChatActivity || pollerActiveCount > 0;
+    // Determine if we should keep the instance alive.
+    // We stay alive if EventSub thinks a stream is active, OR if the poller sees an active stream,
+    // OR if there has been recent chat activity.
+    const hasEventSubActive = activeStreams.size > 0;
+    const shouldStayAlive = hasEventSubActive || pollerActiveCount > 0 || recentChatActivity;
 
     if (shouldStayAlive) {
         consecutiveFailedChecks = 0; // Reset failure counter
-        let reason = [];
-        if (recentChatActivity) reason.push(`recent chat activity in: ${recentChatDetails.join(', ')}`);
-        if (pollerActiveCount > 0) reason.push(`${pollerActiveCount} stream(s) live according to poller: ${activeChannelsFromPoller.join(', ')}`);
-        
-        logger.info(`Keep-alive check passed: ${reason.join(' and ')}.`);
+        const reasons = [];
+        if (hasEventSubActive) reasons.push(`${activeStreams.size} stream(s) active via EventSub: ${Array.from(activeStreams).join(', ')}`);
+        if (pollerActiveCount > 0) reasons.push(`${pollerActiveCount} stream(s) live via poller: ${activeChannelsFromPoller.join(', ')}`);
+        if (recentChatActivity) reasons.push(`recent chat in: ${recentChatDetails.join(', ')}`);
+
+        logger.info(`Keep-alive check passed: ${reasons.join(' and ')}.`);
         
         try {
             keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
