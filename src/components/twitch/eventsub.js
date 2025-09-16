@@ -8,6 +8,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
+import { getLiveStreams } from './helixClient.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -163,7 +164,35 @@ export async function handleKeepAlivePing() {
     // We stay alive if EventSub thinks a stream is active, OR if the poller sees an active stream,
     // OR if there has been recent chat activity.
     const hasEventSubActive = activeStreams.size > 0;
-    const shouldStayAlive = hasEventSubActive || pollerActiveCount > 0 || recentChatActivity;
+    let shouldStayAlive = hasEventSubActive || pollerActiveCount > 0 || recentChatActivity;
+
+    // Fallback: If everything looks inactive, do a direct Helix check once to avoid false negatives.
+    if (!shouldStayAlive) {
+        try {
+            const channelsToPoll = await contextManager.getChannelsForPolling();
+            if (channelsToPoll.length > 0) {
+                const idToChannel = new Map(channelsToPoll.map(c => [c.broadcasterId, c.channelName]));
+                const liveStreams = await getLiveStreams(channelsToPoll.map(c => c.broadcasterId));
+                if (liveStreams && liveStreams.length > 0) {
+                    const newlyDetected = [];
+                    for (const stream of liveStreams) {
+                        const channelName = idToChannel.get(stream.user_id);
+                        if (channelName && !activeStreams.has(channelName)) {
+                            activeStreams.add(channelName);
+                            newlyDetected.push(channelName);
+                        }
+                    }
+                    if (newlyDetected.length > 0) {
+                        logger.info(`Helix fallback detected live streams: ${newlyDetected.join(', ')}. Preventing premature scale-down.`);
+                        pollerActiveCount = new Set([...(activeChannelsFromPoller || []), ...newlyDetected]).size;
+                        shouldStayAlive = true;
+                    }
+                }
+            }
+        } catch (fallbackErr) {
+            logger.warn({ err: fallbackErr }, 'Helix fallback live-check during keep-alive failed.');
+        }
+    }
 
     if (shouldStayAlive) {
         consecutiveFailedChecks = 0; // Reset failure counter
