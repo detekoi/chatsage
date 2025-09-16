@@ -4,6 +4,9 @@ import logger from './logger.js';
 
 let client = null;
 
+// Helper for async sleep
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
  * Initializes the Secret Manager client.
  */
@@ -58,35 +61,46 @@ async function getSecretValue(secretResourceName) {
         return null;
     }
     const smClient = getSecretManagerClient();
-    try {
-        logger.debug(`Accessing secret: ${secretResourceName}`);
-        const [version] = await smClient.accessSecretVersion({
-            name: secretResourceName,
-        });
 
-        if (!version.payload?.data) {
-            logger.warn(`Secret payload data is missing for ${secretResourceName}.`);
-            return null;
-        }
+    const MAX_RETRIES = 3;
+    let lastError = null;
 
-        // Decode the secret value (it's base64 encoded by default)
-        const secretValue = version.payload.data.toString('utf8');
-        logger.info(`Successfully retrieved secret: ${secretResourceName.split('/secrets/')[1].split('/')[0]} (version: ${secretResourceName.split('/').pop()})`);
-        return secretValue;
-    } catch (error) {
-        // Log specific GCP error codes if available
-        logger.error(
-            { err: { message: error.message, code: error.code }, secretName: secretResourceName },
-            `Failed to access secret version ${secretResourceName}. Check permissions and secret existence.`
-        );
-        // Handle common errors specifically if needed
-        if (error.code === 5) { // 5 = NOT_FOUND
-             logger.error(`Secret or version not found: ${secretResourceName}`);
-        } else if (error.code === 7) { // 7 = PERMISSION_DENIED
-             logger.error(`Permission denied accessing secret: ${secretResourceName}. Check IAM roles.`);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            logger.debug(`Accessing secret: ${secretResourceName} (Attempt ${attempt}/${MAX_RETRIES})`);
+            const [version] = await smClient.accessSecretVersion({
+                name: secretResourceName,
+            });
+
+            if (!version.payload?.data) {
+                logger.warn(`Secret payload data is missing for ${secretResourceName}.`);
+                return null;
+            }
+
+            // Decode the secret value (it's base64 encoded by default)
+            const secretValue = version.payload.data.toString('utf8');
+            logger.info(`Successfully retrieved secret: ${secretResourceName.split('/secrets/')[1].split('/')[0]}`);
+            return secretValue;
+        } catch (error) {
+            lastError = error;
+            logger.error(
+                { err: { message: error.message, code: error.code }, secretName: secretResourceName, attempt },
+                `Failed to access secret version on attempt ${attempt}`
+            );
+
+            // Retry on DEADLINE_EXCEEDED (4) or UNAVAILABLE (14)
+            if ((error.code === 4 || error.code === 14) && attempt < MAX_RETRIES) {
+                const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s
+                logger.warn(`Retrying secret access in ${delay}ms...`);
+                await sleep(delay);
+                continue;
+            }
+            break; // Non-retryable or last attempt
         }
-        return null; // Return null on error
     }
+
+    logger.error({ err: lastError, secretName: secretResourceName }, `Failed to access secret version after ${MAX_RETRIES} attempts.`);
+    return null;
 }
 
 /**
