@@ -1,6 +1,6 @@
 // src/components/llm/geminiClient.js
 // Use the official @google/genai SDK
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 import logger from '../../lib/logger.js';
 import { getCurrentTime } from '../../lib/timeUtils.js';
@@ -446,12 +446,16 @@ export async function generateSearchResponse(contextPrompt, userQuery, requireGr
             logger.info({ citations: candidate.citationMetadata.citationSources }, 'Gemini response included search citations.');
         }
 
-        // If strict grounding is required, ensure we have some grounding signal (metadata or citations)
+        // If strict grounding is required, ensure we have some grounding signal.
+        // Accept any of: groundingChunks, groundingSupports, webSearchQueries, or citationSources.
         if (requireGrounding) {
             const hasGroundingChunks = Array.isArray(groundingMetadata?.groundingChunks) && groundingMetadata.groundingChunks.length > 0;
+            const hasGroundingSupports = Array.isArray(groundingMetadata?.groundingSupports) && groundingMetadata.groundingSupports.length > 0;
+            const hasWebSearchQueries = Array.isArray(groundingMetadata?.webSearchQueries) && groundingMetadata.webSearchQueries.length > 0;
             const hasCitations = Array.isArray(candidate.citationMetadata?.citationSources) && candidate.citationMetadata.citationSources.length > 0;
-            if (!hasGroundingChunks && !hasCitations) {
-                logger.warn('Strict grounding required, but no grounding metadata or citations present. Suppressing response.');
+            const hasAnyGroundingSignal = hasGroundingChunks || hasGroundingSupports || hasWebSearchQueries || hasCitations;
+            if (!hasAnyGroundingSignal) {
+                logger.warn('Strict grounding required, but no grounding signals present (no chunks/supports/web queries/citations). Suppressing response.');
                 return null;
             }
         }
@@ -631,12 +635,13 @@ export async function decideSearchWithStructuredOutput(contextPrompt, userQuery)
     const model = getGeminiClient();
 
     const schema = {
-        type: 'object',
+        type: Type.OBJECT,
         properties: {
-            searchNeeded: { type: 'boolean' },
-            reasoning: { type: 'string' }
+            searchNeeded: { type: Type.BOOLEAN },
+            reasoning: { type: Type.STRING }
         },
-        required: ['searchNeeded', 'reasoning']
+        required: ['searchNeeded', 'reasoning'],
+        propertyOrdering: ['searchNeeded', 'reasoning']
     };
 
     const prompt = `${contextPrompt}

@@ -3,10 +3,11 @@ import { getContextManager } from '../../context/contextManager.js';
 // Import the relevant functions from geminiClient
 import {
     buildContextPrompt,
-    generateUnifiedResponse,
+    generateSearchResponse,
+    generateStandardResponse,
+    decideSearchWithStructuredOutput,
     summarizeText,
-    fetchIanaTimezoneForLocation,
-    getOrCreateChatSession
+    fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
@@ -212,18 +213,23 @@ const askHandler = {
                 return; // Time query handled (or attempt failed)
             }
 
-            // --- Not a regex-matched time query. Use persistent chat session per channel. ---
-            logger.debug(`[${channelName}] Query not matched by time regexes. Using persistent chat session.`);
+            // --- Not a regex-matched time query. Decide if search is needed, then route. ---
+            const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
+            const decision = await decideSearchWithStructuredOutput(contextPrompt, userQueryWithContext);
+            logger.info({ searchNeeded: decision?.searchNeeded, reason: decision?.reasoning }, `[${channelName}] Search decision for !ask`);
 
-            // Ensure a chat session exists for this channel with system instructions held once
-            const chatSession = getOrCreateChatSession(channelName);
+            let responseText = null;
+            if (decision?.searchNeeded) {
+                // Do not require strict grounding signals; accept valid search answers even if metadata arrays are empty
+                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext, { requireGrounding: false });
+                if (!responseText) {
+                    // Fallback to standard if grounded response failed (e.g., safety block)
+                    responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
+                }
+            } else {
+                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
+            }
 
-            // Build a concise per-turn message that includes only fresh context and the user message
-            const perTurnContext = contextPrompt;
-            const message = `${perTurnContext}\nUSER: ${userName} says: ${userQuery}`;
-
-            const chatResult = await chatSession.sendMessage({ message });
-            const responseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 
         } catch (error) {
