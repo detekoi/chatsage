@@ -6,6 +6,7 @@ import {
     generateSearchResponse,
     generateStandardResponse,
     decideSearchWithStructuredOutput,
+    generateUnifiedResponse,
     summarizeText,
     fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
@@ -97,52 +98,72 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
         logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
 
         const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
-        if (summary?.trim()) {
-            finalReplyText = summary;
-            logger.info(`Summarization successful (${finalReplyText.length} chars).`);
+        if (summary && typeof summary === 'string' && summary.trim().length > 0) {
+            finalReplyText = summary.trim();
+            logger.info(`Summarization successful: reduced from ${finalReplyText.length} to ${summary.length} chars.`);
         } else {
-            logger.warn(`Summarization failed for !ask response. Falling back to intelligent truncation.`);
-            const availableLength = MAX_IRC_MESSAGE_LENGTH - 3;
-            
-            if (availableLength > 0) {
-                let truncated = finalReplyText.substring(0, availableLength);
-                
-                // Try to find sentence endings first
-                const sentenceEndRegex = /[.!?][^.!?]*$/;
-                const sentenceMatch = truncated.match(sentenceEndRegex);
-                
-                if (sentenceMatch) {
-                    const endIndex = availableLength - sentenceMatch[0].length + 1;
-                    truncated = finalReplyText.substring(0, endIndex > 0 ? endIndex : 0);
-                } else {
-                    // Try to find a comma or other natural break
-                    const commaBreakRegex = /,[^,]*$/;
-                    const commaMatch = truncated.match(commaBreakRegex);
-                    
-                    if (commaMatch) {
-                        const endIndex = availableLength - commaMatch[0].length + 1;
-                        truncated = finalReplyText.substring(0, endIndex > 0 ? endIndex : 0);
+            logger.warn(`Summarization failed for !ask response (got: ${typeof summary}). Falling back to intelligent truncation of original text.`);
+
+            // Ensure we're working with the original response text for truncation
+            const originalText = responseText || finalReplyText;
+            const availableLength = MAX_IRC_MESSAGE_LENGTH - 3; // Reserve space for '...'
+
+            if (availableLength > 0 && originalText.length > 0) {
+                let truncated = originalText.substring(0, availableLength);
+
+                // Try to find sentence endings first for natural breaks
+                const sentenceEndRegex = /[.!?]\s*$/;
+                if (!sentenceEndRegex.test(truncated)) {
+                    // Find the last sentence ending within our limit
+                    const lastSentenceEnd = Math.max(
+                        truncated.lastIndexOf('. '),
+                        truncated.lastIndexOf('! '),
+                        truncated.lastIndexOf('? ')
+                    );
+
+                    if (lastSentenceEnd > availableLength * 0.6) {
+                        truncated = originalText.substring(0, lastSentenceEnd + 1).trim();
                     } else {
-                        // Find the last space to avoid cutting off mid-word
-                        const lastSpaceIndex = truncated.lastIndexOf(' ');
-                        if (lastSpaceIndex > availableLength * 0.8) {
-                            truncated = finalReplyText.substring(0, lastSpaceIndex);
+                        // Try to find a comma or other natural break
+                        const lastComma = truncated.lastIndexOf(', ');
+                        if (lastComma > availableLength * 0.7) {
+                            truncated = originalText.substring(0, lastComma).trim();
+                        } else {
+                            // Find the last space to avoid cutting off mid-word
+                            const lastSpaceIndex = truncated.lastIndexOf(' ');
+                            if (lastSpaceIndex > availableLength * 0.8) {
+                                truncated = originalText.substring(0, lastSpaceIndex).trim();
+                            }
+                            // If no good break point found, keep the substring truncation
                         }
-                        // If no good break point, keep the substring truncation
                     }
                 }
-                
+
                 finalReplyText = truncated + '...';
+                logger.info(`Applied intelligent truncation: ${originalText.length} -> ${finalReplyText.length} chars.`);
             } else {
-                finalReplyText = '...';
+                logger.error(`Cannot truncate: availableLength=${availableLength}, originalTextLength=${originalText?.length || 0}`);
+                finalReplyText = 'Sorry, response too long to display.';
             }
         }
     }
 
+    // Final safety check to ensure message fits within IRC limits
     let finalMessage = finalReplyText;
     if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.warn(`Final !ask reply too long (${finalMessage.length} chars). Truncating sharply.`);
-        finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        logger.warn(`Final !ask reply still too long (${finalMessage.length} chars). Applying emergency truncation.`);
+        const emergencyLength = MAX_IRC_MESSAGE_LENGTH - 3;
+        if (emergencyLength > 0) {
+            // Try to preserve word boundaries even in emergency truncation
+            let emergencyTruncated = finalMessage.substring(0, emergencyLength);
+            const lastSpace = emergencyTruncated.lastIndexOf(' ');
+            if (lastSpace > emergencyLength * 0.8) {
+                emergencyTruncated = finalMessage.substring(0, lastSpace);
+            }
+            finalMessage = emergencyTruncated + '...';
+        } else {
+            finalMessage = '...';
+        }
     }
 
     enqueueMessage(channel, finalMessage, { replyToId });

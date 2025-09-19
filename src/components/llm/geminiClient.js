@@ -731,12 +731,11 @@ export async function summarizeText(textToSummarize, targetCharLength = 400) {
     const ai = getGenAIInstance();
     const modelId = process.env.GEMINI_MODEL_ID || configuredModelId || 'gemini-2.5-flash-lite';
 
-    // Simplified summarization prompt
-    const summarizationPrompt = `Task: Summarize the text below in under ${targetCharLength} characters.
-Constraints: No usernames, no greetings, no markdown, avoid repetition, one short paragraph.
-Return JSON only: {"summary": string}
+    // Simplified summarization prompt using current best practices
+    const summarizationPrompt = `Summarize the following text in under ${targetCharLength} characters. Focus on the main points, avoid usernames/greetings, use plain text only.
 
-TEXT:\n${textToSummarize}`;
+Text to summarize:
+${textToSummarize}`;
 
     logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
 
@@ -748,10 +747,13 @@ TEXT:\n${textToSummarize}`;
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: 'object',
-                    properties: { summary: { type: 'string' } },
+                    properties: {
+                        summary: { type: 'string' }
+                    },
                     required: ['summary']
                 },
-                maxOutputTokens: 320
+                maxOutputTokens: 320,
+                temperature: 0.3
             }
         });
         const response = result;
@@ -771,59 +773,108 @@ TEXT:\n${textToSummarize}`;
               if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
              return null;
         }
-        // Enhanced structured extraction with better error handling
+
+        // Robust extraction using current Gemini structured output best practices
         const jsonText = extractTextFromResponse(response, candidate, 'summarize-structured');
         let parsedSummary = null;
-        
+
         if (jsonText && typeof jsonText === 'string') {
+            // Try multiple parsing strategies for maximum robustness
+
+            // Strategy 1: Direct JSON parse
             try {
                 const obj = JSON.parse(jsonText);
                 if (obj && typeof obj.summary === 'string' && obj.summary.trim().length > 0) {
                     parsedSummary = obj.summary.trim();
+                    logger.debug('Successfully parsed JSON summary directly');
                 }
             } catch (parseError) {
-                // Try to extract summary from malformed JSON
-                logger.debug({ jsonText, parseError: parseError.message }, 'JSON parse failed, attempting recovery');
-                const summaryMatch = jsonText.match(/"summary"\s*:\s*"([^"]*)/i);
-                if (summaryMatch && summaryMatch[1]) {
-                    parsedSummary = summaryMatch[1].trim();
-                    logger.debug('Recovered summary from malformed JSON via regex');
+                logger.debug({ parseError: parseError.message }, 'Direct JSON parse failed, trying recovery strategies');
+
+                // Strategy 2: Clean and retry JSON parse
+                const cleanedJson = jsonText.trim().replace(/^```json\s*/, '').replace(/\s*```$/, '');
+                try {
+                    const obj = JSON.parse(cleanedJson);
+                    if (obj && typeof obj.summary === 'string' && obj.summary.trim().length > 0) {
+                        parsedSummary = obj.summary.trim();
+                        logger.debug('Successfully parsed cleaned JSON summary');
+                    }
+                } catch (cleanError) {
+                    // Strategy 3: Regex extraction from malformed JSON
+                    const summaryMatch = jsonText.match(/["']summary["']\s*:\s*["']([^"']*)["']/i);
+                    if (summaryMatch && summaryMatch[1]) {
+                        parsedSummary = summaryMatch[1].trim();
+                        logger.debug('Recovered summary from malformed JSON via regex');
+                    } else {
+                        // Strategy 4: Extract any quoted text that might be the summary
+                        const quotedMatch = jsonText.match(/["']([^"']{10,})["']/i);
+                        if (quotedMatch && quotedMatch[1]) {
+                            parsedSummary = quotedMatch[1].trim();
+                            logger.debug('Extracted summary from quoted text');
+                        }
+                    }
                 }
             }
         }
 
         let summary = parsedSummary;
         let summarySource = parsedSummary ? 'structured' : 'fallback';
+
+        // Enhanced fallback with intelligent text processing
         if (!summary || summary.trim().length === 0) {
-            // Fallback: avoid duplication on single-line inputs, dedupe on multi-line
-            logger.warn('Summarization response missing extractable text. Using fallback summarizer.');
+            logger.warn('Summarization response missing extractable text. Using enhanced fallback summarizer.');
             try {
-                const hasNewlines = /\n/.test(textToSummarize);
-                if (!hasNewlines) {
-                    const raw = textToSummarize.replace(/\s+/g, ' ').trim();
-                    summary = raw.slice(0, Math.max(60, targetCharLength));
+                // Smart fallback: create a simple summary from the original text
+                const sentences = textToSummarize.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
+                if (sentences.length > 1) {
+                    // Take first sentence and key phrases from others
+                    const firstSentence = sentences[0];
+                    if (firstSentence.length <= targetCharLength) {
+                        summary = firstSentence;
+                    } else {
+                        // Truncate first sentence intelligently
+                        const words = firstSentence.split(' ');
+                        let truncated = '';
+                        for (const word of words) {
+                            if ((truncated + word).length > targetCharLength - 10) break;
+                            truncated += (truncated ? ' ' : '') + word;
+                        }
+                        summary = truncated;
+                    }
                 } else {
-                    const lines = textToSummarize.split('\n').map(l => l.trim()).filter(Boolean);
-                    const uniq = Array.from(new Set(lines));
-                    const joined = uniq.join(' · ');
-                    summary = joined.slice(0, Math.max(60, targetCharLength));
+                    // Single sentence or no sentence breaks
+                    const raw = textToSummarize.replace(/\s+/g, ' ').trim();
+                    summary = raw.length > targetCharLength
+                        ? raw.substring(0, targetCharLength - 10).trim()
+                        : raw;
                 }
                 summarySource = 'fallback';
-            } catch (_) {
+            } catch (fallbackError) {
+                logger.error({ err: fallbackError }, 'Fallback summarization failed');
                 summary = null;
             }
         }
-        if (!summary) return null;
-        // Final guard on length
-        if (summary.length > targetCharLength) {
-            summary = summary.slice(0, targetCharLength);
+
+        if (!summary) {
+            logger.error('All summarization strategies failed');
+            return null;
         }
-        logger.info({ originalLength: textToSummarize.length, summaryLength: summary.length, source: summarySource }, 'Successfully generated summary.');
+
+        // Final length check and cleanup
+        if (summary.length > targetCharLength) {
+            summary = summary.substring(0, targetCharLength - 3).trim() + '...';
+        }
+
+        logger.info({
+            originalLength: textToSummarize.length,
+            summaryLength: summary.length,
+            source: summarySource
+        }, 'Successfully generated summary.');
+
         return summary.trim();
 
     } catch (error) {
         logger.error({ err: error, prompt: "[summarization prompt omitted]" }, 'Error during summarization Gemini API call');
-        // Add specific error handling if needed
         return null;
     }
 }
