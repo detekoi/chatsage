@@ -30,6 +30,7 @@ import { startAdSchedulePoller, stopAdSchedulePoller } from './components/twitch
 let streamInfoIntervalId = null;
 let ircClient = null;
 let channelChangeListener = null;
+let isFullyInitialized = false;
 
 const CHANNEL_SYNC_INTERVAL_MS = 300000; // 5 minutes
 
@@ -200,6 +201,18 @@ async function main() {
                 if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {
                     res.writeHead(200, { 'Content-Type': 'text/plain' });
                     res.end(req.method === 'HEAD' ? undefined : 'OK');
+                    return;
+                }
+
+                // Startup readiness check - only returns 200 when fully initialized
+                if ((req.method === 'GET' || req.method === 'HEAD') && req.url === '/startupz') {
+                    if (isFullyInitialized) {
+                        res.writeHead(200, { 'Content-Type': 'text/plain' });
+                        res.end(req.method === 'HEAD' ? undefined : 'Ready');
+                    } else {
+                        res.writeHead(503, { 'Content-Type': 'text/plain' });
+                        res.end(req.method === 'HEAD' ? undefined : 'Not Ready');
+                    }
                     return;
                 }
 
@@ -393,6 +406,9 @@ async function main() {
             setTimeout(async () => {
                 try {
                     await initializeActiveStreamsFromPoller();
+                    // Mark as fully initialized after all setup is complete
+                    isFullyInitialized = true;
+                    logger.info('Bot is now fully initialized and ready to handle traffic');
                 } catch (error) {
                     logger.error({ err: error }, 'Error initializing active streams from poller');
                 }
@@ -673,6 +689,9 @@ async function main() {
             await connectIrcClient(); // Use connectIrcClient
         } else {
             logger.info('LAZY_CONNECT enabled - IRC client will connect on first EventSub trigger');
+            // Mark as ready even without IRC connection in lazy mode
+            isFullyInitialized = true;
+            logger.info('Bot is ready in lazy connect mode - will initialize IRC on EventSub trigger');
         }
 
         // HTTP server already started above; endpoints are available during initialization

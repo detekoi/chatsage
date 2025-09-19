@@ -22,6 +22,7 @@ Options:
   --region REGION    Region (default: env GCP_REGION or us-central1)
   --service NAME     Cloud Run service name (default: env CLOUD_RUN_SERVICE_NAME or chatsage)
   --source DIR       Source directory to build from (default: env SOURCE_DIR or .)
+  --memory SIZE      Memory allocation (default: env MEMORY or 1Gi)
 
 Examples:
   scripts/deploy-cloud-run.sh
@@ -37,6 +38,7 @@ SERVICE=${CLOUD_RUN_SERVICE_NAME:-chatsage}
 SOURCE_DIR=${SOURCE_DIR:-.}
 ALLOW_UNAUTH=${ALLOW_UNAUTH:-true}
 MIN_INSTANCES=${MIN_INSTANCES:-0}
+MEMORY=${MEMORY:-1Gi}
 
 # Parse simple flags
 while [[ $# -gt 0 ]]; do
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --region) REGION="$2"; shift 2;;
     --service) SERVICE="$2"; shift 2;;
     --source) SOURCE_DIR="$2"; shift 2;;
+    --memory) MEMORY="$2"; shift 2;;
     *) echo "Unknown option: $1"; exit 1;;
   esac
 done
@@ -121,6 +124,11 @@ DEPLOYED_URL=$(gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   "${ALLOW_FLAG[@]}" \
   --min-instances "$MIN_INSTANCES" \
+  --memory "$MEMORY" \
+  --startup-probe-http-get-path="/startupz" \
+  --startup-probe-timeout-seconds=30 \
+  --startup-probe-period-seconds=10 \
+  --startup-probe-failure-threshold=3 \
   --set-env-vars "$ENV_ARG" \
   --set-secrets "$SECRETS_ARG" \
   --labels "managed-by=local,commit-sha=$COMMIT_SHA" \

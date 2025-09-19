@@ -98,7 +98,7 @@ export async function initializeActiveStreamsFromPoller() {
         if (!keepAliveTaskName) {
             try {
                 logger.info('Starting keep-alive pings for streams that were already live');
-                keepAliveTaskName = await scheduleNextKeepAlivePing(240); // Start in 4 minutes
+                keepAliveTaskName = await scheduleNextKeepAlivePing(360); // Start in 6 minutes
             } catch (error) {
                 logger.error({ err: error }, 'Failed to start keep-alive pings for pre-existing streams');
             }
@@ -204,7 +204,7 @@ export async function handleKeepAlivePing() {
         logger.info(`Keep-alive check passed: ${reasons.join(' and ')}.`);
         
         try {
-            keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
+            keepAliveTaskName = await scheduleNextKeepAlivePing(360); // 6 minutes
         } catch (error) {
             logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
         }
@@ -226,7 +226,7 @@ export async function handleKeepAlivePing() {
         } else {
             // Schedule next check even after failure (until max failures reached)
             try {
-                keepAliveTaskName = await scheduleNextKeepAlivePing(240); // 4 minutes
+                keepAliveTaskName = await scheduleNextKeepAlivePing(360); // 6 minutes
             } catch (error) {
                 logger.error({ err: error }, 'Failed to schedule next keep-alive ping after failure');
             }
@@ -334,7 +334,7 @@ export async function eventSubHandler(req, res, rawBody) {
             if (activeStreams.size === 1 && !keepAliveTaskName) {
                 try {
                     logger.info('First stream went live - starting keep-alive pings');
-                    keepAliveTaskName = await scheduleNextKeepAlivePing(240); // Start in 4 minutes
+                    keepAliveTaskName = await scheduleNextKeepAlivePing(360); // Start in 6 minutes
                 } catch (error) {
                     logger.error({ err: error }, 'Failed to start keep-alive pings');
                 }
