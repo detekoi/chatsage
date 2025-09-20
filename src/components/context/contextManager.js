@@ -14,11 +14,15 @@ interface Message {
 
 interface StreamContext {
     game: string | null;
+    gameId: string | null;
     title: string | null;
     tags: string[] | null; // Store as array from API
     language: string | null;
     lastUpdated: Date | null;
     fetchErrorCount: number;
+    viewerCount: number | null;
+    startedAt: string | null;
+    offlineMissCount: number; // consecutive polls reporting offline
 }
 
 interface UserState { // <-- NEW Interface
@@ -98,11 +102,15 @@ function _getOrCreateChannelState(channelName) {
             chatSummary: '',
             streamContext: {
                 game: null,
+                gameId: null,
                 title: null,
                 tags: null,
                 language: null,
                 lastUpdated: null,
                 fetchErrorCount: 0,
+                viewerCount: 0,
+                startedAt: null,
+                offlineMissCount: 0,
             },
             userStates: new Map(), // <-- Initialize the userStates Map here
             botLanguage: null // <-- Initialize with no language preference
@@ -191,11 +199,15 @@ async function addMessage(channelName, username, message, tags) {
 function updateStreamContext(channelName, streamInfo) {
     const state = _getOrCreateChannelState(channelName);
     state.streamContext.game = streamInfo.game ?? null;
+    state.streamContext.gameId = streamInfo.gameId ?? state.streamContext.gameId ?? null;
     state.streamContext.title = streamInfo.title ?? null;
     state.streamContext.tags = streamInfo.tags ?? null;
     state.streamContext.language = streamInfo.language ?? null;
+    state.streamContext.viewerCount = typeof streamInfo.viewerCount === 'number' ? streamInfo.viewerCount : state.streamContext.viewerCount ?? 0;
+    state.streamContext.startedAt = streamInfo.startedAt ?? state.streamContext.startedAt ?? null;
     state.streamContext.lastUpdated = new Date();
     state.streamContext.fetchErrorCount = 0; // Reset errors on successful update
+    state.streamContext.offlineMissCount = 0; // Reset offline miss counter on successful live update
     logger.debug({ channel: channelName, context: state.streamContext }, 'Updated stream context.');
 }
 
@@ -211,16 +223,35 @@ function recordStreamContextFetchError(channelName) {
 }
 
 /**
+ * Records an offline miss (a poll cycle that didn't see the stream live).
+ * Clears the context only after a small threshold of consecutive misses to avoid flapping.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {number} threshold - Number of consecutive misses before clearing.
+ */
+function recordOfflineMiss(channelName, threshold = 2) {
+    const state = _getOrCreateChannelState(channelName);
+    state.streamContext.offlineMissCount = (state.streamContext.offlineMissCount || 0) + 1;
+    logger.debug({ channel: channelName, misses: state.streamContext.offlineMissCount, threshold }, 'Recorded offline miss.');
+    if (state.streamContext.offlineMissCount >= threshold) {
+        clearStreamContext(channelName);
+    }
+}
+
+/**
  * Clears the stream-specific context for a channel, typically after going offline.
  * @param {string} channelName - Channel name (without '#').
  */
 function clearStreamContext(channelName) {
     const state = _getOrCreateChannelState(channelName);
     state.streamContext.game = 'N/A';
+    state.streamContext.gameId = null;
     state.streamContext.title = 'N/A';
     state.streamContext.tags = [];
+    state.streamContext.viewerCount = 0;
+    state.streamContext.startedAt = null;
     state.streamContext.lastUpdated = new Date();
     state.streamContext.fetchErrorCount = 0; // Reset error count
+    state.streamContext.offlineMissCount = 0; // Reset after clearing
     logger.info(`[${channelName}] Stream context has been cleared.`);
 }
 
@@ -252,8 +283,11 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
     return {
         channelName: state.channelName,
         streamGame: state.streamContext.game,
+        streamGameId: state.streamContext.gameId,
         streamTitle: state.streamContext.title,
         streamTags: state.streamContext.tags?.join(', ') || null, // Join tags array
+        viewerCount: state.streamContext.viewerCount ?? 0,
+        streamStartedAt: state.streamContext.startedAt ?? null,
         chatSummary: state.chatSummary || "No conversation summary available yet.", // Provide default
         recentChatHistory: _formatRecentHistory(recentHistory),
         username: currentUsername, // Pass these through
@@ -476,6 +510,7 @@ const manager = {
     addMessage: addMessage,
     updateStreamContext: updateStreamContext,
     recordStreamContextFetchError: recordStreamContextFetchError,
+    recordOfflineMiss: recordOfflineMiss,
     getContextForLLM: getContextForLLM,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,

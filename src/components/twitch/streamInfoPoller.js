@@ -43,8 +43,10 @@ async function fetchBatch(channels, helixClient, contextManager) {
                 // Stream is live, update with live context
                 contextManager.updateStreamContext(channel.channelName, {
                     game: streamInfo?.game_name || channelInfo?.game_name || 'Unknown',
+                    gameId: streamInfo?.game_id || channelInfo?.game_id || null,
                     title: streamInfo?.title || channelInfo?.title || 'Untitled Stream',
-                    tags: channelInfo?.tags || [],
+                    // Prefer live tags from Get Streams; fallback to channel tags
+                    tags: (streamInfo?.tags ?? channelInfo?.tags ?? []),
                     language: channelInfo?.broadcaster_language || 'en',
                     viewerCount: streamInfo?.viewer_count || 0,
                     startedAt: streamInfo?.started_at || null,
@@ -52,10 +54,15 @@ async function fetchBatch(channels, helixClient, contextManager) {
                 
                 logger.debug(`Updated live stream context for ${channel.channelName}: ${streamInfo?.game_name} (${streamInfo?.viewer_count} viewers)`);
             } else {
-                // Stream is offline - clear the context to indicate it's not live
-                // This ensures the keep-alive check knows the stream is offline
-                contextManager.clearStreamContext(channel.channelName);
-                logger.debug(`Cleared context for offline stream: ${channel.channelName}`);
+                // Stream is offline (for this poll). Use a grace mechanism before clearing context
+                try {
+                    contextManager.recordOfflineMiss(channel.channelName);
+                    logger.debug(`Recorded offline miss for ${channel.channelName}`);
+                } catch (e) {
+                    // Fallback to immediate clear only if recordOfflineMiss is unavailable
+                    contextManager.clearStreamContext(channel.channelName);
+                    logger.debug(`Cleared context for offline stream (fallback): ${channel.channelName}`);
+                }
             }
         }
     } catch (error) {
