@@ -24,6 +24,96 @@ const SUMMARY_TARGET_LENGTH = 400;
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Intelligently truncates text to fit within the specified length,
+ * preserving word boundaries and handling UTF-8 characters properly.
+ * @param {string} text The text to truncate
+ * @param {number} maxLength Maximum length including ellipsis
+ * @returns {string} Truncated text with ellipsis if needed
+ */
+function _intelligentTruncate(text, maxLength) {
+    if (!text || typeof text !== 'string') {
+        return '';
+    }
+
+    if (text.length <= maxLength) {
+        return text;
+    }
+
+    const ellipsis = '...';
+    const availableLength = maxLength - ellipsis.length;
+
+    if (availableLength <= 0) {
+        return ellipsis;
+    }
+
+    // First, ensure we don't cut in the middle of a UTF-8 character
+    let truncated = text.substring(0, availableLength);
+
+    // Check if we cut in the middle of a multi-byte UTF-8 character
+    // by trying to encode and seeing if it's valid
+    try {
+        const encoded = Buffer.from(truncated, 'utf8');
+        const decoded = encoded.toString('utf8');
+        if (decoded.length < truncated.length) {
+            // We cut a multi-byte character, so trim it back
+            truncated = decoded;
+        }
+    } catch (error) {
+        // If there's an encoding error, play it safe and trim back further
+        logger.debug({ error: error.message }, 'UTF-8 truncation safety check triggered');
+        truncated = text.substring(0, Math.max(0, availableLength - 4));
+    }
+
+    // Now find the best break point to avoid cutting words
+
+    // 1. Try to break at sentence endings
+    const sentenceEndings = ['. ', '! ', '? '];
+    let bestBreak = -1;
+    let bestBreakScore = 0;
+
+    for (const ending of sentenceEndings) {
+        const lastIndex = truncated.lastIndexOf(ending);
+        if (lastIndex > availableLength * 0.6) { // Don't go too far back
+            const score = lastIndex + (ending.length * 10); // Prefer sentence endings
+            if (score > bestBreakScore) {
+                bestBreak = lastIndex + ending.length - 1; // Keep the punctuation
+                bestBreakScore = score;
+            }
+        }
+    }
+
+    // 2. If no good sentence break, try comma or other punctuation
+    if (bestBreak === -1) {
+        const punctuationBreaks = [', ', '; ', ': ', ' - ', ' – '];
+        for (const punct of punctuationBreaks) {
+            const lastIndex = truncated.lastIndexOf(punct);
+            if (lastIndex > availableLength * 0.7) {
+                const score = lastIndex + punct.length;
+                if (score > bestBreakScore) {
+                    bestBreak = lastIndex;
+                    bestBreakScore = score;
+                }
+            }
+        }
+    }
+
+    // 3. Fall back to word boundaries (spaces)
+    if (bestBreak === -1) {
+        const lastSpace = truncated.lastIndexOf(' ');
+        if (lastSpace > availableLength * 0.8) {
+            bestBreak = lastSpace;
+        }
+    }
+
+    // Apply the best break point we found
+    if (bestBreak > 0) {
+        truncated = text.substring(0, bestBreak).trim();
+    }
+
+    return truncated + ellipsis;
+}
+
+/**
  * Processes the message queue internally.
  */
 async function _processMessageQueue() {
@@ -119,6 +209,7 @@ async function _translateIfNeeded(channelName, text) {
  * @param {object|boolean} [options={}] Optional params or legacy boolean for skipTranslation.
  * @param {string|null} [options.replyToId=null] The ID of the message to reply to.
  * @param {boolean} [options.skipTranslation=false] If true, skips translation.
+ * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation (already handled).
  */
 async function enqueueMessage(channel, text, options = {}) {
     if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
@@ -128,6 +219,7 @@ async function enqueueMessage(channel, text, options = {}) {
 
     let replyToId = null;
     let skipTranslation = false;
+    let skipLengthProcessing = false;
 
     // Backward compatibility: third param can be boolean skipTranslation
     if (typeof options === 'boolean') {
@@ -135,6 +227,7 @@ async function enqueueMessage(channel, text, options = {}) {
     } else if (options && typeof options === 'object') {
         replyToId = options.replyToId || null;
         skipTranslation = !!options.skipTranslation;
+        skipLengthProcessing = !!options.skipLengthProcessing;
     }
     
     let finalText = text;
@@ -145,8 +238,8 @@ async function enqueueMessage(channel, text, options = {}) {
         finalText = await _translateIfNeeded(channelName, text);
     }
 
-    // Handle length limits with summarization fallback
-    if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+    // Handle length limits with summarization fallback (only if not already processed)
+    if (!skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
         logger.info(`Message too long (${finalText.length} chars), attempting summarization before queueing.`);
         
         try {
@@ -155,19 +248,23 @@ async function enqueueMessage(channel, text, options = {}) {
                 finalText = summary;
                 logger.info(`Message summarization successful (${finalText.length} chars).`);
             } else {
-                logger.warn(`Summarization failed. Falling back to truncation.`);
-                finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+                logger.warn(`Summarization failed. Falling back to intelligent truncation.`);
+                finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
             }
         } catch (error) {
-            logger.error({ err: error }, 'Error during message summarization. Falling back to truncation.');
-            finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+            logger.error({ err: error }, 'Error during message summarization. Falling back to intelligent truncation.');
+            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
         }
         
         // Final safety check in case summarization still produced too long text
         if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-            logger.warn(`Summarized message still too long (${finalText.length} chars), truncating.`);
-            finalText = finalText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+            logger.warn(`Summarized message still too long (${finalText.length} chars), applying intelligent truncation.`);
+            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
         }
+    } else if (skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+        // Emergency fallback: if length processing was skipped but message is still too long
+        logger.warn(`Message marked as pre-processed but still too long (${finalText.length} chars). Applying emergency truncation.`);
+        finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
     }
 
     messageQueue.push({ channel, text: finalText, replyToId });

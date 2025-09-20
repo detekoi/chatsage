@@ -7,17 +7,14 @@ import {
     generateStandardResponse,
     decideSearchWithStructuredOutput,
     generateUnifiedResponse,
-    summarizeText,
     fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
-// Define IRC message length limit
-const MAX_IRC_MESSAGE_LENGTH = 450;
-// Target length for summaries (should be less than MAX_IRC_MESSAGE_LENGTH)
-const SUMMARY_TARGET_LENGTH = 400;
+// Note: IRC message length limits are handled by ircSender.js
+// This handler focuses on response generation, not formatting
 
 // --- Multilingual Time Query Regexes ---
 // Each regex should aim to capture the location in a group.
@@ -74,99 +71,27 @@ function extractLocationFromTimeQuery(userQuery) {
 }
 
 /**
- * Handles formatting, length checking, summarization, and sending the response.
+ * Handles basic response formatting and sends the response.
+ * Length checking, summarization, and truncation are handled by ircSender.js
  * @param {string} channel - Channel to send to (# included).
  * @param {string} userName - User to respond to.
  * @param {string | null} responseText - The LLM response text.
  * @param {string} userQuery - The original query for context.
  */
 async function handleAskResponseFormatting(channel, userName, responseText, userQuery, replyToId) {
-    logger.info({ responseText: responseText?.substring(0, 100), userQuery }, `handleAskResponseFormatting called for ${userName}`);
-    
+    logger.info({ responseLength: responseText?.length, userQuery }, `handleAskResponseFormatting called for ${userName}`);
+
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
         enqueueMessage(channel, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
         return;
     }
 
-    let finalReplyText = responseText;
-
     // Strip any mistaken prefixes from the LLM response
-    finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+    let finalReplyText = responseText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
 
-    if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.info(`Initial !ask response too long (${finalReplyText.length} chars). Attempting summarization.`);
-
-        const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
-        if (summary && typeof summary === 'string' && summary.trim().length > 0) {
-            finalReplyText = summary.trim();
-            logger.info(`Summarization successful: reduced from ${finalReplyText.length} to ${summary.length} chars.`);
-        } else {
-            logger.warn(`Summarization failed for !ask response (got: ${typeof summary}). Falling back to intelligent truncation of original text.`);
-
-            // Ensure we're working with the original response text for truncation
-            const originalText = responseText || finalReplyText;
-            const availableLength = MAX_IRC_MESSAGE_LENGTH - 3; // Reserve space for '...'
-
-            if (availableLength > 0 && originalText.length > 0) {
-                let truncated = originalText.substring(0, availableLength);
-
-                // Try to find sentence endings first for natural breaks
-                const sentenceEndRegex = /[.!?]\s*$/;
-                if (!sentenceEndRegex.test(truncated)) {
-                    // Find the last sentence ending within our limit
-                    const lastSentenceEnd = Math.max(
-                        truncated.lastIndexOf('. '),
-                        truncated.lastIndexOf('! '),
-                        truncated.lastIndexOf('? ')
-                    );
-
-                    if (lastSentenceEnd > availableLength * 0.6) {
-                        truncated = originalText.substring(0, lastSentenceEnd + 1).trim();
-                    } else {
-                        // Try to find a comma or other natural break
-                        const lastComma = truncated.lastIndexOf(', ');
-                        if (lastComma > availableLength * 0.7) {
-                            truncated = originalText.substring(0, lastComma).trim();
-                        } else {
-                            // Find the last space to avoid cutting off mid-word
-                            const lastSpaceIndex = truncated.lastIndexOf(' ');
-                            if (lastSpaceIndex > availableLength * 0.8) {
-                                truncated = originalText.substring(0, lastSpaceIndex).trim();
-                            }
-                            // If no good break point found, keep the substring truncation
-                        }
-                    }
-                }
-
-                finalReplyText = truncated + '...';
-                logger.info(`Applied intelligent truncation: ${originalText.length} -> ${finalReplyText.length} chars.`);
-            } else {
-                logger.error(`Cannot truncate: availableLength=${availableLength}, originalTextLength=${originalText?.length || 0}`);
-                finalReplyText = 'Sorry, response too long to display.';
-            }
-        }
-    }
-
-    // Final safety check to ensure message fits within IRC limits
-    let finalMessage = finalReplyText;
-    if (finalMessage.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.warn(`Final !ask reply still too long (${finalMessage.length} chars). Applying emergency truncation.`);
-        const emergencyLength = MAX_IRC_MESSAGE_LENGTH - 3;
-        if (emergencyLength > 0) {
-            // Try to preserve word boundaries even in emergency truncation
-            let emergencyTruncated = finalMessage.substring(0, emergencyLength);
-            const lastSpace = emergencyTruncated.lastIndexOf(' ');
-            if (lastSpace > emergencyLength * 0.8) {
-                emergencyTruncated = finalMessage.substring(0, lastSpace);
-            }
-            finalMessage = emergencyTruncated + '...';
-        } else {
-            finalMessage = '...';
-        }
-    }
-
-    enqueueMessage(channel, finalMessage, { replyToId });
+    // Let ircSender.js handle all length processing (summarization/truncation)
+    enqueueMessage(channel, finalReplyText, { replyToId });
 }
 
 /**
@@ -192,7 +117,7 @@ const askHandler = {
         // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
         if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
-            enqueueMessage(channel, `Hey there! What’s on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
+            enqueueMessage(channel, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
