@@ -374,11 +374,11 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         const llmContext = contextManager.getContextForLLM(channelName, userName, helpQuery);
         const contextPrompt = buildContextPrompt(llmContext || {});
         
-        // Formulate a query targeting walkthroughs/help with conciseness requirement
-        const helpSearchQuery = `Find the best and most effective strategy or walkthrough information for the game "${gameName}" regarding this specific problem: "${helpQuery}". Please keep the response concise and under 450 characters.`;
+        // Formulate a strict query that requires search grounding
+        const helpSearchQuery = `Using ONLY the provided search results, provide a direct, factual answer for the game "${gameName}" to the user's question: "${helpQuery}". Your response MUST be based exclusively on the information from the search results. Do not add any information or invent game mechanics that are not present in the search results. Keep the response concise and under 450 characters.`;
 
-        // 3. Call Search-Grounded LLM
-        const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
+        // 3. Call Search-Grounded LLM with strict grounding requirement
+        const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { requireGrounding: true });
 
         if (!searchResultText || searchResultText.trim().length === 0) {
             logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}".`);

@@ -135,7 +135,8 @@ const standardAnswerTools = {
     ]
 };
 
-const searchTool = [{ googleSearch: {} }]; // Gemini specific format for search
+// Configure search tool for Gemini 2.5 models (JavaScript format)
+const searchTool = [{ googleSearch: {} }];
 
 /**
  * Initializes the GoogleGenerativeAI client and the specific model.
@@ -246,7 +247,7 @@ ${initialContext}`;
     const chat = model.startChat({
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
         // Enable Google Search grounding inside the chat session
-        tools: [ { googleSearch: {} } ],
+        tools: [{ googleSearch: {} }],
         history: [] // History starts empty
     });
 
@@ -496,7 +497,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             // IMPORTANT: Do not combine googleSearch tool with function calling / function tools in this SDK
-            tools: [ { googleSearch: {} } ],
+            tools: [{ googleSearch: {} }],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: { maxOutputTokens: 768, responseMimeType: 'text/plain' }
         });
