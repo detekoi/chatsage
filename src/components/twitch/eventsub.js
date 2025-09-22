@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { getIrcClient, connectIrcClient } from './ircClient.js';
-import { isChannelAllowed } from './channelManager.js';
+import { isChannelAllowed, syncChannelWithIrc } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
@@ -130,19 +130,54 @@ export async function initializeActiveStreamsFromPoller() {
 }
 
 /**
+ * Synchronize live channels detected by the poller with IRC join state without re-initializing.
+ * - Uses context manager stream info to detect live channels
+ * - Ensures joined using channelManager's syncChannelWithIrc (idempotent)
+ * - Updates activeStreams for keep-alive decisions
+ */
+async function syncLiveChannels() {
+    try {
+        const contextManager = getContextManager();
+        const channelStates = contextManager.getAllChannelStates();
+        const ircClient = getIrcClient();
+        const synced = [];
+
+        for (const [channelName] of channelStates) {
+            const ctx = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-sync');
+            const isLive = ctx && ctx.streamGame && ctx.streamGame !== 'N/A' && ctx.streamGame !== null;
+            if (isLive) {
+                if (!activeStreams.has(channelName)) {
+                    logger.info(`[Sync] Marking ${channelName} live based on poller context.`);
+                }
+                activeStreams.add(channelName);
+                if (ircClient) {
+                    try {
+                        const changed = await syncChannelWithIrc(ircClient, channelName, true);
+                        if (changed) synced.push(channelName);
+                    } catch (err) {
+                        logger.warn({ err, channel: channelName }, '[Sync] Failed to ensure IRC join via syncChannelWithIrc.');
+                    }
+                }
+            }
+        }
+
+        if (synced.length > 0) {
+            logger.info(`[Sync] Ensured IRC joined for: ${synced.join(', ')}`);
+        }
+    } catch (e) {
+        logger.warn({ err: e }, '[Sync] syncLiveChannels encountered an error. Continuing.');
+    }
+}
+
+/**
  * Handles the keep-alive ping from Cloud Tasks
  * This is called by the /keep-alive endpoint
  */
 export async function handleKeepAlivePing() {
     logger.info('Keep-alive ping received.');
 
-    // First, sync our active streams with the latest info from the poller.
-    // This adds any streams the poller sees as live that EventSub might have missed.
-    try {
-        await initializeActiveStreamsFromPoller();
-    } catch (e) {
-        logger.warn({ err: e }, 'initializeActiveStreamsFromPoller failed during keep-alive; continuing with best-effort state');
-    }
+    // Perform a lightweight synchronization instead of startup initialization
+    await syncLiveChannels();
 
     const contextManager = getContextManager();
     const channelStates = contextManager.getAllChannelStates();
