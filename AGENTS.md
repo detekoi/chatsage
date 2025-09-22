@@ -1,56 +1,51 @@
-# Repository Guidelines
+# AGENTS.md
 
-## Project Structure & Module Organization
+## Project Overview
+ChatSage is a Twitch chat bot with LLM integration using Google Gemini. The bot provides interactive chat commands, games (trivia, geo-guessing), and automated responses with multi-language support.
 
-* `src/` — application code (agents, Twitch adapters, API clients, utilities). Prefer feature-based folders (e.g., `src/twitch/`, `src/agents/`, `src/utils/`).
-* `tests/` — unit/integration tests mirroring `src/` (`src/foo/bar.ts` → `tests/foo/bar.test.ts`).
-* `scripts/` — maintenance and ops scripts (e.g., seeding, local tools).
-* `docs/` — architecture notes and ADRs.
-* Config: `.eslintrc.json`, `.env.example` (copy to `.env.local`), `package.json`.
+## Setup Commands
+- Install dependencies: `npm install`
+- Start dev server: `npm start` or `npm run dev` (watch mode)
+- Run linter: `npm run lint`
+- Run single test: `node tests/unit/components/twitch/helixClient.test.js`
 
-## Build, Test, and Development Commands
+## Code Style
+- **Language**: ES Modules with explicit `.js` extensions in imports
+- **Naming**: camelCase for variables/functions, descriptive names
+- **Imports**: Group by category (core libs, components, utils)
+- **Format**: 4-space indentation
+- **Async**: Use async/await over Promise chains
+- **Logging**: Use centralized Pino logger from `src/lib/logger.js`
 
-* `npm i` — install dependencies.
-* `npm run dev` — start local dev server / watcher.
-* `npm run build` — compile TypeScript and produce distributables.
-* `npm test` — run test suite.
-* `npm run lint` — check code style; add `--fix` to auto-format.
-* `npm run start` — run the compiled app (post-build).
+## Architecture Patterns
+- **Command Pattern**: Chat commands in `/src/components/commands/handlers/`
+- **Component-Based**: Modular features in `/src/components/`
+- **Centralized State**: Use `contextManager` for all state management
+- **Rate Limiting**: All IRC messages via `enqueueMessage()` from `ircSender.js`
 
-> See `package.json` for the full command list.
+## Key Components
+- **Commands**: `/src/components/commands/` - Chat command processing
+- **LLM**: `/src/components/llm/` - Gemini API integration and responses
+- **Twitch**: `/src/components/twitch/` - IRC, Helix API, EventSub webhooks
+- **Context**: `/src/components/context/` - State management and chat history
+- **Config**: `/src/config/` - Environment variables and validation
+- **Lib**: `/src/lib/` - Shared utilities (logger, IRC sender, secrets)
 
-## Coding Style & Naming Conventions
+## Development Rules
+- **API Calls**: Use `helixClient.js` for all Twitch API requests (never direct axios)
+- **Bot Messages**: Use `enqueueMessage()` from `ircSender.js` (never `ircClient.say()`)
+- **Logging**: Use `logger` from `src/lib/logger.js` (never `console.log`)
+- **Configuration**: Import from `src/config/index.js` (never `process.env`)
+- **State Access**: Use `getContextManager()` (never local state management)
+- **LLM Responses**: Use `sendBotResponse()` from `botResponseHandler.js`
 
-* TypeScript, 2-space indent, semicolons on, single quotes.
-* Filenames: `kebab-case.ts`. Classes: `PascalCase`. Functions/vars: `camelCase`. Constants: `UPPER_SNAKE_CASE`.
-* Keep modules small and focused; prefer pure functions in `src/utils/`.
-* Linting via ESLint; formatting via Prettier (invoked by `npm run lint --fix` if configured).
+## Testing
+- Tests are configured but not fully implemented
+- Run individual tests with Node.js directly
+- Focus on unit testing for components and integration testing for API clients
 
-## Testing Guidelines
-
-* Place tests in `tests/` with `*.test.ts`. Group by feature path.
-* Write fast, deterministic unit tests; mock external APIs (Twitch, HTTP).
-* Aim for meaningful coverage on business logic and agent prompts.
-* Run locally with `npm test`; add `--watch` during development.
-
-## Commit & Pull Request Guidelines
-
-* Use Conventional Commits:
-
-  * `feat: add EventSub retry backoff`
-  * `fix(twitch): handle 401 token refresh`
-* One focused change per PR. Include:
-
-  * Clear description, rationale, and screenshots/logs if UX/dev-tools change.
-  * Linked issue (e.g., `Closes #123`), test coverage, and rollout/rollback notes.
-
-## Security & Configuration Tips
-
-* Never commit secrets. Copy `.env.example` → `.env.local`; use environment vars in CI.
-* Rotate Twitch/GCP credentials regularly. Limit scopes to least privilege.
-* Guard webhooks and verify request signatures.
-
-## Agent-Specific Notes
-
-* Keep agent/system prompts in `src/agents/` with self-contained instructions and examples.
-* When adding a new agent, include: purpose, inputs/outputs, failure modes, and a minimal prompt test in `tests/agents/`.
+## Security
+- All secrets managed via Google Secret Manager
+- OAuth tokens handled by dedicated auth modules
+- No logging of sensitive data (tokens, user data)
+- Rate limiting implemented for all external API calls
