@@ -81,35 +81,61 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
         throw new Error(`Missing required parameters for queue path: project=${project}, location=${location}, queue=${queue}`);
     }
     
-    try {
-        logger.debug({ project, location, queue, url, delaySeconds }, 'Scheduling next keep-alive ping');
-        
-        const queuePath = client.queuePath(project, location, queue);
-        logger.debug({ queuePath }, 'Generated queue path for next ping');
-        
-        const [task] = await client.createTask({
-            parent: queuePath,
-            task: {
-                httpRequest: {
-                    httpMethod: 'POST',
-                    url,
-                    oidcToken: { 
-                        serviceAccountEmail: `${project}@appspot.gserviceaccount.com` 
-                    }
-                },
-                scheduleTime: { 
-                    seconds: Math.floor(Date.now() / 1000) + delaySeconds
-                },
-                dispatchDeadline: { seconds: 30 }
-            }
-        });
+    // Retry with exponential backoff to handle transient DEADLINE_EXCEEDED/UNAVAILABLE
+    const maxAttempts = 4; // ~1.75s total backoff before giving up (0.25 + 0.5 + 1.0)
+    const baseDelayMs = 250;
+    let lastError = null;
 
-        logger.debug({ taskName: task.name, delaySeconds }, 'Next keep-alive ping scheduled');
-        return task.name;
-        
-    } catch (error) {
-        logger.error({ err: error, delaySeconds }, 'Failed to schedule next keep-alive ping');
-        throw error;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            logger.debug({ project, location, queue, url, delaySeconds, attempt }, 'Scheduling next keep-alive ping');
+
+            const queuePath = client.queuePath(project, location, queue);
+            logger.debug({ queuePath }, 'Generated queue path for next ping');
+
+            const [task] = await client.createTask({
+                parent: queuePath,
+                task: {
+                    httpRequest: {
+                        httpMethod: 'POST',
+                        url,
+                        oidcToken: { 
+                            serviceAccountEmail: `${project}@appspot.gserviceaccount.com` 
+                        }
+                    },
+                    scheduleTime: { 
+                        seconds: Math.floor(Date.now() / 1000) + delaySeconds
+                    },
+                    dispatchDeadline: { seconds: 30 }
+                }
+            });
+
+            logger.debug({ taskName: task.name, delaySeconds }, 'Next keep-alive ping scheduled');
+            return task.name;
+        } catch (error) {
+            lastError = error;
+            const code = error?.code;
+            const retryable = code === 4 /* DEADLINE_EXCEEDED */ || code === 14 /* UNAVAILABLE */;
+            const details = {
+                code,
+                message: error?.message,
+                stack: attempt === maxAttempts ? error?.stack : undefined,
+                delaySeconds,
+                attempt,
+                maxAttempts,
+                project,
+                location,
+                queue,
+            };
+            logger.warn(details, 'Failed to schedule keep-alive ping');
+            if (!retryable || attempt === maxAttempts) {
+                logger.error(details, 'Giving up scheduling keep-alive ping');
+                throw error;
+            }
+            const delay = baseDelayMs * Math.pow(2, attempt - 1);
+            logger.warn({ delayMs: delay }, 'Retrying keep-alive scheduling after transient failure');
+            await new Promise(res => setTimeout(res, delay));
+        }
     }
 }
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Script to trigger a stream.online EventSub notification to wake up the bot
+ * Script to trigger stream.online or stream.offline EventSub notifications to wake up the bot
  *
  * Usage:
- *   node trigger-stream-online.js [broadcaster_name] [--secret=VALUE] [--secret-file=/path/to/file] [--dry-run]
+ *   node trigger-stream-online.js [broadcaster_name] [--offline] [--secret=VALUE] [--secret-file=/path/to/file] [--dry-run]
  *
  * Examples:
  *   node trigger-stream-online.js streamername
- *   node trigger-stream-online.js anotherchannel
+ *   node trigger-stream-online.js anotherchannel --offline
  *   TWITCH_EVENTSUB_SECRET=your_secret node trigger-stream-online.js
- *   node trigger-stream-online.js pedromarvarez --secret=your_secret
+ *   node trigger-stream-online.js pedromarvarez --secret=your_secret --offline
  *   node trigger-stream-online.js --secret-file=/secrets/twitch_eventsub_secret --dry-run
  */
 
@@ -41,6 +41,7 @@ const broadcasterArg = args.find(a => !a.startsWith('--'));
 const secretArg = args.find(a => a.startsWith('--secret='))?.split('=')[1];
 const secretFileArg = args.find(a => a.startsWith('--secret-file='))?.split('=')[1];
 const isDryRun = args.includes('--dry-run');
+const isOffline = args.includes('--offline');
 
 // Resolve EventSub secret from (in order): --secret, --secret-file, env var (value or file path)
 function resolveEventSubSecret() {
@@ -65,6 +66,7 @@ if (EVENTSUB_SECRET === 'your_secret_here') {
   console.error('   Examples:');
   console.error('     TWITCH_EVENTSUB_SECRET=your_secret node scripts/trigger-stream-online.js pedromarvarez');
   console.error('     node scripts/trigger-stream-online.js pedromarvarez --secret=your_secret');
+  console.error('     node scripts/trigger-stream-online.js pedromarvarez --offline --secret=your_secret');
   console.error('     node scripts/trigger-stream-online.js --secret-file=/path/to/secret --dry-run');
   process.exit(1);
 }
@@ -105,6 +107,38 @@ function createStreamOnlineEvent(broadcasterUserName = 'testbroadcaster') {
 }
 
 /**
+ * Creates a mock stream.offline EventSub notification
+ */
+function createStreamOfflineEvent(broadcasterUserName = 'testbroadcaster') {
+    const messageId = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+    
+    const event = {
+        subscription: {
+            id: crypto.randomUUID(),
+            status: 'enabled',
+            type: 'stream.offline',
+            version: '1',
+            condition: {
+                broadcaster_user_id: '123456789'
+            },
+            transport: {
+                method: 'webhook',
+                callback: WEBHOOK_ENDPOINT
+            },
+            created_at: timestamp
+        },
+        event: {
+            broadcaster_user_id: '123456789',
+            broadcaster_user_login: broadcasterUserName.toLowerCase(),
+            broadcaster_user_name: broadcasterUserName
+        }
+    };
+    
+    return { event, messageId, timestamp };
+}
+
+/**
  * Creates the required EventSub signature
  */
 function createEventSubSignature(messageId, timestamp, body, secret) {
@@ -116,10 +150,14 @@ function createEventSubSignature(messageId, timestamp, body, secret) {
 /**
  * Sends the EventSub notification to the bot
  */
-async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
-    console.log(`🚀 Triggering stream.online event for ${broadcasterUserName}...`);
+async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOffline = false) {
+    const eventType = isOffline ? 'stream.offline' : 'stream.online';
+    const emoji = isOffline ? '🔌' : '🚀';
+    console.log(`${emoji} Triggering ${eventType} event for ${broadcasterUserName}...`);
     
-    const { event, messageId, timestamp } = createStreamOnlineEvent(broadcasterUserName);
+    const { event, messageId, timestamp } = isOffline 
+        ? createStreamOfflineEvent(broadcasterUserName)
+        : createStreamOnlineEvent(broadcasterUserName);
     const body = JSON.stringify(event);
     const signature = createEventSubSignature(messageId, timestamp, body, EVENTSUB_SECRET);
     
@@ -129,7 +167,7 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
         'Twitch-Eventsub-Message-Timestamp': timestamp,
         'Twitch-Eventsub-Message-Signature': signature,
         'Twitch-Eventsub-Message-Type': 'notification',
-        'Twitch-Eventsub-Subscription-Type': 'stream.online',
+        'Twitch-Eventsub-Subscription-Type': eventType,
         'Twitch-Eventsub-Subscription-Version': '1'
     };
     
@@ -137,6 +175,7 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
         console.log(`📡 Sending POST request to: ${WEBHOOK_ENDPOINT}`);
         console.log(`📋 Event details:`);
         console.log(`   - Broadcaster: ${broadcasterUserName}`);
+        console.log(`   - Event Type: ${eventType}`);
         console.log(`   - Message ID: ${messageId}`);
         console.log(`   - Timestamp: ${timestamp}`);
         console.log(`   - Secret length: ${EVENTSUB_SECRET.length} chars`);
@@ -151,7 +190,7 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
             timeout: 30000 // 30 second timeout
         });
         
-        console.log(`✅ Successfully triggered stream.online event!`);
+        console.log(`✅ Successfully triggered ${eventType} event!`);
         console.log(`   - Response status: ${response.status}`);
         console.log(`   - Response headers:`, response.headers);
         
@@ -160,11 +199,16 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
         }
         
         console.log('');
-        console.log('🎉 The bot should now be starting up on Google Cloud!');
-        console.log('   You can check the logs in Google Cloud Console to verify.');
+        if (isOffline) {
+            console.log('🔌 The bot should now be processing the stream.offline event!');
+            console.log('   This will trigger the bot to part the channel and clean up.');
+        } else {
+            console.log('🎉 The bot should now be starting up on Google Cloud!');
+            console.log('   You can check the logs in Google Cloud Console to verify.');
+        }
         
     } catch (error) {
-        console.error('❌ Failed to trigger stream.online event:');
+        console.error(`❌ Failed to trigger ${eventType} event:`);
         
         if (error.response) {
             console.error(`   - Status: ${error.response.status}`);
@@ -178,11 +222,11 @@ async function triggerStreamOnline(broadcasterUserName = 'testbroadcaster') {
         }
         
         console.log('');
-        console.log('💡 Even if this shows an error, the bot might still be starting up.');
+        console.log('💡 Even if this shows an error, the bot might still be processing the event.');
         console.log('   Check Google Cloud Run logs to see if the bot received the event.');
     }
 }
 
 // Run the script
 const broadcasterName = broadcasterArg || 'testbroadcaster';
-triggerStreamOnline(broadcasterName).catch(console.error);
+triggerStreamEvent(broadcasterName, isOffline).catch(console.error);

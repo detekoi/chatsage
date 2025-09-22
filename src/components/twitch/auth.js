@@ -33,7 +33,7 @@ async function fetchNewAppAccessToken() {
 
     for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
         try {
-            logger.info(`Workspaceing App Access Token - Attempt ${attempt}/${MAX_FETCH_RETRIES}...`);
+            logger.info(`Fetching App Access Token - Attempt ${attempt}/${MAX_FETCH_RETRIES}...`);
             const response = await axios.post(TWITCH_TOKEN_URL, null, {
                 params: {
                     client_id: clientId,
@@ -143,7 +143,11 @@ async function getAppAccessToken() {
     const now = Date.now();
 
     if (cachedToken && tokenExpiryTime && now < tokenExpiryTime) {
-        logger.debug('Using cached Twitch App Access Token.');
+        const timeUntilExpiry = tokenExpiryTime - now;
+        logger.debug({ 
+            timeUntilExpiryMs: timeUntilExpiry,
+            timeUntilExpiryMinutes: Math.round(timeUntilExpiry / 60000)
+        }, 'Using cached Twitch App Access Token.');
         return cachedToken;
     }
 
@@ -155,7 +159,11 @@ async function getAppAccessToken() {
 
     // Start a new token fetch
     if (cachedToken) {
-        logger.info('Cached Twitch App Access Token expired or nearing expiry. Fetching new token...');
+        const timeSinceExpiry = now - tokenExpiryTime;
+        logger.info({ 
+            timeSinceExpiryMs: timeSinceExpiry,
+            timeSinceExpiryMinutes: Math.round(timeSinceExpiry / 60000)
+        }, 'Cached Twitch App Access Token expired or nearing expiry. Fetching new token...');
     } else {
         logger.info('No cached Twitch App Access Token found. Fetching new token...');
     }
