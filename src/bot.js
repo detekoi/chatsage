@@ -31,6 +31,7 @@ let streamInfoIntervalId = null;
 let ircClient = null;
 let channelChangeListener = null;
 let isFullyInitialized = false;
+let channelSyncIntervalId = null;
 
 const CHANNEL_SYNC_INTERVAL_MS = 300000; // 5 minutes
 
@@ -83,6 +84,12 @@ async function gracefulShutdown(_signal) {
     if (streamInfoIntervalId) {
         stopStreamInfoPolling(streamInfoIntervalId);
         logger.info('Stream info polling stopped.');
+    }
+    // Clear channel sync interval if set
+    if (channelSyncIntervalId) {
+        clearInterval(channelSyncIntervalId);
+        channelSyncIntervalId = null;
+        logger.info('Channel sync interval cleared.');
     }
     // Stop Ad Schedule Poller if running
     try {
@@ -358,21 +365,26 @@ async function main() {
                     logger.error({ err: error }, 'Error syncing channels from Firestore post-connect.');
                 }
                 // 4. Set up recurring channel sync
-                setInterval(async () => {
-                    try {
-                        if (config.app.nodeEnv !== 'development') { // Double check env inside interval
-                            logger.info('Running scheduled channel sync...');
-                            const syncResult = await syncManagedChannelsWithIrc(ircClient);
-                            if (syncResult.joined.length > 0 || syncResult.parted.length > 0) {
-                                const activeChannels = await getActiveManagedChannels();
-                                config.twitch.channels = activeChannels.map(ch => ch.toLowerCase());
-                                logger.info(`Updated config with ${config.twitch.channels.length} active channels after scheduled sync.`);
+                if (!channelSyncIntervalId) {
+                    channelSyncIntervalId = setInterval(async () => {
+                        try {
+                            if (config.app.nodeEnv !== 'development') { // Double check env inside interval
+                                logger.info('Running scheduled channel sync...');
+                                const syncResult = await syncManagedChannelsWithIrc(ircClient);
+                                if (syncResult.joined.length > 0 || syncResult.parted.length > 0) {
+                                    const activeChannels = await getActiveManagedChannels();
+                                    config.twitch.channels = activeChannels.map(ch => ch.toLowerCase());
+                                    logger.info(`Updated config with ${config.twitch.channels.length} active channels after scheduled sync.`);
+                                }
                             }
+                        } catch (error) {
+                            logger.error({ err: error }, 'Error during scheduled channel sync.');
                         }
-                    } catch (error) {
-                        logger.error({ err: error }, 'Error during scheduled channel sync.');
-                    }
-                }, CHANNEL_SYNC_INTERVAL_MS);
+                    }, CHANNEL_SYNC_INTERVAL_MS);
+                    logger.info(`Scheduled channel sync every ${CHANNEL_SYNC_INTERVAL_MS / 60000} minutes.`);
+                } else {
+                    logger.warn('Channel sync interval already scheduled; skipping re-schedule.');
+                }
             } else {
                 logger.info('Development mode: Skipping Firestore channel listener setup and periodic sync.');
             }
@@ -419,6 +431,11 @@ async function main() {
             logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
             stopStreamInfoPolling(streamInfoIntervalId);
             try { stopAdSchedulePoller(); } catch (e) { /* ignore */ }
+            if (channelSyncIntervalId) {
+                clearInterval(channelSyncIntervalId);
+                channelSyncIntervalId = null;
+                logger.info('Cleared channel sync interval on disconnect.');
+            }
             
             // Clean up Firestore listener ONLY if it was started
             if (config.app.nodeEnv !== 'development' && channelChangeListener) {
