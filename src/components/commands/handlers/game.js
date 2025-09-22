@@ -376,8 +376,8 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         const llmContext = contextManager.getContextForLLM(channelName, userName, helpQuery);
         const contextPrompt = buildContextPrompt(llmContext || {});
         
-        // Formulate a strict query that requires search grounding
-        const helpSearchQuery = `Using ONLY the provided search results, provide a direct, factual answer for the game "${gameName}" to the user's question: "${helpQuery}". Your response MUST be based exclusively on the information from the search results. Do not add any information or invent game mechanics that are not present in the search results. Keep the response concise and under 450 characters.`;
+        // Formulate a search-triggering query that requires web search
+        const helpSearchQuery = `Search the web for current information about "${helpQuery}" in the game "${gameName}". Provide a factual answer based on the search results. If you find relevant information, explain it clearly and concisely. Keep the response under 450 characters.`;
 
         // 3. Call Search-Grounded LLM with strict grounding requirement
         const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { requireGrounding: true });

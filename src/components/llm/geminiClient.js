@@ -406,7 +406,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, requireGr
         ? requireGroundingOrOptions
         : !!requireGroundingOrOptions?.requireGrounding;
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nREPLY (use search results if helpful): Direct answer in ≤340 chars. Prioritize substance; when helpful add a specific detail/fact/example, and optionally a short, tailored question. No meta/disclaimers/sources unless asked. Don’t repeat the username.`;
+    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nSearch the web for up-to-date information to answer this question. Provide a direct answer based on your search results in ≤340 chars. Include specific details from the sources you find.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
