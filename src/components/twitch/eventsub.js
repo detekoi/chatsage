@@ -88,6 +88,27 @@ export async function initializeActiveStreamsFromPoller() {
             logger.info(`Found ${channelName} already live on startup - adding to activeStreams`);
             activeStreams.add(channelName);
             foundLiveStreams++;
+
+            // If LAZY_CONNECT is enabled, ensure IRC connection and join the live channel as a poller fallback
+            const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+            if (isLazyConnect) {
+                try {
+                    const irc = getIrcClient();
+                    const state = irc?.readyState?.() || 'CLOSED';
+                    if (state !== 'OPEN' && state !== 'CONNECTING') {
+                        logger.info(`[Startup Live] IRC not connected (state=${state}). Connecting due to poller-detected live channel ${channelName}...`);
+                        await connectIrcClient();
+                        logger.info('[Startup Live] IRC connection established via poller fallback.');
+                    } else {
+                        logger.info(`[Startup Live] IRC already ${state}. Proceeding to join #${channelName}.`);
+                    }
+                    const client = getIrcClient();
+                    await client.join(`#${channelName}`);
+                    logger.info(`[Startup Live] Joined channel #${channelName} via poller-detected live state.`);
+                } catch (err) {
+                    logger.error({ err, channel: channelName }, '[Startup Live] Failed to connect or join channel from poller-detected live state.');
+                }
+            }
         }
     }
     
