@@ -69,7 +69,7 @@ const gameHandler = {
 
             // --- Execute Help Search if requested ---
             if (helpRequested) {
-                await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId);
+            await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId);
                 return;
             }
 
@@ -366,7 +366,8 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
         if (!gameName) {
-            enqueueMessage(channel, `I couldn't determine the current game to search for help. Please ensure the stream category is set.`, { replyToId });
+            // Softer, user-friendly guidance that acknowledges transient fetch issues
+            enqueueMessage(channel, `I'm fetching the current game info. Please try "!game ${helpQuery}" again in a few seconds, or include the game name like "!search <game> ${helpQuery}".`, { replyToId });
             return;
         }
 

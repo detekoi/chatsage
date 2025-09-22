@@ -24,10 +24,19 @@ async function retryWithBackoff(fn, retries = 3, delay = 1000) {
         }
         
         // Check if this is a timeout or network error that should be retried
-        const shouldRetry = error.code === 'ECONNABORTED' || 
-                           error.code === 'ENOTFOUND' ||
-                           error.code === 'ECONNRESET' ||
-                           (error.response && error.response.status >= 500);
+        const code = error.code || '';
+        const status = error.response?.status;
+        const message = error.message || '';
+        const networkNoResponse = !!error.request && !error.response; // request made, no response
+        const shouldRetry = code === 'ECONNABORTED' ||
+                           code === 'ETIMEDOUT' ||
+                           code === 'ESOCKETTIMEDOUT' ||
+                           code === 'ENOTFOUND' ||
+                           code === 'EAI_AGAIN' ||
+                           message.toLowerCase().includes('timeout') ||
+                           status === 408 ||
+                           (status && status >= 500) ||
+                           networkNoResponse;
         
         if (!shouldRetry) {
             throw error;
@@ -53,7 +62,7 @@ async function initializeHelixClient() {
 
     axiosInstance = axios.create({
         baseURL: TWITCH_HELIX_URL,
-        timeout: 15000, // 15 second timeout for API requests (increased from 8s)
+        timeout: 30000, // Increase to 30s to better handle slow Helix responses
     });
 
     // --- Axios Request Interceptor ---
@@ -192,7 +201,9 @@ async function getChannelInformation(broadcasterIds) {
     logger.debug({ broadcasterIds }, 'Fetching channel information from Helix...');
 
     try {
-        const response = await client.get('/channels', { params });
+        const response = await retryWithBackoff(async () => {
+            return await client.get('/channels', { params });
+        }, 3, 1000);
         // Spec: https://dev.twitch.tv/docs/api/reference/#get-channel-information
         // Data is expected in response.data.data
         return response.data?.data || [];
