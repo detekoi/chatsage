@@ -50,6 +50,13 @@ const CHAT_HISTORY_PRUNE_LENGTH = 10; // Keep N most recent messages after summa
 /** @type {Map<string, ChannelState>} */
 const channelStates = new Map();
 
+// --- Helpers ---
+function _normalizeStringOrNull(value) {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? null : trimmed;
+}
+
 // --- Initialization ---
 /**
  * Initializes the Context Manager by creating initial state entries
@@ -198,13 +205,13 @@ async function addMessage(channelName, username, message, tags) {
  */
 function updateStreamContext(channelName, streamInfo) {
     const state = _getOrCreateChannelState(channelName);
-    state.streamContext.game = streamInfo.game ?? null;
-    state.streamContext.gameId = streamInfo.gameId ?? state.streamContext.gameId ?? null;
-    state.streamContext.title = streamInfo.title ?? null;
+    state.streamContext.game = _normalizeStringOrNull(streamInfo.game) ?? null;
+    state.streamContext.gameId = _normalizeStringOrNull(streamInfo.gameId) ?? state.streamContext.gameId ?? null;
+    state.streamContext.title = _normalizeStringOrNull(streamInfo.title) ?? null;
     state.streamContext.tags = streamInfo.tags ?? null;
-    state.streamContext.language = streamInfo.language ?? null;
+    state.streamContext.language = _normalizeStringOrNull(streamInfo.language) ?? null;
     state.streamContext.viewerCount = typeof streamInfo.viewerCount === 'number' ? streamInfo.viewerCount : state.streamContext.viewerCount ?? 0;
-    state.streamContext.startedAt = streamInfo.startedAt ?? state.streamContext.startedAt ?? null;
+    state.streamContext.startedAt = _normalizeStringOrNull(streamInfo.startedAt) ?? state.streamContext.startedAt ?? null;
     state.streamContext.lastUpdated = new Date();
     state.streamContext.fetchErrorCount = 0; // Reset errors on successful update
     state.streamContext.offlineMissCount = 0; // Reset offline miss counter on successful live update
@@ -504,6 +511,17 @@ function getAllChannelStates() {
     return new Map(channelStates);
 }
 
+/**
+ * Returns a shallow snapshot of the current streamContext for a channel.
+ * @param {string} channelName
+ * @returns {StreamContext | null}
+ */
+function getStreamContextSnapshot(channelName) {
+    const state = channelStates.get(channelName);
+    if (!state) return null;
+    return { ...state.streamContext };
+}
+
 // Define what the "manager" object exposes
 const manager = {
     initialize: initializeContextManager,
@@ -512,6 +530,7 @@ const manager = {
     recordStreamContextFetchError: recordStreamContextFetchError,
     recordOfflineMiss: recordOfflineMiss,
     getContextForLLM: getContextForLLM,
+    getStreamContextSnapshot,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
     enableUserTranslation,

@@ -60,42 +60,4 @@ export async function fetchStreamThumbnail(channelName) {
  * @param {string} channelName - The name of the Twitch channel
  * @returns {Promise<Object|null>} Game information object or null if failed
  */
-export async function getCurrentGameInfo(channelName) {
-    try {
-        // Get context for LLM which should have stream info
-        const contextManager = getContextManager();
-        const streamContext = contextManager.getContextForLLM(channelName, 'system', 'game info lookup');
-        
-        if (!streamContext) {
-            logger.info({ channel: channelName }, 'No stream context available');
-            return null;
-        }
-        
-        // Extract game info from context
-        const gameName = streamContext.streamGame || 'Unknown';
-        const streamTitle = streamContext.streamTitle || 'Unknown';
-        
-        // Check if we have viewer count in the context
-        let viewerCount = 0;
-        if (streamContext.viewerCount && !isNaN(parseInt(streamContext.viewerCount))) {
-            viewerCount = parseInt(streamContext.viewerCount);
-        }
-        
-        const result = {
-            gameName: gameName !== 'N/A' ? gameName : 'Unknown',
-            streamTitle: streamTitle !== 'N/A' ? streamTitle : 'Unknown',
-            viewerCount: viewerCount
-        };
-        
-        logger.debug({ 
-            channel: channelName,
-            gameInfo: result
-        }, 'Retrieved game info from context');
-        
-        return result;
-        
-    } catch (error) {
-        logger.error({ err: error, channel: channelName }, 'Error fetching current game info');
-        return null;
-    }
-}
+// getCurrentGameInfo moved to streamInfoPoller.js to centralize stream info lookups

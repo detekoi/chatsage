@@ -5,7 +5,8 @@ import { getContextManager } from '../../context/contextManager.js';
 // Need LLM functions for search and summarization, and context builder
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse, summarizeText } from '../../llm/geminiClient.js';
 // Need image analysis functions
-import { fetchStreamThumbnail, getCurrentGameInfo } from '../../twitch/streamImageCapture.js';
+import { fetchStreamThumbnail } from '../../twitch/streamImageCapture.js';
+import { getCurrentGameInfo } from '../../twitch/streamInfoPoller.js';
 import { analyzeImage } from '../../llm/geminiImageClient.js';
 // Need summarizer for image analysis results
 
