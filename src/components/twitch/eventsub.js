@@ -8,7 +8,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
-import { getLiveStreams } from './helixClient.js';
+import { getLiveStreams, getUsersByLogin } from './helixClient.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -178,6 +178,56 @@ export async function handleKeepAlivePing() {
 
     // Perform a lightweight synchronization instead of startup initialization
     await syncLiveChannels();
+
+    // Verification step: Cross-reference activeStreams with Twitch Helix API to detect missed offline notifications
+    if (activeStreams.size > 0) {
+        try {
+            logger.debug(`[Keep-Alive] Verifying ${activeStreams.size} active streams against Helix API...`);
+
+            // Convert channel names to broadcaster IDs
+            const channelNames = Array.from(activeStreams);
+            const userData = await getUsersByLogin(channelNames);
+
+            if (userData.length === 0) {
+                logger.warn(`[Keep-Alive] Could not find any user data for ${channelNames.length} channels. Clearing activeStreams.`);
+                activeStreams.clear();
+            } else {
+                const idToChannel = new Map(userData.map(user => [user.id, user.login]));
+                const broadcasterIds = Array.from(idToChannel.keys());
+
+                // Query live streams from Helix API (ground truth)
+                const liveStreams = await getLiveStreams(broadcasterIds);
+                const liveStreamUserIds = new Set(liveStreams.map(stream => stream.user_id));
+
+                // Check for phantom streams (in activeStreams but not live according to API)
+                const phantomStreams = [];
+                for (const [broadcasterId, channelName] of idToChannel) {
+                    if (!liveStreamUserIds.has(broadcasterId)) {
+                        phantomStreams.push(channelName);
+                    }
+                }
+
+                // Remove phantom streams and log discrepancies
+                if (phantomStreams.length > 0) {
+                    logger.warn(`[Keep-Alive] Phantom streams detected (missed offline notifications): ${phantomStreams.join(', ')}. EventSub state is out of sync. Forcing removal.`);
+
+                    phantomStreams.forEach(streamName => {
+                        activeStreams.delete(streamName);
+                        logger.warn(`[Keep-Alive] Removed phantom stream: ${streamName}. Stream.offline EventSub notification was likely missed.`);
+
+                        // Clear the stream context to ensure consistency
+                        getContextManager().clearStreamContext(streamName);
+                    });
+
+                    logger.info(`[Keep-Alive] Verification complete. Removed ${phantomStreams.length} phantom streams. ${activeStreams.size} streams remain active.`);
+                } else {
+                    logger.debug(`[Keep-Alive] All ${activeStreams.size} streams verified as live by Helix API.`);
+                }
+            }
+        } catch (error) {
+            logger.warn({ err: error }, '[Keep-Alive] Failed to verify active streams against Helix API. Continuing with existing state.');
+        }
+    }
 
     const contextManager = getContextManager();
     const channelStates = contextManager.getAllChannelStates();

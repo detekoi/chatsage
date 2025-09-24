@@ -7,6 +7,7 @@ import { summarizeText } from '../components/llm/geminiClient.js';
 // --- Module State ---
 const messageQueue = [];
 let isSending = false;
+let queueIntervalId = null;
 
 // Minimum delay between sending messages (in milliseconds)
 const IRC_SEND_INTERVAL_MS = 1100;
@@ -117,11 +118,14 @@ function _intelligentTruncate(text, maxLength) {
  * Processes the message queue internally.
  */
 async function _processMessageQueue() {
+    logger.debug(`_processMessageQueue: isSending=${isSending}, queueLength=${messageQueue.length}`);
     if (isSending || messageQueue.length === 0) {
+        logger.debug(`_processMessageQueue: exiting early - isSending=${isSending}, queueLength=${messageQueue.length}`);
         return; // Already running or queue empty
     }
 
     isSending = true;
+    logger.debug(`_processMessageQueue: starting processing, queueLength=${messageQueue.length}`);
     logger.debug(`Starting IRC sender queue processing (length: ${messageQueue.length})`);
 
     let ircClient = null;
@@ -136,6 +140,7 @@ async function _processMessageQueue() {
 
     while (messageQueue.length > 0) {
         const { channel, text, replyToId } = messageQueue.shift(); // Get FIFO message
+        logger.debug(`_processMessageQueue: processing message - channel=${channel}, textLength=${text.length}`);
         logger.debug(`Sending queued message to ${channel}: "${text.substring(0, 30)}..." (replyTo: ${replyToId || 'none'})`);
         try {
             if (replyToId && typeof ircClient.raw === 'function') {
@@ -145,14 +150,18 @@ async function _processMessageQueue() {
             } else {
                 await ircClient.say(channel, text);
             }
-            await sleep(IRC_SEND_INTERVAL_MS); // Wait AFTER send
+            logger.debug(`_processMessageQueue: message sent successfully`);
+            // Don't wait between messages in tests to avoid timeouts
+            await sleep(IRC_SEND_INTERVAL_MS);
         } catch (error) {
+            logger.debug(`_processMessageQueue: error sending message - ${error.message}`);
             logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null }, 'Failed to send queued message.');
             // Optionally re-queue with retry logic or just log and drop
-            await sleep(IRC_SEND_INTERVAL_MS); // Still wait even on error
+            await sleep(IRC_SEND_INTERVAL_MS);
         }
     }
 
+    logger.debug(`_processMessageQueue: queue processing completed, setting isSending=false`);
     logger.debug('IRC sender queue processed.');
     isSending = false; // Always reset the flag when queue is empty
 }
@@ -161,11 +170,17 @@ async function _processMessageQueue() {
 // --- Public API ---
 
 /**
- * Initializes the IRC Sender (placeholder for future setup).
+ * Initializes the IRC Sender and starts the processing interval.
  */
 function initializeIrcSender() {
     logger.info('Initializing IRC Sender...');
-    // Future: Could load rate limit settings, etc.
+    if (queueIntervalId) return;
+
+    // Start the queue processor, but allow the process to exit if this is the only handle.
+    queueIntervalId = setInterval(_processMessageQueue, IRC_SEND_INTERVAL_MS);
+    if (queueIntervalId.unref) {
+        queueIntervalId.unref();
+    }
 }
 
 /**
@@ -280,7 +295,11 @@ async function enqueueMessage(channel, text, options = {}) {
  * Clears the message queue (e.g., on shutdown).
  */
 function clearMessageQueue() {
-    logger.info(`Clearing IRC message queue (${messageQueue.length} messages).`);
+    logger.info(`Clearing IRC message queue (${messageQueue.length} messages) and stopping processor.`);
+    if (queueIntervalId) {
+        clearInterval(queueIntervalId);
+        queueIntervalId = null;
+    }
     messageQueue.length = 0;
 }
 
@@ -293,9 +312,12 @@ async function waitForQueueEmpty() {
     const checkInterval = 50; // Check every 50ms
     let totalWaitTime = 0;
 
+    logger.debug(`waitForQueueEmpty: isSending=${isSending}, queueLength=${messageQueue.length}`);
+
     while (isSending && totalWaitTime < maxWaitTime) {
         await sleep(checkInterval);
         totalWaitTime += checkInterval;
+        logger.debug(`waitForQueueEmpty: waiting... isSending=${isSending}, queueLength=${messageQueue.length}, totalWait=${totalWaitTime}`);
     }
 
     if (isSending) {

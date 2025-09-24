@@ -58,45 +58,47 @@ function clearTimer(channelName) {
     if (t) { clearTimeout(t); timers.delete(channelName); }
 }
 
-export async function startAdSchedulePoller() {
+export function startAdSchedulePoller() {
     if (intervalId) return intervalId;
+    // This function now returns the intervalId so it can be cleared.
+    // It also uses unref() to allow the Node.js process to exit even if the timer is active.
     intervalId = setInterval(async () => {
         try {
             const contextManager = getContextManager();
             for (const [channelName, state] of contextManager.getAllChannelStates()) {
                 // Only if live - check stream context directly
                 const isLive = !!(state.streamContext?.game && state.streamContext.game !== 'N/A' && state.streamContext.game !== null);
-                logger.debug({ 
-                    channelName, 
-                    streamGame: state.streamContext?.game, 
-                    isLive 
+                logger.debug({
+                    channelName,
+                    streamGame: state.streamContext?.game,
+                    isLive
                 }, '[AdSchedule] Checking channel status');
                 if (!isLive) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - stream offline'); continue; }
                 // Only if ads on
                 const cfg = await getChannelAutoChatConfig(channelName);
-                logger.debug({ 
-                    channelName, 
-                    config: cfg, 
-                    adsEnabled: cfg?.categories?.ads 
+                logger.debug({
+                    channelName,
+                    config: cfg,
+                    adsEnabled: cfg?.categories?.ads
                 }, '[AdSchedule] Checking ads configuration');
                 if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
                 // Fetch schedule (web-ui proxy uses broadcaster's user token)
                 try {
                     const adScheduleData = await fetchAdScheduleFromWebUi(channelName);
-                    if (!adScheduleData) { 
-                        clearTimer(channelName); 
-                        logger.debug({ channelName }, '[AdSchedule] No ad schedule data'); 
-                        continue; 
+                    if (!adScheduleData) {
+                        clearTimer(channelName);
+                        logger.debug({ channelName }, '[AdSchedule] No ad schedule data');
+                        continue;
                     }
-                    
+
                     // Handle timestamp format - could be RFC3339 string or Unix timestamp
                     const nextAdAt = adScheduleData.next_ad_at;
-                    if (!nextAdAt) { 
-                        clearTimer(channelName); 
-                        logger.debug({ channelName }, '[AdSchedule] No next_ad_at in response'); 
-                        continue; 
+                    if (!nextAdAt) {
+                        clearTimer(channelName);
+                        logger.debug({ channelName }, '[AdSchedule] No next_ad_at in response');
+                        continue;
                     }
-                    
+
                     // Parse timestamp - handle both RFC3339 and Unix timestamp formats
                     let nextAd;
                     if (typeof nextAdAt === 'string') {
@@ -113,47 +115,47 @@ export async function startAdSchedulePoller() {
                         // Unix timestamp as number
                         nextAd = new Date(nextAdAt * 1000);
                     }
-                    
+
                     if (!nextAd || isNaN(nextAd.getTime())) {
                         clearTimer(channelName);
                         logger.warn({ channelName, nextAdAt }, '[AdSchedule] Invalid next_ad_at format');
                         continue;
                     }
-                    
+
                     const msUntil = nextAd.getTime() - Date.now();
-                    if (msUntil <= 0) { 
-                        clearTimer(channelName); 
-                        logger.debug({ channelName, nextAdAt: nextAd.toISOString() }, '[AdSchedule] next_ad_at already passed'); 
-                        continue; 
+                    if (msUntil <= 0) {
+                        clearTimer(channelName);
+                        logger.debug({ channelName, nextAdAt: nextAd.toISOString() }, '[AdSchedule] next_ad_at already passed');
+                        continue;
                     }
-                    
+
                     const fireIn = Math.max(5_000, msUntil - 60_000); // 60s before
-                    logger.debug({ 
-                        channelName, 
-                        nextAdAt: nextAd.toISOString(), 
-                        msUntil, 
-                        fireIn 
+                    logger.debug({
+                        channelName,
+                        nextAdAt: nextAd.toISOString(),
+                        msUntil,
+                        fireIn
                     }, '[AdSchedule] Scheduling ad notification');
-                    
+
                     // If a timer exists but significantly different, reset
                     clearTimer(channelName);
                     timers.set(channelName, setTimeout(async () => {
-                        try { 
-                            logger.info({ channelName }, '[AdSchedule] Pre-alert firing ~60s before ad'); 
-                            await notifyAdSoon(channelName, 60); 
-                        } catch (e) { 
-                            logger.error({ err: e, channelName }, '[AdSchedule] Pre-alert failed'); 
+                        try {
+                            logger.info({ channelName }, '[AdSchedule] Pre-alert firing ~60s before ad');
+                            await notifyAdSoon(channelName, 60);
+                        } catch (e) {
+                            logger.error({ err: e, channelName }, '[AdSchedule] Pre-alert failed');
                         }
                     }, fireIn));
                 } catch (e) {
                     const status = e?.response?.status;
                     const data = e?.response?.data;
-                    logger.error({ 
-                        channelName, 
-                        status, 
-                        data, 
-                        err: e?.message, 
-                        stack: e?.stack 
+                    logger.error({
+                        channelName,
+                        status,
+                        data,
+                        err: e?.message,
+                        stack: e?.stack
                     }, '[AdSchedule] fetch failed');
                 }
             }
@@ -161,6 +163,10 @@ export async function startAdSchedulePoller() {
             logger.error({ err }, '[AdSchedule] Poller tick error');
         }
     }, 30_000);
+
+    if (intervalId.unref) {
+        intervalId.unref();
+    }
     return intervalId;
 }
 

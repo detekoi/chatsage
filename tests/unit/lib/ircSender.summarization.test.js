@@ -3,14 +3,18 @@
 jest.mock('../../../src/lib/logger');
 jest.mock('../../../src/components/twitch/ircClient.js');
 
-import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
+import { enqueueMessage, clearMessageQueue, waitForQueueEmpty, initializeIrcSender } from '../../../src/lib/ircSender.js';
 import * as geminiClient from '../../../src/components/llm/geminiClient.js';
 import { getIrcClient } from '../../../src/components/twitch/ircClient.js';
 
 // Mock IRC client send methods
 const mockIrcClient = {
-    say: jest.fn(async () => {}),
-    raw: jest.fn(async () => {}),
+    say: jest.fn(async () => {
+        console.log('mockIrcClient.say called');
+    }),
+    raw: jest.fn(async () => {
+        console.log('mockIrcClient.raw called');
+    }),
 };
 getIrcClient.mockReturnValue(mockIrcClient);
 
@@ -23,6 +27,7 @@ function buildLongText(len = 1200) {
 
 describe('ircSender enqueueMessage summarization behavior', () => {
     beforeEach(() => {
+        jest.useRealTimers(); // ensure real timers for queue delay behavior
         jest.clearAllMocks();
         clearMessageQueue(); // Clear any leftover messages from previous tests
     });
@@ -31,6 +36,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         // Clean up any pending queue operations
         clearMessageQueue();
         await waitForQueueEmpty();
+        jest.useRealTimers();
     });
 
     test('summarizes long messages via summarizeText and sends summary', async () => {

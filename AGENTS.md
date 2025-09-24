@@ -40,9 +40,13 @@ ChatSage is a Twitch chat bot with LLM integration using Google Gemini. The bot 
 - **LLM Responses**: Use `sendBotResponse()` from `botResponseHandler.js`
 
 ## Testing
-- Tests are configured but not fully implemented
-- Run individual tests with Node.js directly
-- Focus on unit testing for components and integration testing for API clients
+- **Jest Test Runner**: Use `npm test` to run all tests or `npm run test:fast` for faster execution
+- **Individual Tests**: Run specific test files with `npx jest path/to/test.test.js`
+- **Test Coverage**: Unit tests for components and integration tests for API clients
+- **Testing Conventions**: See `tests/README.md` for strict rules on async operations, side effects, and timer management
+- **No Side-Effects on Import**: Modules must not start timers/sockets on import to prevent test hangs
+- **Open Handles Detection**: Tests fail if open handles remain after completion
+- **Timer Strategy**: Real timers by default, opt into fake timers when needed for deterministic testing
 
 ## Security
 - All secrets managed via Google Secret Manager
