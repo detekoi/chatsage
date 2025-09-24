@@ -1,14 +1,15 @@
 // tests/unit/components/trivia/triviaGameManager.test.js
-import { getTriviaGameManager } from '../../../../src/components/trivia/triviaGameManager.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
 import { verifyAnswer } from '../../../../src/components/trivia/triviaQuestionService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
+import { getTriviaGameManager, activeGames } from '../../../../src/components/trivia/triviaGameManager.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/trivia/triviaQuestionService.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
@@ -31,21 +32,13 @@ jest.mock('../../../../src/components/trivia/triviaStorage.js', () => ({
 describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () => {
     let triviaGameManager;
     let mockGameState;
-    let internalActiveGamesTriviaMap;
 
     beforeEach(async () => {
         jest.clearAllMocks();
 
-        internalActiveGamesTriviaMap = new Map();
         triviaGameManager = getTriviaGameManager();
 
         // Test-specific adaptation for initialize and accessing activeGames
-        triviaGameManager.initialize = async () => {
-            internalActiveGamesTriviaMap.clear();
-            // if originalInitializeTrivia did more, mock/replicate here
-        };
-        triviaGameManager.getActiveGamesForTesting = () => internalActiveGamesTriviaMap;
-
         await triviaGameManager.initialize();
 
         getContextManager.mockReturnValue({
@@ -53,7 +46,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         });
 
         verifyAnswer.mockResolvedValue({ is_correct: false });
-        
+
         logger.debug = jest.fn();
         logger.info = jest.fn();
         logger.warn = jest.fn();
@@ -77,10 +70,9 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const triviaQuestionService = require('../../../../src/components/trivia/triviaQuestionService.js');
         jest.spyOn(triviaQuestionService, 'generateQuestion').mockImplementation(mockGenerateQuestion);
 
-
         await triviaGameManager.startGame(channelName, null, 'testuser', 1);
-        
-        const activeGames = triviaGameManager.getActiveGamesForTesting();
+
+        // Access the activeGames directly
         if (activeGames && activeGames.has(channelName)) {
             mockGameState = activeGames.get(channelName);
             mockGameState.state = 'inProgress'; // Ensure game is in progress
@@ -103,17 +95,18 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             };
         } else {
              console.error("Failed to initialize mockGameState for Trivia tests. startGame did not populate activeGames as expected.");
+             // Manually create the game state
              mockGameState = {
                 channelName,
                 state: 'inProgress',
-                currentQuestion: { question: "Test Q", answer: "Test A", alternateAnswers: [] },
+                currentQuestion: { question: "What is the capital of France?", answer: "Paris", alternateAnswers: [], difficulty: "easy", topic: "geography" },
                 config: { questionTimeSeconds: 30, scoreTracking:true, pointsBase:10, pointsTimeBonus:true, pointsDifficultyMultiplier:true },
                 startTime: Date.now(),
                 lastMessageTimestamp: 0,
                 answers: [],
                 streakMap: new Map(),
              };
-             if(activeGames) activeGames.set(channelName, mockGameState);
+             activeGames.set(channelName, mockGameState);
         }
         // Restore original generateQuestion
         jest.spyOn(triviaQuestionService, 'generateQuestion').mockImplementation(originalGenerateQuestion);
@@ -131,7 +124,8 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.currentQuestion.answer,
             userAnswer,
             mockGameState.currentQuestion.alternateAnswers,
-            mockGameState.currentQuestion.question
+            mockGameState.currentQuestion.question,
+            mockGameState.topic || 'general'
         );
     });
 
@@ -149,7 +143,8 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.currentQuestion.answer,
             translatedAnswer,
             mockGameState.currentQuestion.alternateAnswers,
-            mockGameState.currentQuestion.question
+            mockGameState.currentQuestion.question,
+            mockGameState.topic || 'general'
         );
     });
 
@@ -166,7 +161,8 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.currentQuestion.answer,
             userAnswer, // Fallback to original
             mockGameState.currentQuestion.alternateAnswers,
-            mockGameState.currentQuestion.question
+            mockGameState.currentQuestion.question,
+            mockGameState.topic || 'general'
         );
         expect(logger.error).toHaveBeenCalled();
     });
@@ -184,7 +180,8 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.currentQuestion.answer,
             userAnswer, // Fallback to original
             mockGameState.currentQuestion.alternateAnswers,
-            mockGameState.currentQuestion.question
+            mockGameState.currentQuestion.question,
+            mockGameState.topic || 'general'
         );
         expect(logger.warn).toHaveBeenCalled();
     });

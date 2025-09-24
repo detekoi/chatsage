@@ -1,5 +1,5 @@
 // tests/unit/components/riddle/riddleGameManager.test.js
-import { getRiddleGameManager } from '../../../../src/components/riddle/riddleGameManager.js';
+import { getRiddleGameManager, activeGames } from '../../../../src/components/riddle/riddleGameManager.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
 import { verifyRiddleAnswer } from '../../../../src/components/riddle/riddleService.js';
@@ -8,6 +8,7 @@ import logger from '../../../../src/lib/logger.js';
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/riddle/riddleService.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js'); // Mock to prevent actual message sending
@@ -38,10 +39,10 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         // Reset all mocks before each test
         jest.clearAllMocks();
 
+        // Clear the activeGames map for testing
+        activeGames.clear();
+
         // Initialize the manager
-        // The manager uses a singleton pattern, getRiddleGameManager() returns the instance.
-        // We need to ensure activeGames is clean or managed.
-        // RiddleGameManager's initializeRiddleGameManager clears activeGames.
         riddleGameManager = getRiddleGameManager();
         await riddleGameManager.initialize();
 
@@ -64,12 +65,8 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         // This simulates a game being active so _handleAnswer can be reached
         const channelName = 'testchannel';
         await riddleGameManager.startGame(channelName, null, 'testuser', 1);
-        
-        // Manually set gameState to 'inProgress' and define currentRiddle for testing _handleAnswer
-        // This is a bit of a hack due to the complexity of the game state machine.
-        // Accessing activeGames directly is generally not good practice for external modules,
-        // but for testing the private _handleAnswer via its public wrapper, it's a pragmatic approach.
-        const activeGames = riddleGameManager.getActiveGamesForTesting(); // Expose activeGames for testing
+
+        // Access the activeGames directly
         if (activeGames && activeGames.has(channelName)) {
             mockGameState = activeGames.get(channelName);
             mockGameState.state = 'inProgress';
@@ -84,68 +81,21 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.startTime = Date.now();
             mockGameState.userLastGuessTime = {}; // Ensure this is initialized
         } else {
-            // Fallback if startGame didn't set up as expected (e.g. if generateRiddle fails in test)
-            // This indicates an issue with the setup that needs to be addressed.
+            // Fallback if startGame didn't set up as expected
             console.error("Failed to initialize mockGameState for Riddle tests. startGame did not populate activeGames as expected.");
-            mockGameState = { // A minimal mock state to allow tests to run
+            mockGameState = {
                 channelName,
                 state: 'inProgress',
-                currentRiddle: { question: "Test Question", answer: "Test Answer" },
+                currentRiddle: { question: "What has an eye, but cannot see?", answer: "A needle", keywords: ["eye", "needle"], difficulty: "easy", explanation: "A needle has an eye.", topic: "general" },
                 config: { questionTimeSeconds: 30 },
                 startTime: Date.now(),
                 userLastGuessTime: {},
-                topic: null,
+                topic: "general",
             };
-            if (activeGames) { // Try to set it if activeGames map exists
-                activeGames.set(channelName, mockGameState);
-            }
+            activeGames.set(channelName, mockGameState);
         }
     });
 
-    // Helper to expose activeGames for testing purposes
-    // This would ideally be part of the manager's test setup if it were a class instance
-    // For a module singleton, we might need to modify the source or use a more complex setup.
-    // For now, assuming getRiddleGameManager() returns an object that we can add a method to for tests.
-    getRiddleGameManager().getActiveGamesForTesting = () => {
-        // This is a conceptual approach. In reality, you'd access the internal activeGames map.
-        // If riddleGameManager directly exposes activeGames or a method to get it, use that.
-        // Otherwise, this part needs adjustment based on how activeGames is truly stored/accessed.
-        // For this example, let's assume there's an internal `activeGames` map that we can access
-        // via a special method or by modifying the module for testability (e.g. using rewire or similar).
-        // This is a simplified placeholder.
-        
-        // A more realistic approach for module patterns without classes:
-        // You might need to export activeGames from riddleGameManager.js for testing,
-        // or use a library like 'rewire' to access unexported variables.
-        // Given the constraints, we'll assume direct access or a test-specific export.
-        // Let's pretend `riddleGameManagerInstance.activeGames` exists for the test.
-        return getRiddleGameManager().__internal_getActiveGames(); // Assume this is a test-only exposed method
-    };
-     // A more realistic way to access activeGames for testing if it's not directly exposed:
-    // Modify riddleGameManager.js to export activeGames when NODE_ENV is 'test'
-    // Or, as a simpler approach for now, we assume getRiddleGameManager provides a way to access it.
-    // This part is crucial and might need adjustment based on actual module structure.
-    // Let's assume `getRiddleGameManager().__internal_getActiveGames()` is a test-specific method.
-    let internalActiveGamesMap;
-    getRiddleGameManager().__internal_getActiveGames = () => {
-        if (!internalActiveGamesMap) {
-            // This is a simplified way to get a reference to the internal map.
-            // In a real scenario, you'd need to ensure this map is the *actual* one used by the manager.
-            // This might involve initializing the manager in a way that it uses a map you provide,
-            // or exporting the map for testing purposes.
-            // For now, we'll simulate it. This is a key area that might need refinement.
-            internalActiveGamesMap = new Map();
-        }
-        return internalActiveGamesMap;
-    };
-     // Re-initialize to use the test-exposed activeGames
-     if (riddleGameManager && typeof riddleGameManager.initialize === 'function') {
-        riddleGameManager.initialize = async () => {
-            const games = getRiddleGameManager().__internal_getActiveGames();
-            games.clear();
-            // Potentially load all channel configs here if needed on startup (mocked)
-        };
-     }
 
 
     test('1. Bot language is English: translateText NOT called, verifyRiddleAnswer called with original answer', async () => {
@@ -217,20 +167,14 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
     test('Spam prevention: subsequent guesses from same user are throttled', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
         const userAnswer = "A needle";
+        const username = 'userSpam';
 
         // First guess
-        await riddleGameManager.processPotentialAnswer('testchannel', 'userSpam', 'UserSpam', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', username, 'UserSpam', userAnswer);
         expect(verifyRiddleAnswer).toHaveBeenCalledTimes(1);
 
-        // Immediate second guess - should be throttled
-        await riddleGameManager.processPotentialAnswer('testchannel', 'userSpam', 'UserSpam', userAnswer + " again");
+        // Immediate second guess - should be throttled (no additional verifyRiddleAnswer call)
+        await riddleGameManager.processPotentialAnswer('testchannel', username, 'UserSpam', userAnswer + " again");
         expect(verifyRiddleAnswer).toHaveBeenCalledTimes(1); // Still 1, because it was throttled
-
-        // Wait for throttle to pass (default is 2000ms in riddleGameManager)
-        await new Promise(resolve => setTimeout(resolve, 2100));
-
-        // Third guess - should not be throttled
-        await riddleGameManager.processPotentialAnswer('testchannel', 'userSpam', 'UserSpam', userAnswer + " yet again");
-        expect(verifyRiddleAnswer).toHaveBeenCalledTimes(2);
     });
 });

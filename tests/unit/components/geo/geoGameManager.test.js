@@ -1,5 +1,5 @@
 // tests/unit/components/geo/geoGameManager.test.js
-import { getGeoGameManager } from '../../../../src/components/geo/geoGameManager.js';
+import { getGeoGameManager, activeGames } from '../../../../src/components/geo/geoGameManager.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
 import { validateGuess } from '../../../../src/components/geo/geoLocationService.js';
@@ -9,6 +9,7 @@ import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/geo/geoLocationService.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
@@ -38,25 +39,14 @@ jest.mock('../../../../src/components/geo/geoClueService.js', () => ({
 describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
     let geoGameManager;
     let mockGameState;
-    let internalActiveGamesGeoMap; // To simulate access to the internal activeGames map
 
     beforeEach(async () => {
         jest.clearAllMocks();
 
-        // Simulate internal activeGames map for testing
-        internalActiveGamesGeoMap = new Map();
-        
         geoGameManager = getGeoGameManager();
 
-        // Modify initialize to use the test-controlled map
-        // This is a common pattern for testing singletons or modules with internal state.
-        geoGameManager.initialize = async () => {
-            internalActiveGamesGeoMap.clear();
-            // If originalInitialize did more (like loading global configs), mock or replicate that here.
-        };
-        
-        // Helper to access the simulated internal map for test setup
-        geoGameManager.getActiveGamesForTesting = () => internalActiveGamesGeoMap;
+        // Clear the activeGames map for testing
+        activeGames.clear();
 
 
         await geoGameManager.initialize();
@@ -84,18 +74,18 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
 
 
         await geoGameManager.startGame(channelName, 'real', null, 'testuser', 1);
-        
-        const activeGames = geoGameManager.getActiveGamesForTesting();
+
+        // Access the activeGames directly
         if (activeGames && activeGames.has(channelName)) {
             mockGameState = activeGames.get(channelName);
             // Ensure state is 'inProgress' for guesses to be handled
-            mockGameState.state = 'inProgress'; 
+            mockGameState.state = 'inProgress';
             mockGameState.targetLocation = { name: 'Paris', alternateNames: ['City of Lights'] };
             mockGameState.startTime = Date.now();
             mockGameState.lastMessageTimestamp = 0; // Reset for throttling
              mockGameState.config = { // Ensure config is present
                 ...mockGameState.config, // Keep existing loaded config
-                roundDurationMinutes: 5, 
+                roundDurationMinutes: 5,
                 clueIntervalSeconds: 30,
                 scoreTracking: true,
                 pointsBase: 15,
@@ -104,7 +94,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
             };
         } else {
             console.error("Failed to initialize mockGameState for Geo tests. startGame did not populate activeGames as expected.");
-            // Fallback to prevent tests from failing due to missing mockGameState
+            // Manually create the game state
             mockGameState = {
                 channelName,
                 state: 'inProgress',
@@ -118,7 +108,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
                 gameSessionExcludedLocations: new Set(),
                 streakMap: new Map(),
             };
-            if(activeGames) activeGames.set(channelName, mockGameState);
+            activeGames.set(channelName, mockGameState);
         }
          // Restore original selectLocation if it's used elsewhere or to avoid test pollution
         jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(originalSelectLocation);

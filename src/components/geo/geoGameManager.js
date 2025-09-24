@@ -1204,7 +1204,7 @@ function getGeoGameManager() {
     };
 }
 
-export { initializeGeoGameManager, getGeoGameManager };
+export { initializeGeoGameManager, getGeoGameManager, activeGames };
 
 /**
  * Calculates points for a correct guess based on game config.

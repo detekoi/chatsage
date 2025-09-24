@@ -697,6 +697,9 @@ export function getRiddleGameManager() {
     return riddleGameManagerInstance;
 }
 
+// Export activeGames for testing
+export { activeGames };
+
 async function initiateReportProcess(channelName, reason, reportedByUsername) {
     logger.info(`[RiddleGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
     const sessionInfo = await getLatestCompletedSessionInfo(channelName);

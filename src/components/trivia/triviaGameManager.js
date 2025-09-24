@@ -1268,4 +1268,4 @@ function getTriviaGameManager() {
     };
 }
 
-export { initializeTriviaGameManager, getTriviaGameManager };
+export { initializeTriviaGameManager, getTriviaGameManager, activeGames };
