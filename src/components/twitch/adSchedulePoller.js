@@ -146,7 +146,15 @@ export async function startAdSchedulePoller() {
                         }
                     }, fireIn));
                 } catch (e) {
-                    logger.error({ err: e?.message, channelName, stack: e?.stack }, '[AdSchedule] fetch failed');
+                    const status = e?.response?.status;
+                    const data = e?.response?.data;
+                    logger.error({ 
+                        channelName, 
+                        status, 
+                        data, 
+                        err: e?.message, 
+                        stack: e?.stack 
+                    }, '[AdSchedule] fetch failed');
                 }
             }
         } catch (err) {
