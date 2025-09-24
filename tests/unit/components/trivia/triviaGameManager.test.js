@@ -1,20 +1,20 @@
 // tests/unit/components/trivia/triviaGameManager.test.js
-import { getTriviaGameManager } from '../../../src/components/trivia/triviaGameManager.js';
-import { getContextManager } from '../../../src/components/context/contextManager.js';
-import { translateText } from '../../../src/lib/translationUtils.js';
-import { verifyAnswer } from '../../../src/components/trivia/triviaQuestionService.js';
-import logger from '../../../src/lib/logger.js';
-import { enqueueMessage } from '../../../src/lib/ircSender.js';
+import { getTriviaGameManager } from '../../../../src/components/trivia/triviaGameManager.js';
+import { getContextManager } from '../../../../src/components/context/contextManager.js';
+import { translateText } from '../../../../src/lib/translationUtils.js';
+import { verifyAnswer } from '../../../../src/components/trivia/triviaQuestionService.js';
+import logger from '../../../../src/lib/logger.js';
+import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
 // Mock dependencies
-jest.mock('../../../src/components/context/contextManager.js');
-jest.mock('../../../src/llm/geminiClient.js');
-jest.mock('../../../src/components/trivia/triviaQuestionService.js');
-jest.mock('../../../src/lib/logger.js');
-jest.mock('../../../src/lib/ircSender.js');
+jest.mock('../../../../src/components/context/contextManager.js');
+jest.mock('../../../../src/llm/geminiClient.js');
+jest.mock('../../../../src/components/trivia/triviaQuestionService.js');
+jest.mock('../../../../src/lib/logger.js');
+jest.mock('../../../../src/lib/ircSender.js');
 
 // Mock triviaStorage functions
-jest.mock('../../../src/components/trivia/triviaStorage.js', () => ({
+jest.mock('../../../../src/components/trivia/triviaStorage.js', () => ({
     loadChannelConfig: jest.fn().mockResolvedValue({}),
     saveChannelConfig: jest.fn().mockResolvedValue(),
     recordGameResult: jest.fn().mockResolvedValue(),
@@ -64,7 +64,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const channelName = 'testtriviachannel';
 
         // Mock generateQuestion for startGame to succeed
-        const { generateQuestion: originalGenerateQuestion } = jest.requireActual('../../../src/components/trivia/triviaQuestionService.js');
+        const { generateQuestion: originalGenerateQuestion } = jest.requireActual('../../../../src/components/trivia/triviaQuestionService.js');
         const mockGenerateQuestion = jest.fn().mockResolvedValue({
             question: "What is the capital of France?",
             answer: "Paris",
@@ -74,7 +74,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             topic: "geography"
         });
         // Use jest.spyOn for the service that is partially mocked and partially used by other tests/code.
-        const triviaQuestionService = require('../../../src/components/trivia/triviaQuestionService.js');
+        const triviaQuestionService = require('../../../../src/components/trivia/triviaQuestionService.js');
         jest.spyOn(triviaQuestionService, 'generateQuestion').mockImplementation(mockGenerateQuestion);
 
 

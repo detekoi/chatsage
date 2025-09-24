@@ -1,20 +1,20 @@
 // tests/unit/components/geo/geoGameManager.test.js
-import { getGeoGameManager } from '../../../src/components/geo/geoGameManager.js';
-import { getContextManager } from '../../../src/components/context/contextManager.js';
-import { translateText } from '../../../src/lib/translationUtils.js';
-import { validateGuess } from '../../../src/components/geo/geoLocationService.js';
-import logger from '../../../src/lib/logger.js';
-import { enqueueMessage } from '../../../src/lib/ircSender.js';
+import { getGeoGameManager } from '../../../../src/components/geo/geoGameManager.js';
+import { getContextManager } from '../../../../src/components/context/contextManager.js';
+import { translateText } from '../../../../src/lib/translationUtils.js';
+import { validateGuess } from '../../../../src/components/geo/geoLocationService.js';
+import logger from '../../../../src/lib/logger.js';
+import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
 // Mock dependencies
-jest.mock('../../../src/components/context/contextManager.js');
-jest.mock('../../../src/llm/geminiClient.js');
-jest.mock('../../../src/components/geo/geoLocationService.js');
-jest.mock('../../../src/lib/logger.js');
-jest.mock('../../../src/lib/ircSender.js');
+jest.mock('../../../../src/components/context/contextManager.js');
+jest.mock('../../../../src/llm/geminiClient.js');
+jest.mock('../../../../src/components/geo/geoLocationService.js');
+jest.mock('../../../../src/lib/logger.js');
+jest.mock('../../../../src/lib/ircSender.js');
 
 // Mock geoStorage functions used by the manager
-jest.mock('../../../src/components/geo/geoStorage.js', () => ({
+jest.mock('../../../../src/components/geo/geoStorage.js', () => ({
     loadChannelConfig: jest.fn().mockResolvedValue({}),
     saveChannelConfig: jest.fn().mockResolvedValue(),
     recordGameResult: jest.fn().mockResolvedValue(),
@@ -28,7 +28,7 @@ jest.mock('../../../src/components/geo/geoStorage.js', () => ({
 }));
 
 // Mock services used by startGame (which sets up the state for _handleGuess)
-jest.mock('../../../src/components/geo/geoClueService.js', () => ({
+jest.mock('../../../../src/components/geo/geoClueService.js', () => ({
     generateInitialClue: jest.fn().mockResolvedValue("Initial clue"),
     generateFollowUpClue: jest.fn().mockResolvedValue("Follow-up clue"),
     generateFinalReveal: jest.fn().mockResolvedValue("Final reveal"),
@@ -78,9 +78,9 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         // Setup: Start a game to make _handleGuess reachable
         const channelName = 'testgeochannel';
         // Mock selectLocation for startGame to succeed
-        const { selectLocation: originalSelectLocation } = jest.requireActual('../../../src/components/geo/geoLocationService.js');
+        const { selectLocation: originalSelectLocation } = jest.requireActual('../../../../src/components/geo/geoLocationService.js');
         const mockSelectLocation = jest.fn().mockResolvedValue({ name: 'Test Location', alternateNames: [] });
-        jest.spyOn(require('../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(mockSelectLocation);
+        jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(mockSelectLocation);
 
 
         await geoGameManager.startGame(channelName, 'real', null, 'testuser', 1);
@@ -121,7 +121,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
             if(activeGames) activeGames.set(channelName, mockGameState);
         }
          // Restore original selectLocation if it's used elsewhere or to avoid test pollution
-        jest.spyOn(require('../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(originalSelectLocation);
+        jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(originalSelectLocation);
 
     });
 

@@ -21,11 +21,41 @@ describe('Helix Client Unit Tests', () => {
     // Setup mock before each test
     beforeEach(() => {
         jest.clearAllMocks();
+        
+        // Store the actual interceptor functions
+        let requestInterceptor = null;
+        let responseInterceptor = null;
+        
         mockAxiosInstance = {
-            get: jest.fn(), post: jest.fn(),
-            interceptors: { request: { use: jest.fn() }, response: { use: jest.fn() } },
+            get: jest.fn(), 
+            post: jest.fn(),
+            interceptors: { 
+                request: { 
+                    use: jest.fn((fn) => {
+                        requestInterceptor = fn;
+                        return 0; // interceptor ID
+                    }) 
+                }, 
+                response: { 
+                    use: jest.fn((fn) => {
+                        responseInterceptor = fn;
+                        return 0; // interceptor ID
+                    }) 
+                } 
+            },
             defaults: { headers: { common: {} } }
         };
+        
+        // Mock the axios instance methods to simulate interceptor behavior
+        mockAxiosInstance.get = jest.fn().mockImplementation(async (url, config) => {
+            // Simulate request interceptor
+            if (requestInterceptor) {
+                const modifiedConfig = await requestInterceptor({ url, ...config, headers: {} });
+                return { data: { data: [] }, config: modifiedConfig };
+            }
+            return { data: { data: [] }, config: { url, ...config } };
+        });
+        
         axios.create.mockReturnValue(mockAxiosInstance);
         getAppAccessToken.mockResolvedValue('mock-app-token-123');
     });
@@ -54,8 +84,8 @@ describe('Helix Client Unit Tests', () => {
         expect(client.get).toHaveBeenCalledTimes(1);
         expect(client.get).toHaveBeenCalledWith('/users', { params: expect.any(URLSearchParams) });
         expect(users).toEqual(mockHelixResponses.getUsers.success);
-        // Assert Implicit Interceptor Effect
-        expect(getAppAccessToken).toHaveBeenCalled(); // Trust initialize attached an interceptor that calls this
+        // Assert Implicit Interceptor Effect - the interceptor should have been called
+        expect(getAppAccessToken).toHaveBeenCalled(); // The interceptor calls this
     });
 
     test('getChannelInformation should call endpoint and check auth', async () => {
@@ -70,7 +100,7 @@ describe('Helix Client Unit Tests', () => {
         expect(client.get).toHaveBeenCalledTimes(1);
         expect(client.get).toHaveBeenCalledWith('/channels', { params: expect.any(URLSearchParams) });
         expect(channels).toEqual(mockHelixResponses.getChannelInformation.success);
-        // Assert Implicit Interceptor Effect
+        // Assert Implicit Interceptor Effect - the interceptor should have been called
         expect(getAppAccessToken).toHaveBeenCalled();
     });
 
@@ -91,8 +121,8 @@ describe('Helix Client Unit Tests', () => {
         expect(client.get).toHaveBeenCalledTimes(1);
         expect(users).toEqual([]); // Expect graceful failure return
 
-        // Assert Implicit Interceptor Effect
-        expect(clearCachedAppAccessToken).toHaveBeenCalledTimes(1); // Trust initialize attached interceptor that calls this on 401
+        // Assert Implicit Interceptor Effect - the response interceptor should have been called
+        expect(clearCachedAppAccessToken).toHaveBeenCalledTimes(1); // The interceptor calls this on 401
         expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Received 401 Unauthorized'));
     });
 

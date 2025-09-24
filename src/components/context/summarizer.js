@@ -30,25 +30,82 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment)
         return null;
     }
 
-    logger.info(`[${channelName}] Attempting to summarize chat history segment (${fullChatHistorySegment.length} messages)...`);
+    logger.info(`[${channelName}] Attempting to summarize chat history segment (${fullChatHistorySegment.length} messages) using map/reduce...`);
 
-    const formattedHistory = formatHistoryForSummarization(fullChatHistorySegment);
+    // Parameters for map/reduce
+    const chunkSize = 20; // messages per chunk
+    const mapTargetChars = 220; // per-chunk summary target
+    const reduceTargetChars = 300; // final summary target
 
-    try {
-        // Use the specialized summarizeText function with a target length
-        const targetLength = 300; // Keep summaries concise
-        const summary = await summarizeText(formattedHistory, targetLength);
+    // Split into chunks
+    const chunks = [];
+    for (let i = 0; i < fullChatHistorySegment.length; i += chunkSize) {
+        const slice = fullChatHistorySegment.slice(i, i + chunkSize);
+        chunks.push(slice);
+    }
 
-        if (summary && summary.trim().length > 0) {
-            logger.info(`[${channelName}] Successfully generated chat summary (${summary.length} chars).`);
-            return summary.trim();
-        } else {
-            logger.warn(`[${channelName}] Summarization returned empty result.`);
+    if (chunks.length === 1) {
+        // Small enough: do a single summary
+        const formatted = formatHistoryForSummarization(chunks[0]);
+        try {
+            const single = await summarizeText(formatted, reduceTargetChars);
+            if (single && single.trim()) {
+                logger.info(`[${channelName}] Single-pass summary generated (${single.length} chars).`);
+                return single.trim();
+            }
+            logger.warn(`[${channelName}] Summarization returned empty result for single chunk.`);
+            return null;
+        } catch (error) {
+            logger.error({ err: error, channel: channelName }, 'Error during single-pass summarization API call.');
             return null;
         }
+    }
 
+    // Map step: summarize each chunk in parallel
+    const formattedChunks = chunks.map(formatHistoryForSummarization);
+    let chunkSummaries;
+    try {
+        chunkSummaries = await Promise.all(
+            formattedChunks.map((chunkText, idx) =>
+                summarizeText(`Segment ${idx + 1} of ${formattedChunks.length}\n\n${chunkText}`, mapTargetChars)
+                    .then(s => (s ? s.trim() : ''))
+                    .catch(err => {
+                        logger.error({ err, channel: channelName, chunkIndex: idx }, 'Error summarizing chunk.');
+                        return '';
+                    })
+            )
+        );
     } catch (error) {
-        logger.error({ err: error, channel: channelName }, 'Error during summarization API call.');
+        logger.error({ err: error, channel: channelName }, 'Parallel chunk summarization failed.');
+        return null;
+    }
+
+    const validSummaries = chunkSummaries.filter(s => s && s.length > 0);
+    if (validSummaries.length === 0) {
+        logger.warn(`[${channelName}] All chunk summaries were empty.`);
+        return null;
+    }
+
+    // Reduce step: summarize the summaries into a final concise summary
+    const reduceInput = validSummaries
+        .map((s, i) => `Chunk ${i + 1}: ${s}`)
+        .join('\n');
+
+    try {
+        const finalSummary = await summarizeText(
+            `Combine these chunk summaries into one concise, coherent summary that preserves key context.\n\n${reduceInput}`,
+            reduceTargetChars
+        );
+
+        if (finalSummary && finalSummary.trim()) {
+            logger.info(`[${channelName}] Map/Reduce summary generated (${finalSummary.length} chars) from ${validSummaries.length} chunk summaries.`);
+            return finalSummary.trim();
+        } else {
+            logger.warn(`[${channelName}] Reduce step returned empty result.`);
+            return null;
+        }
+    } catch (error) {
+        logger.error({ err: error, channel: channelName }, 'Error during reduce summarization API call.');
         return null;
     }
 }

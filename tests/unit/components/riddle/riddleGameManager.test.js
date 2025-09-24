@@ -1,19 +1,19 @@
 // tests/unit/components/riddle/riddleGameManager.test.js
-import { getRiddleGameManager } from '../../../src/components/riddle/riddleGameManager.js';
-import { getContextManager } from '../../../src/components/context/contextManager.js';
-import { translateText } from '../../../src/lib/translationUtils.js';
-import { verifyRiddleAnswer } from '../../../src/components/riddle/riddleService.js';
-import logger from '../../../src/lib/logger.js';
+import { getRiddleGameManager } from '../../../../src/components/riddle/riddleGameManager.js';
+import { getContextManager } from '../../../../src/components/context/contextManager.js';
+import { translateText } from '../../../../src/lib/translationUtils.js';
+import { verifyRiddleAnswer } from '../../../../src/components/riddle/riddleService.js';
+import logger from '../../../../src/lib/logger.js';
 
 // Mock dependencies
-jest.mock('../../../src/components/context/contextManager.js');
-jest.mock('../../../src/llm/geminiClient.js');
-jest.mock('../../../src/components/riddle/riddleService.js');
-jest.mock('../../../src/lib/logger.js');
-jest.mock('../../../src/lib/ircSender.js'); // Mock to prevent actual message sending
+jest.mock('../../../../src/components/context/contextManager.js');
+jest.mock('../../../../src/llm/geminiClient.js');
+jest.mock('../../../../src/components/riddle/riddleService.js');
+jest.mock('../../../../src/lib/logger.js');
+jest.mock('../../../../src/lib/ircSender.js'); // Mock to prevent actual message sending
 
 // Mock riddleStorage functions used by the manager
-jest.mock('../../../src/components/riddle/riddleStorage.js', () => ({
+jest.mock('../../../../src/components/riddle/riddleStorage.js', () => ({
     loadChannelRiddleConfig: jest.fn().mockResolvedValue({}),
     saveChannelRiddleConfig: jest.fn().mockResolvedValue(),
     recordRiddleResult: jest.fn().mockResolvedValue(),

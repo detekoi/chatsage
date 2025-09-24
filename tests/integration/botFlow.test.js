@@ -27,7 +27,14 @@ jest.mock('../../src/components/twitch/ircAuthHelper');
 jest.mock('../../src/components/twitch/helixClient'); // Mock the entire module
 
 // --- Mock tmi.js Client ---
-const mockTmiClient = { /* ... */ };
+const mockTmiClient = {
+    on: jest.fn(),
+    emit: jest.fn(),
+    say: jest.fn(),
+    raw: jest.fn(),
+    connect: jest.fn().mockResolvedValue(),
+    disconnect: jest.fn().mockResolvedValue(),
+};
 const TmiClient = require('tmi.js').Client;
 TmiClient.mockImplementation(() => mockTmiClient);
 

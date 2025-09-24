@@ -740,24 +740,62 @@ ${textToSummarize}`;
 
     logger.debug({ promptLength: summarizationPrompt.length, targetLength: targetCharLength }, 'Attempting summarization Gemini API call');
 
-    try {
-        const result = await ai.models.generateContent({
+    // Retry with exponential backoff on 503s
+    const maxRetries = 3;
+    const baseDelayMs = 500;
+
+    function isRetryable(error) {
+        const status = error?.status || error?.response?.status;
+        if (status === 503) return true;
+        const message = error?.message || '';
+        return /\b503\b|Service Unavailable|timeout/i.test(message);
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function generateOnce() {
+        return await ai.models.generateContent({
             model: modelId,
             contents: [{ role: "user", parts: [{ text: summarizationPrompt }] }],
             config: {
                 responseMimeType: 'application/json',
                 responseSchema: {
-                    type: 'object',
+                    type: Type.OBJECT,
                     properties: {
-                        summary: { type: 'string' }
+                        summary: { type: Type.STRING }
                     },
-                    required: ['summary']
+                    required: ['summary'],
+                    propertyOrdering: ['summary']
                 },
                 maxOutputTokens: 320,
                 temperature: 0.3
             }
         });
-        const response = result;
+    }
+
+    let response;
+    try {
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                response = await generateOnce();
+                break;
+            } catch (error) {
+                const attemptNum = attempt + 1;
+                if (isRetryable(error) && attempt < maxRetries - 1) {
+                    const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+                    logger.warn({ attempt: attemptNum, delay, err: { message: error.message, status: error?.status } }, 'Summarization call failed with retryable error (likely timeout/503). Retrying with backoff.');
+                    await sleep(delay);
+                    continue;
+                }
+                throw error;
+            }
+        }
+        if (!response) {
+            logger.error('Summarization failed after retries with no response.');
+            return null;
+        }
 
         // Standard safety/validity checks
         if (response.promptFeedback?.blockReason) {
