@@ -154,7 +154,7 @@ async function _processMessageQueue() {
     }
 
     logger.debug('IRC sender queue processed.');
-    isSending = false;
+    isSending = false; // Always reset the flag when queue is empty
 }
 
 
@@ -284,9 +284,32 @@ function clearMessageQueue() {
     messageQueue.length = 0;
 }
 
+/**
+ * Waits for the message queue to be completely processed.
+ * Useful for testing to ensure no async operations are pending.
+ */
+async function waitForQueueEmpty() {
+    const maxWaitTime = 5000; // 5 seconds max wait (reduced for tests)
+    const checkInterval = 50; // Check every 50ms
+    let totalWaitTime = 0;
+
+    while (isSending && totalWaitTime < maxWaitTime) {
+        await sleep(checkInterval);
+        totalWaitTime += checkInterval;
+    }
+
+    if (isSending) {
+        logger.warn(`Queue processing did not complete within ${maxWaitTime}ms, forcing completion`);
+        isSending = false; // Force reset for tests
+    } else {
+        logger.debug('Queue processing completed');
+    }
+}
+
 // Export the public functions
 export {
     initializeIrcSender,
     enqueueMessage,
     clearMessageQueue,
+    waitForQueueEmpty,
 };

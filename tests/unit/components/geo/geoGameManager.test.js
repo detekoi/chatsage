@@ -8,7 +8,7 @@ import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/llm/geminiClient.js');
+jest.mock('../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../src/components/geo/geoLocationService.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');

@@ -3,7 +3,7 @@
 jest.mock('../../../src/lib/logger');
 jest.mock('../../../src/components/twitch/ircClient.js');
 
-import { enqueueMessage } from '../../../src/lib/ircSender.js';
+import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
 import * as geminiClient from '../../../src/components/llm/geminiClient.js';
 import { getIrcClient } from '../../../src/components/twitch/ircClient.js';
 
@@ -24,6 +24,13 @@ function buildLongText(len = 1200) {
 describe('ircSender enqueueMessage summarization behavior', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        clearMessageQueue(); // Clear any leftover messages from previous tests
+    });
+
+    afterEach(async () => {
+        // Clean up any pending queue operations
+        clearMessageQueue();
+        await waitForQueueEmpty();
     });
 
     test('summarizes long messages via summarizeText and sends summary', async () => {
@@ -36,8 +43,8 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         // summarization called
         expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
         // final send uses summary, not original long text
-        // Allow async queue processing to flush by waiting for the promise to resolve
-        await new Promise(r => setTimeout(r, 50));
+        // Wait for queue processing to complete
+        await waitForQueueEmpty();
         expect(mockIrcClient.say).toHaveBeenCalledWith('#test', summary);
     });
 
@@ -47,7 +54,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
-        await new Promise(r => setTimeout(r, 50));
+        await waitForQueueEmpty();
         expect(mockIrcClient.say).toHaveBeenCalledTimes(1);
         const sent = mockIrcClient.say.mock.calls[0][1];
         expect(sent.length).toBeLessThanOrEqual(500);
@@ -60,7 +67,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
         await enqueueMessage('#test', longText, { skipTranslation: true, skipLengthProcessing: true });
 
-        await new Promise(r => setTimeout(r, 50));
+        await waitForQueueEmpty();
         expect(spy).not.toHaveBeenCalled();
         expect(mockIrcClient.say).toHaveBeenCalledTimes(1);
         const sent = mockIrcClient.say.mock.calls[0][1];

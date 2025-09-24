@@ -34,6 +34,7 @@ const mockTmiClient = {
     raw: jest.fn(),
     connect: jest.fn().mockResolvedValue(),
     disconnect: jest.fn().mockResolvedValue(),
+    readyState: jest.fn().mockReturnValue('OPEN'),
 };
 const TmiClient = require('tmi.js').Client;
 TmiClient.mockImplementation(() => mockTmiClient);
@@ -62,9 +63,20 @@ describe('ChatSage Integration Tests', () => {
         // You might need to explicitly reset the mocked helixClient functions here if needed
         // e.g., getChannelInformation.mockClear(); (importing it from the mocked module)
         enqueueMessage.mockClear();
-        decideSearchWithFunctionCalling.mockClear();
-        generateStandardResponse.mockClear();
-        generateSearchResponse.mockClear();
+        if (decideSearchWithFunctionCalling && typeof decideSearchWithFunctionCalling.mockClear === 'function') {
+            decideSearchWithFunctionCalling.mockClear();
+        }
+        if (generateStandardResponse && typeof generateStandardResponse.mockClear === 'function') {
+            generateStandardResponse.mockClear();
+        }
+        if (generateSearchResponse && typeof generateSearchResponse.mockClear === 'function') {
+            generateSearchResponse.mockClear();
+        }
+    });
+
+    afterEach(async () => {
+        // Clean up any pending queue operations
+        jest.clearAllMocks();
     });
 
     // Tests should now run without the helixClient initialization error

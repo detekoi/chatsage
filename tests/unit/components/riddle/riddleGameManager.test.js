@@ -7,7 +7,7 @@ import logger from '../../../../src/lib/logger.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/llm/geminiClient.js');
+jest.mock('../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../src/components/riddle/riddleService.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js'); // Mock to prevent actual message sending
@@ -138,11 +138,14 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         }
         return internalActiveGamesMap;
     };
-     riddleGameManager.initialize = async () => { // Re-initialize to use the test-exposed activeGames
-        const games = getRiddleGameManager().__internal_getActiveGames();
-        games.clear();
-        // Potentially load all channel configs here if needed on startup (mocked)
-    };
+     // Re-initialize to use the test-exposed activeGames
+     if (riddleGameManager && typeof riddleGameManager.initialize === 'function') {
+        riddleGameManager.initialize = async () => {
+            const games = getRiddleGameManager().__internal_getActiveGames();
+            games.clear();
+            // Potentially load all channel configs here if needed on startup (mocked)
+        };
+     }
 
 
     test('1. Bot language is English: translateText NOT called, verifyRiddleAnswer called with original answer', async () => {
