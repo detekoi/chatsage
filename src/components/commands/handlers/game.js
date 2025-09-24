@@ -120,7 +120,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId) {
         
         // --- Step 1: Initial Image Analysis ---
         // Prompt focuses purely on description now
-        const initialAnalysisPrompt = `Analyze this screenshot from the game "${officialGameName}". Describe what's happening, player actions, and notable UI elements. Focus only on description.`;
+        const initialAnalysisPrompt = `Describe the in-game scene from "${officialGameName}" in 1–2 sentences. Focus on game elements only; ignore overlays. Plain text.`;
 
         // Analyze the image with Gemini
         const initialAnalysisResult = await analyzeImage(thumbnailBuffer, initialAnalysisPrompt);
@@ -142,19 +142,10 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId) {
 
             // --- REVISED VERIFICATION QUERY V3 ---
             // Focus on in-game elements, explicitly ignore overlays.
-            const verificationQuery = `Your task is to produce a concise, fact-checked description of the *in-game scene* shown in a video game screenshot from "${officialGameName}". You are given an initial analysis generated directly from the screenshot.
-
-Initial analysis (describes visuals in the CURRENT screenshot):
+            const verificationQuery = `Refine this screenshot description for "${officialGameName}":
 "${initialAnalysisResult}"
 
-Refinement Instructions:
-1.  **Focus on In-Game Elements:** Prioritize describing characters, environment, items, actions, and UI elements belonging *to the game itself*.
-2.  **Ignore Stream Overlays:** Explicitly **ignore and do not mention** common stream overlay elements such as clocks, timestamps, webcam borders, donation alerts, subscriber goals, chat boxes overlaid on the game, or mouse cursors, unless the initial analysis *mistakenly* identifies them as part of the game.
-3. **Correct ONLY Clear Factual Errors:** If search *proves* a specific claim about an *in-game element* in the 'Initial analysis' is factually impossible within "${officialGameName}", correct *only that specific error* concisely.
-4. **Do NOT Add External Information:** Do *not* introduce characters, locations, items, or events based on search results if they were *not* mentioned as *in-game elements* in the 'Initial analysis'.
-5. **Output the Refined Description ONLY:** Your entire response MUST be the refined textual description of the *in-game scene*. Do NOT output commentary *about* the analysis (e.g., do not say "The analysis is accurate").
-
-Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
+Rules: focus on in-game elements only (ignore overlays), fix only clear factual errors, output 1–2 sentences of plain text. Reply with the refined description only.`;
 
             const searchResult = await generateSearchResponse(contextPrompt, verificationQuery);
 
@@ -182,11 +173,16 @@ Validated/Refined Analysis of the Screenshot:`; // Let the LLM complete this.
             // Remove common intro phrases
             .replace(/This (screenshot|image) (shows|depicts|is from) /gi, '')
             .replace(/^Based on the search results[:,]?\s*/i, '')
+            .replace(/^According to [^:]+:\s*/i, '')
             .replace(/^Okay, here's the analysis:\s*/i, '')
             .replace(/In this (scene|screenshot|image|frame)/gi, '')
             .replace(/The (screenshot|image) (shows|depicts) a scene from /gi, '')
             .replace(/We can see /gi, '')
             .replace(/I can see /gi, '')
+            // Remove inline citations and sources sections
+            .replace(/\s*\[(?:\d+|citation needed)\]\s*/gi, ' ')
+            .replace(/\s*\(\d+\)\s*/g, ' ')
+            .replace(/Sources?:[\s\S]*$/i, '')
             // Fix any double spaces that might have been created
             .replace(/\s{2,}/g, ' ')
             .trim();
@@ -377,7 +373,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         const contextPrompt = buildContextPrompt(llmContext || {});
         
         // Formulate a search-triggering query that requires web search
-        const helpSearchQuery = `Search the web for current information about "${helpQuery}" in the game "${gameName}". Provide a factual answer based on the search results. If you find relevant information, explain it clearly and concisely. Keep the response under 450 characters.`;
+        const helpSearchQuery = `Use web search to answer: "${helpQuery}" for "${gameName}". Give a direct, factual tip in ≤ 320 chars. Plain text. No citations, no markdown.`;
 
         // 3. Call Search-Grounded LLM with strict grounding requirement
         const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { requireGrounding: true });
@@ -391,6 +387,11 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         // 4. Format and Send Response
         let finalReplyText = removeMarkdownAsterisks(searchResultText)
             .replace(/^(Thinking Process|Reasoning|Analysis)[::-].*$/i, '')
+            .replace(/^Based on the search results[:,]?\s*/i, '')
+            .replace(/^According to [^:]+:\s*/i, '')
+            .replace(/\s*\[(?:\d+|citation needed)\]\s*/gi, ' ')
+            .replace(/\s*\(\d+\)\s*/g, ' ')
+            .replace(/Sources?:[\s\S]*$/i, '')
             .trim();
 
         // Check length and Summarize/Truncate if needed

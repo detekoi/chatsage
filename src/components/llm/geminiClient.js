@@ -343,7 +343,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                         tools: [standardAnswerTools],
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-                        generationConfig: { maxOutputTokens: 320, responseMimeType: 'text/plain' }
+                        generationConfig: { maxOutputTokens: 512, responseMimeType: 'text/plain' }
                     });
                     const followupResponse = followup;
                     const followupCandidate = followupResponse.candidates?.[0];
@@ -415,7 +415,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, requireGr
             tools: searchTool,
             // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 1536, responseMimeType: 'text/plain' }
         });
 
         const response = result;
@@ -499,7 +499,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
             // IMPORTANT: Do not combine googleSearch tool with function calling / function tools in this SDK
             tools: [{ googleSearch: {} }],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 768, responseMimeType: 'text/plain' }
+            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
         });
         const response = result;
         if (response.promptFeedback?.blockReason) {

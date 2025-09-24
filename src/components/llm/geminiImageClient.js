@@ -22,7 +22,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             model = {
                 ai: genAI,
                 modelId: modelId,
-                config: { responseMimeType: 'text/plain', maxOutputTokens: 512, temperature: 0.2 }
+                config: { responseMimeType: 'text/plain', maxOutputTokens: 1024, temperature: 0.2 }
             };
             logger.debug(`Using image model: ${modelId}`);
         } catch (_) {
@@ -44,14 +44,16 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         // Use the appropriate model based on what was initialized
         let result;
         if (model.ai && model.modelId) {
-            // Use the newer pattern with direct AI instance following Google's image understanding docs
+            // Use message with role and parts per Gemini image understanding docs
             result = await model.ai.models.generateContent({
                 model: model.modelId,
-                contents: [
-                    // Per Google's docs: image data and text prompt as separate parts
-                    { inlineData: { mimeType: mimeType, data: base64Data } },
-                    prompt
-                ],
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { inlineData: { mimeType: mimeType, data: base64Data } },
+                        { text: prompt }
+                    ]
+                }],
                 config: model.config
             });
         } else {
@@ -89,15 +91,17 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             const shortPrompt = 'Briefly describe the in-game scene in ≤ 140 characters. Plain text only.';
             let retry;
             if (model.ai && model.modelId) {
-                // Use the newer pattern with direct AI instance following Google's image understanding docs
+                // Use message with role and parts; slightly higher token cap for retry
                 retry = await model.ai.models.generateContent({
                     model: model.modelId,
-                    contents: [
-                        // Per Google's docs: image data and text prompt as separate parts
-                        { inlineData: { mimeType: mimeType, data: base64Data } },
-                        shortPrompt
-                    ],
-                    config: { ...model.config, maxOutputTokens: 200 }
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { inlineData: { mimeType: mimeType, data: base64Data } },
+                            { text: shortPrompt }
+                        ]
+                    }],
+                    config: { ...model.config, maxOutputTokens: 320 }
                 });
             } else {
                 // Fallback to wrapper model
