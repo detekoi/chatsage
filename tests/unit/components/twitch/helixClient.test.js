@@ -11,9 +11,9 @@ import {
     getUsersByLogin
 } from '../../../../src/components/twitch/helixClient.js';
 import axios from 'axios';
-import { getAppAccessToken, clearCachedAppAccessToken } from '../../../../src/components/twitch/auth.js';
+import { getAppAccessToken } from '../../../../src/components/twitch/auth.js';
 import logger from '../../../../src/lib/logger.js';
-import mockHelixResponses from '../../../fixtures/helixResponses.json' with { type: 'json' };
+import mockHelixResponses from '../../../fixtures/helixResponses.json';
 
 describe('Helix Client Unit Tests', () => {
     let mockAxiosInstance;
@@ -24,7 +24,6 @@ describe('Helix Client Unit Tests', () => {
         
         // Store the actual interceptor functions
         let requestInterceptor = null;
-        let responseInterceptor = null;
         
         mockAxiosInstance = {
             get: jest.fn(), 
@@ -37,8 +36,7 @@ describe('Helix Client Unit Tests', () => {
                     }) 
                 }, 
                 response: { 
-                    use: jest.fn((fn) => {
-                        responseInterceptor = fn;
+                    use: jest.fn((_fn) => {
                         return 0; // interceptor ID
                     }) 
                 } 

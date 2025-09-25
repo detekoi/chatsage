@@ -84,7 +84,6 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
     // Retry with exponential backoff to handle transient DEADLINE_EXCEEDED/UNAVAILABLE
     const maxAttempts = 4; // ~1.75s total backoff before giving up (0.25 + 0.5 + 1.0)
     const baseDelayMs = 250;
-    let lastError = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -113,7 +112,6 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
             logger.debug({ taskName: task.name, delaySeconds }, 'Next keep-alive ping scheduled');
             return task.name;
         } catch (error) {
-            lastError = error;
             const code = error?.code;
             const retryable = code === 4 /* DEADLINE_EXCEEDED */ || code === 14 /* UNAVAILABLE */;
             const details = {

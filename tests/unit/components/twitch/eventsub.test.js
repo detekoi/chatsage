@@ -1,7 +1,7 @@
 // tests/unit/components/twitch/eventsub.test.js
 import { handleKeepAlivePing, clearPhantomEventSubEntries } from '../../../../src/components/twitch/eventsub.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
-import { getLiveStreams, getUsersByLogin } from '../../../../src/components/twitch/helixClient.js';
+import { getLiveStreams } from '../../../../src/components/twitch/helixClient.js';
 import { deleteTask, scheduleNextKeepAlivePing } from '../../../../src/lib/taskHelpers.js';
 import logger from '../../../../src/lib/logger.js';
 

@@ -1,7 +1,6 @@
 // src/components/twitch/streamImageCapture.js
 import axios from 'axios';
 import logger from '../../lib/logger.js';
-import { getContextManager } from '../context/contextManager.js';
 
 /**
  * Constructs a standard Twitch thumbnail URL for a channel

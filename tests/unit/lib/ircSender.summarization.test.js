@@ -3,7 +3,7 @@
 jest.mock('../../../src/lib/logger');
 jest.mock('../../../src/components/twitch/ircClient.js');
 
-import { enqueueMessage, clearMessageQueue, waitForQueueEmpty, initializeIrcSender } from '../../../src/lib/ircSender.js';
+import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
 import * as geminiClient from '../../../src/components/llm/geminiClient.js';
 import { getIrcClient } from '../../../src/components/twitch/ircClient.js';
 
