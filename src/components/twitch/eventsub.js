@@ -85,8 +85,9 @@ export async function initializeActiveStreamsFromPoller() {
     for (const [channelName] of channelStates) {
         const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
         if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
-            logger.info(`Found ${channelName} already live on startup - adding to activeStreams`);
-            activeStreams.add(channelName);
+            const login = String(channelName).toLowerCase();
+            logger.info(`Found ${login} already live on startup - adding to activeStreams`);
+            activeStreams.add(login);
             foundLiveStreams++;
 
             // If LAZY_CONNECT is enabled, ensure IRC connection and join the live channel as a poller fallback
@@ -100,13 +101,13 @@ export async function initializeActiveStreamsFromPoller() {
                         await connectIrcClient();
                         logger.info('[Startup Live] IRC connection established via poller fallback.');
                     } else {
-                        logger.info(`[Startup Live] IRC already ${state}. Proceeding to join #${channelName}.`);
+                    logger.info(`[Startup Live] IRC already ${state}. Proceeding to join #${login}.`);
                     }
                     const client = getIrcClient();
-                    await client.join(`#${channelName}`);
-                    logger.info(`[Startup Live] Joined channel #${channelName} via poller-detected live state.`);
+                    await client.join(`#${login}`);
+                    logger.info(`[Startup Live] Joined channel #${login} via poller-detected live state.`);
                 } catch (err) {
-                    logger.error({ err, channel: channelName }, '[Startup Live] Failed to connect or join channel from poller-detected live state.');
+                    logger.error({ err, channel: login }, '[Startup Live] Failed to connect or join channel from poller-detected live state.');
                 }
             }
         }
@@ -143,19 +144,20 @@ async function syncLiveChannels() {
         const synced = [];
 
         for (const [channelName] of channelStates) {
-            const ctx = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-sync');
+            const login = String(channelName).toLowerCase();
+            const ctx = contextManager.getContextForLLM(login, 'system', 'keep-alive-sync');
             const isLive = ctx && ctx.streamGame && ctx.streamGame !== 'N/A' && ctx.streamGame !== null;
             if (isLive) {
-                if (!activeStreams.has(channelName)) {
-                    logger.info(`[Sync] Marking ${channelName} live based on poller context.`);
+                if (!activeStreams.has(login)) {
+                    logger.info(`[Sync] Marking ${login} live based on poller context.`);
                 }
-                activeStreams.add(channelName);
+                activeStreams.add(login);
                 if (ircClient) {
                     try {
-                        const changed = await syncChannelWithIrc(ircClient, channelName, true);
+                        const changed = await syncChannelWithIrc(ircClient, login, true);
                         if (changed) synced.push(channelName);
                     } catch (err) {
-                        logger.warn({ err, channel: channelName }, '[Sync] Failed to ensure IRC join via syncChannelWithIrc.');
+                        logger.warn({ err, channel: login }, '[Sync] Failed to ensure IRC join via syncChannelWithIrc.');
                     }
                 }
             }
@@ -202,8 +204,9 @@ export async function handleKeepAlivePing() {
                 // Check for phantom streams (in activeStreams but not live according to API)
                 const phantomStreams = [];
                 for (const [broadcasterId, channelName] of idToChannel) {
+                    const login = String(channelName).toLowerCase();
                     if (!liveStreamUserIds.has(broadcasterId)) {
-                        phantomStreams.push(channelName);
+                        phantomStreams.push(login);
                     }
                 }
 
@@ -212,11 +215,12 @@ export async function handleKeepAlivePing() {
                     logger.warn(`[Keep-Alive] Phantom streams detected (missed offline notifications): ${phantomStreams.join(', ')}. EventSub state is out of sync. Forcing removal.`);
 
                     phantomStreams.forEach(streamName => {
-                        activeStreams.delete(streamName);
-                        logger.warn(`[Keep-Alive] Removed phantom stream: ${streamName}. Stream.offline EventSub notification was likely missed.`);
+                        const login = String(streamName).toLowerCase();
+                        activeStreams.delete(login);
+                        logger.warn(`[Keep-Alive] Removed phantom stream: ${login}. Stream.offline EventSub notification was likely missed.`);
 
                         // Clear the stream context to ensure consistency
-                        getContextManager().clearStreamContext(streamName);
+                        getContextManager().clearStreamContext(login);
                     });
 
                     logger.info(`[Keep-Alive] Verification complete. Removed ${phantomStreams.length} phantom streams. ${activeStreams.size} streams remain active.`);
@@ -239,6 +243,7 @@ export async function handleKeepAlivePing() {
     let recentChatDetails = [];
 
     for (const [channelName, state] of channelStates) {
+        const login = String(channelName).toLowerCase();
         // Check for recent chat messages
         if (state.chatHistory && state.chatHistory.length > 0) {
             const lastMessage = state.chatHistory[state.chatHistory.length - 1];
@@ -248,20 +253,20 @@ export async function handleKeepAlivePing() {
             
             if (timeSinceLastMessage < CHAT_ACTIVITY_THRESHOLD) {
                 recentChatActivity = true;
-                recentChatDetails.push(`${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
-                logger.debug(`Recent chat activity detected in ${channelName} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
+                recentChatDetails.push(`${login} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
+                logger.debug(`Recent chat activity detected in ${login} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
             }
         }
 
         // Check poller context - a stream is considered active if it has valid game info
-        const context = contextManager.getContextForLLM(channelName, 'system', 'keep-alive-check');
+        const context = contextManager.getContextForLLM(login, 'system', 'keep-alive-check');
         if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
             pollerActiveCount++;
-            activeChannelsFromPoller.push(channelName);
+            activeChannelsFromPoller.push(login);
             // Add channels found live by poller to activeStreams if missing from EventSub
-            if (!activeStreams.has(channelName)) {
-                logger.info(`Adding ${channelName} to activeStreams - detected as live by poller but missing from EventSub`);
-                activeStreams.add(channelName);
+            if (!activeStreams.has(login)) {
+                logger.info(`Adding ${login} to activeStreams - detected as live by poller but missing from EventSub`);
+                activeStreams.add(login);
             }
         }
     }
@@ -282,10 +287,11 @@ export async function handleKeepAlivePing() {
                 if (liveStreams && liveStreams.length > 0) {
                     const newlyDetected = [];
                     for (const stream of liveStreams) {
-                        const channelName = idToChannel.get(stream.user_id);
-                        if (channelName && !activeStreams.has(channelName)) {
-                            activeStreams.add(channelName);
-                            newlyDetected.push(channelName);
+            const channelName = idToChannel.get(stream.user_id);
+            const login = channelName ? String(channelName).toLowerCase() : null;
+            if (login && !activeStreams.has(login)) {
+                activeStreams.add(login);
+                newlyDetected.push(login);
                         }
                     }
                     if (newlyDetected.length > 0) {
@@ -424,17 +430,18 @@ export async function eventSubHandler(req, res, rawBody) {
 
         if (subscription.type === 'stream.online') {
             const { broadcaster_user_name } = event;
-            logger.info(`📡 ${broadcaster_user_name} just went live — ensuring bot is active...`);
+            const login = String(broadcaster_user_name).toLowerCase();
+            logger.info(`📡 ${login} just went live — ensuring bot is active...`);
 
             // Enforce allow-list: ignore online events for disallowed channels
-            const allowed = await isChannelAllowed(broadcaster_user_name);
+            const allowed = await isChannelAllowed(login);
             if (!allowed) {
                 logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
                 return;
             }
 
             // Add to active streams
-            activeStreams.add(broadcaster_user_name);
+            activeStreams.add(login);
 
             // Start keep-alive pings if this is the first stream to go live
             if (activeStreams.size === 1 && !keepAliveTaskName) {
@@ -457,26 +464,27 @@ export async function eventSubHandler(req, res, rawBody) {
                     
                     // Then join the channel
                     const ircClient = getIrcClient();
-                    await ircClient.join(`#${broadcaster_user_name}`);
-                    logger.info(`Joined channel #${broadcaster_user_name} via EventSub trigger`);
+                    await ircClient.join(`#${login}`);
+                    logger.info(`Joined channel #${login} via EventSub trigger`);
                 } catch (error) {
                     logger.error({ err: error }, 'Failed to establish IRC connection or join channel from EventSub');
                     throw error;
                 }
             }
             // Inform AutoChatManager so it can greet once
-            try { notifyStreamOnline(broadcaster_user_name); } catch (e) { /* ignore */ }
+            try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
         }
 
         if (subscription.type === 'stream.offline') {
             const { broadcaster_user_name } = event;
-            logger.info(`🔌 ${broadcaster_user_name} went offline.`);
+            const login = String(broadcaster_user_name).toLowerCase();
+            logger.info(`🔌 ${login} went offline.`);
 
             // Remove from active streams
-            activeStreams.delete(broadcaster_user_name);
+            activeStreams.delete(login);
 
             // Clear the stream context to ensure the poller and keep-alive know the stream is offline
-            getContextManager().clearStreamContext(broadcaster_user_name);
+            getContextManager().clearStreamContext(login);
             
             // If no more streams are active, stop keep-alive pings
             if (activeStreams.size === 0 && keepAliveTaskName) {
@@ -492,9 +500,9 @@ export async function eventSubHandler(req, res, rawBody) {
             try {
                 // Optionally send a short farewell before parting
                 try {
-                    const cfg = await getChannelAutoChatConfig(broadcaster_user_name);
+                    const cfg = await getChannelAutoChatConfig(login);
                     if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
-                        const channel = `#${broadcaster_user_name}`;
+                        const channel = `#${login}`;
                         await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
                     }
                 } catch (e) {
@@ -502,14 +510,14 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
                 const ircClient = getIrcClient();
                 if (ircClient && ircClient.readyState() === 'OPEN') {
-                    const channelToPart = `#${broadcaster_user_name}`;
+                    const channelToPart = `#${login}`;
                     logger.info(`[EventSub] Attempting to part channel: ${channelToPart}`);
                     await ircClient.part(channelToPart);
                 } else {
-                    logger.warn(`[EventSub] Received offline event for ${broadcaster_user_name}, but IRC client is not connected. No action taken.`);
+                    logger.warn(`[EventSub] Received offline event for ${login}, but IRC client is not connected. No action taken.`);
                 }
             } catch (error) {
-                logger.error({ err: error, channel: broadcaster_user_name }, 'Error trying to part channel via EventSub offline notification.');
+                logger.error({ err: error, channel: login }, 'Error trying to part channel via EventSub offline notification.');
             }
         }
 

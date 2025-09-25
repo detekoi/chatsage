@@ -260,7 +260,11 @@ async function enqueueMessage(channel, text, options = {}) {
         try {
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
-                finalText = summary;
+                finalText = summary.trim();
+                // Hard clamp to 450 to guarantee Twitch-safe length even if model slightly exceeds target
+                if (finalText.length > SUMMARY_TARGET_LENGTH) {
+                    finalText = _intelligentTruncate(finalText, SUMMARY_TARGET_LENGTH);
+                }
                 logger.info(`Message summarization successful (${finalText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed. Falling back to intelligent truncation.`);
