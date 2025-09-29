@@ -400,11 +400,8 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
  * @param {string} userQuery - The user's query.
  * @returns {Promise<string | null>} Resolves with the generated text response, or null.
  */
-export async function generateSearchResponse(contextPrompt, userQuery, requireGroundingOrOptions = {}) {
+export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
-    const requireGrounding = typeof requireGroundingOrOptions === 'boolean'
-        ? requireGroundingOrOptions
-        : !!requireGroundingOrOptions?.requireGrounding;
     const model = getGeminiClient();
     const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nSearch the web for up-to-date information to answer this question. Provide a direct answer based on your search results in ≤340 chars. Include specific details from the sources you find.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
@@ -447,19 +444,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, requireGr
             logger.info({ citations: candidate.citationMetadata.citationSources }, 'Gemini response included search citations.');
         }
 
-        // If strict grounding is required, ensure we have some grounding signal.
-        // Accept any of: groundingChunks, groundingSupports, webSearchQueries, or citationSources.
-        if (requireGrounding) {
-            const hasGroundingChunks = Array.isArray(groundingMetadata?.groundingChunks) && groundingMetadata.groundingChunks.length > 0;
-            const hasGroundingSupports = Array.isArray(groundingMetadata?.groundingSupports) && groundingMetadata.groundingSupports.length > 0;
-            const hasWebSearchQueries = Array.isArray(groundingMetadata?.webSearchQueries) && groundingMetadata.webSearchQueries.length > 0;
-            const hasCitations = Array.isArray(candidate.citationMetadata?.citationSources) && candidate.citationMetadata.citationSources.length > 0;
-            const hasAnyGroundingSignal = hasGroundingChunks || hasGroundingSupports || hasWebSearchQueries || hasCitations;
-            if (!hasAnyGroundingSignal) {
-                logger.warn('Strict grounding required, but no grounding signals present (no chunks/supports/web queries/citations). Suppressing response.');
-                return null;
-            }
-        }
+        // Note: We no longer require explicit grounding signals; we trust the model when googleSearch is enabled.
 
         if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
             logger.warn({ finishReason: candidate.finishReason }, `Search-grounded Gemini generation finished unexpectedly: ${candidate.finishReason}`);

@@ -375,11 +375,22 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         // Formulate a search-triggering query that requires web search
         const helpSearchQuery = `Use web search to answer: "${helpQuery}" for "${gameName}". Give a direct, factual tip in ≤ 320 chars. Plain text. No citations, no markdown.`;
 
-        // 3. Call Search-Grounded LLM with strict grounding requirement
-        const searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { requireGrounding: true });
+        // 3. Call Search-Grounded LLM with a retry mechanism for robustness
+        let searchResultText = null;
+        const maxRetries = 3;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
+            if (searchResultText && searchResultText.trim().length > 0) {
+                logger.info(`[${channelName}] Search successful on attempt ${attempt + 1}.`);
+                break;
+            }
+            const delayMs = 1000;
+            logger.warn(`[${channelName}] Search attempt ${attempt + 1} of ${maxRetries} returned no result. Retrying in ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
 
         if (!searchResultText || searchResultText.trim().length === 0) {
-            logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}".`);
+            logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}" after ${maxRetries} attempts.`);
             enqueueMessage(channel, `Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`, { replyToId });
             return;
         }
