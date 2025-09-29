@@ -7,11 +7,12 @@ import { createIrcClient, connectIrcClient } from '../../src/components/twitch/i
 import { initializeGeminiClient, decideSearchWithFunctionCalling, generateStandardResponse, generateSearchResponse } from '../../src/components/llm/geminiClient';
 import { initializeContextManager } from '../../src/components/context/contextManager';
 import { initializeCommandProcessor } from '../../src/components/commands/commandProcessor';
-import { initializeIrcSender, enqueueMessage } from '../../src/lib/ircSender';
+import { initializeIrcSender, enqueueMessage, clearMessageQueue } from '../../src/lib/ircSender';
 import { getValidIrcToken } from '../../src/components/twitch/ircAuthHelper';
 import config from '../../src/config/index.js';
 import { initializeSecretManager, getSecretValue } from '../../src/lib/secretManager';
 import { getAppAccessToken } from '../../src/components/twitch/auth'; // Keep for mocking auth setup if needed by other modules
+import { cleanupTranslationUtils } from '../../src/lib/translationUtils';
 
 // --- Mocks ---
 jest.mock('tmi.js');
@@ -38,6 +39,32 @@ const mockTmiClient = {
 };
 const TmiClient = require('tmi.js').Client;
 TmiClient.mockImplementation(() => mockTmiClient);
+
+// Cleanup function for integration test
+async function cleanupIntegrationTest() {
+    try {
+        // Clear any active timers/intervals
+        jest.clearAllTimers();
+
+        // Clear message queue if it exists
+        if (typeof clearMessageQueue === 'function') {
+            clearMessageQueue();
+        }
+
+        // Clean up translation utils timers
+        cleanupTranslationUtils();
+
+        // Disconnect IRC client if it exists
+        if (mockTmiClient && typeof mockTmiClient.disconnect === 'function') {
+            await mockTmiClient.disconnect();
+        }
+
+        // Clear any mocks
+        jest.clearAllMocks();
+    } catch (error) {
+        // Ignore cleanup errors in tests
+    }
+}
 
 describe('ChatSage Integration Tests', () => {
     beforeAll(async () => {
@@ -77,6 +104,11 @@ describe('ChatSage Integration Tests', () => {
     afterEach(async () => {
         // Clean up any pending queue operations
         jest.clearAllMocks();
+    });
+
+    afterAll(async () => {
+        // Comprehensive cleanup to prevent hanging
+        await cleanupIntegrationTest();
     });
 
     // Tests should now run without the helixClient initialization error

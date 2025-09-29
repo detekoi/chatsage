@@ -29,3 +29,16 @@ afterAll(() => {
     throw new Error(`Found ${handles.length} open handle(s). Close them or call unref() in your code/tests.`);
   }
 });
+
+// More aggressive cleanup after each test
+afterEach(() => {
+  // Clear all timers to prevent hanging
+  jest.clearAllTimers();
+
+  // Run pending promises to ensure async operations complete
+  return new Promise(resolve => {
+    setImmediate(() => {
+      resolve();
+    });
+  });
+});

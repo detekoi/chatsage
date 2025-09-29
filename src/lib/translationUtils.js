@@ -6,16 +6,28 @@ const translationCache = new Map();
 const MAX_CACHE_SIZE = 200;
 const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Periodic cleanup of expired entries
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, value] of translationCache) {
-        if (now - value.timestamp > CACHE_EXPIRY_MS) {
-            translationCache.delete(key);
+// Periodic cleanup of expired entries - only start in production
+let cleanupIntervalId = null;
+
+if (process.env.NODE_ENV !== 'test') {
+    cleanupIntervalId = setInterval(() => {
+        const now = Date.now();
+        for (const [key, value] of translationCache) {
+            if (now - value.timestamp > CACHE_EXPIRY_MS) {
+                translationCache.delete(key);
+            }
         }
+        logger.debug(`Translation cache cleanup: ${translationCache.size} entries remaining`);
+    }, 4 * 60 * 60 * 1000); // Clean up every 4 hours
+}
+
+// Export cleanup function for tests
+export function cleanupTranslationUtils() {
+    if (cleanupIntervalId) {
+        clearInterval(cleanupIntervalId);
+        cleanupIntervalId = null;
     }
-    logger.debug(`Translation cache cleanup: ${translationCache.size} entries remaining`);
-}, 4 * 60 * 60 * 1000); // Clean up every 4 hours
+}
 
 // Enhanced text extraction function similar to lurk command fixes
 function extractTextFromResponse(response, candidate) {
