@@ -1,15 +1,12 @@
 // tests/unit/components/commands/handlers/botlang.test.js
-// Mock dependencies before imports to avoid hoisting issues
+// Import the handler first
+import botLangHandler from '../../../../src/components/commands/handlers/botlang.js';
+
+// Mock dependencies after import
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
-
-import botLangHandler from '../../../../src/components/commands/handlers/botlang.js';
-import { getContextManager } from '../../../../src/components/context/contextManager.js';
-import { translateText } from '../../../../src/lib/translationUtils.js';
-import logger from '../../../../src/lib/logger.js';
-import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
 describe('BotLang Command Handler', () => {
     let mockContextManager;
@@ -42,6 +39,11 @@ describe('BotLang Command Handler', () => {
         };
 
         // Mock the imported functions
+        const { getContextManager } = require('../../../../src/components/context/contextManager.js');
+        const { translateText } = require('../../../../src/lib/translationUtils.js');
+        const logger = require('../../../../src/lib/logger.js');
+        const { enqueueMessage } = require('../../../../src/lib/ircSender.js');
+
         getContextManager.mockReturnValue(mockContextManager);
         translateText.mockImplementation(() => Promise.resolve('translated text'));
         enqueueMessage.mockImplementation(() => Promise.resolve());

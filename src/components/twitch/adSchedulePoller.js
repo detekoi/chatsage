@@ -34,16 +34,31 @@ async function fetchAdScheduleFromWebUi(channelName) {
     // Log the full response for debugging
     logger.debug({ channelName, response: res.data }, '[AdSchedule] Web UI response');
     
+    // Log raw HTTP response for troubleshooting
+    logger.debug({ 
+        channelName, 
+        status: res.status,
+        headers: res.headers,
+        dataKeys: res.data ? Object.keys(res.data) : []
+    }, '[AdSchedule] Raw response details');
+    
     // Validate response structure
     if (!res.data || !res.data.success) {
         logger.warn({ channelName, response: res.data }, '[AdSchedule] Web UI returned unsuccessful response');
         return null;
     }
     
-    // The Twitch API returns ad schedule data directly in the data field
-    const adScheduleData = res.data.data;
+    // The Twitch API returns ad schedule in response.data.data as an array
+    const twitchApiData = res.data.data;
+    if (!twitchApiData) {
+        logger.debug({ channelName }, '[AdSchedule] No Twitch API data in response');
+        return null;
+    }
+    
+    // The data field is an array, get the first element
+    const adScheduleData = Array.isArray(twitchApiData) ? twitchApiData[0] : twitchApiData;
     if (!adScheduleData) {
-        logger.debug({ channelName }, '[AdSchedule] No ad schedule data in response');
+        logger.debug({ channelName }, '[AdSchedule] No ad schedule data in array');
         return null;
     }
     
@@ -150,13 +165,32 @@ export function startAdSchedulePoller() {
                 } catch (e) {
                     const status = e?.response?.status;
                     const data = e?.response?.data;
+                    const errorMessage = e?.response?.data?.message || e?.message;
+                    
+                    // Log detailed error information
                     logger.error({
                         channelName,
                         status,
                         data,
                         err: e?.message,
+                        errorMessage,
                         stack: e?.stack
                     }, '[AdSchedule] fetch failed');
+                    
+                    // Check if this is an authentication issue
+                    if (status === 401 || status === 403 || errorMessage?.includes('re-authenticate') || errorMessage?.includes('Refresh token not available') || errorMessage?.includes('Missing required scope') || errorMessage?.includes('Invalid OAuth token')) {
+                        logger.warn({ 
+                            channelName, 
+                            status,
+                            errorMessage 
+                        }, '[AdSchedule] ⚠️  AUTHENTICATION REQUIRED: Channel needs to re-authenticate with Twitch to enable ad notifications. User must visit the dashboard and reconnect to grant the channel:read:ads scope.');
+                    } else if (status === 404) {
+                        logger.warn({ channelName }, '[AdSchedule] Channel not found in web UI database. User may need to add the bot first.');
+                    } else if (status >= 500) {
+                        logger.error({ channelName, status, errorMessage }, '[AdSchedule] Web UI server error. Check web UI logs for details.');
+                    } else {
+                        logger.error({ channelName, status, errorMessage }, '[AdSchedule] Unexpected error fetching ad schedule.');
+                    }
                 }
             }
         } catch (err) {
