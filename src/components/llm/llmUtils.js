@@ -30,6 +30,7 @@ function stripMetaThoughts(text) {
 
 
 export function removeMarkdownAsterisks(text) {
+  if (text == null) return '';
   // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
   // Remove *italics*
