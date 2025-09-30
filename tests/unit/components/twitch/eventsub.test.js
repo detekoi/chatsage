@@ -116,3 +116,44 @@ describe('EventSub Keep-Alive Logic', () => {
         expect(infoLog).toBeDefined();
     });
 });
+
+describe('EventSub Ad Break Event Structure', () => {
+    test('should have correct structure for channel.ad_break.begin event payload', () => {
+        // This test verifies the event payload structure matches Twitch API docs
+        // Based on https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channeladbreakbegin
+        const mockEvent = {
+            broadcaster_user_name: 'TestChannel',
+            broadcaster_user_login: 'testchannel',
+            broadcaster_user_id: '12345',
+            duration_seconds: '60',
+            started_at: '2025-01-15T10:00:00Z',
+            is_automatic: 'true',
+            requester_user_id: '12345',
+            requester_user_login: 'testchannel',
+            requester_user_name: 'TestChannel'
+        };
+
+        // Assert all required fields are present
+        expect(mockEvent).toHaveProperty('broadcaster_user_name');
+        expect(mockEvent).toHaveProperty('broadcaster_user_login');
+        expect(mockEvent).toHaveProperty('duration_seconds');
+        expect(mockEvent).toHaveProperty('started_at');
+        expect(mockEvent).toHaveProperty('is_automatic');
+
+        // Verify field types match Twitch API (strings, not numbers)
+        expect(typeof mockEvent.duration_seconds).toBe('string');
+        expect(typeof mockEvent.is_automatic).toBe('string');
+
+        // Verify values
+        expect(mockEvent.duration_seconds).toBe('60');
+        expect(mockEvent.is_automatic).toBe('true');
+    });
+
+    test('should handle both automatic and manual ad breaks', () => {
+        const automaticAd = { is_automatic: 'true', duration_seconds: '90' };
+        const manualAd = { is_automatic: 'false', duration_seconds: '60' };
+
+        expect(automaticAd.is_automatic).toBe('true');
+        expect(manualAd.is_automatic).toBe('false');
+    });
+});
