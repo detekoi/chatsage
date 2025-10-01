@@ -36,6 +36,7 @@ interface ChannelState {
     broadcasterId: string | null;
     chatHistory: Message[];
     chatSummary: string;
+    isSummarizing: boolean; // <-- Lock flag to prevent concurrent summarization
     streamContext: StreamContext;
     userStates: Map<string, UserState>; // <-- Map: username -> UserState
     botLanguage: string | null; // <-- Channel-specific bot language setting
@@ -107,6 +108,7 @@ function _getOrCreateChannelState(channelName) {
             broadcasterId: null,
             chatHistory: [],
             chatSummary: '',
+            isSummarizing: false,
             streamContext: {
                 game: null,
                 gameId: null,
@@ -164,15 +166,15 @@ async function addMessage(channelName, username, message, tags) {
 
     state.chatHistory.push(newMessage);
 
-    // Prune very old messages immediately if over max length (simple approach)
-    if (state.chatHistory.length > MAX_CHAT_HISTORY_LENGTH) {
-        // Trigger summarization asynchronously
+    // Check if history is too long AND if a summary isn't already running
+    if (state.chatHistory.length > MAX_CHAT_HISTORY_LENGTH && !state.isSummarizing) {
+        state.isSummarizing = true; // Set lock
         try {
             // Pass the history *before* pruning recent messages
             const summary = await triggerSummarizationIfNeeded(
                 channelName,
                 state.chatHistory,
-                state.chatSummary // Pass current summary for context? Maybe not needed.
+                state.chatSummary
             );
             if (summary) {
                 state.chatSummary = summary;
@@ -190,6 +192,8 @@ async function addMessage(channelName, username, message, tags) {
              // Prune aggressively to prevent unbounded growth when summarization throws errors
              logger.warn(`[${channelName}] Exception during summarization, pruning chat history aggressively to prevent token overflow.`);
              state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+        } finally {
+            state.isSummarizing = false; // Release lock
         }
     }
 }
