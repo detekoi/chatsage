@@ -15,20 +15,51 @@ function initializeSecretManager() {
         logger.warn('Secret Manager client already initialized.');
         return;
     }
+
+    const isDev = (process.env.NODE_ENV || 'development') === 'development';
+    const hasLocalRefreshToken = !!process.env.TWITCH_BOT_REFRESH_TOKEN;
+    const allowMissing = process.env.ALLOW_SECRET_MANAGER_MISSING === 'true';
+
+    logger.info('Initializing Google Cloud Secret Manager client...', {
+        isDev,
+        hasLocalRefreshToken,
+        allowMissing,
+        nodeEnv: process.env.NODE_ENV
+    });
+
     try {
-        logger.info('Initializing Google Cloud Secret Manager client...');
         client = new SecretManagerServiceClient();
-        logger.info('Secret Manager client initialized successfully.');
+        logger.info('✅ Secret Manager client initialized successfully.', {
+            isDev,
+            hasLocalRefreshToken,
+            allowMissing
+        });
     } catch (error) {
+        logger.error({ err: error }, '❌ Secret Manager client initialization failed.', {
+            errorCode: error.code,
+            errorMessage: error.message,
+            isDev,
+            hasLocalRefreshToken,
+            allowMissing
+        });
+
         // In local development, allow running without Secret Manager
-        const isDev = (process.env.NODE_ENV || 'development') === 'development';
-        const hasLocalRefreshToken = !!process.env.TWITCH_BOT_REFRESH_TOKEN;
-        if (isDev || hasLocalRefreshToken || process.env.ALLOW_SECRET_MANAGER_MISSING === 'true') {
-            logger.warn({ err: { message: error.message } }, 'Secret Manager client init failed. Continuing without Secret Manager (dev/local token mode).');
+        if (isDev || hasLocalRefreshToken || allowMissing) {
+            logger.warn('🚨 SECRET MANAGER UNAVAILABLE - Running in degraded mode. This is acceptable for development but DANGEROUS for production.', {
+                mode: isDev ? 'development' : hasLocalRefreshToken ? 'local-token' : 'allow-missing',
+                error: error.message,
+                fallback: 'Bot will use local environment variables where available'
+            });
             client = null; // Explicitly keep null; callers should handle fallback
             return;
         }
-        logger.fatal({ err: error }, 'Failed to initialize Secret Manager client. Ensure ADC or credentials are configured.');
+
+        // In production, this is a critical failure
+        logger.fatal('🚨 CRITICAL: Secret Manager initialization failed in production. Bot cannot start safely.', {
+            error: error.message,
+            errorCode: error.code,
+            troubleshooting: 'Ensure: 1) Google Cloud ADC is configured, 2) Service account has Secret Manager permissions, 3) Secret exists and is accessible'
+        });
         throw error; // In production, prevent startup if secret manager cannot be initialized
     }
 }
@@ -39,12 +70,9 @@ function initializeSecretManager() {
  */
 function getSecretManagerClient() {
     if (!client) {
-        // Attempt lazy initialization if not done explicitly
-        logger.warn('Secret Manager client accessed before explicit initialization. Attempting lazy init.');
-        initializeSecretManager();
-        if (!client) {
-             throw new Error('Secret Manager client could not be initialized.');
-        }
+        // This error will be thrown if the client is used before it's initialized.
+        // This is a good thing, as it points to a problem in the application's startup logic.
+        throw new Error('Secret Manager client has not been initialized. Call initializeSecretManager() first.');
     }
     return client;
 }
@@ -144,4 +172,59 @@ async function setSecretValue(secretResourceName, secretValue) {
     }
 }
 
-export { initializeSecretManager, getSecretValue, setSecretValue };
+// Test helper function to reset client state (only available in test environment)
+function resetSecretManagerClient() {
+    if (process.env.NODE_ENV === 'test') {
+        client = null;
+    }
+}
+
+/**
+ * Validates that Secret Manager is properly initialized and working.
+ * This should be called after initialization to ensure the client is ready.
+ * @returns {boolean} true if Secret Manager is initialized and ready
+ */
+function validateSecretManager() {
+    if (!client) {
+        logger.error('❌ Secret Manager validation failed: Client is not initialized');
+        return false;
+    }
+
+    try {
+        // Try to access the client to ensure it's working
+        const testClient = getSecretManagerClient();
+        logger.info('✅ Secret Manager validation passed: Client is ready');
+        return true;
+    } catch (error) {
+        logger.error({ err: error }, '❌ Secret Manager validation failed: Client access error');
+        return false;
+    }
+}
+
+/**
+ * Gets the current Secret Manager status for monitoring/logging purposes.
+ * @returns {object} Status object with initialization state and mode
+ */
+function getSecretManagerStatus() {
+    const isDev = (process.env.NODE_ENV || 'development') === 'development';
+    const hasLocalRefreshToken = !!process.env.TWITCH_BOT_REFRESH_TOKEN;
+    const allowMissing = process.env.ALLOW_SECRET_MANAGER_MISSING === 'true';
+
+    return {
+        initialized: !!client,
+        mode: isDev ? 'development' : hasLocalRefreshToken ? 'local-token' : allowMissing ? 'allow-missing' : 'production',
+        clientAvailable: !!client,
+        environment: process.env.NODE_ENV || 'development',
+        hasLocalToken: hasLocalRefreshToken,
+        allowMissing: allowMissing
+    };
+}
+
+export {
+    initializeSecretManager,
+    getSecretValue,
+    setSecretValue,
+    resetSecretManagerClient,
+    validateSecretManager,
+    getSecretManagerStatus
+};

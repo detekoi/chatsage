@@ -3,7 +3,12 @@ import logger from './lib/logger.js';
 import http from 'http';
 import { eventSubHandler, handleKeepAlivePing, cleanupKeepAliveTasks, initializeActiveStreamsFromPoller } from './components/twitch/eventsub.js';
 // Import Secret Manager initializer and getSecretValue
-import { initializeSecretManager } from './lib/secretManager.js';
+import { initializeSecretManager, validateSecretManager, getSecretManagerStatus } from './lib/secretManager.js';
+
+// Add periodic Secret Manager status logging
+setInterval(() => {
+    logger.debug('Secret Manager Status Check:', getSecretManagerStatus());
+}, 60000); // Every minute
 import { createIrcClient, connectIrcClient, getIrcClient } from './components/twitch/ircClient.js';
 import { initializeHelixClient, getHelixClient } from './components/twitch/helixClient.js';
 import { initializeGeminiClient } from './components/llm/geminiClient.js';
@@ -206,8 +211,16 @@ async function main() {
 
                 // Health check endpoints (respond quickly)
                 if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {
-                    res.writeHead(200, { 'Content-Type': 'text/plain' });
-                    res.end(req.method === 'HEAD' ? undefined : 'OK');
+                    const status = getSecretManagerStatus();
+                    const healthStatus = status.initialized ? 'OK' : 'DEGRADED';
+                    const responseText = req.method === 'HEAD' ? undefined : `${healthStatus} - Secret Manager: ${status.mode}`;
+
+                    res.writeHead(status.initialized ? 200 : 503, {
+                        'Content-Type': 'text/plain',
+                        'X-Secret-Manager-Status': status.mode,
+                        'X-Secret-Manager-Initialized': status.initialized.toString()
+                    });
+                    res.end(responseText);
                     return;
                 }
 
@@ -236,7 +249,14 @@ async function main() {
         logger.info('Initializing Secret Manager...');
         initializeSecretManager();
 
-        // 2. Initialize Channel Manager and load channels from Firestore
+        // 2. Validate Secret Manager is working
+        logger.info('Validating Secret Manager initialization...');
+        if (!validateSecretManager()) {
+            logger.fatal('Secret Manager validation failed. Cannot continue safely.');
+            process.exit(1);
+        }
+
+        // 3. Initialize Channel Manager and load channels from Firestore
         logger.info('Initializing Channel Manager...');
         await initializeChannelManager();
         
@@ -272,7 +292,7 @@ async function main() {
             process.exit(1);
         }
 
-        // 3. Other initializations that might need secrets
+        // 4. Other initializations that might need secrets
         logger.info('Initializing Firebase Storage...');
         await initializeStorage();
 
@@ -331,6 +351,9 @@ async function main() {
         const helixClient = getHelixClient();
         const geoManager = getGeoGameManager();
         const triviaManager = getTriviaGameManager();
+
+        // Log Secret Manager status for monitoring
+        logger.info('Secret Manager Status:', getSecretManagerStatus());
         // Get gemini client instance early if needed, or get inside async IIFE
         // const geminiClient = getGeminiClient();
 

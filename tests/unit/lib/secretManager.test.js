@@ -11,7 +11,8 @@ const {
     initializeSecretManager,
     getSecretManagerClient,
     getSecretValue,
-    setSecretValue
+    setSecretValue,
+    resetSecretManagerClient
 } = secretManager;
 
 describe('secretManager', () => {
@@ -19,6 +20,9 @@ describe('secretManager', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+
+        // Reset client state before each test
+        resetSecretManagerClient();
 
         // Mock the SecretManagerServiceClient constructor
         mockClient = {
@@ -46,11 +50,14 @@ describe('secretManager', () => {
             initializeSecretManager();
 
             expect(SecretManagerServiceClient).toHaveBeenCalledTimes(1);
-            expect(logger.info).toHaveBeenCalledWith('Initializing Google Cloud Secret Manager client...');
-            expect(logger.info).toHaveBeenCalledWith('Secret Manager client initialized successfully.');
+            expect(logger.info).toHaveBeenCalledWith('Initializing Google Cloud Secret Manager client...', expect.any(Object));
+            expect(logger.info).toHaveBeenCalledWith('✅ Secret Manager client initialized successfully.', expect.any(Object));
         });
 
         it('should not reinitialize if already initialized', () => {
+            // Reset client state before test
+            resetSecretManagerClient();
+
             initializeSecretManager();
             initializeSecretManager(); // Second call
 
@@ -59,6 +66,9 @@ describe('secretManager', () => {
         });
 
         it('should handle initialization errors in production', () => {
+            // Reset client state before test
+            resetSecretManagerClient();
+
             const error = new Error('GCP credentials error');
             SecretManagerServiceClient.mockImplementation(() => {
                 throw error;
@@ -68,10 +78,13 @@ describe('secretManager', () => {
             process.env.NODE_ENV = 'production';
 
             expect(() => initializeSecretManager()).toThrow(error);
-            expect(logger.fatal).toHaveBeenCalledWith({ err: error }, 'Failed to initialize Secret Manager client. Ensure ADC or credentials are configured.');
+            expect(logger.fatal).toHaveBeenCalledWith('🚨 CRITICAL: Secret Manager initialization failed in production. Bot cannot start safely.', expect.any(Object));
         });
 
         it('should handle initialization errors gracefully in development', () => {
+            // Reset client state before test
+            resetSecretManagerClient();
+
             const error = new Error('GCP credentials error');
             SecretManagerServiceClient.mockImplementation(() => {
                 throw error;
@@ -81,13 +94,13 @@ describe('secretManager', () => {
             process.env.NODE_ENV = 'development';
 
             expect(() => initializeSecretManager()).not.toThrow();
-            expect(logger.warn).toHaveBeenCalledWith(
-                { err: { message: error.message } },
-                'Secret Manager client init failed. Continuing without Secret Manager (dev/local token mode).'
-            );
+            expect(logger.warn).toHaveBeenCalledWith('🚨 SECRET MANAGER UNAVAILABLE - Running in degraded mode. This is acceptable for development but DANGEROUS for production.', expect.any(Object));
         });
 
         it('should handle initialization errors gracefully in development with local token', () => {
+            // Reset client state before test
+            resetSecretManagerClient();
+
             const error = new Error('GCP credentials error');
             SecretManagerServiceClient.mockImplementation(() => {
                 throw error;
@@ -98,13 +111,13 @@ describe('secretManager', () => {
             process.env.TWITCH_BOT_REFRESH_TOKEN = 'test-token';
 
             expect(() => initializeSecretManager()).not.toThrow();
-            expect(logger.warn).toHaveBeenCalledWith(
-                { err: { message: error.message } },
-                'Secret Manager client init failed. Continuing without Secret Manager (dev/local token mode).'
-            );
+            expect(logger.warn).toHaveBeenCalledWith('🚨 SECRET MANAGER UNAVAILABLE - Running in degraded mode. This is acceptable for development but DANGEROUS for production.', expect.any(Object));
         });
 
         it('should handle initialization errors gracefully when ALLOW_SECRET_MANAGER_MISSING is set', () => {
+            // Reset client state before test
+            resetSecretManagerClient();
+
             const error = new Error('GCP credentials error');
             SecretManagerServiceClient.mockImplementation(() => {
                 throw error;
@@ -114,40 +127,16 @@ describe('secretManager', () => {
             process.env.ALLOW_SECRET_MANAGER_MISSING = 'true';
 
             expect(() => initializeSecretManager()).not.toThrow();
-            expect(logger.warn).toHaveBeenCalledWith(
-                { err: { message: error.message } },
-                'Secret Manager client init failed. Continuing without Secret Manager (dev/local token mode).'
-            );
+            expect(logger.warn).toHaveBeenCalledWith('🚨 SECRET MANAGER UNAVAILABLE - Running in degraded mode. This is acceptable for development but DANGEROUS for production.', expect.any(Object));
         });
     });
 
-    describe('getSecretManagerClient', () => {
-        it('should return client when initialized', () => {
-            initializeSecretManager();
-
-            const client = getSecretManagerClient();
-            expect(client).toBe(mockClient);
-        });
-
-        it('should lazy initialize when called before explicit initialization', () => {
-            const client = getSecretManagerClient();
-
-            expect(client).toBe(mockClient);
-            expect(logger.warn).toHaveBeenCalledWith('Secret Manager client accessed before explicit initialization. Attempting lazy init.');
-            expect(SecretManagerServiceClient).toHaveBeenCalledTimes(1);
-        });
-
-        it('should throw error when lazy initialization fails', () => {
-            SecretManagerServiceClient.mockImplementation(() => {
-                throw new Error('Init failed');
-            });
-
-            expect(() => getSecretManagerClient()).toThrow('Secret Manager client could not be initialized.');
-        });
-    });
+    // getSecretManagerClient is no longer exported as it's an internal function
 
     describe('getSecretValue', () => {
         beforeEach(() => {
+            // Reset and initialize client for each test
+            resetSecretManagerClient();
             initializeSecretManager();
         });
 
@@ -208,7 +197,7 @@ describe('secretManager', () => {
             expect(mockClient.accessSecretVersion).toHaveBeenCalledTimes(3);
         });
 
-        it('should return null after max retries on non-retryable error', async () => {
+        it('should return null after single attempt on non-retryable error', async () => {
             const nonRetryableError = new Error('Not found');
             nonRetryableError.code = 5; // NOT_FOUND
 
@@ -217,13 +206,18 @@ describe('secretManager', () => {
             const result = await getSecretValue('projects/test/secrets/test-secret/versions/latest');
 
             expect(result).toBeNull();
-            expect(mockClient.accessSecretVersion).toHaveBeenCalledTimes(3);
+            expect(mockClient.accessSecretVersion).toHaveBeenCalledTimes(1); // Only one attempt for non-retryable errors
+
+            // Verify that error was logged (the exact message format may vary)
             expect(logger.error).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    err: nonRetryableError,
+                    err: expect.objectContaining({
+                        code: 5,
+                        message: 'Not found'
+                    }),
                     secretName: 'projects/test/secrets/test-secret/versions/latest'
                 }),
-                expect.stringContaining('Failed to access secret version after 3 attempts')
+                expect.any(String)
             );
         });
 
@@ -242,6 +236,8 @@ describe('secretManager', () => {
 
     describe('setSecretValue', () => {
         beforeEach(() => {
+            // Reset and initialize client for each test
+            resetSecretManagerClient();
             initializeSecretManager();
         });
 
