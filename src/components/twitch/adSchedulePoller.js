@@ -8,64 +8,85 @@ import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 let timers = new Map(); // channel -> NodeJS.Timeout
 let intervalId = null; // background poll
 
-async function fetchAdScheduleFromWebUi(channelName) {
-    const base = process.env.WEBUI_BASE_URL || process.env.CHATSAGE_WEBUI_BASE_URL;
-    let token = process.env.WEBUI_INTERNAL_TOKEN || '';
-    // If value looks like a Secret Manager path, resolve it once
-    if (/^projects\/.+\/secrets\//.test(token)) {
-        try {
-            // Normalize to versions/latest if not provided
-            if (!/\/versions\//.test(token)) {
-                token = `${token}/versions/latest`;
-            }
-            initializeSecretManager();
-            token = (await getSecretValue(token)) || '';
-        } catch (e) { /* ignore */ }
+async function fetchAdScheduleFromWebUi(channelName, retryCount = 0) {
+    const MAX_RETRIES = 2;
+    const RETRY_DELAYS = [1000, 3000]; // Exponential backoff: 1s, 3s
+    
+    try {
+        const base = process.env.WEBUI_BASE_URL || process.env.CHATSAGE_WEBUI_BASE_URL;
+        let token = process.env.WEBUI_INTERNAL_TOKEN || '';
+        // If value looks like a Secret Manager path, resolve it once
+        if (/^projects\/.+\/secrets\//.test(token)) {
+            try {
+                // Normalize to versions/latest if not provided
+                if (!/\/versions\//.test(token)) {
+                    token = `${token}/versions/latest`;
+                }
+                initializeSecretManager();
+                token = (await getSecretValue(token)) || '';
+            } catch (e) { /* ignore */ }
+        }
+        if (!base) throw new Error('WEBUI_BASE_URL not set');
+        if (!token) throw new Error('WEBUI_INTERNAL_TOKEN not set');
+        if (/\.web\.app$|\.firebaseapp\.com$/.test(new URL(base).host)) {
+            logger.warn({ base }, '[AdSchedule] WEBUI_BASE_URL appears to be a Hosting domain; internal Functions routes may not be accessible. Use the Functions base URL instead.');
+        }
+        const url = `${base}/internal/ads/schedule`;
+        const headers = { Authorization: `Bearer ${token}` };
+        
+        logger.debug({ channelName, attempt: retryCount + 1, maxRetries: MAX_RETRIES + 1 }, '[AdSchedule] Fetching ad schedule from web UI');
+        const res = await axios.get(url, { headers, timeout: 20000, params: { channel: channelName } });
+        
+        // Log the full response for debugging
+        logger.debug({ channelName, response: res.data }, '[AdSchedule] Web UI response');
+        
+        // Validate response structure
+        if (!res.data || !res.data.success) {
+            logger.warn({ channelName, response: res.data }, '[AdSchedule] Web UI returned unsuccessful response');
+            return null;
+        }
+        
+        // The Twitch API returns ad schedule in response.data.data as an array
+        const twitchApiData = res.data.data;
+        if (!twitchApiData) {
+            logger.debug({ channelName }, '[AdSchedule] No Twitch API data in response');
+            return null;
+        }
+        
+        // The data field is an array, get the first element
+        const adScheduleData = Array.isArray(twitchApiData) ? twitchApiData[0] : twitchApiData;
+        if (!adScheduleData) {
+            logger.debug({ channelName }, '[AdSchedule] No ad schedule data in array');
+            return null;
+        }
+        
+        // Log the ad schedule data for debugging
+        logger.info({ channelName, nextAdAt: adScheduleData.next_ad_at }, '[AdSchedule] ✓ Successfully fetched ad schedule');
+        
+        return adScheduleData;
+    } catch (e) {
+        const isTimeout = e.code === 'ECONNABORTED' || e.message?.includes('timeout');
+        const isServerError = e.response?.status >= 500;
+        const canRetry = (isTimeout || isServerError) && retryCount < MAX_RETRIES;
+        
+        if (canRetry) {
+            const delay = RETRY_DELAYS[retryCount];
+            logger.warn({
+                channelName,
+                attempt: retryCount + 1,
+                nextAttemptIn: `${delay}ms`,
+                error: e.message,
+                isTimeout,
+                isServerError
+            }, '[AdSchedule] Request failed, retrying...');
+            
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchAdScheduleFromWebUi(channelName, retryCount + 1);
+        }
+        
+        // Not retryable or out of retries
+        throw e;
     }
-    if (!base) throw new Error('WEBUI_BASE_URL not set');
-    if (!token) throw new Error('WEBUI_INTERNAL_TOKEN not set');
-    if (/\.web\.app$|\.firebaseapp\.com$/.test(new URL(base).host)) {
-        logger.warn({ base }, '[AdSchedule] WEBUI_BASE_URL appears to be a Hosting domain; internal Functions routes may not be accessible. Use the Functions base URL instead.');
-    }
-    const url = `${base}/internal/ads/schedule`;
-    const headers = { Authorization: `Bearer ${token}` };
-    const res = await axios.get(url, { headers, timeout: 15000, params: { channel: channelName } });
-    
-    // Log the full response for debugging
-    logger.debug({ channelName, response: res.data }, '[AdSchedule] Web UI response');
-    
-    // Log raw HTTP response for troubleshooting
-    logger.debug({ 
-        channelName, 
-        status: res.status,
-        headers: res.headers,
-        dataKeys: res.data ? Object.keys(res.data) : []
-    }, '[AdSchedule] Raw response details');
-    
-    // Validate response structure
-    if (!res.data || !res.data.success) {
-        logger.warn({ channelName, response: res.data }, '[AdSchedule] Web UI returned unsuccessful response');
-        return null;
-    }
-    
-    // The Twitch API returns ad schedule in response.data.data as an array
-    const twitchApiData = res.data.data;
-    if (!twitchApiData) {
-        logger.debug({ channelName }, '[AdSchedule] No Twitch API data in response');
-        return null;
-    }
-    
-    // The data field is an array, get the first element
-    const adScheduleData = Array.isArray(twitchApiData) ? twitchApiData[0] : twitchApiData;
-    if (!adScheduleData) {
-        logger.debug({ channelName }, '[AdSchedule] No ad schedule data in array');
-        return null;
-    }
-    
-    // Log the ad schedule data for debugging
-    logger.debug({ channelName, adScheduleData }, '[AdSchedule] Parsed ad schedule data');
-    
-    return adScheduleData;
 }
 
 function clearTimer(channelName) {
@@ -145,21 +166,28 @@ export function startAdSchedulePoller() {
                     }
 
                     const fireIn = Math.max(5_000, msUntil - 60_000); // 60s before
-                    logger.debug({
+                    const fireAt = new Date(Date.now() + fireIn);
+                    logger.info({
                         channelName,
                         nextAdAt: nextAd.toISOString(),
-                        msUntil,
-                        fireIn
-                    }, '[AdSchedule] Scheduling ad notification');
+                        secondsUntilAd: Math.floor(msUntil / 1000),
+                        notificationWillFireAt: fireAt.toISOString(),
+                        secondsUntilNotification: Math.floor(fireIn / 1000)
+                    }, '[AdSchedule] 🔔 Ad notification scheduled');
 
                     // If a timer exists but significantly different, reset
                     clearTimer(channelName);
                     timers.set(channelName, setTimeout(async () => {
                         try {
-                            logger.info({ channelName }, '[AdSchedule] Pre-alert firing ~60s before ad');
+                            logger.info({ 
+                                channelName,
+                                expectedAdAt: nextAd.toISOString(),
+                                secondsUntilAd: Math.floor((nextAd.getTime() - Date.now()) / 1000)
+                            }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
                             await notifyAdSoon(channelName, 60);
+                            logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
-                            logger.error({ err: e, channelName }, '[AdSchedule] Pre-alert failed');
+                            logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
                         }
                     }, fireIn));
                 } catch (e) {
