@@ -2,7 +2,19 @@
 import { CloudTasksClient } from '@google-cloud/tasks';
 import logger from './logger.js';
 
-const client = new CloudTasksClient();
+let client = null;
+
+function getClient() {
+    if (!client) {
+        client = new CloudTasksClient();
+    }
+    return client;
+}
+
+// Export for testing
+export function resetClient() {
+    client = null;
+}
 
 /**
  * Creates a Cloud Task that repeatedly pings the /healthz endpoint to keep the instance alive
@@ -13,27 +25,28 @@ export async function createKeepAliveTask() {
     const location = process.env.GCP_REGION || 'us-central1';
     const queue = process.env.KEEP_ALIVE_QUEUE || 'self-ping';
     const url = process.env.PUBLIC_URL + '/healthz';
-    
+
     if (!project) {
         throw new Error('GOOGLE_CLOUD_PROJECT environment variable is required');
     }
-    
+
     if (!process.env.PUBLIC_URL) {
         throw new Error('PUBLIC_URL environment variable is required for keep-alive tasks');
     }
 
     try {
         logger.info({ project, location, queue, url }, 'Creating keep-alive task');
-        
+
         // Validate all path components before creating the queue path
         if (!project || !location || !queue) {
             throw new Error(`Missing required parameters for queue path: project=${project}, location=${location}, queue=${queue}`);
         }
-        
-        const queuePath = client.queuePath(project, location, queue);
+
+        const tasksClient = getClient();
+        const queuePath = tasksClient.queuePath(project, location, queue);
         logger.info({ queuePath }, 'Generated queue path');
-        
-        const [task] = await client.createTask({
+
+        const [task] = await tasksClient.createTask({
             parent: queuePath,
             task: {
                 httpRequest: {
@@ -89,10 +102,11 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
         try {
             logger.debug({ project, location, queue, url, delaySeconds, attempt }, 'Scheduling next keep-alive ping');
 
-            const queuePath = client.queuePath(project, location, queue);
+            const tasksClient = getClient();
+            const queuePath = tasksClient.queuePath(project, location, queue);
             logger.debug({ queuePath }, 'Generated queue path for next ping');
 
-            const [task] = await client.createTask({
+            const [task] = await tasksClient.createTask({
                 parent: queuePath,
                 task: {
                     httpRequest: {
@@ -144,9 +158,10 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
  */
 export async function deleteTask(taskName) {
     if (!taskName) return;
-    
+
     try {
-        await client.deleteTask({ name: taskName });
+        const tasksClient = getClient();
+        await tasksClient.deleteTask({ name: taskName });
         logger.info({ taskName }, 'Keep-alive task deleted successfully');
     } catch (error) {
         // Task might already be deleted or executed, which is fine
@@ -162,13 +177,14 @@ export async function ensureKeepAliveQueue() {
     const project = process.env.GOOGLE_CLOUD_PROJECT;
     const location = process.env.GCP_REGION || 'us-central1';
     const queue = process.env.KEEP_ALIVE_QUEUE || 'self-ping';
-    
+
     try {
-        const queuePath = client.queuePath(project, location, queue);
-        
+        const tasksClient = getClient();
+        const queuePath = tasksClient.queuePath(project, location, queue);
+
         // Try to get the queue first
         try {
-            await client.getQueue({ name: queuePath });
+            await tasksClient.getQueue({ name: queuePath });
             logger.info({ queue, location }, 'Keep-alive queue already exists');
             return;
         } catch (error) {
@@ -178,8 +194,8 @@ export async function ensureKeepAliveQueue() {
         }
         
         // Queue doesn't exist, create it
-        await client.createQueue({
-            parent: client.locationPath(project, location),
+        await tasksClient.createQueue({
+            parent: tasksClient.locationPath(project, location),
             queue: {
                 name: queuePath,
                 retryConfig: {

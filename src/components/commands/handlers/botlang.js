@@ -71,14 +71,19 @@ const botLangHandler = {
             
             // Confirm in both languages
             const baseConfirm = `Bot language has been set to ${targetLanguage}. All bot responses will now be in ${targetLanguage}. Use "!botlang off" to reset.`;
-            const translatedConfirm = await translateText(baseConfirm, targetLanguage);
-            
+
             // First send in English (skip translation)
             await enqueueMessage(channel, baseConfirm, { replyToId, skipTranslation: true });
-            
-            // Then send the translated confirmation (skip translation)
-            if (translatedConfirm && translatedConfirm.trim().length > 0) {
-                await enqueueMessage(channel, translatedConfirm, { replyToId, skipTranslation: true });
+
+            // Then try to send the translated confirmation (skip translation)
+            // If translation fails, just skip it - English confirmation is already sent
+            try {
+                const translatedConfirm = await translateText(baseConfirm, targetLanguage);
+                if (translatedConfirm && translatedConfirm.trim().length > 0) {
+                    await enqueueMessage(channel, translatedConfirm, { replyToId, skipTranslation: true });
+                }
+            } catch (confirmError) {
+                logger.debug({ err: confirmError, targetLanguage }, 'Failed to translate confirmation message, skipping');
             }
         } catch (error) {
             logger.error({ err: error, targetLanguage }, 'Error setting bot language');

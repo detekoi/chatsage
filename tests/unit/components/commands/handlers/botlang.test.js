@@ -1,16 +1,22 @@
 // tests/unit/components/commands/handlers/botlang.test.js
-// Import the handler first
-import botLangHandler from '../../../../src/components/commands/handlers/botlang.js';
+// Mock dependencies before imports to avoid hoisting issues
+jest.mock('../../../../../src/components/context/contextManager.js');
+jest.mock('../../../../../src/lib/translationUtils.js');
+jest.mock('../../../../../src/lib/logger.js');
+jest.mock('../../../../../src/lib/ircSender.js');
 
-// Mock dependencies after import
-jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/lib/translationUtils.js');
-jest.mock('../../../../src/lib/logger.js');
-jest.mock('../../../../src/lib/ircSender.js');
+import botLangHandler from '../../../../../src/components/commands/handlers/botlang.js';
+import { getContextManager } from '../../../../../src/components/context/contextManager.js';
+import { translateText } from '../../../../../src/lib/translationUtils.js';
+import logger from '../../../../../src/lib/logger.js';
+import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 
 describe('BotLang Command Handler', () => {
     let mockContextManager;
     let mockLogger;
+    let mockGetContextManager;
+    let mockTranslateText;
+    let mockEnqueueMessage;
 
     const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', id: '123' }) => ({
         channel,
@@ -39,11 +45,6 @@ describe('BotLang Command Handler', () => {
         };
 
         // Mock the imported functions
-        const { getContextManager } = require('../../../../src/components/context/contextManager.js');
-        const { translateText } = require('../../../../src/lib/translationUtils.js');
-        const logger = require('../../../../src/lib/logger.js');
-        const { enqueueMessage } = require('../../../../src/lib/ircSender.js');
-
         getContextManager.mockReturnValue(mockContextManager);
         translateText.mockImplementation(() => Promise.resolve('translated text'));
         enqueueMessage.mockImplementation(() => Promise.resolve());
@@ -53,6 +54,11 @@ describe('BotLang Command Handler', () => {
         logger.info = mockLogger.info;
         logger.warn = mockLogger.warn;
         logger.error = mockLogger.error;
+
+        // Setup local references for use in tests
+        mockGetContextManager = getContextManager;
+        mockTranslateText = translateText;
+        mockEnqueueMessage = enqueueMessage;
     });
 
     describe('Command Info', () => {
@@ -135,14 +141,14 @@ describe('BotLang Command Handler', () => {
     describe('Set New Language (!botlang <language>)', () => {
         test('should successfully set a valid language', async () => {
             const targetLanguage = 'french';
-            translateText.mockResolvedValueOnce('Ceci est un test'); // Test translation
-            translateText.mockResolvedValueOnce('Le langage du bot a été défini'); // Confirmation translation
+            mockTranslateText.mockResolvedValueOnce('Ceci est un test'); // Test translation
+            mockTranslateText.mockResolvedValueOnce('Le langage du bot a été défini'); // Confirmation translation
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
             // Should test translation first
-            expect(translateText).toHaveBeenCalledWith(
+            expect(mockTranslateText).toHaveBeenCalledWith(
                 'This is a test message to verify that "french" is a supported language.',
                 targetLanguage
             );
@@ -151,14 +157,14 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.setBotLanguage).toHaveBeenCalledWith('testchannel', targetLanguage);
 
             // Should send English confirmation
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Bot language has been set to french. All bot responses will now be in french. Use "!botlang off" to reset.',
                 { replyToId: '123', skipTranslation: true }
             );
 
             // Should send translated confirmation
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Le langage du bot a été défini',
                 { replyToId: '123', skipTranslation: true }
@@ -167,7 +173,7 @@ describe('BotLang Command Handler', () => {
 
         test('should handle multi-word language names', async () => {
             const targetLanguage = 'portuguese brazil';
-            translateText.mockResolvedValueOnce('Isto é um teste'); // Test translation
+            mockTranslateText.mockResolvedValueOnce('Isto é um teste'); // Test translation
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
@@ -177,13 +183,13 @@ describe('BotLang Command Handler', () => {
 
         test('should reject unsupported language', async () => {
             const targetLanguage = 'invalidlang';
-            translateText.mockResolvedValue(''); // Empty translation = unsupported
+            mockTranslateText.mockResolvedValue(''); // Empty translation = unsupported
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
             expect(mockContextManager.setBotLanguage).not.toHaveBeenCalled();
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, I couldn\'t translate to "invalidlang". Please check the language name and try again.',
                 { replyToId: '123' }
@@ -192,13 +198,13 @@ describe('BotLang Command Handler', () => {
 
         test('should handle translation API errors gracefully', async () => {
             const targetLanguage = 'french';
-            translateText.mockRejectedValue(new Error('Translation API error'));
+            mockTranslateText.mockRejectedValue(new Error('Translation API error'));
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
             expect(mockContextManager.setBotLanguage).not.toHaveBeenCalled();
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, an error occurred while setting the bot language.',
                 { replyToId: '123' }
@@ -240,13 +246,13 @@ describe('BotLang Command Handler', () => {
     describe('Edge Cases', () => {
         test('should handle empty translation gracefully', async () => {
             const targetLanguage = 'french';
-            translateText.mockResolvedValue(null); // Null translation
+            mockTranslateText.mockResolvedValue(null); // Null translation
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
             expect(mockContextManager.setBotLanguage).not.toHaveBeenCalled();
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, I couldn\'t translate to "french". Please check the language name and try again.',
                 { replyToId: '123' }
@@ -255,13 +261,13 @@ describe('BotLang Command Handler', () => {
 
         test('should handle whitespace-only translation', async () => {
             const targetLanguage = 'french';
-            translateText.mockResolvedValue('   '); // Whitespace only
+            mockTranslateText.mockResolvedValue('   '); // Whitespace only
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
             expect(mockContextManager.setBotLanguage).not.toHaveBeenCalled();
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, I couldn\'t translate to "french". Please check the language name and try again.',
                 { replyToId: '123' }
@@ -272,7 +278,7 @@ describe('BotLang Command Handler', () => {
             const context = createMockContext(['status'], '#testchannel', { username: 'testuser' });
             await botLangHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
                 { replyToId: null }
@@ -286,19 +292,19 @@ describe('BotLang Command Handler', () => {
             const englishConfirm = 'Bot language has been set to spanish. All bot responses will now be in spanish. Use "!botlang off" to reset.';
             const translatedConfirm = 'El idioma del bot ha sido configurado a español.';
 
-            translateText
+            mockTranslateText
                 .mockResolvedValueOnce('Esto es un mensaje de prueba') // Test translation
                 .mockResolvedValueOnce(translatedConfirm); // Confirmation translation
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 englishConfirm,
                 { replyToId: '123', skipTranslation: true }
             );
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 translatedConfirm,
                 { replyToId: '123', skipTranslation: true }
@@ -309,20 +315,20 @@ describe('BotLang Command Handler', () => {
             const targetLanguage = 'spanish';
             const englishConfirm = 'Bot language has been set to spanish. All bot responses will now be in spanish. Use "!botlang off" to reset.';
 
-            translateText
+            mockTranslateText
                 .mockResolvedValueOnce('Esto es un mensaje de prueba') // Test translation
                 .mockRejectedValueOnce(new Error('Translation failed')); // Confirmation translation fails
 
             const context = createMockContext([targetLanguage]);
             await botLangHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 englishConfirm,
                 { replyToId: '123', skipTranslation: true }
             );
             // Should not call enqueueMessage again for the failed translation
-            expect(enqueueMessage).toHaveBeenCalledTimes(1);
+            expect(mockEnqueueMessage).toHaveBeenCalledTimes(1);
         });
     });
 });

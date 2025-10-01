@@ -16,22 +16,20 @@ describe('translationUtils', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
+        // Clear translation cache before each test
+        cleanupTranslationUtils();
+
         // Setup Gemini client mocks
+        // The real code calls getGeminiClient() which returns a model directly
+        // that has a generateContent method on it
         mockModel = {
             generateContent: jest.fn()
         };
 
-        mockGeminiClient = {
-            generateContent: jest.fn().mockReturnValue(mockModel)
-        };
-
-        getGeminiClient.mockReturnValue(mockGeminiClient);
+        getGeminiClient.mockReturnValue(mockModel);
 
         // Mock process.env for tests
         process.env.NODE_ENV = 'test';
-
-        // Clear translation cache before each test
-        // Note: In real implementation, we might need to expose a method to clear cache
     });
 
     afterEach(() => {

@@ -27,6 +27,7 @@ export function cleanupTranslationUtils() {
         clearInterval(cleanupIntervalId);
         cleanupIntervalId = null;
     }
+    translationCache.clear();
 }
 
 // Enhanced text extraction function similar to lurk command fixes
