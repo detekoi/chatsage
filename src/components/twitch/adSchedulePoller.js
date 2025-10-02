@@ -1,74 +1,145 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { notifyAdSoon } from '../autoChat/autoChatManager.js';
-import axios from 'axios';
+import { getAdScheduleForBroadcaster } from './helixClient.js';
+import { Firestore } from '@google-cloud/firestore';
 import { getSecretValue, initializeSecretManager } from '../../lib/secretManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
+import config from '../../config/index.js';
 
 let timers = new Map(); // channel -> NodeJS.Timeout
 let intervalId = null; // background poll
+let db = null; // Firestore instance
 
-async function fetchAdScheduleFromWebUi(channelName, retryCount = 0) {
+// Token cache to minimize Secret Manager and Twitch API calls
+const tokenCache = new Map(); // channelName -> { accessToken, expiresAt }
+
+function getDb() {
+    if (!db) {
+        db = new Firestore();
+    }
+    return db;
+}
+
+async function getValidTokenForChannel(channelName) {
+    // Check cache first - only caching short-lived access tokens, NOT refresh tokens
+    const cached = tokenCache.get(channelName);
+    if (cached && cached.expiresAt > Date.now()) {
+        const ttlSeconds = Math.floor((cached.expiresAt - Date.now()) / 1000);
+        logger.debug({ channelName, ttlSeconds }, '[AdSchedule] Using cached access token');
+        return cached;
+    }
+
+    // Fetch metadata from Firestore (only contains references, not secrets)
+    try {
+        const firestore = getDb();
+        const channelDoc = await firestore.collection('managedChannels').doc(channelName).get();
+
+        if (!channelDoc.exists) {
+            throw new Error(`Channel ${channelName} not found in database`);
+        }
+
+        const data = channelDoc.data();
+        const { twitchUserId, refreshTokenSecretPath, needsTwitchReAuth } = data;
+
+        if (needsTwitchReAuth) {
+            throw new Error(`Channel ${channelName} needs to re-authenticate with Twitch`);
+        }
+
+        if (!refreshTokenSecretPath) {
+            throw new Error(`No refresh token secret path found for ${channelName}`);
+        }
+
+        if (!twitchUserId) {
+            throw new Error(`No Twitch user ID found for ${channelName}`);
+        }
+
+        // Get refresh token from Secret Manager (secure storage)
+        // Note: We never cache the refresh token, only retrieve it when needed
+        initializeSecretManager();
+        const refreshToken = await getSecretValue(refreshTokenSecretPath);
+
+        if (!refreshToken) {
+            throw new Error(`Failed to retrieve refresh token from Secret Manager for ${channelName}`);
+        }
+
+        // Exchange refresh token for short-lived access token
+        const axios = (await import('axios')).default;
+        const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+            params: {
+                grant_type: 'refresh_token',
+                refresh_token: refreshToken,
+                client_id: config.twitch.clientId,
+                client_secret: config.twitch.clientSecret,
+            },
+            timeout: 10000,
+        });
+
+        const accessToken = response.data.access_token;
+        const expiresIn = response.data.expires_in || 3600;
+
+        // Only cache the short-lived access token (safe to cache in memory)
+        // These tokens expire in ~1 hour and can't be used to obtain new tokens
+        const expiresAt = Date.now() + ((expiresIn - 300) * 1000); // 5-minute buffer
+        tokenCache.set(channelName, { accessToken, broadcasterId: twitchUserId, expiresAt });
+
+        logger.info({ channelName, expiresIn, cacheDuration: Math.floor((expiresIn - 300) / 60) + 'min' }, '[AdSchedule] ✓ Obtained fresh access token');
+        return { accessToken, broadcasterId: twitchUserId, expiresAt };
+    } catch (error) {
+        // Clear cache on error
+        tokenCache.delete(channelName);
+        logger.error({ err: error, channelName }, '[AdSchedule] Failed to get valid token');
+        throw error;
+    }
+}
+
+async function fetchAdScheduleDirectly(channelName, retryCount = 0) {
     const MAX_RETRIES = 2;
     const RETRY_DELAYS = [1000, 3000]; // Exponential backoff: 1s, 3s
-    
+
     try {
-        const base = process.env.WEBUI_BASE_URL || process.env.CHATSAGE_WEBUI_BASE_URL;
-        let token = process.env.WEBUI_INTERNAL_TOKEN || '';
-        // If value looks like a Secret Manager path, resolve it once
-        if (/^projects\/.+\/secrets\//.test(token)) {
-            try {
-                // Normalize to versions/latest if not provided
-                if (!/\/versions\//.test(token)) {
-                    token = `${token}/versions/latest`;
-                }
-                initializeSecretManager();
-                token = (await getSecretValue(token)) || '';
-            } catch (e) { /* ignore */ }
-        }
-        if (!base) throw new Error('WEBUI_BASE_URL not set');
-        if (!token) throw new Error('WEBUI_INTERNAL_TOKEN not set');
-        if (/\.web\.app$|\.firebaseapp\.com$/.test(new URL(base).host)) {
-            logger.warn({ base }, '[AdSchedule] WEBUI_BASE_URL appears to be a Hosting domain; internal Functions routes may not be accessible. Use the Functions base URL instead.');
-        }
-        const url = `${base}/internal/ads/schedule`;
-        const headers = { Authorization: `Bearer ${token}` };
-        
-        logger.debug({ channelName, attempt: retryCount + 1, maxRetries: MAX_RETRIES + 1 }, '[AdSchedule] Fetching ad schedule from web UI');
-        const res = await axios.get(url, { headers, timeout: 20000, params: { channel: channelName } });
-        
-        // Log the full response for debugging
-        logger.debug({ channelName, response: res.data }, '[AdSchedule] Web UI response');
-        
-        // Validate response structure
-        if (!res.data || !res.data.success) {
-            logger.warn({ channelName, response: res.data }, '[AdSchedule] Web UI returned unsuccessful response');
-            return null;
-        }
-        
-        // The Twitch API returns ad schedule in response.data.data as an array
-        const twitchApiData = res.data.data;
-        if (!twitchApiData) {
-            logger.debug({ channelName }, '[AdSchedule] No Twitch API data in response');
-            return null;
-        }
-        
-        // The data field is an array, get the first element
-        const adScheduleData = Array.isArray(twitchApiData) ? twitchApiData[0] : twitchApiData;
+        logger.debug({ channelName, attempt: retryCount + 1 }, '[AdSchedule] Starting ad schedule fetch');
+
+        // Get valid access token for this channel
+        const { accessToken, broadcasterId } = await getValidTokenForChannel(channelName);
+
+        logger.debug({ channelName, broadcasterId, attempt: retryCount + 1 }, '[AdSchedule] Calling Twitch API');
+
+        // Call Twitch API directly
+        const result = await getAdScheduleForBroadcaster(broadcasterId, accessToken, config.twitch.clientId);
+
+        // Extract ad schedule data from response
+        const adScheduleData = result?.data?.[0];
+
         if (!adScheduleData) {
-            logger.debug({ channelName }, '[AdSchedule] No ad schedule data in array');
+            logger.debug({ channelName, fullResponse: result }, '[AdSchedule] No ad schedule data in Twitch response');
             return null;
         }
-        
-        // Log the ad schedule data for debugging
+
         logger.info({ channelName, nextAdAt: adScheduleData.next_ad_at }, '[AdSchedule] ✓ Successfully fetched ad schedule');
-        
         return adScheduleData;
+
     } catch (e) {
         const isTimeout = e.code === 'ECONNABORTED' || e.message?.includes('timeout');
         const isServerError = e.response?.status >= 500;
+        const isAuthError = e.response?.status === 401 || e.response?.status === 403;
+        const isMissingScope = e.response?.data?.message?.includes('Missing required scope') ||
+                               e.response?.data?.message?.includes('channel:read:ads');
         const canRetry = (isTimeout || isServerError) && retryCount < MAX_RETRIES;
-        
+
+        if (isAuthError || isMissingScope) {
+            // Clear token cache on auth error
+            tokenCache.delete(channelName);
+            const errorMessage = e.response?.data?.message || e.message;
+            logger.warn({
+                channelName,
+                status: e.response?.status,
+                errorMessage
+            }, '[AdSchedule] ⚠️  AUTHENTICATION REQUIRED: Channel needs to re-authenticate with Twitch to enable ad notifications. User must visit the dashboard and reconnect to grant the channel:read:ads scope.');
+            // Don't throw on auth errors, just return null to skip this channel
+            return null;
+        }
+
         if (canRetry) {
             const delay = RETRY_DELAYS[retryCount];
             logger.warn({
@@ -79,13 +150,21 @@ async function fetchAdScheduleFromWebUi(channelName, retryCount = 0) {
                 isTimeout,
                 isServerError
             }, '[AdSchedule] Request failed, retrying...');
-            
+
             await new Promise(resolve => setTimeout(resolve, delay));
-            return fetchAdScheduleFromWebUi(channelName, retryCount + 1);
+            return fetchAdScheduleDirectly(channelName, retryCount + 1);
         }
-        
-        // Not retryable or out of retries
-        throw e;
+
+        // Log other errors
+        logger.error({
+            channelName,
+            error: e.message,
+            status: e.response?.status,
+            data: e.response?.data
+        }, '[AdSchedule] Failed to fetch ad schedule after retries');
+
+        // Don't throw, return null to continue processing other channels
+        return null;
     }
 }
 
@@ -118,9 +197,9 @@ export function startAdSchedulePoller() {
                     adsEnabled: cfg?.categories?.ads
                 }, '[AdSchedule] Checking ads configuration');
                 if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
-                // Fetch schedule (web-ui proxy uses broadcaster's user token)
+                // Fetch schedule directly from Twitch API
                 try {
-                    const adScheduleData = await fetchAdScheduleFromWebUi(channelName);
+                    const adScheduleData = await fetchAdScheduleDirectly(channelName);
                     if (!adScheduleData) {
                         clearTimer(channelName);
                         logger.debug({ channelName }, '[AdSchedule] No ad schedule data');
@@ -191,34 +270,8 @@ export function startAdSchedulePoller() {
                         }
                     }, fireIn));
                 } catch (e) {
-                    const status = e?.response?.status;
-                    const data = e?.response?.data;
-                    const errorMessage = e?.response?.data?.message || e?.message;
-                    
-                    // Log detailed error information
-                    logger.error({
-                        channelName,
-                        status,
-                        data,
-                        err: e?.message,
-                        errorMessage,
-                        stack: e?.stack
-                    }, '[AdSchedule] fetch failed');
-                    
-                    // Check if this is an authentication issue
-                    if (status === 401 || status === 403 || errorMessage?.includes('re-authenticate') || errorMessage?.includes('Refresh token not available') || errorMessage?.includes('Missing required scope') || errorMessage?.includes('Invalid OAuth token')) {
-                        logger.warn({ 
-                            channelName, 
-                            status,
-                            errorMessage 
-                        }, '[AdSchedule] ⚠️  AUTHENTICATION REQUIRED: Channel needs to re-authenticate with Twitch to enable ad notifications. User must visit the dashboard and reconnect to grant the channel:read:ads scope.');
-                    } else if (status === 404) {
-                        logger.warn({ channelName }, '[AdSchedule] Channel not found in web UI database. User may need to add the bot first.');
-                    } else if (status >= 500) {
-                        logger.error({ channelName, status, errorMessage }, '[AdSchedule] Web UI server error. Check web UI logs for details.');
-                    } else {
-                        logger.error({ channelName, status, errorMessage }, '[AdSchedule] Unexpected error fetching ad schedule.');
-                    }
+                    // Errors are already logged in fetchAdScheduleDirectly
+                    logger.debug({ channelName, err: e.message }, '[AdSchedule] Skipping channel due to error');
                 }
             }
         } catch (err) {
