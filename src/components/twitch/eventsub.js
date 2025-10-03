@@ -7,12 +7,15 @@ import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js'
 import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
-import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
-import { getLiveStreams, getUsersByLogin } from './helixClient.js';
+import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak, startAutoChatManager } from '../autoChat/autoChatManager.js';
+import { getLiveStreams, getUsersByLogin, getHelixClient } from './helixClient.js';
+import { startStreamInfoPolling } from './streamInfoPoller.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
 let keepAliveTaskName = null;
+let lazyConnectInitialized = false; // Track if stream poller and auto-chat have been started in lazy mode
+let streamInfoIntervalId = null; // Store the interval ID for cleanup
 let consecutiveFailedChecks = 0;
 const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling down
 const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -457,11 +460,50 @@ export async function eventSubHandler(req, res, rawBody) {
             if (isLazyConnect) {
                 try {
                     logger.info('EventSub triggered - initializing IRC connection...');
-                    
+
                     // First connect to IRC if not already connected
                     await connectIrcClient();
                     logger.info('IRC connection established from EventSub trigger');
-                    
+
+                    // Initialize stream poller and auto-chat on first lazy connect (one-time setup)
+                    if (!lazyConnectInitialized) {
+                        logger.info('[LAZY_CONNECT] First stream.online event - initializing stream poller and auto-chat...');
+
+                        try {
+                            const contextManager = getContextManager();
+                            const helixClient = getHelixClient();
+
+                            // Start stream info polling
+                            logger.info('[LAZY_CONNECT] Starting stream info polling...');
+                            streamInfoIntervalId = startStreamInfoPolling(
+                                config.twitch.channels,
+                                config.app.streamInfoFetchIntervalMs,
+                                helixClient,
+                                contextManager
+                            );
+
+                            // Start auto-chat manager
+                            logger.info('[LAZY_CONNECT] Starting Auto-Chat Manager...');
+                            await startAutoChatManager();
+
+                            // Wait for poller to populate stream context before initializing active streams
+                            setTimeout(async () => {
+                                try {
+                                    logger.info('[LAZY_CONNECT] Initializing active streams from poller...');
+                                    await initializeActiveStreamsFromPoller();
+                                    logger.info('[LAZY_CONNECT] Bot fully initialized in lazy connect mode');
+                                } catch (error) {
+                                    logger.error({ err: error }, '[LAZY_CONNECT] Error during active streams initialization');
+                                }
+                            }, 10000); // Wait 10 seconds for poller to run
+
+                            lazyConnectInitialized = true;
+                            logger.info('[LAZY_CONNECT] ✓ Stream poller and auto-chat initialized successfully');
+                        } catch (error) {
+                            logger.error({ err: error }, '[LAZY_CONNECT] Failed to initialize stream poller or auto-chat');
+                        }
+                    }
+
                     // Then join the channel
                     const ircClient = getIrcClient();
                     await ircClient.join(`#${login}`);
