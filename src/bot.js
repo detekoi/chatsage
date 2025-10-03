@@ -727,6 +727,39 @@ async function main() {
         if (!isLazyConnect) {
             logger.info('Connecting Twitch IRC Client...');
             await connectIrcClient(); // Use connectIrcClient
+
+            // WORKAROUND: tmi.js sometimes doesn't fire 'connected' event reliably
+            // Check if we're actually connected and manually trigger initialization if needed
+            setTimeout(async () => {
+                if (ircClient.readyState() === 'OPEN' && !isFullyInitialized) {
+                    logger.warn('IRC client is connected but \'connected\' event never fired. Manually triggering initialization...');
+                    // Manually fire the connected handler logic
+                    try {
+                        logger.info('(Manual trigger) Starting stream info polling...');
+                        streamInfoIntervalId = startStreamInfoPolling(
+                            config.twitch.channels,
+                            config.app.streamInfoFetchIntervalMs,
+                            helixClient,
+                            contextManager
+                        );
+
+                        await startAutoChatManager();
+                        logger.info('(Manual trigger) Auto-Chat Manager started.');
+
+                        setTimeout(async () => {
+                            try {
+                                await initializeActiveStreamsFromPoller();
+                                isFullyInitialized = true;
+                                logger.info('(Manual trigger) Bot is now fully initialized');
+                            } catch (error) {
+                                logger.error({ err: error }, 'Error during manual initialization');
+                            }
+                        }, 10000);
+                    } catch (err) {
+                        logger.error({ err }, 'Failed during manual initialization trigger');
+                    }
+                }
+            }, 5000); // Wait 5 seconds after connect() resolves
         } else {
             logger.info('LAZY_CONNECT enabled - IRC client will connect on first EventSub trigger');
             // Mark as ready even without IRC connection in lazy mode
