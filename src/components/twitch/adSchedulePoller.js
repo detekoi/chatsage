@@ -3,7 +3,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { notifyAdSoon } from '../autoChat/autoChatManager.js';
 import { getAdScheduleForBroadcaster } from './helixClient.js';
 import { Firestore } from '@google-cloud/firestore';
-import { getSecretValue, initializeSecretManager } from '../../lib/secretManager.js';
+import { getSecretValue, setSecretValue, initializeSecretManager } from '../../lib/secretManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import config from '../../config/index.js';
 
@@ -65,6 +65,12 @@ async function getValidTokenForChannel(channelName) {
 
         // Exchange refresh token for short-lived access token
         const axios = (await import('axios')).default;
+        logger.debug({
+            channelName,
+            refreshTokenPrefix: refreshToken.substring(0, 8) + '...',
+            refreshTokenSuffix: '...' + refreshToken.substring(refreshToken.length - 8)
+        }, '[AdSchedule] Exchanging refresh token for access token');
+
         const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
             params: {
                 grant_type: 'refresh_token',
@@ -76,19 +82,76 @@ async function getValidTokenForChannel(channelName) {
         });
 
         const accessToken = response.data.access_token;
+        const newRefreshToken = response.data.refresh_token;
         const expiresIn = response.data.expires_in || 3600;
+
+        // CRITICAL: Twitch rotates refresh tokens on every use
+        // We MUST save the new refresh token back to Secret Manager
+        if (newRefreshToken && newRefreshToken !== refreshToken) {
+            logger.info({
+                channelName,
+                oldTokenPrefix: refreshToken.substring(0, 8) + '...',
+                newTokenPrefix: newRefreshToken.substring(0, 8) + '...'
+            }, '[AdSchedule] 🔄 Refresh token rotated by Twitch, updating Secret Manager');
+
+            const updateSuccess = await setSecretValue(refreshTokenSecretPath, newRefreshToken);
+            if (!updateSuccess) {
+                logger.error({ channelName, refreshTokenSecretPath }, '[AdSchedule] ❌ CRITICAL: Failed to save new refresh token to Secret Manager. Next refresh will fail!');
+                // Don't throw - we still have a valid access token for now
+            } else {
+                logger.info({ channelName }, '[AdSchedule] ✅ New refresh token saved to Secret Manager');
+            }
+        } else if (!newRefreshToken) {
+            logger.warn({ channelName }, '[AdSchedule] ⚠️  Twitch did not return a new refresh token (unexpected)');
+        } else {
+            logger.debug({ channelName }, '[AdSchedule] Refresh token unchanged (reusing same token)');
+        }
 
         // Only cache the short-lived access token (safe to cache in memory)
         // These tokens expire in ~1 hour and can't be used to obtain new tokens
         const expiresAt = Date.now() + ((expiresIn - 300) * 1000); // 5-minute buffer
         tokenCache.set(channelName, { accessToken, broadcasterId: twitchUserId, expiresAt });
 
-        logger.info({ channelName, expiresIn, cacheDuration: Math.floor((expiresIn - 300) / 60) + 'min' }, '[AdSchedule] ✓ Obtained fresh access token');
+        logger.info({
+            channelName,
+            expiresIn,
+            cacheDuration: Math.floor((expiresIn - 300) / 60) + 'min',
+            tokenRotated: newRefreshToken && newRefreshToken !== refreshToken
+        }, '[AdSchedule] ✓ Obtained fresh access token');
         return { accessToken, broadcasterId: twitchUserId, expiresAt };
     } catch (error) {
         // Clear cache on error
         tokenCache.delete(channelName);
-        logger.error({ err: error, channelName }, '[AdSchedule] Failed to get valid token');
+
+        // Enhanced error logging
+        const isInvalidToken = error.response?.status === 400 &&
+            error.response?.data?.message?.includes('Invalid refresh token');
+        const errorDetails = {
+            channelName,
+            error: error.message,
+            status: error.response?.status,
+            twitchError: error.response?.data?.message,
+            isInvalidToken
+        };
+
+        if (isInvalidToken) {
+            logger.error(errorDetails, '[AdSchedule] ❌ Invalid refresh token - user needs to re-authenticate via web UI');
+            // Mark in Firestore that re-auth is needed
+            try {
+                const firestore = getDb();
+                await firestore.collection('managedChannels').doc(channelName).update({
+                    needsTwitchReAuth: true,
+                    lastTokenError: 'Invalid refresh token',
+                    lastTokenErrorAt: new Date()
+                });
+                logger.info({ channelName }, '[AdSchedule] Marked channel as needing re-authentication in Firestore');
+            } catch (dbError) {
+                logger.warn({ channelName, err: dbError }, '[AdSchedule] Failed to update Firestore re-auth flag');
+            }
+        } else {
+            logger.error(errorDetails, '[AdSchedule] Failed to get valid token');
+        }
+
         throw error;
     }
 }
