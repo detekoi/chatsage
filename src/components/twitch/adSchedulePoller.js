@@ -42,8 +42,9 @@ async function getValidTokenForChannel(channelName) {
         const data = channelDoc.data();
         const { twitchUserId, refreshTokenSecretPath, needsTwitchReAuth } = data;
 
+        // Log re-auth status but don't block - let the token refresh attempt determine if it's truly invalid
         if (needsTwitchReAuth) {
-            throw new Error(`Channel ${channelName} needs to re-authenticate with Twitch`);
+            logger.warn({ channelName }, '[AdSchedule] Channel marked as needing re-auth, but will attempt token refresh anyway');
         }
 
         if (!refreshTokenSecretPath) {
