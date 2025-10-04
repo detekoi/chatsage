@@ -58,11 +58,13 @@ async function getValidTokenForChannel(channelName) {
         // Get refresh token from Secret Manager (secure storage)
         // Note: We never cache the refresh token, only retrieve it when needed
         initializeSecretManager();
+        logger.debug({ channelName, refreshTokenSecretPath }, '[AdSchedule] Fetching refresh token from Secret Manager');
         const refreshToken = await getSecretValue(refreshTokenSecretPath);
 
         if (!refreshToken) {
             throw new Error(`Failed to retrieve refresh token from Secret Manager for ${channelName}`);
         }
+        logger.debug({ channelName, tokenLength: refreshToken.length }, '[AdSchedule] Retrieved refresh token from Secret Manager');
 
         // Exchange refresh token for short-lived access token
         const axios = (await import('axios')).default;
