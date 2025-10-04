@@ -89,7 +89,7 @@ async function getValidTokenForChannel(channelName) {
         const expiresIn = response.data.expires_in || 3600;
 
         // CRITICAL: Twitch rotates refresh tokens on every use
-        // We MUST save the new refresh token back to Secret Manager
+        // We MUST save the new refresh token back to Secret Manager AND update Firestore
         if (newRefreshToken && newRefreshToken !== refreshToken) {
             logger.info({
                 channelName,
@@ -97,12 +97,27 @@ async function getValidTokenForChannel(channelName) {
                 newTokenPrefix: newRefreshToken.substring(0, 8) + '...'
             }, '[AdSchedule] 🔄 Refresh token rotated by Twitch, updating Secret Manager');
 
-            const updateSuccess = await setSecretValue(refreshTokenSecretPath, newRefreshToken);
-            if (!updateSuccess) {
-                logger.error({ channelName, refreshTokenSecretPath }, '[AdSchedule] ❌ CRITICAL: Failed to save new refresh token to Secret Manager. Next refresh will fail!');
-                // Don't throw - we still have a valid access token for now
-            } else {
-                logger.info({ channelName }, '[AdSchedule] ✅ New refresh token saved to Secret Manager');
+            try {
+                // Extract secret name without version (setSecretValue needs parent path, not version path)
+                const secretName = refreshTokenSecretPath.split('/versions/')[0];
+
+                // Add new version to Secret Manager - returns full path with version number
+                const newSecretPath = await setSecretValue(secretName, newRefreshToken);
+                if (!newSecretPath) {
+                    logger.error({ channelName, secretName }, '[AdSchedule] ❌ CRITICAL: Failed to save new refresh token to Secret Manager. Next refresh will fail!');
+                } else {
+                    // Update Firestore to point to the new version
+                    const firestore = getDb();
+                    await firestore.collection('managedChannels').doc(channelName).update({
+                        refreshTokenSecretPath: newSecretPath,
+                        lastTokenRefreshAt: new Date(),
+                        needsTwitchReAuth: false
+                    });
+
+                    logger.info({ channelName, newSecretPath }, '[AdSchedule] ✅ New refresh token saved and Firestore updated');
+                }
+            } catch (error) {
+                logger.error({ err: error, channelName }, '[AdSchedule] Failed to save rotated token or update Firestore');
             }
         } else if (!newRefreshToken) {
             logger.warn({ channelName }, '[AdSchedule] ⚠️  Twitch did not return a new refresh token (unexpected)');

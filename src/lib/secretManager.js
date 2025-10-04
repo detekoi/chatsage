@@ -141,12 +141,12 @@ async function getSecretValue(secretResourceName) {
 async function setSecretValue(secretResourceName, secretValue) {
     if (!secretResourceName || !secretValue) {
         logger.error('setSecretValue called with empty secretResourceName or secretValue.');
-        return false;
+        return null;
     }
     const smClient = getSecretManagerClient();
     try {
         logger.debug(`Adding new version to secret: ${secretResourceName}`);
-        
+
         // Add a new version to the existing secret
         const [version] = await smClient.addSecretVersion({
             parent: secretResourceName,
@@ -156,7 +156,7 @@ async function setSecretValue(secretResourceName, secretValue) {
         });
 
         logger.info(`Successfully added new version to secret: ${secretResourceName.split('/secrets/')[1]} (version: ${version.name.split('/').pop()})`);
-        return true;
+        return version.name; // Return the full path including version number
     } catch (error) {
         logger.error(
             { err: { message: error.message, code: error.code }, secretName: secretResourceName },
@@ -168,7 +168,7 @@ async function setSecretValue(secretResourceName, secretValue) {
         } else if (error.code === 7) { // 7 = PERMISSION_DENIED
             logger.error(`Permission denied adding version to secret: ${secretResourceName}. Check IAM roles.`);
         }
-        return false;
+        return null;
     }
 }
 
