@@ -622,11 +622,13 @@ async function _handleAnswer(channelName, username, displayName, message) {
     const gameState = activeGames.get(channelName);
 
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentQuestion) {
+        logger.debug(`[TriviaGame][${channelName}] _handleAnswer early return: gameState=${!!gameState}, state=${gameState?.state}, hasQuestion=${!!gameState?.currentQuestion}, message="${message}"`);
         return;
     }
 
     const now = Date.now();
     if (now - gameState.lastMessageTimestamp < 500) {
+        logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer from ${username} (${now - gameState.lastMessageTimestamp}ms since last)`);
         return;
     }
     gameState.lastMessageTimestamp = now;
