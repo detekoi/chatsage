@@ -638,11 +638,13 @@ Task: Decide if a web search is REQUIRED to answer accurately and up-to-date.
 Return STRICT JSON ONLY matching the schema: { searchNeeded: boolean, reasoning: string }.
 
 Guidelines:
-- Mark searchNeeded = true for: news, trending topics, "what's going on with X", "who is [person]", weather in a location, live scores, stock/crypto price, release dates, patch notes, schedules, current events, specific people (streamers, celebrities, public figures), or anything time-sensitive or niche.
+- Mark searchNeeded = true for: news, trending topics, "what's going on with X", "who is [person]", weather in a location, live scores, stock/crypto price, release dates, patch notes, schedules, current events, specific people (streamers, celebrities, public figures), specific songs/albums/media content (titles, artists, meanings, which album/EP), or anything time-sensitive or niche.
 - Mark searchNeeded = false for: abstract concepts, broad philosophical questions, creative prompts, basic math, time/date queries (handled separately).
 
 Examples (just for guidance, do not repeat):
 - "who is parfaitfair" -> {"searchNeeded": true, "reasoning": "Query about a specific person requires search to provide accurate information."}
+- "who is pedromarvarez" -> {"searchNeeded": true, "reasoning": "Identifying a specific person requires current information."}
+- "is sympathy is a knife about taylor swift" -> {"searchNeeded": true, "reasoning": "Query about a specific song's meaning and context requires accurate information."}
 - "weather in CDMX" -> {"searchNeeded": true, "reasoning": "Weather is time-sensitive and location-specific."}
 - "lil nas x news" -> {"searchNeeded": true, "reasoning": "News requires up-to-date information."}
 - "what's going on with south park" -> {"searchNeeded": true, "reasoning": "TV updates are current events and change over time."}
