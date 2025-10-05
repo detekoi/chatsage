@@ -31,15 +31,15 @@ const lurkHandler = {
 
             if (lurkReason) {
                 // Prompt that focuses on the user's reason for lurking
-                prompt = `A Twitch user named "${displayName}" is about to start lurking. Their reason is: "${lurkReason}". Based on the recent chat conversation, write a short, friendly, encouraging send-off that weaves in their reason with a fun twist (metaphor, alliteration, or a tiny onomatopoeia). Keep it under 25 words.`;
+                prompt = `A Twitch user named "${displayName}" is about to start lurking. Their reason is: "${lurkReason}". Based on the recent chat conversation, write a brief, natural send-off that incorporates their reason. Wordplay and unexpected poetry are welcome, but avoid tired clichés like "catch you on the flip side", "see you later", or "enjoy". Be fresh. Keep it under 20 words.`;
             } else {
                 // Prompt for a general lurk command, using chat context
-                prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, write a short, friendly, personalized send-off that riffs on the current topic. Add a small dash of wordplay or imagery. Keep it under 25 words.`;
+                prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, write a brief, natural send-off. Wordplay and unexpected poetry are welcome, but avoid tired clichés like "catch you on the flip side", "see you later", or "enjoy". Be fresh. Keep it under 20 words.`;
             }
-            
+
             // Use the persistent chat session and send one concise prompt including context
             const chatSession = getOrCreateChatSession(channelName);
-            const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One playful plain-text line, no usernames or @handles, ≤20 words.`;
+            const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
             const result = await chatSession.sendMessage({ message: fullPrompt });
             let llmResponse = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
 
