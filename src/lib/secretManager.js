@@ -91,14 +91,26 @@ async function getSecretValue(secretResourceName) {
     const smClient = getSecretManagerClient();
 
     const MAX_RETRIES = 3;
+    const TIMEOUT_MS = 10000; // 10 second timeout per attempt
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             logger.debug(`Accessing secret: ${secretResourceName} (Attempt ${attempt}/${MAX_RETRIES})`);
-            const [version] = await smClient.accessSecretVersion({
+
+            // Create a timeout promise that rejects after TIMEOUT_MS
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Secret Manager timeout after ${TIMEOUT_MS}ms`));
+                }, TIMEOUT_MS);
+            });
+
+            // Race the Secret Manager call against the timeout
+            const accessPromise = smClient.accessSecretVersion({
                 name: secretResourceName,
             });
+
+            const [version] = await Promise.race([accessPromise, timeoutPromise]);
 
             if (!version.payload?.data) {
                 logger.warn(`Secret payload data is missing for ${secretResourceName}.`);
@@ -111,14 +123,15 @@ async function getSecretValue(secretResourceName) {
             return secretValue;
         } catch (error) {
             lastError = error;
+            const isTimeout = error.message?.includes('timeout');
             logger.error(
-                { err: { message: error.message, code: error.code }, secretName: secretResourceName, attempt },
+                { err: { message: error.message, code: error.code }, secretName: secretResourceName, attempt, isTimeout },
                 `Failed to access secret version on attempt ${attempt}`
             );
 
-            // Retry on DEADLINE_EXCEEDED (4) or UNAVAILABLE (14)
-            if ((error.code === 4 || error.code === 14) && attempt < MAX_RETRIES) {
-                const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s
+            // Retry on DEADLINE_EXCEEDED (4), UNAVAILABLE (14), or timeout
+            if ((error.code === 4 || error.code === 14 || isTimeout) && attempt < MAX_RETRIES) {
+                const delay = 500 * attempt; // 500ms, 1s (faster retries due to timeout)
                 logger.warn(`Retrying secret access in ${delay}ms...`);
                 await sleep(delay);
                 continue;
