@@ -333,12 +333,42 @@ export function listenForChannelChanges(ircClient) {
                 // Process the VALID changes
                 changes.forEach(async (change) => {
                     if (change.type === 'added' || change.type === 'modified') {
+                        // Sync channel with IRC (join if active, part if inactive)
                         syncChannelWithIrc(ircClient, change.channelName, change.isActive)
                             .catch(err => {
                                 logger.error({ err, channel: change.channelName, docId: change.docId },
                                     `[ChannelManager] Error processing channel change via listener`);
                             });
-                        
+
+                        // If channel was just added and is active, check if it's already live
+                        if (change.type === 'added' && change.isActive) {
+                            try {
+                                const { getContextManager } = await import('../context/contextManager.js');
+                                const contextManager = getContextManager();
+                                const context = contextManager.getContextForLLM(change.channelName, 'system', 'channel-added-check');
+
+                                // Check if stream is live (has game data and not N/A)
+                                const isLive = context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null;
+
+                                if (isLive) {
+                                    logger.info({ channel: change.channelName, game: context.streamGame },
+                                        '[ChannelManager] Newly added channel is already live - ensuring IRC connection');
+
+                                    // Check if in LAZY_CONNECT mode and IRC not connected yet
+                                    const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+                                    const ircState = ircClient?.readyState?.() || 'CLOSED';
+
+                                    if (isLazyConnect && ircState !== 'OPEN' && ircState !== 'CONNECTING') {
+                                        logger.info('[ChannelManager] LAZY_CONNECT mode detected - triggering IRC connection for live channel');
+                                        const { connectIrcClient } = await import('./ircClient.js');
+                                        await connectIrcClient();
+                                    }
+                                }
+                            } catch (err) {
+                                logger.error({ err, channel: change.channelName }, '[ChannelManager] Error checking if newly added channel is live');
+                            }
+                        }
+
                         const { adNotificationsEnabled, twitchUserAccessToken, twitchUserId } = change.channelData;
 
                         if (adNotificationsEnabled && twitchUserAccessToken && twitchUserId) {

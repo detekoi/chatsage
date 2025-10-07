@@ -805,6 +805,7 @@ async function main() {
             markLazyConnectInitialized();
 
             // After stream poller runs, check for already-live streams and connect if found
+            // Wait longer to ensure broadcaster IDs are cached and first poll completes
             setTimeout(async () => {
                 try {
                     logger.info('[LAZY_CONNECT] Checking for already-live streams...');
@@ -815,7 +816,7 @@ async function main() {
                     logger.error({ err: error }, '[LAZY_CONNECT] Error checking for live streams');
                     isFullyInitialized = true; // Mark as initialized anyway
                 }
-            }, 10000); // Wait 10 seconds for poller to run
+            }, 15000); // Wait 15 seconds for broadcaster ID caching + first poll to complete
 
             logger.info('Bot is ready in lazy connect mode - will detect live streams or wait for EventSub');
         }
