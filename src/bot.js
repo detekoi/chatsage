@@ -792,6 +792,15 @@ async function main() {
                 logger.error({ err }, '[LAZY_CONNECT] Failed to start Ad Schedule Poller');
             }
 
+            // Set up Firestore channel listener in LAZY_CONNECT mode (even without IRC connection)
+            if (config.app.nodeEnv !== 'development') {
+                logger.info('[LAZY_CONNECT] Setting up Firestore channel listener...');
+                if (!channelChangeListener) {
+                    channelChangeListener = listenForChannelChanges(ircClient);
+                    logger.info('[LAZY_CONNECT] ✓ Firestore channel listener active');
+                }
+            }
+
             // Mark lazy connect as initialized to prevent EventSub from re-initializing
             markLazyConnectInitialized();
 
