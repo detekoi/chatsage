@@ -413,16 +413,21 @@ async function main() {
             }
             // --- End Conditional Syncing/Listening ---
             
-            // 3. Start stream info polling
-            logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
-            streamInfoIntervalId = startStreamInfoPolling(
-                config.twitch.channels,
-                config.app.streamInfoFetchIntervalMs,
-                helixClient, // Pass already retrieved instance
-                contextManager // Pass already retrieved instance
-            );
+            // 3. Start stream info polling (only if not already started in LAZY_CONNECT mode)
+            if (!streamInfoIntervalId) {
+                logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
+                streamInfoIntervalId = startStreamInfoPolling(
+                    config.twitch.channels,
+                    config.app.streamInfoFetchIntervalMs,
+                    helixClient, // Pass already retrieved instance
+                    contextManager // Pass already retrieved instance
+                );
+            } else {
+                logger.info('Stream info polling already started (LAZY_CONNECT mode) - skipping duplicate initialization');
+            }
 
-            // Start Auto-Chat manager after polling begins
+            // Start Auto-Chat manager after polling begins (only if not already started)
+            // Note: startAutoChatManager is idempotent, so calling it multiple times is safe
             try {
                 await startAutoChatManager();
                 logger.info('Auto-Chat Manager started.');
@@ -435,7 +440,7 @@ async function main() {
             } catch (err) {
                 logger.error({ err }, 'Failed to start Ad Schedule Poller');
             }
-            
+
             // After starting stream polling, check for streams that are already live
             // Wait a bit to give the first poll cycle a chance to run
             setTimeout(async () => {
@@ -762,9 +767,46 @@ async function main() {
             }, 5000); // Wait 5 seconds after connect() resolves
         } else {
             logger.info('LAZY_CONNECT enabled - IRC client will connect on first EventSub trigger');
-            // Mark as ready even without IRC connection in lazy mode
-            isFullyInitialized = true;
-            logger.info('Bot is ready in lazy connect mode - will initialize IRC on EventSub trigger');
+
+            // In LAZY_CONNECT mode, we need to start the stream poller immediately
+            // so we can detect streams that are already live (not just waiting for stream.online EventSub).
+            // EventSub only fires when streams GO online, not when they're already online at bot startup.
+            logger.info('[LAZY_CONNECT] Starting stream info polling to detect already-live streams...');
+            streamInfoIntervalId = startStreamInfoPolling(
+                config.twitch.channels,
+                config.app.streamInfoFetchIntervalMs,
+                helixClient,
+                contextManager
+            );
+
+            // Start Auto-Chat manager and Ad Schedule Poller
+            try {
+                await startAutoChatManager();
+                logger.info('[LAZY_CONNECT] Auto-Chat Manager started.');
+            } catch (err) {
+                logger.error({ err }, '[LAZY_CONNECT] Failed to start Auto-Chat Manager');
+            }
+            try {
+                await startAdSchedulePoller();
+                logger.info('[LAZY_CONNECT] Ad Schedule Poller started.');
+            } catch (err) {
+                logger.error({ err }, '[LAZY_CONNECT] Failed to start Ad Schedule Poller');
+            }
+
+            // After starting stream polling, check for streams that are already live
+            setTimeout(async () => {
+                try {
+                    logger.info('[LAZY_CONNECT] Checking for already-live streams via poller fallback...');
+                    await initializeActiveStreamsFromPoller();
+                    isFullyInitialized = true;
+                    logger.info('[LAZY_CONNECT] ✓ Bot fully initialized (including poller-detected live streams)');
+                } catch (error) {
+                    logger.error({ err: error }, '[LAZY_CONNECT] Error initializing active streams from poller');
+                    isFullyInitialized = true; // Mark as initialized anyway
+                }
+            }, 10000); // Wait 10 seconds for stream poller to run first
+
+            logger.info('[LAZY_CONNECT] Bot is ready - will connect IRC when live streams are detected');
         }
 
         // HTTP server already started above; endpoints are available during initialization
