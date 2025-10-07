@@ -627,3 +627,11 @@ export async function eventSubHandler(req, res, rawBody) {
         }
     }
 }
+
+/**
+ * Marks lazy connect as initialized (called from bot.js when starting pollers in LAZY_CONNECT mode)
+ */
+export function markLazyConnectInitialized() {
+    lazyConnectInitialized = true;
+    logger.debug('Lazy connect marked as initialized');
+}
