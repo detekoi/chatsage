@@ -175,12 +175,23 @@ export async function isChannelAllowed(channelName) {
 export async function syncChannelWithIrc(ircClient, channelName, isActive) {
     const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
     const channelWithHash = `#${cleanChannelName}`;
-    
+
     try {
+        // Check if IRC is connected
+        const ircState = ircClient?.readyState?.() || 'CLOSED';
+        if (ircState !== 'OPEN') {
+            logger.debug({
+                channel: cleanChannelName,
+                ircState,
+                isActive
+            }, '[ChannelManager] IRC not connected - skipping channel sync');
+            return false;
+        }
+
         // Check if we're already in the channel
         const currentChannels = ircClient.getChannels().map(ch => ch.toLowerCase());
         const isCurrentlyJoined = currentChannels.includes(channelWithHash.toLowerCase());
-        
+
         if (isActive && !isCurrentlyJoined) {
             // Join channel if it's active but we're not in it
             logger.info(`[ChannelManager] Joining channel: ${cleanChannelName}`);
@@ -194,14 +205,14 @@ export async function syncChannelWithIrc(ircClient, channelName, isActive) {
             logger.info(`[ChannelManager] Successfully left channel: ${cleanChannelName}`);
             return true;
         }
-        
+
         // No action needed
         return false;
     } catch (error) {
-        logger.error({ err: error, channel: cleanChannelName }, 
+        logger.error({ err: error, channel: cleanChannelName },
             `[ChannelManager] Error ${isActive ? 'joining' : 'leaving'} channel.`);
         throw new ChannelManagerError(
-            `Failed to ${isActive ? 'join' : 'leave'} channel ${cleanChannelName}.`, 
+            `Failed to ${isActive ? 'join' : 'leave'} channel ${cleanChannelName}.`,
             error
         );
     }
