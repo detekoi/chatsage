@@ -372,6 +372,54 @@ describe('Ad Schedule Poller', () => {
         );
     });
 
+    test('should not send duplicate notifications for the same ad', async () => {
+        // Arrange
+        const nextAdTime = new Date(Date.now() + 120_000); // 2 minutes from now
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        // Return the same ad time on multiple polls
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act - Run multiple poll cycles
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000); // First poll
+        await jest.advanceTimersByTimeAsync(30_000); // Second poll (same ad)
+        await jest.advanceTimersByTimeAsync(30_000); // Third poll (same ad)
+
+        // Assert - Should only schedule notification once
+        expect(logger.info).toHaveBeenCalledWith(
+            expect.objectContaining({ channelName: 'testchannel' }),
+            '[AdSchedule] 🔔 Ad notification scheduled'
+        );
+
+        // Verify subsequent polls logged "already notified" debug message
+        expect(logger.debug).toHaveBeenCalledWith(
+            expect.objectContaining({ channelName: 'testchannel' }),
+            '[AdSchedule] Already notified about this ad - skipping'
+        );
+    });
+
     // Note: Testing missing config requires mocking the config module,
     // which is complex due to how the config loader works.
     // The defensive check in adSchedulePoller.js prevents crashes if config is missing.

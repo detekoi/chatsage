@@ -7,6 +7,7 @@ import { getSecretValue } from '../../lib/secretManager.js';
 
 let timers = new Map(); // channel -> NodeJS.Timeout
 let intervalId = null; // background poll
+let notifiedAds = new Map(); // channel -> Set of ad timestamps we've already notified about
 
 /**
  * Fetches the ad schedule for a channel by calling the web UI's internal API.
@@ -181,6 +182,29 @@ export function startAdSchedulePoller() {
                         continue;
                     }
 
+                    // Check if we've already notified about this specific ad time
+                    const adTimestamp = nextAd.getTime();
+                    if (!notifiedAds.has(channelName)) {
+                        notifiedAds.set(channelName, new Set());
+                    }
+                    const channelNotifiedAds = notifiedAds.get(channelName);
+
+                    if (channelNotifiedAds.has(adTimestamp)) {
+                        logger.debug({
+                            channelName,
+                            nextAdAt: nextAd.toISOString()
+                        }, '[AdSchedule] Already notified about this ad - skipping');
+                        continue;
+                    }
+
+                    // Clean up old ad timestamps (older than 10 minutes)
+                    const tenMinutesAgo = Date.now() - 600_000;
+                    for (const oldTimestamp of channelNotifiedAds) {
+                        if (oldTimestamp < tenMinutesAgo) {
+                            channelNotifiedAds.delete(oldTimestamp);
+                        }
+                    }
+
                     const fireIn = Math.max(5_000, msUntil - 60_000); // 60s before
                     const fireAt = new Date(Date.now() + fireIn);
                     logger.info({
@@ -201,6 +225,8 @@ export function startAdSchedulePoller() {
                                 secondsUntilAd: Math.floor((nextAd.getTime() - Date.now()) / 1000)
                             }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
                             await notifyAdSoon(channelName, 60);
+                            // Mark this ad as notified
+                            channelNotifiedAds.add(adTimestamp);
                             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
                             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
@@ -226,4 +252,5 @@ export function stopAdSchedulePoller() {
     if (intervalId) { clearInterval(intervalId); intervalId = null; }
     for (const t of timers.values()) { clearTimeout(t); }
     timers.clear();
+    notifiedAds.clear();
 }
