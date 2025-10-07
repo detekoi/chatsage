@@ -26,7 +26,7 @@ env:
   EVENTSUB_BYPASS: '0'
   ALLOWED_CHANNELS_SECRET_NAME: 'projects/907887386166/secrets/allowed-channels/versions/latest'
   WEBUI_BASE_URL: 'https://webui-zpqjdsguqa-uc.a.run.app'
-  WEBUI_INTERNAL_TOKEN: 'projects/907887386166/secrets/webui-internal-token'
+  WEBUI_INTERNAL_TOKEN: 'projects/907887386166/secrets/webui-internal-token/versions/latest'
 
 jobs:
   deploy:

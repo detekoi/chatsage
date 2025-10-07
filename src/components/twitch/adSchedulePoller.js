@@ -19,6 +19,12 @@ async function fetchAdScheduleViaWebUI(channelName, retryCount = 0) {
     try {
         logger.debug({ channelName, attempt: retryCount + 1 }, '[AdSchedule] Fetching ad schedule via web UI');
 
+        // Check if web UI config is available
+        if (!config.webui || !config.webui.baseUrl || !config.webui.internalToken) {
+            logger.warn('[AdSchedule] Web UI configuration not available. Set WEBUI_BASE_URL and WEBUI_INTERNAL_TOKEN environment variables.');
+            return null;
+        }
+
         // Get the internal bot token for authentication
         const internalToken = await getSecretValue(config.webui.internalToken);
         if (!internalToken) {

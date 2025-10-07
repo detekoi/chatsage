@@ -85,6 +85,12 @@ function loadConfig() {
             twitchChannelsSecretName: process.env.TWITCH_CHANNELS_SECRET_NAME || null,
             // Optional: resource name for allowed channels list in Secret Manager
             allowedChannelsSecretName: process.env.ALLOWED_CHANNELS_SECRET_NAME || null,
+        },
+
+        // Web UI Configuration (for ad schedule polling)
+        webui: {
+            baseUrl: process.env.WEBUI_BASE_URL || 'https://us-central1-streamsage-bot.cloudfunctions.net',
+            internalToken: process.env.WEBUI_INTERNAL_TOKEN || null,
         }
     };
 
