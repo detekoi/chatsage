@@ -67,72 +67,108 @@ async function refreshIrcToken() {
                 }
             }
 
-            try {
-                // Create form data parameters for request body (consistent with curl -d approach)
-                const params = new URLSearchParams();
-                params.append('client_id', clientId);
-                params.append('client_secret', clientSecret);
-                params.append('grant_type', 'refresh_token');
-                params.append('refresh_token', refreshToken);
+            // Retry logic for network timeouts
+            const MAX_RETRIES = 3;
+            const RETRY_DELAYS = [1000, 2000, 3000]; // 1s, 2s, 3s
 
-                const response = await axios.post(TWITCH_TOKEN_URL, params, {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    timeout: 10000,
-                });
+            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                try {
+                    if (attempt > 0) {
+                        const delay = RETRY_DELAYS[attempt - 1];
+                        logger.info({ attempt: attempt + 1, delayMs: delay }, 'Retrying token refresh after delay...');
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
 
-                if (response.status === 200 && response.data?.access_token) {
-                    const newAccessToken = response.data.access_token;
-                    const newRefreshToken = response.data.refresh_token; // Twitch *might* return a new refresh token
+                    // Create form data parameters for request body (consistent with curl -d approach)
+                    const params = new URLSearchParams();
+                    params.append('client_id', clientId);
+                    params.append('client_secret', clientSecret);
+                    params.append('grant_type', 'refresh_token');
+                    params.append('refresh_token', refreshToken);
 
-                    logger.info('Successfully refreshed Twitch IRC Access Token.');
-                    currentAccessToken = newAccessToken; // Update in-memory cache
+                    const response = await axios.post(TWITCH_TOKEN_URL, params, {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        timeout: 10000,
+                    });
 
-                    // If Twitch returns a new refresh token, update it in Secret Manager
-                    if (newRefreshToken && newRefreshToken !== refreshToken) {
-                        if (localRefreshToken) {
-                            logger.warn('Received new refresh token, but running in local dev mode. Not updating Secret Manager. Please update TWITCH_BOT_REFRESH_TOKEN manually if desired.');
-                        } else if (refreshTokenSecretName) {
-                            logger.info('Received a new refresh token from Twitch. Storing it in Secret Manager.');
-                            const success = await setSecretValue(refreshTokenSecretName, newRefreshToken);
-                            if (success) {
-                                logger.info('Successfully updated refresh token in Secret Manager.');
-                            } else {
-                                logger.error('Failed to update refresh token in Secret Manager. Will continue using the old token for future refreshes.');
+                    if (response.status === 200 && response.data?.access_token) {
+                        const newAccessToken = response.data.access_token;
+                        const newRefreshToken = response.data.refresh_token; // Twitch *might* return a new refresh token
+
+                        logger.info('Successfully refreshed Twitch IRC Access Token.');
+                        currentAccessToken = newAccessToken; // Update in-memory cache
+
+                        // If Twitch returns a new refresh token, update it in Secret Manager
+                        if (newRefreshToken && newRefreshToken !== refreshToken) {
+                            if (localRefreshToken) {
+                                logger.warn('Received new refresh token, but running in local dev mode. Not updating Secret Manager. Please update TWITCH_BOT_REFRESH_TOKEN manually if desired.');
+                            } else if (refreshTokenSecretName) {
+                                logger.info('Received a new refresh token from Twitch. Storing it in Secret Manager.');
+                                const success = await setSecretValue(refreshTokenSecretName, newRefreshToken);
+                                if (success) {
+                                    logger.info('Successfully updated refresh token in Secret Manager.');
+                                } else {
+                                    logger.error('Failed to update refresh token in Secret Manager. Will continue using the old token for future refreshes.');
+                                }
                             }
                         }
+
+                        return newAccessToken; // Return the new token
+                    } else {
+                        throw new Error(`Unexpected response structure during token refresh. Status: ${response.status}`);
                     }
 
-                    return newAccessToken; // Return the new token
-                } else {
-                    throw new Error(`Unexpected response structure during token refresh. Status: ${response.status}`);
-                }
+                } catch (error) {
+                    const isLastAttempt = attempt === MAX_RETRIES - 1;
+                    const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+                    const isNetworkError = error.request && !error.response; // No response received
+                    const canRetry = (isTimeout || isNetworkError) && !isLastAttempt;
 
-            } catch (error) {
-                let errorMessage = 'Failed to refresh Twitch IRC Access Token.';
-                if (error.response) {
-                    errorMessage = `${errorMessage} Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
-                    logger.error({
-                        status: error.response.status,
-                        data: error.response.data,
-                    }, errorMessage);
-                    // If refresh token is invalid, log critically
-                    if (error.response.status === 400 || error.response.status === 401) {
-                        logger.fatal(`Refresh token is likely invalid or revoked (Status: ${error.response.status}). Manual intervention required to get a new refresh token.`);
-                        // TODO: Trigger an alert or notification here.
-                        // Invalidate the currentAccessToken to prevent further attempts with it
-                        currentAccessToken = null;
+                    let errorMessage = 'Failed to refresh Twitch IRC Access Token.';
+
+                    if (error.response) {
+                        // Got a response from Twitch - don't retry on client errors
+                        errorMessage = `${errorMessage} Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
+                        logger.error({
+                            status: error.response.status,
+                            data: error.response.data,
+                            attempt: attempt + 1
+                        }, errorMessage);
+
+                        // If refresh token is invalid, log critically and don't retry
+                        if (error.response.status === 400 || error.response.status === 401) {
+                            logger.fatal(`Refresh token is likely invalid or revoked (Status: ${error.response.status}). Manual intervention required to get a new refresh token.`);
+                            currentAccessToken = null;
+                        }
+                        return null; // Don't retry on response errors
+
+                    } else if (error.request) {
+                        errorMessage = `${errorMessage} No response received from Twitch token endpoint.`;
+                        logger.error({
+                            attempt: attempt + 1,
+                            maxRetries: MAX_RETRIES,
+                            willRetry: canRetry,
+                            isTimeout
+                        }, errorMessage);
+
+                        if (canRetry) {
+                            continue; // Retry on network errors
+                        }
+                        return null;
+
+                    } else {
+                        errorMessage = `${errorMessage} Error: ${error.message}`;
+                        logger.error({ err: error, attempt: attempt + 1 }, errorMessage);
+                        return null;
                     }
-                } else if (error.request) {
-                    errorMessage = `${errorMessage} No response received from Twitch token endpoint.`;
-                    logger.error({ request: error.request }, errorMessage);
-                } else {
-                    errorMessage = `${errorMessage} Error: ${error.message}`;
-                    logger.error({ err: error }, errorMessage);
                 }
-                return null; // Indicate refresh failure
             }
+
+            // If we get here, all retries failed
+            logger.error(`Token refresh failed after ${MAX_RETRIES} attempts`);
+            return null;
         })();
 
         try {
