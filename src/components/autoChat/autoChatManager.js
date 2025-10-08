@@ -341,7 +341,8 @@ export function stopAutoChatManager() {
 export async function notifyAdBreak(channelName, adEvent) {
     try {
         const cfg = await getChannelAutoChatConfig(channelName);
-        if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) return;
+        // Ad notifications are independent of auto-chat mode - only check ads category
+        if (!cfg || cfg.categories?.ads !== true) return;
 
         const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-break');
         if (!context) return;
@@ -365,7 +366,8 @@ export async function notifyAdBreak(channelName, adEvent) {
 export async function notifyAdSoon(channelName, secondsUntil) {
     try {
         const cfg = await getChannelAutoChatConfig(channelName);
-        if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) return;
+        // Ad notifications are independent of auto-chat mode - only check ads category
+        if (!cfg || cfg.categories?.ads !== true) return;
         const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-soon');
         if (!context) return;
         const contextPrompt = buildContextPrompt(context);

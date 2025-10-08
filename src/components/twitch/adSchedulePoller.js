@@ -127,14 +127,14 @@ export function startAdSchedulePoller() {
                     isLive
                 }, '[AdSchedule] Checking channel status');
                 if (!isLive) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - stream offline'); continue; }
-                // Only if ads on
+                // Only if ads category enabled (independent of auto-chat mode)
                 const cfg = await getChannelAutoChatConfig(channelName);
                 logger.debug({
                     channelName,
                     config: cfg,
                     adsEnabled: cfg?.categories?.ads
                 }, '[AdSchedule] Checking ads configuration');
-                if (!cfg || cfg.mode === 'off' || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
+                if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
                 // Fetch schedule via web UI
                 try {
                     const adScheduleData = await fetchAdScheduleViaWebUI(channelName);

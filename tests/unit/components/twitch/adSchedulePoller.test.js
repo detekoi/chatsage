@@ -420,6 +420,50 @@ describe('Ad Schedule Poller', () => {
         );
     });
 
+    test('should poll for ads even when auto-chat mode is off', async () => {
+        // Arrange
+        const nextAdTime = new Date(Date.now() + 120_000); // 2 minutes from now
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        // Auto-chat mode is OFF but ads category is enabled
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'off',
+            categories: { ads: true }
+        });
+
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000);
+
+        // Assert - Should still poll and schedule notification
+        expect(axios.get).toHaveBeenCalledWith(
+            expect.stringContaining('/internal/ads/schedule'),
+            expect.any(Object)
+        );
+        expect(logger.info).toHaveBeenCalledWith(
+            expect.objectContaining({ channelName: 'testchannel' }),
+            '[AdSchedule] 🔔 Ad notification scheduled'
+        );
+    });
+
     // Note: Testing missing config requires mocking the config module,
     // which is complex due to how the config loader works.
     // The defensive check in adSchedulePoller.js prevents crashes if config is missing.
