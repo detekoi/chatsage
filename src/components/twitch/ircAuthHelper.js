@@ -24,7 +24,8 @@ async function refreshIrcToken() {
         logger.info('Attempting to refresh Twitch IRC Access Token...');
 
         // Wrap entire refresh operation with timeout to prevent indefinite hangs
-        const TOTAL_REFRESH_TIMEOUT_MS = 30000; // 30 seconds total timeout
+        // Increased to 80s to allow for 3 retries with delays (3 × 10s timeout + 2s + 5s + 10s delays + overhead)
+        const TOTAL_REFRESH_TIMEOUT_MS = 80000; // 80 seconds total timeout
         const refreshTimeoutPromise = new Promise((_, reject) => {
             setTimeout(() => {
                 reject(new Error(`Token refresh operation timed out after ${TOTAL_REFRESH_TIMEOUT_MS}ms`));
@@ -69,7 +70,7 @@ async function refreshIrcToken() {
 
             // Retry logic for network timeouts
             const MAX_RETRIES = 3;
-            const RETRY_DELAYS = [1000, 2000, 3000]; // 1s, 2s, 3s
+            const RETRY_DELAYS = [2000, 5000, 10000]; // 2s, 5s, 10s - longer delays for network issues
 
             for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
                 try {
@@ -86,11 +87,22 @@ async function refreshIrcToken() {
                     params.append('grant_type', 'refresh_token');
                     params.append('refresh_token', refreshToken);
 
+                    logger.debug({
+                        attempt: attempt + 1,
+                        url: TWITCH_TOKEN_URL,
+                        hasClientId: !!clientId,
+                        hasClientSecret: !!clientSecret,
+                        hasRefreshToken: !!refreshToken
+                    }, 'Sending token refresh request to Twitch...');
+
                     const response = await axios.post(TWITCH_TOKEN_URL, params, {
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded'
                         },
                         timeout: 10000,
+                        // Add explicit network options for better Cloud Run compatibility
+                        maxRedirects: 5,
+                        validateStatus: (status) => status === 200,
                     });
 
                     if (response.status === 200 && response.data?.access_token) {
@@ -150,7 +162,11 @@ async function refreshIrcToken() {
                             attempt: attempt + 1,
                             maxRetries: MAX_RETRIES,
                             willRetry: canRetry,
-                            isTimeout
+                            isTimeout,
+                            errorCode: error.code,
+                            errorMessage: error.message,
+                            syscall: error.syscall,
+                            hostname: error.hostname
                         }, errorMessage);
 
                         if (canRetry) {
