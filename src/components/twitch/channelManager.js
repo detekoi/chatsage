@@ -410,7 +410,7 @@ export function listenForChannelChanges(ircClient) {
 
 /**
  * Gets a list of all channels (both active and inactive) from the managedChannels collection.
- * @returns {Promise<Array<{channelName: string, isActive: boolean, displayName: string}>>}
+ * @returns {Promise<Array<{channelName: string, isActive: boolean, displayName: string, email: string|null}>>}
  */
 export async function getAllManagedChannels() {
     const db = _getDb();
@@ -425,6 +425,7 @@ export async function getAllManagedChannels() {
                 channelName: data.channelName.toLowerCase(),
                 isActive: !!data.isActive,
                 displayName: data.displayName || data.channelName,
+                email: data.email || null,
                 addedAt: data.addedAt ? data.addedAt.toDate() : null,
                 lastStatusChange: data.lastStatusChange ? data.lastStatusChange.toDate() : null
             });
@@ -435,6 +436,41 @@ export async function getAllManagedChannels() {
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error fetching all managed channels.");
         throw new ChannelManagerError("Failed to fetch all managed channels.", error);
+    }
+}
+
+/**
+ * Gets detailed information about a specific managed channel.
+ * @param {string} channelName - The channel name to get information for
+ * @returns {Promise<{channelName: string, isActive: boolean, displayName: string, email: string|null, twitchUserId: string|null}|null>}
+ */
+export async function getChannelInfo(channelName) {
+    const db = _getDb();
+    const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
+    
+    try {
+        const docRef = db.collection(MANAGED_CHANNELS_COLLECTION).doc(cleanChannelName);
+        const doc = await docRef.get();
+        
+        if (!doc.exists) {
+            logger.debug(`[ChannelManager] Channel ${cleanChannelName} not found in managedChannels.`);
+            return null;
+        }
+        
+        const data = doc.data();
+        return {
+            channelName: data.channelName?.toLowerCase() || cleanChannelName,
+            isActive: !!data.isActive,
+            displayName: data.displayName || data.channelName || cleanChannelName,
+            email: data.email || null,
+            twitchUserId: data.twitchUserId || null,
+            addedAt: data.addedAt ? data.addedAt.toDate() : null,
+            lastStatusChange: data.lastStatusChange ? data.lastStatusChange.toDate() : null,
+            lastLoginAt: data.lastLoginAt ? data.lastLoginAt.toDate() : null
+        };
+    } catch (error) {
+        logger.error({ err: error, channel: cleanChannelName }, "[ChannelManager] Error fetching channel info.");
+        throw new ChannelManagerError(`Failed to fetch info for channel ${cleanChannelName}.`, error);
     }
 }
 
