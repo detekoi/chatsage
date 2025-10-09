@@ -69,13 +69,13 @@ Se il tuo canale è approvato, puoi aggiungere o rimuovere ChatSage tramite l'in
 
 5.  **Interazione Utente**:
     -   Gli spettatori possono interagire con ChatSage menzionandolo: `@ChatSageBot ciao` (il nome utente verrà aggiornato per riflettere il nuovo nome, ChatSage, quando Twitch me lo consentirà)
-    -   Oppure utilizzando vari [comandi](https://detekoi.github.io/botcommands.html) come `!ask`, `!translate`, ecc.
+    -   Oppure utilizzando vari [comandi](https://docs.wildcat.chat/botcommands.html) come `!ask`, `!translate`, ecc.
 
 ## Esempi di Utilizzo
 
 ### Comandi Chat
 
-Per un elenco completo dei comandi disponibili e il loro utilizzo, visita la [Documentazione dei Comandi del Bot](https://detekoi.github.io/botcommands.html).
+Per un elenco completo dei comandi disponibili e il loro utilizzo, visita la [Documentazione dei Comandi del Bot](https://docs.wildcat.chat/botcommands.html).
 
 ## Prerequisiti di Sviluppo
 

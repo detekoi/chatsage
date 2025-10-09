@@ -69,13 +69,13 @@ Wenn dein Kanal genehmigt ist, kannst du ChatSage über die Weboberfläche hinzu
 
 5.  **Benutzerinteraktion**:
     -   Zuschauer können mit ChatSage interagieren, indem sie ihn erwähnen: `@ChatSageBot hallo` (der Benutzername wird aktualisiert, um den neuen Namen, ChatSage, widerzuspiegeln, sobald Twitch es mir erlaubt)
-    -   Oder durch die Verwendung verschiedener [Befehle](https://detekoi.github.io/botcommands.html) wie `!ask`, `!translate`, etc.
+    -   Oder durch die Verwendung verschiedener [Befehle](https://docs.wildcat.chat/botcommands.html) wie `!ask`, `!translate`, etc.
 
 ## Anwendungsbeispiele
 
 ### Chat-Befehle
 
-Eine vollständige Liste der verfügbaren Befehle und deren Verwendung findest du unter [Bot-Befehlsdokumentation](https://detekoi.github.io/botcommands.html).
+Eine vollständige Liste der verfügbaren Befehle und deren Verwendung findest du unter [Bot-Befehlsdokumentation](https://docs.wildcat.chat/botcommands.html).
 
 ## Entwicklungsvoraussetzungen
 

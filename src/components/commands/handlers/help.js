@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
-const HELP_URL = 'https://detekoi.github.io/botcommands.html';
+const HELP_URL = 'https://docs.wildcat.chat/botcommands.html';
 
 /**
  * Handler for the !help command.

@@ -68,13 +68,13 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 5.  **ユーザーインタラクション**：
     -   視聴者はChatSageにメンションすることで対話できます：`@ChatSageBot hello` （Twitchが許可すれば、ユーザー名は新しい名前ChatSageを反映するように更新されます）
-    -   または、`!ask`や`!translate`などの様々な[コマンド](https://detekoi.github.io/botcommands.html)を使用します。
+    -   または、`!ask`や`!translate`などの様々な[コマンド](https://docs.wildcat.chat/botcommands.html)を使用します。
 
 ## 使用例 {#usage-examples}
 
 ### チャットコマンド {#chat-commands}
 
-利用可能なコマンドとその使用方法の完全なリストについては、[ボットコマンドドキュメント](https://detekoi.github.io/botcommands.html)をご覧ください。
+利用可能なコマンドとその使用方法の完全なリストについては、[ボットコマンドドキュメント](https://docs.wildcat.chat/botcommands.html)をご覧ください。
 
 ## 開発の前提条件 {#development-prerequisites}
 
