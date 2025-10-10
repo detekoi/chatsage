@@ -620,7 +620,16 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
                 const allowed = await isChannelAllowed(channelName);
                 if (!allowed) return;
-                await notifyAdBreak(channelName.toLowerCase(), event);
+
+                // Log the ad break event but don't send notification - the ad schedule poller
+                // already handles this with a 60-second pre-warning, which provides better UX
+                logger.info({
+                    channelName: channelName.toLowerCase(),
+                    duration: event?.duration_seconds || event?.duration
+                }, '[EventSub] Ad break started (notification handled by poller)');
+
+                // Disabled to prevent duplicate notifications with ad schedule poller
+                // await notifyAdBreak(channelName.toLowerCase(), event);
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
             }

@@ -215,6 +215,9 @@ export function startAdSchedulePoller() {
                         secondsUntilNotification: Math.floor(fireIn / 1000)
                     }, '[AdSchedule] 🔔 Ad notification scheduled');
 
+                    // Mark as notified IMMEDIATELY when scheduling (prevents race condition with next poller tick)
+                    channelNotifiedAds.add(adTimestamp);
+
                     // If a timer exists but significantly different, reset
                     clearTimer(channelName);
                     timers.set(channelName, setTimeout(async () => {
@@ -225,11 +228,11 @@ export function startAdSchedulePoller() {
                                 secondsUntilAd: Math.floor((nextAd.getTime() - Date.now()) / 1000)
                             }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
                             await notifyAdSoon(channelName, 60);
-                            // Mark this ad as notified
-                            channelNotifiedAds.add(adTimestamp);
                             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
                             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
+                            // Remove from notified set on failure so it can retry
+                            channelNotifiedAds.delete(adTimestamp);
                         }
                     }, fireIn));
                 } catch (e) {
