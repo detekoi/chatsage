@@ -82,9 +82,9 @@ async function fetchBatch(channels, helixClient, contextManager) {
  * @param {number} intervalMs - Polling interval in milliseconds.
  * @param {import('./helixClient.js').HelixClient} helixClient - Initialized Helix client instance.
  * @param {import('../context/contextManager.js').ContextManager} contextManager - Context manager instance.
- * @returns {NodeJS.Timeout} The interval timer ID.
+ * @returns {Promise<NodeJS.Timeout>} Promise that resolves with interval timer ID after first poll completes.
  */
-function startStreamInfoPolling(initialChannelNames, intervalMs, helixClient, contextManager) {
+async function startStreamInfoPolling(initialChannelNames, intervalMs, helixClient, contextManager) {
     if (pollingIntervalId) {
         logger.warn('Stream info polling is already running.');
         return pollingIntervalId;
@@ -119,10 +119,11 @@ function startStreamInfoPolling(initialChannelNames, intervalMs, helixClient, co
         }
     };
 
-    // Run immediately first time, then start interval
-    poll().catch(err => logger.error({ err }, "Error during initial poll execution.")); // Handle error for initial run
+    // Run immediately first time and await completion, then start interval
+    await poll().catch(err => logger.error({ err }, "Error during initial poll execution."));
     pollingIntervalId = setInterval(poll, intervalMs);
 
+    logger.info('First poll cycle complete - context manager populated with current stream states');
     return pollingIntervalId;
 }
 

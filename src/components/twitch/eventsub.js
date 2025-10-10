@@ -77,48 +77,54 @@ export async function cleanupKeepAliveTasks() {
 /**
  * Initializes streams that are already live when the bot starts up.
  * This handles the case where streams are live before EventSub subscriptions are established.
+ * Uses context manager (populated by stream poller) as single source of truth.
  */
 export async function initializeActiveStreamsFromPoller() {
-    logger.info('Checking for streams that are already live on startup...');
-    
+    logger.info('Checking for streams that are already live on startup (from poller context)...');
+
     const contextManager = getContextManager();
     const channelStates = contextManager.getAllChannelStates();
     let foundLiveStreams = 0;
-    
+
     for (const [channelName] of channelStates) {
         const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
         if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
             const login = String(channelName).toLowerCase();
-            logger.info(`Found ${login} already live on startup - adding to activeStreams`);
+            logger.info(`Found ${login} already live on startup (game: ${context.streamGame}) - adding to activeStreams`);
             activeStreams.add(login);
             foundLiveStreams++;
 
-            // If LAZY_CONNECT is enabled, ensure IRC connection and join the live channel as a poller fallback
+            // If LAZY_CONNECT is enabled, ensure IRC connection and join the live channel
             const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
             if (isLazyConnect) {
                 try {
                     const irc = getIrcClient();
                     const state = irc?.readyState?.() || 'CLOSED';
                     if (state !== 'OPEN' && state !== 'CONNECTING') {
-                        logger.info(`[Startup Live] IRC not connected (state=${state}). Connecting due to poller-detected live channel ${channelName}...`);
+                        logger.info(`[Startup Live] IRC not connected (state=${state}). Connecting due to live channel ${channelName}...`);
                         await connectIrcClient();
-                        logger.info('[Startup Live] IRC connection established via poller fallback.');
+                        logger.info('[Startup Live] IRC connection established.');
                     } else {
-                    logger.info(`[Startup Live] IRC already ${state}. Proceeding to join #${login}.`);
+                        logger.info(`[Startup Live] IRC already ${state}. Proceeding to join #${login}.`);
                     }
                     const client = getIrcClient();
-                    await client.join(`#${login}`);
-                    logger.info(`[Startup Live] Joined channel #${login} via poller-detected live state.`);
+                    try {
+                        await client.join(`#${login}`);
+                        logger.info(`[Startup Live] Joined channel #${login} (live with ${context.streamGame})`);
+                    } catch (joinErr) {
+                        // tmi.js sometimes times out even when join succeeds - log but don't fail
+                        logger.warn({ err: joinErr, channel: login }, '[Startup Live] Join command timeout (may still succeed) - tmi.js quirk');
+                    }
                 } catch (err) {
-                    logger.error({ err, channel: login }, '[Startup Live] Failed to connect or join channel from poller-detected live state.');
+                    logger.error({ err, channel: login }, '[Startup Live] Failed to connect to IRC from live stream detection.');
                 }
             }
         }
     }
-    
+
     if (foundLiveStreams > 0) {
         logger.info(`Added ${foundLiveStreams} already-live streams to activeStreams on startup`);
-        
+
         // Start keep-alive pings if we found live streams but no task is scheduled yet
         if (!keepAliveTaskName) {
             try {
@@ -504,13 +510,18 @@ export async function eventSubHandler(req, res, rawBody) {
                         }
                     }
 
-                    // Then join the channel
+                    // Then join the channel (with timeout handling)
                     const ircClient = getIrcClient();
-                    await ircClient.join(`#${login}`);
-                    logger.info(`Joined channel #${login} via EventSub trigger`);
+                    try {
+                        await ircClient.join(`#${login}`);
+                        logger.info(`Joined channel #${login} via EventSub trigger`);
+                    } catch (joinError) {
+                        // tmi.js sometimes times out even when join succeeds - log but don't fail
+                        logger.warn({ err: joinError, channel: login }, 'Join command timeout (may still succeed) - tmi.js quirk');
+                    }
                 } catch (error) {
-                    logger.error({ err: error }, 'Failed to establish IRC connection or join channel from EventSub');
-                    throw error;
+                    logger.error({ err: error }, 'Failed to establish IRC connection from EventSub');
+                    // Don't throw - allow bot to continue even if join fails
                 }
             }
             // Inform AutoChatManager so it can greet once
