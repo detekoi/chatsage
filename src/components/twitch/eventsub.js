@@ -632,15 +632,24 @@ export async function eventSubHandler(req, res, rawBody) {
                 const allowed = await isChannelAllowed(channelName);
                 if (!allowed) return;
 
-                // Log the ad break event but don't send notification - the ad schedule poller
-                // already handles this with a 60-second pre-warning, which provides better UX
+                const isAutomatic = event?.is_automatic === true;
+                const duration = event?.duration_seconds || event?.duration || 60;
+
                 logger.info({
                     channelName: channelName.toLowerCase(),
-                    duration: event?.duration_seconds || event?.duration
-                }, '[EventSub] Ad break started (notification handled by poller)');
+                    duration,
+                    isAutomatic,
+                    requester: event?.requester_user_login
+                }, '[EventSub] Ad break started');
 
-                // Disabled to prevent duplicate notifications with ad schedule poller
-                // await notifyAdBreak(channelName.toLowerCase(), event);
+                // Only send notification for MANUAL ads (early/unscheduled)
+                // Scheduled/automatic ads already get 60s pre-warning from poller
+                if (!isAutomatic) {
+                    logger.info({ channelName: channelName.toLowerCase() }, '[EventSub] Manual ad detected - sending immediate notification');
+                    await notifyAdBreak(channelName.toLowerCase(), event);
+                } else {
+                    logger.debug({ channelName: channelName.toLowerCase() }, '[EventSub] Automatic ad - notification already sent by poller');
+                }
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
             }

@@ -337,20 +337,31 @@ export function stopAutoChatManager() {
     }
 }
 
-// --- Ad Break notifier ---
-export async function notifyAdBreak(channelName, adEvent) {
+// --- Ad Notification (unified handler) ---
+/**
+ * Sends an ad notification to chat. Single source of truth for all ad-related notifications.
+ * @param {string} channelName - Channel name
+ * @param {'warning'|'starting'} type - Notification type: 'warning' for pre-ad alert, 'starting' for ad start
+ * @param {number} seconds - For 'warning': seconds until ad. For 'starting': ad duration in seconds.
+ */
+async function sendAdNotification(channelName, type, seconds) {
     try {
         const cfg = await getChannelAutoChatConfig(channelName);
         // Ad notifications are independent of auto-chat mode - only check ads category
         if (!cfg || cfg.categories?.ads !== true) return;
 
-        const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-break');
+        const context = getContextManager().getContextForLLM(channelName, 'system', `event-ad-${type}`);
         if (!context) return;
-        const contextPrompt = buildContextPrompt(context);
-        const adLength = adEvent?.duration_seconds || adEvent?.duration || 60;
-        const gameName = context.streamGame || 'the stream';
 
-        const prompt = `An ad break of ${adLength} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
+        const contextPrompt = buildContextPrompt(context);
+        const gameName = context.streamGame || 'the stream';
+        const secs = Math.max(5, Math.round(seconds || 60));
+
+        // Build prompt based on notification type
+        const prompt = type === 'warning'
+            ? `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`
+            : `An ad break of ${secs} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
+
         const text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
         if (!text) return;
@@ -359,28 +370,16 @@ export async function notifyAdBreak(channelName, adEvent) {
         const state = getState(channelName);
         recordAutoText(state, text);
     } catch (error) {
-        logger.error({ err: error, channelName }, '[AutoChatManager] Error during ad break notification');
+        logger.error({ err: error, channelName, type }, '[AutoChatManager] Error during ad notification');
     }
 }
 
+// Public API - backwards compatible wrappers
 export async function notifyAdSoon(channelName, secondsUntil) {
-    try {
-        const cfg = await getChannelAutoChatConfig(channelName);
-        // Ad notifications are independent of auto-chat mode - only check ads category
-        if (!cfg || cfg.categories?.ads !== true) return;
-        const context = getContextManager().getContextForLLM(channelName, 'system', 'event-ad-soon');
-        if (!context) return;
-        const contextPrompt = buildContextPrompt(context);
-        const gameName = context.streamGame || 'the stream';
-        const secs = Math.max(5, Math.round(secondsUntil || 60));
-        const prompt = `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`;
-        const text = await generateStandardResponse(contextPrompt, prompt)
-            || await generateSearchResponse(contextPrompt, prompt);
-        if (!text) return;
-        await enqueueMessage(`#${channelName}`, text);
-        const state = getState(channelName);
-        recordAutoText(state, text);
-    } catch (error) {
-        logger.error({ err: error, channelName }, '[AutoChatManager] Error during ad soon notification');
-    }
+    await sendAdNotification(channelName, 'warning', secondsUntil);
+}
+
+export async function notifyAdBreak(channelName, adEvent) {
+    const duration = adEvent?.duration_seconds || adEvent?.duration || 60;
+    await sendAdNotification(channelName, 'starting', duration);
 }
