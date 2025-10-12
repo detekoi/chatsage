@@ -73,6 +73,12 @@ describe('llmUtils', () => {
             expect(result).toBe('First and second');
         });
 
+        it('should handle titles with asterisk markdown', () => {
+            const result = removeMarkdownAsterisks('The movie **Inception** is great');
+
+            expect(result).toBe('The movie Inception is great');
+        });
+
         it('should return unchanged text when no markdown', () => {
             const result = removeMarkdownAsterisks('Plain text');
 
