@@ -2,6 +2,7 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getOrCreateChatSession, buildContextPrompt } from '../../llm/geminiClient.js';
+import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 
 /**
@@ -46,6 +47,8 @@ const lurkHandler = {
             let response;
             if (llmResponse && llmResponse.trim()) {
                 llmResponse = llmResponse.replace(/^"|"$/g, '').trim();
+                // Remove markdown asterisks
+                llmResponse = removeMarkdownAsterisks(llmResponse);
                 response = `${llmResponse}`;
             } else {
                 logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; using fallback.');

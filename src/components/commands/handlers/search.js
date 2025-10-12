@@ -2,6 +2,7 @@ import logger from '../../../lib/logger.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession } from '../../llm/geminiClient.js';
+import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
 // Define IRC message length limit (be conservative)
@@ -78,6 +79,8 @@ const searchHandler = {
             let finalReplyText = initialResponseText;
             // Strip mistaken @mentions of the user if present
             finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+            // Remove markdown asterisks
+            finalReplyText = removeMarkdownAsterisks(finalReplyText);
 
             if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial search response too long (${finalReplyText.length} chars). Attempting summarization.`);

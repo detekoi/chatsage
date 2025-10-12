@@ -9,6 +9,7 @@ import {
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
+import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
@@ -89,6 +90,9 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     // Strip any mistaken prefixes from the LLM response
     let finalReplyText = responseText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+
+    // Remove markdown asterisks
+    finalReplyText = removeMarkdownAsterisks(finalReplyText);
 
     // Let ircSender.js handle all length processing (summarization/truncation)
     enqueueMessage(channel, finalReplyText, { replyToId });
