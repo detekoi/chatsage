@@ -513,6 +513,9 @@ async function main() {
             const riddleManager = getRiddleGameManager(); // Ensure this is available
 
             // --- Check for pending report responses (Riddle, Trivia, Geo) ---
+            // IMPORTANT: We only handle pending reports here and return early if found.
+            // If no pending report exists, we let the message continue to be processed
+            // as a potential game answer (trivia/riddle/geo).
             if (/^\d+$/.test(message.trim())) {
                 logger.debug(`[BotJS] Numeric message "${message.trim()}" from ${lowerUsername} in ${cleanChannel}. Checking for pending report.`);
 
@@ -524,7 +527,7 @@ async function main() {
                     contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                         logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
                     });
-                    return;
+                    return; // Report processed, stop here
                 }
 
                 // Try Trivia next
@@ -535,7 +538,7 @@ async function main() {
                     contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                         logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
                     });
-                    return;
+                    return; // Report processed, stop here
                 }
 
                 // Try Geo last
@@ -546,10 +549,12 @@ async function main() {
                     contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
                         logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
                     });
-                    return;
+                    return; // Report processed, stop here
                 }
 
-                logger.debug(`[BotJS] Numeric message from ${lowerUsername} but no pending report found in any manager or it was an internal error in finalizeReport with no message to user.`);
+                // If we reach here, no pending report was found. The numeric message will
+                // continue to be processed below as a potential game answer.
+                logger.debug(`[BotJS] Numeric message "${message.trim()}" from ${lowerUsername}: no pending report found. Continuing to game answer processing.`);
             }
             // --- END: Check for pending report responses ---
 
