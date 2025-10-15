@@ -13,18 +13,18 @@ const generateRiddleTool = {
         name: "generate_riddle_with_answer_and_keywords",
         description: "Generates a clever, metaphorical riddle about a given topic, its concise answer, and 3-5 highly descriptive keywords that capture the unique essence of the riddle's puzzle and solution. Ensures factual accuracy for clues, using search if necessary.",
         parameters: {
-            type: "OBJECT",
+            type: GenAIType.OBJECT,
             properties: {
-                riddle_question: { type: "STRING", description: "The text of the riddle, focusing on metaphorical or puzzling descriptions rather than direct factual statements." },
-                riddle_answer: { type: "STRING", description: "The single, concise, common answer to the riddle." },
+                riddle_question: { type: GenAIType.STRING, description: "The text of the riddle, focusing on metaphorical or puzzling descriptions rather than direct factual statements." },
+                riddle_answer: { type: GenAIType.STRING, description: "The single, concise, common answer to the riddle." },
                 keywords: {
-                    type: "ARRAY",
+                    type: GenAIType.ARRAY,
                     description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific and discriminative, capturing the unique metaphorical elements or core components of THIS particular riddle and its answer, to distinguish it from other riddles on similar topics or with similar answers.",
-                    items: { type: "STRING" }
+                    items: { type: GenAIType.STRING }
                 },
-                difficulty_generated: { type: "STRING", description: "The assessed difficulty of the generated riddle (easy, normal, hard)." },
-                explanation: { type: "STRING", description: "A brief explanation of why the answer is correct, ideally clarifying any wordplay or metaphors used in the riddle." },
-                search_used: { type: "BOOLEAN", description: "True if web search was used to generate or verify the riddle, false otherwise." }
+                difficulty_generated: { type: GenAIType.STRING, description: "The assessed difficulty of the generated riddle (easy, normal, hard)." },
+                explanation: { type: GenAIType.STRING, description: "A brief explanation of why the answer is correct, ideally clarifying any wordplay or metaphors used in the riddle." },
+                search_used: { type: GenAIType.BOOLEAN, description: "True if web search was used to generate or verify the riddle, false otherwise." }
             },
             required: ["riddle_question", "riddle_answer", "keywords", "difficulty_generated", "explanation", "search_used"]
         }
@@ -234,14 +234,79 @@ Call the "generate_riddle_with_answer_and_keywords" function with your response.
         });
 
         const response = result;
+
+        // Enhanced error checking
+        if (response.promptFeedback?.blockReason) {
+            logger.error('[RiddleService] Riddle generation blocked by safety settings.', {
+                blockReason: response.promptFeedback.blockReason,
+                safetyRatings: response.promptFeedback.safetyRatings,
+                topic: actualTopic
+            });
+            return null;
+        }
+
         const candidate = response?.candidates?.[0];
 
-        if (candidate?.content?.parts?.[0]?.functionCall?.name === 'generate_riddle_with_answer_and_keywords') {
-            const args = candidate.content.parts[0].functionCall.args;
-            if (!args.riddle_question || !args.riddle_answer || !args.keywords || args.keywords.length === 0) {
-                logger.warn('[RiddleService] Function call made, but essential riddle parts missing.', { args });
+        if (!candidate) {
+            logger.error('[RiddleService] No candidates in riddle generation response.', {
+                topic: actualTopic,
+                responseKeys: Object.keys(response || {})
+            });
+            return null;
+        }
+
+        if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+            logger.warn('[RiddleService] Riddle generation finished with unexpected reason.', {
+                finishReason: candidate.finishReason,
+                topic: actualTopic,
+                hasContent: !!candidate.content
+            });
+            if (candidate.finishReason === 'SAFETY') {
+                logger.error('[RiddleService] Riddle content blocked by safety filters.', { topic: actualTopic });
                 return null;
             }
+        }
+
+        // Check for function call
+        const functionCall = candidate?.content?.parts?.find(p => p?.functionCall)?.functionCall;
+
+        if (!functionCall) {
+            const textResponse = candidate?.content?.parts?.map(p => p?.text).filter(Boolean).join('').trim();
+            logger.error('[RiddleService] Model did not call the expected function.', {
+                topic: actualTopic,
+                hasTextResponse: !!textResponse,
+                textPreview: textResponse ? textResponse.substring(0, 100) : null,
+                partsCount: candidate?.content?.parts?.length,
+                parts: candidate?.content?.parts?.map(p => Object.keys(p || {}))
+            });
+            return null;
+        }
+
+        if (functionCall.name !== 'generate_riddle_with_answer_and_keywords') {
+            logger.error('[RiddleService] Model called unexpected function.', {
+                expectedFunction: 'generate_riddle_with_answer_and_keywords',
+                actualFunction: functionCall.name,
+                topic: actualTopic
+            });
+            return null;
+        }
+
+        const args = functionCall.args;
+        if (!args) {
+            logger.error('[RiddleService] Function call missing args.', { topic: actualTopic });
+            return null;
+        }
+
+        if (!args.riddle_question || !args.riddle_answer || !args.keywords || args.keywords.length === 0) {
+            logger.warn('[RiddleService] Function call made, but essential riddle parts missing.', {
+                args,
+                topic: actualTopic,
+                hasQuestion: !!args.riddle_question,
+                hasAnswer: !!args.riddle_answer,
+                keywordsLength: args.keywords?.length || 0
+            });
+            return null;
+        }
             // Heuristic check for trivia-like riddles
             if (args.riddle_question.toLowerCase().includes("what am i?") && args.riddle_question.split('\n').length <= 4) {
                 const characteristics = args.riddle_question.toLowerCase().split('\n').slice(0, -1).join(' ');
@@ -264,14 +329,19 @@ Call the "generate_riddle_with_answer_and_keywords" function with your response.
                 topic: actualTopic,
                 requestedTopic: topic // Always return the originally requested topic for answer verification
             };
-        } else {
-            const textResponse = candidate?.content?.parts?.map(p => p.text).join('').trim();
-            logger.warn('[RiddleService] Model did not call "generate_riddle_with_answer_and_keywords" as expected.', { textResponse: textResponse || "No text response." });
-            return null;
-        }
-
     } catch (error) {
-        logger.error({ err: error, topic: actualTopic, difficulty }, '[RiddleService] Error generating riddle');
+        logger.error({
+            err: {
+                message: error.message,
+                stack: error.stack,
+                name: error.name,
+                status: error.status,
+                code: error.code
+            },
+            topic: actualTopic,
+            difficulty,
+            useSearch
+        }, '[RiddleService] Error generating riddle');
         return null;
     }
 }
