@@ -11,11 +11,9 @@ var mockClient = {
 };
 
 jest.mock('@google-cloud/tasks', () => ({
-    CloudTasksClient: jest.fn(() => mockClient)
 }));
 jest.mock('../../../src/lib/logger.js');
-
-import { CloudTasksClient } from '@google-cloud/tasks';
+// CloudTasksClient not needed in tests (mocked)
 import * as taskHelpers from '../../../src/lib/taskHelpers.js';
 import logger from '../../../src/lib/logger.js';
 
@@ -278,11 +276,7 @@ describe('taskHelpers', () => {
 
             jest.useFakeTimers();
 
-            let caughtError = null;
-            const promise = scheduleNextKeepAlivePing().catch(err => {
-                caughtError = err;
-                throw err;
-            });
+            const promise = scheduleNextKeepAlivePing();
 
             // Run all timers to completion
             await jest.runAllTimersAsync();

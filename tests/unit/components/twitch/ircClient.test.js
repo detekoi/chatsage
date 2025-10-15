@@ -4,11 +4,9 @@ jest.mock('tmi.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/config/index.js');
 
-import tmi from 'tmi.js';
 import {
     getIrcClient
 } from '../../../../src/components/twitch/ircClient.js';
-import logger from '../../../../src/lib/logger.js';
 import config from '../../../../src/config/index.js';
 
 describe('ircClient', () => {

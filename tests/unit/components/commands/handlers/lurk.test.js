@@ -49,7 +49,7 @@ describe('Lurk Command Handler', () => {
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
         getOrCreateChatSession.mockReturnValue(mockChatSession);
-        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^\*]+)\*\*/g, '$1').replace(/\*([^\*]+)\*/g, '$1') || '');
+        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         enqueueMessage.mockResolvedValue();
 
         // Setup context manager default return

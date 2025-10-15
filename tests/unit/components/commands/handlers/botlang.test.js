@@ -14,7 +14,6 @@ import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 describe('BotLang Command Handler', () => {
     let mockContextManager;
     let mockLogger;
-    let mockGetContextManager;
     let mockTranslateText;
     let mockEnqueueMessage;
 
@@ -56,7 +55,6 @@ describe('BotLang Command Handler', () => {
         logger.error = mockLogger.error;
 
         // Setup local references for use in tests
-        mockGetContextManager = getContextManager;
         mockTranslateText = translateText;
         mockEnqueueMessage = enqueueMessage;
     });

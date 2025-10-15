@@ -51,7 +51,7 @@ describe('Ask Command Handler', () => {
         generateSearchResponse.mockResolvedValue('mock search response');
         generateStandardResponse.mockResolvedValue('mock standard response');
         decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
-        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^\*]+)\*\*/g, '$1').replace(/\*([^\*]+)\*/g, '$1') || '');
+        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         enqueueMessage.mockResolvedValue();
 
         // Setup context manager default return

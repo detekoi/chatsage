@@ -10,7 +10,6 @@ import { getGeminiClient } from '../../../src/components/llm/geminiClient.js';
 const { translateText, cleanupTranslationUtils } = translationUtils;
 
 describe('translationUtils', () => {
-    let mockGeminiClient;
     let mockModel;
 
     beforeEach(() => {

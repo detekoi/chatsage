@@ -61,7 +61,7 @@ describe('Game Command Handler', () => {
         generateStandardResponse.mockResolvedValue('mock standard response');
         summarizeText.mockResolvedValue('summarized text');
         analyzeImage.mockResolvedValue('mock image analysis');
-        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^\*]+)\*\*/g, '$1').replace(/\*([^\*]+)\*/g, '$1') || '');
+        removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         fetchStreamThumbnail.mockResolvedValue(Buffer.from('fake image'));
         getCurrentGameInfo.mockResolvedValue({ gameName: 'Test Game', gameId: '12345' });
         enqueueMessage.mockResolvedValue();

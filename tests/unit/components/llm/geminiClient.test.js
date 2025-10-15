@@ -2,7 +2,6 @@
 
 jest.mock('../../../../src/lib/logger.js');
 
-import logger from '../../../../src/lib/logger.js';
 import {
     buildContextPrompt
 } from '../../../../src/components/llm/geminiClient.js';

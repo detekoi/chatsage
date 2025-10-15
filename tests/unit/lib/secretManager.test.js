@@ -9,7 +9,6 @@ import logger from '../../../src/lib/logger.js';
 
 const {
     initializeSecretManager,
-    getSecretManagerClient,
     getSecretValue,
     setSecretValue,
     resetSecretManagerClient

@@ -15,7 +15,8 @@ import { startStreamInfoPolling } from './streamInfoPoller.js';
 const activeStreams = new Set();
 let keepAliveTaskName = null;
 let lazyConnectInitialized = false; // Track if stream poller and auto-chat have been started in lazy mode
-let streamInfoIntervalId = null; // Store the interval ID for cleanup
+// eslint-disable-next-line no-unused-vars
+let streamInfoIntervalId = null; // Store the interval ID for cleanup (reserved for future use)
 let consecutiveFailedChecks = 0;
 const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling down
 const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds

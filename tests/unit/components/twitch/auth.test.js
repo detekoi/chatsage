@@ -9,7 +9,6 @@ import {
     getAppAccessToken,
     clearCachedAppAccessToken
 } from '../../../../src/components/twitch/auth.js';
-import logger from '../../../../src/lib/logger.js';
 import config from '../../../../src/config/index.js';
 
 describe('Twitch Auth', () => {

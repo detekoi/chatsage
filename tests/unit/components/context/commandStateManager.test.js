@@ -28,12 +28,12 @@ describe('commandStateManager', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
-        // Mock the storage functions
-        channelCommandsStorage.initializeChannelCommandsStorage = jest.fn().mockResolvedValue();
-        channelCommandsStorage.loadAllChannelCommandSettings = jest.fn().mockResolvedValue(new Map());
-        channelCommandsStorage.listenForCommandSettingsChanges = jest.fn().mockReturnValue(jest.fn());
-        channelCommandsStorage.disableCommand = jest.fn().mockResolvedValue(true);
-        channelCommandsStorage.enableCommand = jest.fn().mockResolvedValue(true);
+        // Mock the storage functions using jest.spyOn
+        jest.spyOn(channelCommandsStorage, 'initializeChannelCommandsStorage').mockResolvedValue();
+        jest.spyOn(channelCommandsStorage, 'loadAllChannelCommandSettings').mockResolvedValue(new Map());
+        jest.spyOn(channelCommandsStorage, 'listenForCommandSettingsChanges').mockReturnValue(jest.fn());
+        jest.spyOn(channelCommandsStorage, 'disableCommand').mockResolvedValue(true);
+        jest.spyOn(channelCommandsStorage, 'enableCommand').mockResolvedValue(true);
     });
 
     afterEach(() => {
@@ -106,9 +106,7 @@ describe('commandStateManager', () => {
 
         it('should return false when command is not in disabled set', () => {
             // Mock a channel with some disabled commands but not the one we're checking
-            const mockChannelStates = new Map([
-                ['testchannel', new Set(['geo', 'riddle'])]
-            ]);
+            // (Testing behavior without needing internal state access)
 
             // We need to access the internal state for this test
             // In a real implementation, we might expose a method to set channel states for testing

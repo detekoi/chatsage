@@ -205,7 +205,7 @@ function validateSecretManager() {
 
     try {
         // Try to access the client to ensure it's working
-        const testClient = getSecretManagerClient();
+        getSecretManagerClient();
         logger.info('✅ Secret Manager validation passed: Client is ready');
         return true;
     } catch (error) {
