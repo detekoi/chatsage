@@ -224,11 +224,11 @@ Call the "generate_riddle_with_answer_and_keywords" function with your response.
         const result = await ai.models.generateContent({
             model: modelId,
             contents: [{ role: "user", parts: [{ text: finalGenerationPrompt }] }],
-            tools: [generateRiddleTool],
-            toolConfig: { functionCallingConfig: { mode: "ANY" } },
             config: {
                 temperature: 0.75,
-                candidateCount: 1
+                candidateCount: 1,
+                tools: [generateRiddleTool],
+                toolConfig: { functionCallingConfig: { mode: "ANY" } }
             }
             // No systemInstruction - using fresh AI instance without CHAT_SAGE_SYSTEM_INSTRUCTION
         });
