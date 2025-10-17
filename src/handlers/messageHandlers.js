@@ -4,6 +4,8 @@ import { enqueueMessage } from '../lib/ircSender.js';
 import { translateText } from '../lib/translationUtils.js';
 import { handleStandardLlmQuery } from '../components/llm/llmUtils.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/botConstants.js';
+import { getContextManager } from '../components/context/contextManager.js';
+import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 
 /**
  * Helper function for checking mod/broadcaster status
@@ -236,11 +238,36 @@ export async function handleBotMention({
     }
 
     const triggerType = isReplyToBot ? 'reply' : 'mention';
-    logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'Bot interaction detected, triggering standard LLM query...');
     const replyToId = tags?.id || tags?.['message-id'] || null;
 
-    handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId)
-        .catch(err => logger.error({ err }, 'Error in async interaction handler call'));
+    // Check if channel is in a shared chat session
+    const contextManager = getContextManager();
+    const broadcasterId = await contextManager.getBroadcasterId(cleanChannel);
+    const sessionId = broadcasterId ? sharedChatManager.getSessionForChannel(broadcasterId) : null;
+
+    if (sessionId) {
+        // Channel is in a shared chat session
+        const session = sharedChatManager.getSession(sessionId);
+        const channelLogins = sharedChatManager.getSessionChannelLogins(sessionId);
+        
+        logger.info({ 
+            channel: cleanChannel, 
+            user: lowerUsername, 
+            trigger: triggerType,
+            sessionId,
+            sharedWith: channelLogins
+        }, `[SharedChat:${sessionId}] Bot interaction detected in shared session with: ${channelLogins.join(', ')}`);
+
+        // Use session ID for context instead of single channel
+        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, sessionId)
+            .catch(err => logger.error({ err, sessionId }, 'Error in async shared chat interaction handler call'));
+    } else {
+        // Normal single-channel interaction
+        logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'Bot interaction detected, triggering standard LLM query...');
+        
+        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId)
+            .catch(err => logger.error({ err }, 'Error in async interaction handler call'));
+    }
 }
 
 /**

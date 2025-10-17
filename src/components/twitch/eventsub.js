@@ -10,6 +10,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak, startAutoChatManager } from '../autoChat/autoChatManager.js';
 import { getLiveStreams, getUsersByLogin, getHelixClient } from './helixClient.js';
 import { startStreamInfoPolling } from './streamInfoPoller.js';
+import * as sharedChatManager from './sharedChatManager.js';
 
 // Track active streams and keep-alive tasks
 const activeStreams = new Set();
@@ -653,6 +654,78 @@ export async function eventSubHandler(req, res, rawBody) {
                 }
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
+            }
+        }
+
+        // Handle shared chat session begin
+        if (subscription.type === 'channel.shared_chat.begin') {
+            try {
+                const sessionId = event?.session_id;
+                const hostBroadcasterId = event?.host_broadcaster_user_id;
+                const participants = event?.participants || [];
+
+                if (!sessionId || !hostBroadcasterId) {
+                    logger.warn({ event }, '[EventSub] channel.shared_chat.begin missing required fields');
+                    return;
+                }
+
+                const channelLogins = participants.map(p => p.broadcaster_user_login);
+                logger.info({
+                    sessionId,
+                    hostBroadcasterId,
+                    participantCount: participants.length,
+                    channels: channelLogins
+                }, `[EventSub] Shared chat session started: ${channelLogins.join(', ')}`);
+
+                sharedChatManager.addSession(sessionId, hostBroadcasterId, participants);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.begin');
+            }
+        }
+
+        // Handle shared chat session update
+        if (subscription.type === 'channel.shared_chat.update') {
+            try {
+                const sessionId = event?.session_id;
+                const participants = event?.participants || [];
+
+                if (!sessionId) {
+                    logger.warn({ event }, '[EventSub] channel.shared_chat.update missing session_id');
+                    return;
+                }
+
+                const channelLogins = participants.map(p => p.broadcaster_user_login);
+                logger.info({
+                    sessionId,
+                    participantCount: participants.length,
+                    channels: channelLogins
+                }, `[EventSub] Shared chat session updated: ${channelLogins.join(', ')}`);
+
+                sharedChatManager.updateSession(sessionId, participants);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.update');
+            }
+        }
+
+        // Handle shared chat session end
+        if (subscription.type === 'channel.shared_chat.end') {
+            try {
+                const sessionId = event?.session_id;
+
+                if (!sessionId) {
+                    logger.warn({ event }, '[EventSub] channel.shared_chat.end missing session_id');
+                    return;
+                }
+
+                logger.info({ sessionId }, '[EventSub] Shared chat session ended');
+                
+                // Clean up Gemini chat sessions for this shared session
+                const { clearChatSession } = await import('../llm/geminiClient.js');
+                clearChatSession(sessionId);
+                
+                sharedChatManager.removeSession(sessionId);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.end');
             }
         }
     }

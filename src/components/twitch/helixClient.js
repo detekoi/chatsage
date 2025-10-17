@@ -292,6 +292,62 @@ async function getLiveStreams(broadcasterIds) {
     }
 }
 
+/**
+ * Fetches shared chat session information for a broadcaster.
+ * @param {string} broadcasterId - The broadcaster user ID to query.
+ * @returns {Promise<object|null>} A promise resolving to the shared chat session object or null if not in a session.
+ *                                  Session object contains: session_id, host_broadcaster_id, participants array
+ */
+async function getSharedChatSession(broadcasterId) {
+    if (!broadcasterId) {
+        logger.warn('getSharedChatSession called with empty broadcaster ID.');
+        return null;
+    }
+
+    const client = getHelixClient(); // Ensures client is initialized
+    const params = new URLSearchParams();
+    params.append('broadcaster_id', broadcasterId);
+
+    logger.debug({ broadcasterId }, 'Fetching shared chat session information from Helix...');
+
+    try {
+        const response = await retryWithBackoff(async () => {
+            return await client.get('/shared_chat/session', { params });
+        }, 2, 500);
+        
+        // Spec: https://dev.twitch.tv/docs/api/reference#get-shared-chat-session
+        // Returns session data if channel is in a shared chat session
+        const sessionData = response.data?.data?.[0] || null;
+        
+        if (sessionData) {
+            logger.info({ 
+                broadcasterId, 
+                sessionId: sessionData.session_id,
+                participantCount: sessionData.participants?.length || 0
+            }, 'Channel is in shared chat session');
+        } else {
+            logger.debug({ broadcasterId }, 'Channel is not in a shared chat session');
+        }
+        
+        return sessionData;
+    } catch (error) {
+        // If the channel is not in a shared chat session, the API returns 404
+        if (error.response?.status === 404) {
+            logger.debug({ broadcasterId }, 'Channel is not in a shared chat session (404)');
+            return null;
+        }
+        
+        // Other errors are already logged by the response interceptor
+        logger.error({ 
+            err: { message: error.message, code: error.code }, 
+            broadcasterId 
+        }, 'Failed to get shared chat session information');
+        
+        // Return null for graceful degradation
+        return null;
+    }
+}
+
 
 // Export initializer, getter, and specific API call functions
 export {
@@ -300,6 +356,7 @@ export {
     getChannelInformation,
     getUsersByLogin,
     getLiveStreams,
+    getSharedChatSession,
 };
 
 // Helper: get ad schedule with broadcaster user token

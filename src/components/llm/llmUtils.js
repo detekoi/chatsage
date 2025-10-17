@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
+import * as sharedChatManager from '../twitch/sharedChatManager.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
@@ -48,17 +49,43 @@ export function removeMarkdownAsterisks(text) {
  * @param {string} userMessage - The user's message/prompt for the LLM.
  * @param {string} triggerType - For logging ("mention" or "command").
  * @param {string|null} replyToId - The ID of the message to reply to.
+ * @param {string|null} sessionId - Optional shared chat session ID for merged context.
  */
-export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null) {
-    logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Handling standard LLM query.`);
+export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null) {
+    const logContext = sessionId 
+        ? { channel: cleanChannel, user: lowerUsername, trigger: triggerType, sessionId }
+        : { channel: cleanChannel, user: lowerUsername, trigger: triggerType };
+    
+    logger.info(logContext, sessionId ? `[SharedChat:${sessionId}] Handling LLM query in shared session` : `Handling standard LLM query.`);
+    
     try {
         const contextManager = getContextManager();
+        let llmContext;
+        let chatSessionKey;
 
-        // a. Get context
-        const llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage);
+        // a. Get context (merged or single-channel)
+        if (sessionId) {
+            // Shared chat session - use merged context
+            const session = sharedChatManager.getSession(sessionId);
+            if (!session) {
+                logger.warn({ sessionId }, 'Session ID provided but session not found');
+                return;
+            }
+
+            // Get channel logins from participant IDs
+            const channelLogins = session.participants.map(p => p.broadcaster_user_login);
+            llmContext = contextManager.getMergedContextForLLM(channelLogins, displayName, userMessage);
+            chatSessionKey = sessionId; // Use session ID as chat key
+            
+            logger.debug({ sessionId, channels: channelLogins }, `Using merged context for shared session`);
+        } else {
+            // Single channel context
+            llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage);
+            chatSessionKey = cleanChannel;
+        }
+
         if (!llmContext) {
-            logger.warn({ channel: cleanChannel, user: lowerUsername }, 'Could not retrieve context for LLM response.');
-            // Maybe send an error message? For now, just return.
+            logger.warn(logContext, 'Could not retrieve context for LLM response.');
             return;
         }
 
@@ -66,7 +93,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const contextPrompt = buildContextPrompt(llmContext);
 
         // c. Use persistent chat session, passing context for initialization
-        const chatSession = getOrCreateChatSession(cleanChannel, contextPrompt);
+        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
         const chatResult = await chatSession.sendMessage({ message: messageForChat });
         let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');

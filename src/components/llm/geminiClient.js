@@ -245,6 +245,15 @@ export function resetChatSession(channelName) {
     }
 }
 
+/**
+ * Clears a chat session for the given channel or session ID.
+ * Alias for resetChatSession for consistency with shared chat terminology.
+ * @param {string} channelOrSessionId - Channel name or shared session ID
+ */
+export function clearChatSession(channelOrSessionId) {
+    resetChatSession(channelOrSessionId);
+}
+
 // --- UPDATED Prompt Builder (Context only) ---
 /**
  * Constructs the context part of the prompt. Persona and task are handled elsewhere.

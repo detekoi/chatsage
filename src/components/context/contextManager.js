@@ -307,6 +307,117 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
 }
 
 /**
+ * Gets merged context from multiple channels in a shared chat session.
+ * Combines chat history and stream contexts from all participating channels.
+ * @param {string[]} channelNames - Array of channel names participating in the shared session.
+ * @param {string} currentUsername - The user currently messaging.
+ * @param {string} currentMessage - The current message from the user.
+ * @returns {object|null} Merged context for LLM, or null if unable to build.
+ */
+function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
+    if (!Array.isArray(channelNames) || channelNames.length === 0) {
+        logger.warn('getMergedContextForLLM called with invalid channelNames');
+        return null;
+    }
+
+    // Collect all channel states
+    const channelContexts = [];
+    const allMessages = [];
+    const channelSummaries = [];
+    const streamInfos = [];
+
+    for (const channelName of channelNames) {
+        if (!channelStates.has(channelName)) {
+            logger.debug(`No state found for channel ${channelName} in merged context`);
+            continue;
+        }
+
+        const state = channelStates.get(channelName);
+        channelContexts.push(state);
+
+        // Collect chat history with channel origin
+        const messagesWithOrigin = state.chatHistory.map(msg => ({
+            ...msg,
+            originChannel: channelName
+        }));
+        allMessages.push(...messagesWithOrigin);
+
+        // Collect summaries
+        if (state.chatSummary && state.chatSummary !== "No conversation summary available yet.") {
+            channelSummaries.push(`[${channelName}] ${state.chatSummary}`);
+        }
+
+        // Collect stream info
+        if (state.streamContext.game && state.streamContext.game !== 'N/A') {
+            streamInfos.push({
+                channel: channelName,
+                game: state.streamContext.game,
+                title: state.streamContext.title,
+                viewerCount: state.streamContext.viewerCount ?? 0,
+                startedAt: state.streamContext.startedAt
+            });
+        }
+    }
+
+    if (allMessages.length === 0) {
+        logger.warn('No messages found across any channels in shared session');
+        return null;
+    }
+
+    // Sort all messages by timestamp to create a unified timeline
+    allMessages.sort((a, b) => {
+        const timeA = a.timestamp instanceof Date ? a.timestamp : new Date(a.timestamp);
+        const timeB = b.timestamp instanceof Date ? b.timestamp : new Date(b.timestamp);
+        return timeA - timeB;
+    });
+
+    // Take recent messages from the merged timeline
+    const recentMergedHistory = allMessages.slice(-15);
+
+    // Format stream info
+    const streamContextText = streamInfos.length > 0
+        ? streamInfos.map(info => `${info.channel}: "${info.title}" playing ${info.game} (${info.viewerCount} viewers)`).join('\n')
+        : 'No active streams';
+
+    // Format merged summary
+    const mergedSummary = channelSummaries.length > 0
+        ? channelSummaries.join('\n\n')
+        : "No conversation summaries available yet.";
+
+    return {
+        channelName: `[Shared: ${channelNames.join(', ')}]`,
+        isSharedSession: true,
+        participatingChannels: channelNames,
+        streamGame: streamInfos.map(s => s.game).join(' & ') || 'N/A',
+        streamGameId: null, // Not applicable for merged sessions
+        streamTitle: `Shared stream: ${channelNames.join(' & ')}`,
+        streamTags: null,
+        viewerCount: streamInfos.reduce((sum, s) => sum + s.viewerCount, 0),
+        streamStartedAt: null,
+        streamContextDetails: streamContextText,
+        chatSummary: mergedSummary,
+        recentChatHistory: _formatRecentHistoryWithOrigin(recentMergedHistory),
+        username: currentUsername,
+        currentMessage: currentMessage,
+    };
+}
+
+/**
+ * Formats recent history with channel origin markers.
+ * @param {Array} messages - Array of message objects with originChannel property.
+ * @returns {string} Formatted chat history.
+ */
+function _formatRecentHistoryWithOrigin(messages) {
+    if (!messages || messages.length === 0) {
+        return "No recent messages.";
+    }
+    return messages.map(msg => {
+        const channelMarker = msg.originChannel ? `[${msg.originChannel}] ` : '';
+        return `${channelMarker}${msg.username}: ${msg.message}`;
+    }).join('\n');
+}
+
+/**
  * Lazily fetches and caches the broadcaster ID for a channel name.
  * @param {string} channelName - Channel name (without '#').
  * @returns {Promise<string | null>} Broadcaster user ID, or null if lookup fails.
@@ -534,6 +645,7 @@ const manager = {
     recordStreamContextFetchError: recordStreamContextFetchError,
     recordOfflineMiss: recordOfflineMiss,
     getContextForLLM: getContextForLLM,
+    getMergedContextForLLM: getMergedContextForLLM,
     getStreamContextSnapshot,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
