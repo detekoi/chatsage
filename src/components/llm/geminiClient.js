@@ -82,22 +82,22 @@ const decideSearchTool = {
     functionDeclarations: [
         {
             name: "decide_if_search_needed",
-            description: "Determines if external web search is required to provide an accurate, up-to-date, and factual answer to the user's query, considering the provided chat context and stream information. Call this ONLY when confidence in answering from internal knowledge is low OR the query explicitly asks for current/real-time information, specific obscure facts, or details about rapidly changing topics.",
+            description: "Determines if external web search is required to provide an accurate answer to the user's query.",
             parameters: {
-                type: "object",
+                type: "OBJECT",
                 properties: {
                     user_query: {
-                        type: "string",
+                        type: "STRING",
                         description: "The specific question or query the user asked."
                     },
                     reasoning: {
-                         type: "string",
-                         description: "A brief explanation (1 sentence) why search is deemed necessary or not necessary based on the query and context."
+                        type: "STRING",
+                        description: "A brief explanation (1 sentence) why search is deemed necessary or not necessary."
                     },
-                     search_required: {
-                         type: "boolean",
-                         description: "Set to true if search is necessary, false otherwise."
-                     }
+                    search_required: {
+                        type: "BOOLEAN",
+                        description: "Set to true if search is necessary, false otherwise."
+                    }
                 },
                 required: ["user_query", "reasoning", "search_required"]
             }
@@ -111,10 +111,10 @@ const standardAnswerTools = {
             name: "getCurrentTime",
             description: "Get the current date and time for a *specific, validated IANA timezone string*. If a user mentions a location (e.g., 'San Diego'), first use 'get_iana_timezone_for_location_tool' to resolve it to an IANA timezone, then call this function with that IANA string. Defaults to UTC if no timezone is provided.",
             parameters: {
-                type: "object",
+                type: "OBJECT",
                 properties: {
                     timezone: {
-                        type: "string",
+                        type: "STRING",
                         description: "REQUIRED if a specific location's time is needed. The IANA timezone name (e.g., 'America/Los_Angeles', 'Europe/Paris')."
                     }
                 },
@@ -124,10 +124,10 @@ const standardAnswerTools = {
             name: "get_iana_timezone_for_location_tool",
             description: "Resolves a human-readable location name (city, region) into its standard IANA timezone string. This should be called BEFORE calling 'getCurrentTime' if a user specifies a location.",
             parameters: {
-                type: "object",
+                type: "OBJECT",
                 properties: {
                     location_name: {
-                        type: "string",
+                        type: "STRING",
                         description: "The city or location name mentioned by the user (e.g., 'San Diego', 'Paris')."
                     }
                 },
@@ -531,16 +531,18 @@ export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) 
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: "Empty query" };
     const model = getGeminiClient();
 
-    // SIMPLIFIED: Make the prompt more concise
+    // Simplified prompt for function calling
     const decisionPrompt = `${contextPrompt}
 
 User request: "${userQuery}"
 
-You MUST decide by calling the function decide_if_search_needed with arguments { user_query, reasoning, search_required }.
-Do NOT answer in text. Do NOT output anything except the function call.
+Decide if web search is needed to answer this accurately. Call decide_if_search_needed function with:
+- user_query: the question
+- reasoning: why search is/isn't needed (1 sentence)
+- search_required: true/false
 
-Search needed for: real-time info, specific facts, niche topics, video game details, insufficient context.
-No search needed for: general knowledge, broad creative topics, time/date queries.`;
+Search typically needed for: real-time info, specific facts, niche topics, video game details.
+Search not needed for: general knowledge, broad creative requests, time/date queries.`;
 
     logger.debug({ promptLength: decisionPrompt.length, userQueryFromCaller: userQuery }, 'Attempting function calling decision for search');
     try {
@@ -549,11 +551,21 @@ No search needed for: general knowledge, broad creative topics, time/date querie
             // tools must be an array; otherwise the SDK may ignore function declarations
             tools: [decideSearchTool],
             toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            systemInstruction: { parts: [{ text: "You are an AI assistant that MUST return a function call to decide if web search is needed. Never answer with free text." }] },
-            generationConfig: { temperature: 0, maxOutputTokens: 64, responseMimeType: 'text/plain' }
+            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if web search is needed. Call the decide_if_search_needed function with your decision." }] },
+            generationConfig: { temperature: 0, maxOutputTokens: 128 }
         });
         const response = result;
         const candidate = response?.candidates?.[0];
+
+        // Debug logging to see what we actually got
+        logger.debug({
+            hasCandidate: !!candidate,
+            hasParts: !!candidate?.content?.parts,
+            partsCount: candidate?.content?.parts?.length || 0,
+            parts: candidate?.content?.parts?.map(p => Object.keys(p || {})),
+            finishReason: candidate?.finishReason,
+            promptFeedback: response?.promptFeedback
+        }, '[decideSearch] Response structure');
 
         // Find the first functionCall in any part
         const partsWithFn = candidate?.content?.parts?.filter(p => p?.functionCall) || [];
