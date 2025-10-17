@@ -78,32 +78,6 @@ function extractTextFromResponse(response, candidate, logContext = 'response') {
 }
 
 // --- Tool Definitions (Keep the structure) ---
-const decideSearchTool = {
-    functionDeclarations: [
-        {
-            name: "decide_if_search_needed",
-            description: "Determines if external web search is required to provide an accurate answer to the user's query.",
-            parameters: {
-                type: Type.OBJECT,
-                properties: {
-                    user_query: {
-                        type: Type.STRING,
-                        description: "The specific question or query the user asked."
-                    },
-                    reasoning: {
-                        type: Type.STRING,
-                        description: "A brief explanation (1 sentence) why search is deemed necessary or not necessary."
-                    },
-                    search_required: {
-                        type: Type.BOOLEAN,
-                        description: "Set to true if search is necessary, false otherwise."
-                    }
-                },
-                required: ["user_query", "reasoning", "search_required"]
-            }
-        }
-    ]
-};
 
 const standardAnswerTools = {
     functionDeclarations: [
@@ -520,88 +494,6 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
     }
 }
 
-// --- NEW: Function to Decide Search using Function Calling ---
-/**
- * Makes the initial LLM call to decide if search is needed using function calling.
- * @param {string} contextPrompt - Context string from buildContextPrompt.
- * @param {string} userQuery - The user's query.
- * @returns {Promise<{searchNeeded: boolean, reasoning: string | null}>} Decision object.
- */
-export async function decideSearchWithFunctionCalling(contextPrompt, userQuery) {
-    if (!userQuery?.trim()) return { searchNeeded: false, reasoning: "Empty query" };
-    const model = getGeminiClient();
-
-    // Simplified prompt for function calling
-    const decisionPrompt = `${contextPrompt}
-
-User request: "${userQuery}"
-
-Decide if web search is needed to answer this accurately. Call decide_if_search_needed function with:
-- user_query: the question
-- reasoning: why search is/isn't needed (1 sentence)
-- search_required: true/false
-
-Search typically needed for: real-time info, specific facts, niche topics, video game details.
-Search not needed for: general knowledge, broad creative requests, time/date queries.`;
-
-    logger.debug({ promptLength: decisionPrompt.length, userQueryFromCaller: userQuery }, 'Attempting function calling decision for search');
-    try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            tools: [decideSearchTool],
-            toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            generationConfig: { temperature: 0, maxOutputTokens: 128 }
-            // Note: No systemInstruction - function calling with mode: ANY works better without it
-        });
-        const response = result;
-        const candidate = response?.candidates?.[0];
-
-        // Debug logging to see what we actually got
-        logger.debug({
-            hasCandidate: !!candidate,
-            hasParts: !!candidate?.content?.parts,
-            partsCount: candidate?.content?.parts?.length || 0,
-            parts: candidate?.content?.parts?.map(p => Object.keys(p || {})),
-            finishReason: candidate?.finishReason,
-            promptFeedback: response?.promptFeedback
-        }, '[decideSearch] Response structure');
-
-        // Find the first functionCall in any part
-        const partsWithFn = candidate?.content?.parts?.filter(p => p?.functionCall) || [];
-        if (partsWithFn.length > 0) {
-            const functionCall = partsWithFn[0].functionCall;
-            if (functionCall.name === 'decide_if_search_needed') {
-                let args = functionCall.args;
-                // Some SDK surfaces args as a JSON string; parse if needed
-                if (typeof args === 'string') {
-                    try { args = JSON.parse(args); } catch (_) { /* Ignore parse errors, use original string */ }
-                }
-                const searchRequired = args?.search_required === true;
-                const reasoning = args?.reasoning || "No reasoning provided by model.";
-                logger.info({ search_required: searchRequired, reasoning: reasoning, called_args: args }, 'Function call decision received.');
-                return { searchNeeded: searchRequired, reasoning: reasoning };
-            } else {
-                logger.warn({ functionCallName: functionCall.name }, "Model called unexpected function for search decision.");
-            }
-        } else {
-            logger.warn("Model did not make a function call for search decision.");
-            const textResponse = extractTextFromResponse(response, candidate, 'decideSearch');
-            if(textResponse) logger.debug({textResponse}, "Non-function-call response received for decision prompt.");
-            // Heuristic fallback: decide based on query keywords
-            const heuristic = inferSearchNeedByHeuristic(userQuery);
-            if (heuristic.searchNeeded) {
-                logger.info({ reason: heuristic.reasoning }, 'Heuristic indicates search is needed.');
-                return heuristic;
-            }
-        }
-
-        return { searchNeeded: false, reasoning: "Model did not call decision function; heuristic did not require search." };
-
-    } catch (error) {
-        logger.error({ err: error }, 'Error during function calling decision API call');
-        return { searchNeeded: false, reasoning: "API Error during decision" };
-    }
-}
 
 // Lightweight keyword-based fallback when function-calling is skipped
 function inferSearchNeedByHeuristic(userQuery) {

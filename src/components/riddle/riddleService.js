@@ -1,7 +1,7 @@
 // src/components/riddle/riddleService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient, decideSearchWithFunctionCalling } from '../llm/geminiClient.js';
+import { getGeminiClient } from '../llm/geminiClient.js';
 import { GoogleGenAI, Type as GenAIType } from '@google/genai';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
@@ -113,10 +113,8 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
-    let forceSearch = false; // NEW: force search for certain topics
 
     if (topic && topic.toLowerCase() === 'game') {
-        forceSearch = true; // Always use search for game topics
         try {
             const contextManager = getContextManager();
             const cleanChannelName = channelName.startsWith('#') ? channelName.substring(1) : channelName;
@@ -175,50 +173,7 @@ If you generate a riddle with any of these answers, it will be rejected.`;
     }
     const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\n\nRequirement: Each riddle must have a UNIQUE, CONCRETE answer different from all previous riddles.`;
 
-    // --- Improved search decision logic ---
-    let useSearch = false;
-    if (forceSearch) {
-        useSearch = true;
-        logger.info(`[RiddleService] Forcing search for topic type: "game" (actual topic: "${actualTopic}")`);
-    } else {
-        // Construct a clear statement of the "task" for the decision model
-        const taskForSearchDecision = `Need to generate a ${difficulty} riddle about "${actualTopic}". ${fullExclusionInstructions}. Is search essential for factual accuracy and quality?`;
-        const decisionContext = `Riddle generation task details:\nChannel: ${channelName}\nTopic: ${actualTopic}\nDifficulty: ${difficulty}\nExclusion Instructions: ${fullExclusionInstructions || 'None'}`;
-        const decisionResult = await decideSearchWithFunctionCalling(decisionContext, taskForSearchDecision);
-        useSearch = decisionResult.searchNeeded;
-        logger.info(`[RiddleService] LLM decision to use search for riddle on "${actualTopic}": ${useSearch}. Reasoning: ${decisionResult.reasoning}`);
-    }
-
-    // --- Begin new search/generation separation logic ---
-    let factualContextForRiddle = "";
-    
-    // Perform actual search when useSearch is true
-    if (useSearch) {
-        const searchFactsPrompt = `Find interesting and unique facts about "${actualTopic}" suitable for a riddle. Focus on specific details, characteristics, and unique aspects that could inspire creative riddle clues.`;
-        try {
-            logger.info(`[RiddleService] Performing search for facts about "${actualTopic}"`);
-            const searchResult = await ai.models.generateContent({
-                model: modelId,
-                contents: [{ role: "user", parts: [{ text: searchFactsPrompt }] }],
-                tools: [{ googleSearch: {} }],
-                config: { 
-                    temperature: 0.75,
-                    candidateCount: 1,
-                    maxOutputTokens: 512 
-                }
-            });
-            
-            const searchText = searchResult?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (searchText && searchText.trim() !== "") {
-                factualContextForRiddle = searchText.trim();
-                logger.info(`[RiddleService] Successfully retrieved facts for "${actualTopic}". Length: ${factualContextForRiddle.length}`);
-            } else {
-                logger.warn(`[RiddleService] Search returned no factual information for topic "${actualTopic}".`);
-            }
-        } catch (searchError) {
-            logger.error({ err: searchError, topic: actualTopic }, `[RiddleService] Error during factual search for riddle generation.`);
-        }
-    }
+    logger.info(`[RiddleService] Generating riddle for topic "${actualTopic}"`);
     
     let finalGenerationPrompt = "";
     // --- Improved riddle prompt for better guessability ---
@@ -283,17 +238,10 @@ Write fun, conversational explanations—NOT boring academic lectures. Vary your
 
 Call "generate_riddle_with_answer_and_keywords" with your response.`;
 
-    // --- SYSTEM_CONTEXT preface for all prompts ---
-    if (useSearch && factualContextForRiddle) {
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Factual information from search is provided below to inspire your riddle.\n\n**Factual Information:**\n\`\`\`\n${factualContextForRiddle}\n\`\`\`\n\n${baseGenerationPrompt}\nRemember to set 'search_used: true' in your function call.`;
-    } else if (useSearch) {
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Search was attempted but yielded no additional context. Use your existing knowledge.\n\n${baseGenerationPrompt}\nSet 'search_used: true' in your function call.`;
-    } else { // No search
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}".\n\n${baseGenerationPrompt}\nSet 'search_used: false' in your function call.`;
-    }
+    finalGenerationPrompt = `Create a riddle about "${actualTopic}".\n\n${baseGenerationPrompt}`;
 
     try {
-        // Only use the generateRiddleTool here
+        // Use function calling to get structured riddle output
         const result = await ai.models.generateContent({
             model: modelId,
             contents: [{ role: "user", parts: [{ text: finalGenerationPrompt }] }],
@@ -303,7 +251,7 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
                 tools: [generateRiddleTool],
                 toolConfig: { functionCallingConfig: { mode: "ANY" } }
             }
-            // No systemInstruction - using fresh AI instance without CHAT_SAGE_SYSTEM_INSTRUCTION
+            // No systemInstruction - function calling works better without it
         });
 
         const response = result;
@@ -411,7 +359,7 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
                 }
             }
 
-            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0,50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search Used (reported by tool): ${args.search_used}, Initial decision: ${useSearch}`);
+            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0,50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search Used (reported by tool): ${args.search_used}`);
             return {
                 question: args.riddle_question,
                 answer: args.riddle_answer,
@@ -432,8 +380,7 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
                 code: error.code
             },
             topic: actualTopic,
-            difficulty,
-            useSearch
+            difficulty
         }, '[RiddleService] Error generating riddle');
         return null;
     }
