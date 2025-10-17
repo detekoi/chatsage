@@ -12,6 +12,32 @@ const META_CONCEPT_BLACKLIST = [
     'yes', 'no', 'maybe', 'idk', 'dunno', 'ok', 'okay', 'yep', 'yup', 'nope', 'nah'
 ];
 
+/**
+ * Determines if a topic needs web search to generate accurate riddles.
+ * @param {string} topic - The riddle topic
+ * @returns {boolean} Whether search is needed
+ */
+function shouldUseSearchForTopic(topic) {
+    if (!topic) return false;
+    
+    const topicLower = topic.toLowerCase();
+    
+    // Always use search for video game topics (specific games or general gaming)
+    if (topicLower.includes('game') || topicLower.includes('gaming')) {
+        return true;
+    }
+    
+    // General knowledge doesn't typically need search
+    if (topicLower === 'general knowledge') {
+        return false;
+    }
+    
+    // For other topics, use search if they seem specific enough
+    // (more than 2 words or contains specific markers)
+    const words = topic.trim().split(/\s+/);
+    return words.length >= 2; // Specific topics benefit from search
+}
+
 // Tool definition for riddle generation
 const generateRiddleTool = {
     functionDeclarations: [{
@@ -173,12 +199,55 @@ If you generate a riddle with any of these answers, it will be rejected.`;
     }
     const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\n\nRequirement: Each riddle must have a UNIQUE, CONCRETE answer different from all previous riddles.`;
 
-    logger.info(`[RiddleService] Generating riddle for topic "${actualTopic}"`);
+    // Step 1: Determine if we need search context for this topic
+    const needsSearch = shouldUseSearchForTopic(actualTopic);
+    let searchContext = "";
+    
+    if (needsSearch) {
+        logger.info(`[RiddleService] Topic "${actualTopic}" requires search context. Fetching...`);
+        try {
+            // Make a separate grounding search call to get context
+            const searchResult = await ai.models.generateContent({
+                model: modelId,
+                contents: [{
+                    role: "user",
+                    parts: [{
+                        text: `Provide a brief factual summary about "${actualTopic}" suitable for creating a riddle. Include key characteristics, features, and notable facts.`
+                    }]
+                }],
+                config: {
+                    temperature: 0.3,
+                    tools: [{ googleSearch: {} }]
+                }
+            });
+            
+            const searchCandidate = searchResult?.candidates?.[0];
+            if (searchCandidate?.content?.parts) {
+                searchContext = searchCandidate.content.parts
+                    .map(p => p.text)
+                    .filter(Boolean)
+                    .join(' ');
+                logger.info(`[RiddleService] Retrieved search context for "${actualTopic}" (${searchContext.length} chars)`);
+            }
+        } catch (searchError) {
+            logger.warn({ err: searchError }, `[RiddleService] Failed to fetch search context for "${actualTopic}", proceeding without it`);
+        }
+    } else {
+        logger.info(`[RiddleService] Generating riddle for topic "${actualTopic}" (no search needed)`);
+    }
     
     let finalGenerationPrompt = "";
     // --- Improved riddle prompt for better guessability ---
+    let contextSection = "";
+    if (searchContext) {
+        contextSection = `\n\nFACTUAL CONTEXT (from search):
+${searchContext}
+
+Use this information to create an accurate, fact-based riddle. The clues should reference real characteristics.`;
+    }
+    
     const baseGenerationPrompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
-${promptDetails}
+${promptDetails}${contextSection}
 ${fullExclusionInstructions}
 
 CORE PRINCIPLE: The riddle should be solvable by someone familiar with the topic. Avoid forcing obscure metaphors or multi-layered abstractions.
