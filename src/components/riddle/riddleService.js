@@ -4,8 +4,13 @@ import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient, decideSearchWithFunctionCalling } from '../llm/geminiClient.js';
 import { GoogleGenAI, Type as GenAIType } from '@google/genai';
 
-
-
+// Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
+const META_CONCEPT_BLACKLIST = [
+    'knowledge', 'information', 'data', 'fact', 'trivia', 'memory', 'learning',
+    'education', 'wisdom', 'understanding', 'intelligence', 'consciousness',
+    'thought', 'idea', 'concept', 'mind', 'brain',
+    'yes', 'no', 'maybe', 'idk', 'dunno', 'ok', 'okay', 'yep', 'yup', 'nope', 'nah'
+];
 
 // Tool definition for riddle generation
 const generateRiddleTool = {
@@ -149,18 +154,11 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
         }
     }
 
-    // Blacklist meta-concepts that make bad riddle answers
-    const metaConceptBlacklist = [
-        'knowledge', 'information', 'data', 'fact', 'trivia', 'memory', 'learning',
-        'education', 'wisdom', 'understanding', 'intelligence', 'consciousness',
-        'thought', 'idea', 'concept', 'mind', 'brain'
-    ];
-    
     // Merge blacklist with excluded answers
     const allExcludedAnswers = [...(excludedAnswers || [])];
     if (actualTopic === 'general knowledge') {
         // For general knowledge topic, always exclude meta-concepts
-        metaConceptBlacklist.forEach(word => {
+        META_CONCEPT_BLACKLIST.forEach(word => {
             if (!allExcludedAnswers.includes(word)) {
                 allExcludedAnswers.push(word);
             }
@@ -395,7 +393,7 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
         }
 
         // Additional check: reject if answer is a blacklisted meta-concept
-        if (metaConceptBlacklist.some(banned => normalizedGeneratedAnswer.includes(banned))) {
+        if (META_CONCEPT_BLACKLIST.some(banned => normalizedGeneratedAnswer.includes(banned))) {
             logger.warn('[RiddleService] Generated answer contains blacklisted meta-concept! Rejecting.', {
                 generatedAnswer: args.riddle_answer,
                 topic: actualTopic
@@ -451,6 +449,13 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
  * @returns {Promise<{isCorrect: boolean, reasoning: string, confidence: number}>}
  */
 export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuestion, originalTopic = null) {
+    // Blacklist check: reject generic acknowledgements and meta-concepts as user guesses
+    const normalizedUserGuess = userAnswer.toLowerCase().trim();
+    if (META_CONCEPT_BLACKLIST.includes(normalizedUserGuess)) {
+        logger.info(`[RiddleService] Rejecting blacklisted word as guess: "${userAnswer}"`);
+        return { isCorrect: false, reasoning: "Not a valid riddle answer.", confidence: 0.0 };
+    }
+
     // Prefer @google/genai for structured output; fall back to older client if needed
     if (!globalThis.__genaiClient) {
         const apiKey = process.env.GEMINI_API_KEY;
@@ -552,11 +557,13 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
         }
     }
 
-    const prompt = `Question: "${riddleQuestion}"
-Answer: "${correctAnswer}"
-Guess: "${userAnswer}"
+    const prompt = `Riddle: "${riddleQuestion}"
+Correct Answer: "${correctAnswer}"
+User's Guess: "${userAnswer}"
 
-Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}`;
+Is the guess correct? Accept variants/synonyms (e.g., "map" = "maps" = "atlas"). Reject if different object or conversational message.
+
+Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}`
 
     try {
         // Pre-check for the specific scenario before calling LLM, if desired, for more deterministic control
