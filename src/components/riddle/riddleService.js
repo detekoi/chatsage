@@ -561,7 +561,15 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
 Correct Answer: "${correctAnswer}"
 User's Guess: "${userAnswer}"
 
-Is the guess correct? Accept variants/synonyms (e.g., "map" = "maps" = "atlas"). Reject if different object or conversational message.
+ACCEPT if the guess is:
+- Exact match or plural/singular variants
+- Common abbreviations or informal terms (e.g., "lube" for "lubricant", "fridge" for "refrigerator")
+- Synonyms that refer to the same object (e.g., "map" = "atlas")
+
+REJECT if the guess is:
+- A completely different object or concept
+- Generic words like "yes", "no", "maybe"
+- A conversational message
 
 Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": string}`
 
