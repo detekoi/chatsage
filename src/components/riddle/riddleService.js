@@ -11,7 +11,7 @@ import { GoogleGenAI, Type as GenAIType } from '@google/genai';
 const generateRiddleTool = {
     functionDeclarations: [{
         name: "generate_riddle_with_answer_and_keywords",
-        description: "Generates a clever, metaphorical riddle about a given topic, its concise answer, and 3-5 highly descriptive keywords that capture the unique essence of the riddle's puzzle and solution. Ensures factual accuracy for clues, using search if necessary.",
+        description: "Generates a clever, metaphorical riddle about a given topic, its concise answer, and 3-5 highly descriptive keywords. IMPORTANT: The answer must be a concrete, common, guessable thing (e.g., everyday object, animal, simple tool, well-known character/item/location for 'game' topics). Avoid overly abstract concepts or processes. Keep riddles short and anchored to tangible clues. Ensures factual accuracy for clues, using search if necessary.",
         parameters: {
             type: GenAIType.OBJECT,
             properties: {
@@ -19,7 +19,7 @@ const generateRiddleTool = {
                 riddle_answer: { type: GenAIType.STRING, description: "The single, concise, common answer to the riddle." },
                 keywords: {
                     type: GenAIType.ARRAY,
-                    description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific and discriminative, capturing the unique metaphorical elements or core components of THIS particular riddle and its answer, to distinguish it from other riddles on similar topics or with similar answers.",
+                    description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific, concrete, and discriminative, capturing tangible aspects or imagery from THIS riddle (shape, sound, behavior, place) so it’s guessable and distinct.",
                     items: { type: GenAIType.STRING }
                 },
                 difficulty_generated: { type: GenAIType.STRING, description: "The assessed difficulty of the generated riddle (easy, normal, hard)." },
@@ -149,11 +149,33 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
         }
     }
 
-    let answerExclusionInstruction = "";
-    if (excludedAnswers && excludedAnswers.length > 0) {
-        answerExclusionInstruction = `\nCRITICAL ANSWER AVOIDANCE: Furthermore, DO NOT generate a riddle if its most direct and common answer is one of these recently used answers: [${excludedAnswers.join(', ')}].`;
+    // Blacklist meta-concepts that make bad riddle answers
+    const metaConceptBlacklist = [
+        'knowledge', 'information', 'data', 'fact', 'trivia', 'memory', 'learning',
+        'education', 'wisdom', 'understanding', 'intelligence', 'consciousness',
+        'thought', 'idea', 'concept', 'mind', 'brain'
+    ];
+    
+    // Merge blacklist with excluded answers
+    const allExcludedAnswers = [...(excludedAnswers || [])];
+    if (actualTopic === 'general knowledge') {
+        // For general knowledge topic, always exclude meta-concepts
+        metaConceptBlacklist.forEach(word => {
+            if (!allExcludedAnswers.includes(word)) {
+                allExcludedAnswers.push(word);
+            }
+        });
+        logger.info(`[RiddleService] Applied meta-concept blacklist for general knowledge. Total excluded answers: ${allExcludedAnswers.length}`);
     }
-    const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\nStrive for maximum conceptual novelty and variety from previous riddles.`;
+    
+    let answerExclusionInstruction = "";
+    if (allExcludedAnswers.length > 0) {
+        answerExclusionInstruction = `\n\n🚫 ANSWER EXCLUSION (MANDATORY):
+YOU MUST NOT use any of these answers: [${allExcludedAnswers.join(', ')}]
+These have been used recently or are banned. Pick something COMPLETELY DIFFERENT.
+If you generate a riddle with any of these answers, it will be rejected.`;
+    }
+    const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\n\nRequirement: Each riddle must have a UNIQUE, CONCRETE answer different from all previous riddles.`;
 
     // --- Improved search decision logic ---
     let useSearch = false;
@@ -201,22 +223,59 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
     }
     
     let finalGenerationPrompt = "";
-    // --- Simplified riddle prompt ---
-    const baseGenerationPrompt = `You are a master riddle crafter. Create a clever, metaphorical riddle about a specific aspect of "${actualTopic}". The answer should NOT be "${actualTopic}" itself, but something related to it.
+    // --- Improved riddle prompt for better guessability ---
+    const baseGenerationPrompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
 ${promptDetails}
 ${fullExclusionInstructions}
 
-A true riddle uses metaphorical language. AVOID trivia questions like "I am large and blue... What am I?". INSTEAD, craft clues that are puzzling. Example: "I have cities, but no houses... What am I?" (Answer: A map).
+CORE PRINCIPLE: The riddle should be solvable by someone familiar with the topic. Avoid forcing obscure metaphors or multi-layered abstractions.
 
-Call the "generate_riddle_with_answer_and_keywords" function with your response. The 'riddle_answer' must be a concise keyword or name. The 'keywords' should be specific and metaphorical.`;
+MANDATORY ANSWER REQUIREMENTS:
+- The answer MUST be a CONCRETE, PHYSICAL, or TANGIBLE thing that exists in the real world
+- For 'general knowledge': choose OBJECTS (book, clock, map, compass), ANIMALS (elephant, octopus), PLACES (library, museum), NATURAL PHENOMENA (rainbow, echo, shadow)
+- For 'game' topics: choose CHARACTERS (Mario, Sonic), ITEMS (sword, potion, ring), LOCATIONS (castle, dungeon), ENEMIES (Goomba, Creeper)
+- The answer must be something you can SEE, TOUCH, HEAR, or POINT TO
+- NEVER use abstract concepts like: knowledge, memory, learning, information, data, wisdom, consciousness, thought, idea, mind
+- Keep answers 1-2 words maximum, singular form when possible
+- Good examples: "compass", "telescope", "penguin", "volcano", "diamond", "pyramid"
+
+RULES FOR QUESTION:
+- Length: 1-2 sentences, max ~200 characters
+- Include 2-3 concrete clues that narrow down the answer (appearance, function, behavior, location, sound)
+- Use classic riddle style ("I am...", "You'll find me...", "I help you...")
+- Avoid purple prose, academic language, or overly abstract metaphors
+- Each clue should eliminate wrong answers and guide toward the right one
+
+DIFFICULTY GUIDANCE:
+- easy: Very obvious clues, answer is immediate (e.g., "I'm red, round, and keep doctors away" → Apple)
+- normal: Requires thinking but clues are clear (e.g., "I'm green, hop, and catch flies with my tongue" → Frog)
+- hard: Clever wordplay or less direct clues, but still fair (e.g., "I have keys but no locks, space but no room" → Keyboard)
+
+GOOD EXAMPLES (concrete, guessable, physical things):
+✓ "I'm blue, fast, and collect golden rings" → Sonic (game character)
+✓ "I have hands but cannot clap" → Clock (everyday object)
+✓ "I'm thrown at monsters to capture them" → Pokeball (game item)
+✓ "I have a trunk but never travel" → Elephant (animal)
+✓ "I show you the world but never leave the wall" → Map (object)
+
+BAD EXAMPLES - NEVER DO THESE:
+✗ "I fill the gaps not taught in school" → knowledge (ABSTRACT CONCEPT - BANNED!)
+✗ "I am a library without walls" → knowledge (META-CONCEPT - NOT ALLOWED!)
+✗ "I am the dust on forgotten facts" → Dust (too philosophical, not fun)
+✗ "I guard names behind mental doors" → tip of tongue (abstract mental state)
+✗ "I am the currency of conversation" → Key (forced metaphor, not concrete usage)
+
+If the answer is an abstract concept about thinking, learning, or mental processes, START OVER with a physical object instead.
+
+Call "generate_riddle_with_answer_and_keywords" with your response. Keep the explanation simple and fun (no numbered "Facts" or academic references).`;
 
     // --- SYSTEM_CONTEXT preface for all prompts ---
     if (useSearch && factualContextForRiddle) {
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Factual information gathered via search is provided below.\nYour task is to create a riddle about a specific, nuanced *ASPECT* of "${actualTopic}". The answer to your riddle should **NOT** be "${actualTopic}" itself, but rather something specific related to it, inspired by the context or your general knowledge.\n\n**Factual Information (use this to inspire your riddle about an ASPECT of the topic):**\n\u0060\u0060\u0060\n${factualContextForRiddle}\n\u0060\u0060\u0060\n\n${baseGenerationPrompt}\nRemember to set 'search_used: true' in your function call. The riddle's answer must be about an aspect of "${actualTopic}".`;
+        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Factual information from search is provided below to inspire your riddle.\n\n**Factual Information:**\n\`\`\`\n${factualContextForRiddle}\n\`\`\`\n\n${baseGenerationPrompt}\nRemember to set 'search_used: true' in your function call.`;
     } else if (useSearch) {
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Search was attempted but yielded no specific context.\nYour task is to create a riddle about a specific, nuanced *ASPECT* of "${actualTopic}" based on your existing knowledge. The answer to your riddle should **NOT** be "${actualTopic}" itself.\n${baseGenerationPrompt}\nSet 'search_used: true' in your function call if your internal generation process leverages search-like capabilities. The riddle's answer must be about an aspect of "${actualTopic}".`;
+        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}". Search was attempted but yielded no additional context. Use your existing knowledge.\n\n${baseGenerationPrompt}\nSet 'search_used: true' in your function call.`;
     } else { // No search
-        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}".\nYour task is to create a riddle about a specific, nuanced *ASPECT* of "${actualTopic}" based on your existing knowledge. The answer to your riddle should **NOT** be "${actualTopic}" itself.\n${baseGenerationPrompt}\nSet 'search_used: false' in your function call. The riddle's answer must be about an aspect of "${actualTopic}".`;
+        finalGenerationPrompt = `**SYSTEM_CONTEXT**: The user requested a riddle on the topic "${actualTopic}".\n\n${baseGenerationPrompt}\nSet 'search_used: false' in your function call.`;
     }
 
     try {
@@ -306,6 +365,26 @@ Call the "generate_riddle_with_answer_and_keywords" function with your response.
                 keywordsLength: args.keywords?.length || 0
             });
             return null;
+        }
+
+        // POST-GENERATION VALIDATION: Check if answer is in exclusion list
+        const normalizedGeneratedAnswer = args.riddle_answer.toLowerCase().trim();
+        if (allExcludedAnswers.some(excluded => normalizedGeneratedAnswer === excluded.toLowerCase().trim())) {
+            logger.warn('[RiddleService] Generated answer is in exclusion list! Rejecting.', {
+                generatedAnswer: args.riddle_answer,
+                excludedAnswers: allExcludedAnswers,
+                topic: actualTopic
+            });
+            return null; // This will trigger a retry
+        }
+
+        // Additional check: reject if answer is a blacklisted meta-concept
+        if (metaConceptBlacklist.some(banned => normalizedGeneratedAnswer.includes(banned))) {
+            logger.warn('[RiddleService] Generated answer contains blacklisted meta-concept! Rejecting.', {
+                generatedAnswer: args.riddle_answer,
+                topic: actualTopic
+            });
+            return null; // This will trigger a retry
         }
             // Heuristic check for trivia-like riddles
             if (args.riddle_question.toLowerCase().includes("what am i?") && args.riddle_question.split('\n').length <= 4) {
