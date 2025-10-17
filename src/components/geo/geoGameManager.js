@@ -610,9 +610,11 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     const scopeLog = scope ? (mode === 'game' ? `Game Scope: ${scope}` : `Region Scope: ${scope}`) : 'Scope: N/A';
     logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, ${scopeLog}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
 
-    // --- Send Game Start Announcement Immediately ---
-    const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
-    enqueueMessage(`#${channelName}`, startMessage);
+    // --- Send Game Start Announcement Immediately (only if rounds > 1 or scope specified) ---
+    if (gameState.totalRounds > 1 || scope !== null) {
+        const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
+        enqueueMessage(`#${channelName}`, startMessage);
+    }
 
     try {
         // --- Location Selection for Round 1 ---

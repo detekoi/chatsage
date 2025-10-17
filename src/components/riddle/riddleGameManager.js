@@ -520,12 +520,15 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
 
     gameState.state = 'selecting'; // Mark as selecting before async operations
 
-    const startMessage = formatRiddleStartMessage(
-        topic, // Let formatter handle if topic is null
-        gameState.config.questionTimeSeconds,
-        gameState.totalRounds
-    );
-    enqueueMessage(`#${channelName}`, startMessage);
+    // Only send preamble if user specified rounds > 1 or a specific topic
+    if (gameState.totalRounds > 1 || topic !== null) {
+        const startMessage = formatRiddleStartMessage(
+            topic, // Let formatter handle if topic is null
+            gameState.config.questionTimeSeconds,
+            gameState.totalRounds
+        );
+        enqueueMessage(`#${channelName}`, startMessage);
+    }
     
     // Start the first round
     await _startNextRound(gameState); 

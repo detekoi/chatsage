@@ -749,14 +749,16 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     
     logger.info(`[TriviaGame][${channelName}] Starting new game. Topic: ${topic || 'General'}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
     
-    // Send start message
-    const startMessage = formatStartMessage(
-        topic || 'General Knowledge',
-        gameState.config.questionTimeSeconds,
-        gameState.totalRounds
-    );
-    
-    enqueueMessage(`#${channelName}`, startMessage);
+    // Only send preamble if user specified rounds > 1 or a specific topic
+    if (gameState.totalRounds > 1 || topic !== null) {
+        const startMessage = formatStartMessage(
+            topic || 'General Knowledge',
+            gameState.config.questionTimeSeconds,
+            gameState.totalRounds
+        );
+        
+        enqueueMessage(`#${channelName}`, startMessage);
+    }
     
     try {
         // Generate first question
