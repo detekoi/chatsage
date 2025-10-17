@@ -1,0 +1,76 @@
+substitutions:
+  _PROJECT_ID: "906125386407"
+  _REGION: "us-central1"
+  _SERVICE_NAME: "chatsage"
+
+steps:
+# Build Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:$COMMIT_SHA', '.']
+
+# Push Docker image to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:$COMMIT_SHA']
+
+# Deploy to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    - 'run'
+    - 'deploy'
+    - '${_SERVICE_NAME}'
+    - '--image'
+    - 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:$COMMIT_SHA'
+    - '--region'
+    - '${_REGION}'
+    - '--platform'
+    - 'managed'
+    - '--allow-unauthenticated'
+    - '--timeout'
+    - '3600'
+    - '--port'
+    - '8080'
+    - '--set-env-vars'
+    - 'GOOGLE_CLOUD_PROJECT=${_PROJECT_ID},GCP_REGION=${_REGION},NODE_ENV=production'
+    - '--set-secrets'
+    - |
+      TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=projects/${_PROJECT_ID}/secrets/twitch-bot-refresh-token/versions/latest,
+      GEMINI_API_KEY=projects/${_PROJECT_ID}/secrets/gemini-api-key/versions/latest,
+      TWITCH_CLIENT_ID=projects/${_PROJECT_ID}/secrets/twitch-client-id/versions/latest,
+      TWITCH_CLIENT_SECRET=projects/${_PROJECT_ID}/secrets/twitch-client-secret/versions/latest,
+      TWITCH_EVENTSUB_SECRET=projects/${_PROJECT_ID}/secrets/twitch-eventsub-secret/versions/latest,
+      TWITCH_BOT_USERNAME=projects/${_PROJECT_ID}/secrets/twitch-bot-username/versions/latest,
+      WEBUI_INTERNAL_TOKEN=projects/${_PROJECT_ID}/secrets/webui-internal-token/versions/latest
+
+# Grant required IAM permissions to the Cloud Run service account
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: bash
+  args:
+    - '-c'
+    - |
+      # Get the service account used by the Cloud Run service
+      SERVICE_ACCOUNT=$(gcloud run services describe ${_SERVICE_NAME} --region=${_REGION} --format="value(spec.template.spec.serviceAccountName)")
+
+      # If no custom service account is set, use the default Compute Engine service account
+      if [ -z "$SERVICE_ACCOUNT" ]; then
+        SERVICE_ACCOUNT="${_PROJECT_ID}-compute@developer.gserviceaccount.com"
+      fi
+
+      echo "Granting IAM permissions to: $SERVICE_ACCOUNT"
+
+      # Grant Firestore/Datastore User role (for leader election)
+      gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+        --member="serviceAccount:$SERVICE_ACCOUNT" \
+        --role="roles/datastore.user" \
+        --condition=None
+
+      # Grant Cloud Tasks Enqueuer role (for keep-alive self-ping)
+      gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+        --member="serviceAccount:$SERVICE_ACCOUNT" \
+        --role="roles/cloudtasks.enqueuer" \
+        --condition=None
+
+      echo "IAM permissions granted successfully"
+
+images:
+- 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:$COMMIT_SHA'
