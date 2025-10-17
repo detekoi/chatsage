@@ -84,18 +84,18 @@ const decideSearchTool = {
             name: "decide_if_search_needed",
             description: "Determines if external web search is required to provide an accurate answer to the user's query.",
             parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
                     user_query: {
-                        type: "STRING",
+                        type: Type.STRING,
                         description: "The specific question or query the user asked."
                     },
                     reasoning: {
-                        type: "STRING",
+                        type: Type.STRING,
                         description: "A brief explanation (1 sentence) why search is deemed necessary or not necessary."
                     },
                     search_required: {
-                        type: "BOOLEAN",
+                        type: Type.BOOLEAN,
                         description: "Set to true if search is necessary, false otherwise."
                     }
                 },
@@ -111,10 +111,10 @@ const standardAnswerTools = {
             name: "getCurrentTime",
             description: "Get the current date and time for a *specific, validated IANA timezone string*. If a user mentions a location (e.g., 'San Diego'), first use 'get_iana_timezone_for_location_tool' to resolve it to an IANA timezone, then call this function with that IANA string. Defaults to UTC if no timezone is provided.",
             parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
                     timezone: {
-                        type: "STRING",
+                        type: Type.STRING,
                         description: "REQUIRED if a specific location's time is needed. The IANA timezone name (e.g., 'America/Los_Angeles', 'Europe/Paris')."
                     }
                 },
@@ -124,10 +124,10 @@ const standardAnswerTools = {
             name: "get_iana_timezone_for_location_tool",
             description: "Resolves a human-readable location name (city, region) into its standard IANA timezone string. This should be called BEFORE calling 'getCurrentTime' if a user specifies a location.",
             parameters: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
                     location_name: {
-                        type: "STRING",
+                        type: Type.STRING,
                         description: "The city or location name mentioned by the user (e.g., 'San Diego', 'Paris')."
                     }
                 },
@@ -548,11 +548,10 @@ Search not needed for: general knowledge, broad creative requests, time/date que
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: decisionPrompt }] }],
-            // tools must be an array; otherwise the SDK may ignore function declarations
             tools: [decideSearchTool],
             toolConfig: { functionCallingConfig: { mode: "ANY" } },
-            systemInstruction: { parts: [{ text: "You are an AI assistant that decides if web search is needed. Call the decide_if_search_needed function with your decision." }] },
             generationConfig: { temperature: 0, maxOutputTokens: 128 }
+            // Note: No systemInstruction - function calling with mode: ANY works better without it
         });
         const response = result;
         const candidate = response?.candidates?.[0];
