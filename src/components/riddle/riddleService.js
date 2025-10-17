@@ -19,11 +19,11 @@ const generateRiddleTool = {
                 riddle_answer: { type: GenAIType.STRING, description: "The single, concise, common answer to the riddle." },
                 keywords: {
                     type: GenAIType.ARRAY,
-                    description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific, concrete, and discriminative, capturing tangible aspects or imagery from THIS riddle (shape, sound, behavior, place) so it’s guessable and distinct.",
+                    description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific, concrete, and discriminative, capturing tangible aspects or imagery from THIS riddle (shape, sound, behavior, place) so it's guessable and distinct.",
                     items: { type: GenAIType.STRING }
                 },
                 difficulty_generated: { type: GenAIType.STRING, description: "The assessed difficulty of the generated riddle (easy, normal, hard)." },
-                explanation: { type: GenAIType.STRING, description: "A brief explanation of why the answer is correct, ideally clarifying any wordplay or metaphors used in the riddle." },
+                explanation: { type: GenAIType.STRING, description: "A brief, fun, 1-2 sentence explanation for Twitch chat. Explain the clever wordplay or connection in a witty, conversational tone. Vary sentence starters. Examples: 'A book has a spine just like your body!' or 'Compass needles always point north, that's the trick!' Avoid: 'The riddle focuses on physical characteristics' or academic explanations." },
                 search_used: { type: GenAIType.BOOLEAN, description: "True if web search was used to generate or verify the riddle, false otherwise." }
             },
             required: ["riddle_question", "riddle_answer", "keywords", "difficulty_generated", "explanation", "search_used"]
@@ -267,7 +267,23 @@ BAD EXAMPLES - NEVER DO THESE:
 
 If the answer is an abstract concept about thinking, learning, or mental processes, START OVER with a physical object instead.
 
-Call "generate_riddle_with_answer_and_keywords" with your response. Keep the explanation simple and fun (no numbered "Facts" or academic references).`;
+EXPLANATION STYLE FOR TWITCH CHAT (Max 1-2 sentences):
+Write fun, conversational explanations—NOT boring academic lectures. Vary your sentence starters!
+
+✓ GOOD EXAMPLES:
+- "A book has a spine just like your body—both hold things together!"
+- "Compass needles always point north, and that's the whole trick!"
+- "Museums are basically treasure troves of facts from every era—perfect metaphor!"
+- "Globes look like Earth but never actually move, which is the clever bit."
+- "It's called an [answer] because it [specific function related to riddle]."
+
+✗ NEVER USE (academic boilerplate):
+- "The riddle focuses on the physical characteristics of..."
+- "This riddle uses clues drawn from the factual information provided..."
+- "The answer is a concrete object that contains general knowledge..."
+- Anything that sounds like a textbook explanation
+
+Call "generate_riddle_with_answer_and_keywords" with your response.`;
 
     // --- SYSTEM_CONTEXT preface for all prompts ---
     if (useSearch && factualContextForRiddle) {
