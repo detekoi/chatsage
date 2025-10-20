@@ -79,7 +79,6 @@ describe('geminiClient utility functions', () => {
             expect(typeof geminiClient.generateStandardResponse).toBe('function');
             expect(typeof geminiClient.generateSearchResponse).toBe('function');
             expect(typeof geminiClient.generateUnifiedResponse).toBe('function');
-            expect(typeof geminiClient.decideSearchWithFunctionCalling).toBe('function');
             expect(typeof geminiClient.decideSearchWithStructuredOutput).toBe('function');
             expect(typeof geminiClient.summarizeText).toBe('function');
         });

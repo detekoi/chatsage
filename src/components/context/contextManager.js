@@ -244,7 +244,10 @@ function recordOfflineMiss(channelName, threshold = 2) {
     state.streamContext.offlineMissCount = (state.streamContext.offlineMissCount || 0) + 1;
     logger.debug({ channel: channelName, misses: state.streamContext.offlineMissCount, threshold }, 'Recorded offline miss.');
     if (state.streamContext.offlineMissCount >= threshold) {
-        clearStreamContext(channelName);
+        // Only clear if not already cleared (avoid repeated clearing for offline streams)
+        if (state.streamContext.game !== 'N/A') {
+            clearStreamContext(channelName);
+        }
     }
 }
 

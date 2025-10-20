@@ -1,5 +1,9 @@
 // In a utility file, e.g., src/lib/timeUtils.js
-const getCurrentTime = ({ timezone = 'UTC' }) => {
+const getCurrentTime = (timezoneOrOptions = 'UTC') => {
+    // Handle both string and object parameters
+    const timezone = typeof timezoneOrOptions === 'string' 
+        ? timezoneOrOptions 
+        : timezoneOrOptions.timezone || 'UTC';
     try {
       const now = new Date();
       // Intl.DateTimeFormat is robust for timezone handling
