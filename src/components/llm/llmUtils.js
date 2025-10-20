@@ -137,14 +137,14 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to truncation.`);
-                finalReplyText = initialResponseText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+                finalReplyText = removeMarkdownAsterisks(initialResponseText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...');
             }
         }
 
         // e. Final length check and Send
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
              logger.warn(`Final reply (even after summary/truncation) too long (${finalReplyText.length} chars). Truncating sharply.`);
-             finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+             finalReplyText = removeMarkdownAsterisks(finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...');
         }
         await sendBotResponse(channel, finalReplyText, { replyToId });
 
