@@ -61,15 +61,16 @@ const gameHandler = {
 
         try {
             // --- Execute Image Analysis if requested ---
+            let imageAnalysisResult = null;
             if (analysisRequested) {
-                await handleImageAnalysis(channel, channelName, userName, replyToId);
+                imageAnalysisResult = await handleImageAnalysis(channel, channelName, userName, replyToId, !helpRequested);
                 // If both analysis and help are requested, add a small delay to avoid message overlap
                 if (helpRequested) await new Promise(resolve => setTimeout(resolve, 1200));
             }
 
             // --- Execute Help Search if requested ---
             if (helpRequested) {
-            await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId);
+            await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId, imageAnalysisResult);
                 return;
             }
 
@@ -97,8 +98,11 @@ const gameHandler = {
  * @param {string} channel - Channel with # prefix
  * @param {string} channelName - Channel without # prefix
  * @param {string} userName - Display name of requesting user
+ * @param {string|null} replyToId - Message ID to reply to
+ * @param {boolean} sendToChat - Whether to send result to chat (true) or just return it (false)
+ * @returns {Promise<string|null>} The analysis result, or null on error
  */
-async function handleImageAnalysis(channel, channelName, userName, replyToId) {
+async function handleImageAnalysis(channel, channelName, userName, replyToId, sendToChat = true) {
     try {
         // Removed confirmation message to reduce chat verbosity
         // Get the official game info from the API/context FIRST
@@ -230,20 +234,28 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
             }
         }
 
-        // --- Step 4: Send Final Message ---
+        // --- Step 4: Send Final Message or Return Result ---
         const gameResponse = `${description}`;
 
-        // Final length check for IRC limits (shouldn't be needed with above logic, but safety first)
+        // Final length check for IRC limits
+        let finalResponse = gameResponse;
         if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
-            const truncated = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
-            enqueueMessage(channel, truncated, { replyToId });
-        } else {
-            enqueueMessage(channel, gameResponse, { replyToId });
+            finalResponse = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
         }
-        
+
+        if (sendToChat) {
+            enqueueMessage(channel, finalResponse, { replyToId });
+        }
+
+        // Return the full description for use in help queries
+        return description;
+
     } catch (error) {
         logger.error({ err: error }, 'Error in image analysis for !game command');
-        enqueueMessage(channel, `Sorry, there was an error analyzing the stream.`, { replyToId });
+        if (sendToChat) {
+            enqueueMessage(channel, `Sorry, there was an error analyzing the stream.`, { replyToId });
+        }
+        return null;
     }
 }
 
@@ -353,8 +365,9 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
  * @param {string} userName - Display name of requesting user
  * @param {string} helpQuery - The specific question the user asked
  * @param {string|null} replyToId - The ID of the message to reply to
+ * @param {string|null} imageAnalysisContext - Optional image analysis result to include as context
  */
-async function handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId = null) {
+async function handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId = null, imageAnalysisContext = null) {
     logger.info(`[${channelName}] Handling game help request from ${userName}: "${helpQuery}"`);
     try {
         // 1. Get Current Game Name
@@ -371,9 +384,16 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         const contextManager = getContextManager();
         const llmContext = contextManager.getContextForLLM(channelName, userName, helpQuery);
         const contextPrompt = buildContextPrompt(llmContext || {});
-        
+
         // Formulate a search-triggering query that requires web search
-        const helpSearchQuery = `Use web search to answer: "${helpQuery}" for "${gameName}". Give a direct, factual tip in ≤ 320 chars. Plain text. No citations, no markdown.`;
+        let helpSearchQuery;
+        if (imageAnalysisContext) {
+            // Include screenshot context when available
+            helpSearchQuery = `Screenshot shows: "${imageAnalysisContext}"\n\nUse web search to answer: "${helpQuery}" for "${gameName}" based on what's shown in the screenshot. Give a direct, factual tip in ≤ 320 chars. Plain text. No citations, no markdown.`;
+        } else {
+            // Original query when no image context
+            helpSearchQuery = `Use web search to answer: "${helpQuery}" for "${gameName}". Give a direct, factual tip in ≤ 320 chars. Plain text. No citations, no markdown.`;
+        }
 
         // 3. Call Search-Grounded LLM with a retry mechanism for robustness
         let searchResultText = null;
