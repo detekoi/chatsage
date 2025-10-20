@@ -99,13 +99,15 @@ async function initializeHelixClient() {
 
             // Log successful responses
             const rateLimitRemaining = response.headers['ratelimit-remaining'];
+            const context = response.config.meta?.context;
             logger.info({
                 url: response.config.url,
                 method: response.config.method,
                 status: response.status,
                 rateLimitRemaining: rateLimitRemaining ? parseInt(rateLimitRemaining, 10) : 'N/A',
                 latencyMs: latencyMs,
-            }, `Helix API call successful.`);
+                ...(context && { context }), // Include context if provided
+            }, context ? `Helix API call successful: ${context}` : `Helix API call successful.`);
             return response;
         },
         (error) => {
@@ -184,7 +186,7 @@ function getHelixClient() {
  * @returns {Promise<object[]>} A promise resolving to an array of channel information objects.
  *                                Returns an empty array if input is empty or on API error after logging.
  */
-async function getChannelInformation(broadcasterIds) {
+async function getChannelInformation(broadcasterIds, context = null) {
     if (!broadcasterIds || broadcasterIds.length === 0) {
         logger.warn('getChannelInformation called with empty broadcaster IDs.');
         return [];
@@ -202,7 +204,11 @@ async function getChannelInformation(broadcasterIds) {
 
     try {
         const response = await retryWithBackoff(async () => {
-            return await client.get('/channels', { params });
+            const config = { params };
+            if (context) {
+                config.meta = { context };
+            }
+            return await client.get('/channels', config);
         }, 3, 1000);
         // Spec: https://dev.twitch.tv/docs/api/reference/#get-channel-information
         // Data is expected in response.data.data
@@ -221,7 +227,7 @@ async function getChannelInformation(broadcasterIds) {
  * @returns {Promise<object[]>} A promise resolving to an array of user objects from the API.
  *                                Returns an empty array if input is empty or on API error after logging.
  */
-async function getUsersByLogin(loginNames) {
+async function getUsersByLogin(loginNames, context = null) {
     if (!loginNames || loginNames.length === 0) {
         logger.warn('getUsersByLogin called with empty login names.');
         return [];
@@ -240,9 +246,13 @@ async function getUsersByLogin(loginNames) {
     try {
         // Use retry logic for user lookups (critical for EventSub subscriptions)
         const response = await retryWithBackoff(async () => {
-            return await client.get('/users', { params });
+            const config = { params };
+            if (context) {
+                config.meta = { context };
+            }
+            return await client.get('/users', config);
         }, 3, 1000);
-        
+
         // Spec: https://dev.twitch.tv/docs/api/reference/#get-users
         // Data is expected in response.data.data
         return response.data?.data || [];
@@ -260,7 +270,7 @@ async function getUsersByLogin(loginNames) {
  * @returns {Promise<object[]>} A promise resolving to an array of live stream objects.
  *                                Returns an empty array if input is empty or on API error after logging.
  */
-async function getLiveStreams(broadcasterIds) {
+async function getLiveStreams(broadcasterIds, context = null) {
     if (!broadcasterIds || broadcasterIds.length === 0) {
         logger.warn('getLiveStreams called with empty broadcaster IDs.');
         return [];
@@ -278,9 +288,13 @@ async function getLiveStreams(broadcasterIds) {
 
     try {
         const response = await retryWithBackoff(async () => {
-            return await client.get('/streams', { params });
+            const config = { params };
+            if (context) {
+                config.meta = { context };
+            }
+            return await client.get('/streams', config);
         }, 2, 500); // Shorter retry for stream checks
-        
+
         // Spec: https://dev.twitch.tv/docs/api/reference/#get-streams
         // Data is expected in response.data.data - only returns live streams
         return response.data?.data || [];

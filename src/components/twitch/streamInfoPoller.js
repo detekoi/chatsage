@@ -20,14 +20,14 @@ async function fetchBatch(channels, helixClient, contextManager) {
 
     try {
         // First, check which streams are actually live
-        const liveStreams = await getLiveStreams(broadcasterIds);
+        const liveStreams = await getLiveStreams(broadcasterIds, 'Stream info polling');
         const liveStreamIds = new Set(liveStreams.map(stream => stream.user_id));
-        
+
         logger.debug(`Found ${liveStreams.length} live streams out of ${channels.length} channels checked`);
 
         // For live streams, fetch detailed channel information
         const liveChannelIds = broadcasterIds.filter(id => liveStreamIds.has(id));
-        const channelInfoList = liveChannelIds.length > 0 ? await getChannelInformation(liveChannelIds) : [];
+        const channelInfoList = liveChannelIds.length > 0 ? await getChannelInformation(liveChannelIds, 'Stream info polling - channel details') : [];
 
         // Create maps for easy lookup
         const liveStreamMap = new Map(liveStreams.map(stream => [stream.user_id, stream]));
@@ -170,7 +170,7 @@ export async function getCurrentGameInfo(channelName) {
             }
 
             // Prefer live stream details
-            const live = await getLiveStreams([broadcasterId]);
+            const live = await getLiveStreams([broadcasterId], `On-demand game info lookup for ${channelName}`);
             const liveStream = Array.isArray(live) && live.length > 0 ? live[0] : null;
 
             let mergedGameName = gameNameFromContext;
@@ -190,7 +190,7 @@ export async function getCurrentGameInfo(channelName) {
                 if (Array.isArray(liveStream.tags)) mergedTags = liveStream.tags;
             }
 
-            const channelInfos = await getChannelInformation([broadcasterId]);
+            const channelInfos = await getChannelInformation([broadcasterId], `On-demand channel info lookup for ${channelName}`);
             const channelInfo = Array.isArray(channelInfos) && channelInfos.length > 0 ? channelInfos[0] : null;
             if (channelInfo) {
                 if (!mergedGameName) mergedGameName = channelInfo.game_name || mergedGameName;

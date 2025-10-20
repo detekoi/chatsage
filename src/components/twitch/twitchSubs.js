@@ -4,14 +4,25 @@ import { getHelixClient, getUsersByLogin } from './helixClient.js';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 
+// --- CACHE FOR EVENTSUB SUBSCRIPTIONS ---
+let eventSubSubscriptionsCache = null;
+let eventSubSubscriptionsCacheTimestamp = 0;
+const EVENTSUB_CACHE_TTL_MS = 60000; // 60 seconds
+
+function clearEventSubSubscriptionsCache() {
+    eventSubSubscriptionsCache = null;
+    eventSubSubscriptionsCacheTimestamp = 0;
+    logger.debug('EventSub subscriptions cache cleared');
+}
+
 // --- HELPER FUNCTIONS ---
 
-async function makeHelixRequest(method, endpoint, body = null, userAccessToken = null) {
+async function makeHelixRequest(method, endpoint, body = null, userAccessToken = null, context = null) {
     try {
         // If a userAccessToken is provided, bypass the shared axios instance to specify headers
         if (userAccessToken) {
             const helixClient = (await import('axios')).default.create({ baseURL: 'https://api.twitch.tv/helix', timeout: 15000 });
-            const response = await helixClient({
+            const axiosConfig = {
                 method: method,
                 url: endpoint,
                 data: body,
@@ -20,17 +31,25 @@ async function makeHelixRequest(method, endpoint, body = null, userAccessToken =
                     'Client-ID': config.twitch.clientId,
                     'Content-Type': 'application/json'
                 }
-            });
+            };
+            if (context) {
+                axiosConfig.meta = { context };
+            }
+            const response = await helixClient(axiosConfig);
             return { success: true, data: response.data };
         }
         const helixClient = getHelixClient();
-        const response = await helixClient({ method, url: endpoint, data: body });
+        const axiosConfig = { method, url: endpoint, data: body };
+        if (context) {
+            axiosConfig.meta = { context };
+        }
+        const response = await helixClient(axiosConfig);
         return { success: true, data: response.data };
     } catch (error) {
-        logger.error({ 
-            err: error.response ? error.response.data : error.message, 
-            method, 
-            endpoint 
+        logger.error({
+            err: error.response ? error.response.data : error.message,
+            method,
+            endpoint
         }, 'Error making Helix request');
         return { success: false, error: error.message };
     }
@@ -44,17 +63,18 @@ export async function subscribeStreamOnline(broadcasterUserId) {
         logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
         return { success: false, error: 'Missing configuration' };
     }
-    
+
     const body = {
         type: 'stream.online',
         version: '1',
         condition: { broadcaster_user_id: broadcasterUserId },
         transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
     };
-    
+
     const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
     if (result.success) {
         logger.info({ subscriptionId: result.data.data[0].id, broadcasterUserId, status: result.data.data[0].status }, 'EventSub stream.online subscription created successfully');
+        clearEventSubSubscriptionsCache(); // Clear cache after creating subscription
     }
     return result;
 }
@@ -72,22 +92,40 @@ export async function subscribeStreamOffline(broadcasterUserId) {
         condition: { broadcaster_user_id: broadcasterUserId },
         transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
     };
-    
+
     const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
     if (result.success) {
         logger.info({ broadcasterUserId }, 'Successfully subscribed to stream.offline');
+        clearEventSubSubscriptionsCache(); // Clear cache after creating subscription
     }
     return result;
 }
 
-export async function getEventSubSubscriptions() {
-    return await makeHelixRequest('get', '/eventsub/subscriptions');
+export async function getEventSubSubscriptions(context = 'Fetch EventSub subscriptions', useCache = true) {
+    // Check cache if enabled
+    if (useCache && eventSubSubscriptionsCache && (Date.now() - eventSubSubscriptionsCacheTimestamp < EVENTSUB_CACHE_TTL_MS)) {
+        logger.debug('Using cached EventSub subscriptions');
+        return eventSubSubscriptionsCache;
+    }
+
+    // Fetch from API
+    const result = await makeHelixRequest('get', '/eventsub/subscriptions', null, null, context);
+
+    // Cache successful results
+    if (result.success) {
+        eventSubSubscriptionsCache = result;
+        eventSubSubscriptionsCacheTimestamp = Date.now();
+        logger.debug('EventSub subscriptions cached');
+    }
+
+    return result;
 }
 
 export async function deleteEventSubSubscription(subscriptionId) {
     const result = await makeHelixRequest('delete', `/eventsub/subscriptions?id=${subscriptionId}`);
     if (result.success) {
         logger.info({ subscriptionId }, 'EventSub subscription deleted successfully');
+        clearEventSubSubscriptionsCache(); // Clear cache after deleting subscription
     }
     return result;
 }
@@ -174,6 +212,7 @@ export async function subscribeChannelAdBreakBegin(broadcasterUserId, userAccess
     const result = await makeHelixRequest('post', '/eventsub/subscriptions', body, userAccessToken || undefined);
     if (result.success) {
         logger.info({ broadcasterUserId }, 'Successfully subscribed to channel.ad_break.begin');
+        clearEventSubSubscriptionsCache(); // Clear cache after creating subscription
     }
     return result;
 }
@@ -237,6 +276,7 @@ export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId,
             for (const sub of existing) {
                 try { await deleteEventSubSubscription(sub.id); } catch (e) { /* ignore */ }
             }
+            clearEventSubSubscriptionsCache(); // Clear cache after deleting subscriptions
             return { success: true, deleted: existing.length };
         }
     } catch (e) {
