@@ -7,11 +7,13 @@ import config from '../../config/index.js';
 // --- CACHE FOR EVENTSUB SUBSCRIPTIONS ---
 let eventSubSubscriptionsCache = null;
 let eventSubSubscriptionsCacheTimestamp = 0;
+let eventSubSubscriptionsInFlightPromise = null; // Track in-flight requests
 const EVENTSUB_CACHE_TTL_MS = 60000; // 60 seconds
 
 function clearEventSubSubscriptionsCache() {
     eventSubSubscriptionsCache = null;
     eventSubSubscriptionsCacheTimestamp = 0;
+    eventSubSubscriptionsInFlightPromise = null;
     logger.debug('EventSub subscriptions cache cleared');
 }
 
@@ -104,21 +106,36 @@ export async function subscribeStreamOffline(broadcasterUserId) {
 export async function getEventSubSubscriptions(context = 'Fetch EventSub subscriptions', useCache = true) {
     // Check cache if enabled
     if (useCache && eventSubSubscriptionsCache && (Date.now() - eventSubSubscriptionsCacheTimestamp < EVENTSUB_CACHE_TTL_MS)) {
-        logger.debug('Using cached EventSub subscriptions');
+        logger.debug({ context }, 'Using cached EventSub subscriptions');
         return eventSubSubscriptionsCache;
     }
 
-    // Fetch from API
-    const result = await makeHelixRequest('get', '/eventsub/subscriptions', null, null, context);
-
-    // Cache successful results
-    if (result.success) {
-        eventSubSubscriptionsCache = result;
-        eventSubSubscriptionsCacheTimestamp = Date.now();
-        logger.debug('EventSub subscriptions cached');
+    // If there's already a request in flight, wait for it instead of making a new one
+    if (useCache && eventSubSubscriptionsInFlightPromise) {
+        logger.debug({ context }, 'Waiting for in-flight EventSub subscriptions request to complete');
+        return await eventSubSubscriptionsInFlightPromise;
     }
 
-    return result;
+    // Fetch from API
+    logger.debug({ context }, 'Fetching EventSub subscriptions from API');
+    const fetchPromise = makeHelixRequest('get', '/eventsub/subscriptions', null, null, context)
+        .then(result => {
+            // Cache successful results
+            if (result.success) {
+                eventSubSubscriptionsCache = result;
+                eventSubSubscriptionsCacheTimestamp = Date.now();
+                logger.debug({ context, subscriptionCount: result.data?.data?.length || 0 }, 'EventSub subscriptions fetched and cached');
+            }
+            eventSubSubscriptionsInFlightPromise = null; // Clear in-flight tracker
+            return result;
+        })
+        .catch(error => {
+            eventSubSubscriptionsInFlightPromise = null; // Clear in-flight tracker on error
+            throw error;
+        });
+
+    eventSubSubscriptionsInFlightPromise = fetchPromise;
+    return await fetchPromise;
 }
 
 export async function deleteEventSubSubscription(subscriptionId) {
@@ -262,7 +279,7 @@ export async function subscribeAllManagedChannels() {
 
 export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId, enabled, userAccessToken) {
     try {
-        const subsRes = await getEventSubSubscriptions();
+        const subsRes = await getEventSubSubscriptions(`Check ad break subscription for broadcaster ${broadcasterUserId}`);
         const subs = subsRes?.data?.data || [];
         const existing = subs.filter(s => s.type === 'channel.ad_break.begin' && (s.condition?.broadcaster_user_id === String(broadcasterUserId)));
 
