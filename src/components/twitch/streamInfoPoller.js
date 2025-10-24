@@ -143,88 +143,76 @@ function stopStreamInfoPolling() {
 export { startStreamInfoPolling, stopStreamInfoPolling };
 
 /**
- * Gets the current game information for a channel, using cached context first,
- * then falling back to Helix lookups if needed. When live, updates context.
+ * Gets the current game information for a channel, always fetching fresh data from Twitch API.
+ * This ensures category changes are detected immediately, not relying on the periodic poller.
  * @param {string} channelName - The channel name without '#'
  * @returns {Promise<{gameName: string, streamTitle: string, viewerCount: number} | null>}
  */
 export async function getCurrentGameInfo(channelName) {
     try {
         const contextManager = getContextManager();
-        const streamContext = contextManager.getContextForLLM(channelName, 'system', 'game info lookup');
 
-        const gameNameFromContext = streamContext?.streamGame || 'Unknown';
-        const titleFromContext = streamContext?.streamTitle || 'Unknown';
-        let viewerCount = 0;
-        if (streamContext?.viewerCount && !isNaN(parseInt(streamContext.viewerCount))) {
-            viewerCount = parseInt(streamContext.viewerCount);
+        // Always fetch fresh data from API for on-demand requests (e.g., !game command)
+        // The periodic poller will update context every 2 minutes, but explicit requests
+        // need immediate accuracy to catch category changes
+
+        // Resolve broadcaster id
+        const broadcasterId = await contextManager.getBroadcasterId(channelName);
+        if (!broadcasterId) {
+            logger.warn({ channel: channelName }, 'Unable to resolve broadcasterId for on-demand game lookup');
+            return null;
         }
 
-        const hasReliableGame = gameNameFromContext && gameNameFromContext !== 'Unknown' && gameNameFromContext !== 'N/A';
-        if (!hasReliableGame) {
-            // Resolve broadcaster id
-            const broadcasterId = await contextManager.getBroadcasterId(channelName);
-            if (!broadcasterId) {
-                logger.warn({ channel: channelName }, 'Unable to resolve broadcasterId for on-demand game lookup');
-                return null;
-            }
+        // Fetch fresh stream details (includes current game/category)
+        const live = await getLiveStreams([broadcasterId], `On-demand game info lookup for ${channelName}`);
+        const liveStream = Array.isArray(live) && live.length > 0 ? live[0] : null;
 
-            // Prefer live stream details
-            const live = await getLiveStreams([broadcasterId], `On-demand game info lookup for ${channelName}`);
-            const liveStream = Array.isArray(live) && live.length > 0 ? live[0] : null;
+        let mergedGameName = 'Unknown';
+        let mergedTitle = 'Unknown';
+        let mergedViewerCount = 0;
+        let mergedStartedAt = null;
+        let mergedGameId = null;
+        let mergedTags = [];
+        let mergedLanguage = null;
 
-            let mergedGameName = gameNameFromContext;
-            let mergedTitle = titleFromContext;
-            let mergedViewerCount = viewerCount;
-            let mergedStartedAt = null;
-            let mergedGameId = null;
-            let mergedTags = [];
-            let mergedLanguage = null;
+        if (liveStream) {
+            mergedGameName = liveStream.game_name || mergedGameName;
+            mergedGameId = liveStream.game_id || null;
+            mergedTitle = liveStream.title || mergedTitle;
+            mergedViewerCount = typeof liveStream.viewer_count === 'number' ? liveStream.viewer_count : mergedViewerCount;
+            mergedStartedAt = liveStream.started_at || null;
+            if (Array.isArray(liveStream.tags)) mergedTags = liveStream.tags;
+        }
 
-            if (liveStream) {
-                mergedGameName = liveStream.game_name || mergedGameName;
-                mergedGameId = liveStream.game_id || null;
-                mergedTitle = liveStream.title || mergedTitle;
-                mergedViewerCount = typeof liveStream.viewer_count === 'number' ? liveStream.viewer_count : mergedViewerCount;
-                mergedStartedAt = liveStream.started_at || null;
-                if (Array.isArray(liveStream.tags)) mergedTags = liveStream.tags;
-            }
+        // Fetch channel info as fallback/supplement
+        const channelInfos = await getChannelInformation([broadcasterId], `On-demand channel info lookup for ${channelName}`);
+        const channelInfo = Array.isArray(channelInfos) && channelInfos.length > 0 ? channelInfos[0] : null;
+        if (channelInfo) {
+            if (!mergedGameName || mergedGameName === 'Unknown') mergedGameName = channelInfo.game_name || mergedGameName;
+            if (!mergedGameId) mergedGameId = channelInfo.game_id || mergedGameId;
+            if (!mergedTitle || mergedTitle === 'Unknown') mergedTitle = channelInfo.title || mergedTitle;
+            if (mergedTags.length === 0 && Array.isArray(channelInfo.tags)) mergedTags = channelInfo.tags;
+            mergedLanguage = channelInfo.broadcaster_language || mergedLanguage;
+        }
 
-            const channelInfos = await getChannelInformation([broadcasterId], `On-demand channel info lookup for ${channelName}`);
-            const channelInfo = Array.isArray(channelInfos) && channelInfos.length > 0 ? channelInfos[0] : null;
-            if (channelInfo) {
-                if (!mergedGameName) mergedGameName = channelInfo.game_name || mergedGameName;
-                if (!mergedGameId) mergedGameId = channelInfo.game_id || mergedGameId;
-                if (!mergedTitle) mergedTitle = channelInfo.title || mergedTitle;
-                if (mergedTags.length === 0 && Array.isArray(channelInfo.tags)) mergedTags = channelInfo.tags;
-                mergedLanguage = channelInfo.broadcaster_language || mergedLanguage;
-            }
-
-            if (liveStream) {
-                contextManager.updateStreamContext(channelName, {
-                    game: mergedGameName || 'Unknown',
-                    gameId: mergedGameId || null,
-                    title: mergedTitle || 'Untitled Stream',
-                    tags: mergedTags || [],
-                    language: mergedLanguage || 'en',
-                    viewerCount: mergedViewerCount || 0,
-                    startedAt: mergedStartedAt || null,
-                });
-            }
-
-            if (mergedGameName && mergedGameName !== 'Unknown' && mergedGameName !== 'N/A') {
-                return {
-                    gameName: mergedGameName,
-                    streamTitle: mergedTitle || 'Unknown',
-                    viewerCount: mergedViewerCount || 0,
-                };
-            }
+        // Update context with fresh data if stream is live
+        if (liveStream) {
+            contextManager.updateStreamContext(channelName, {
+                game: mergedGameName || 'Unknown',
+                gameId: mergedGameId || null,
+                title: mergedTitle || 'Untitled Stream',
+                tags: mergedTags || [],
+                language: mergedLanguage || 'en',
+                viewerCount: mergedViewerCount || 0,
+                startedAt: mergedStartedAt || null,
+            });
+            logger.debug({ channel: channelName, game: mergedGameName }, 'Updated stream context with fresh API data');
         }
 
         return {
-            gameName: gameNameFromContext !== 'N/A' ? gameNameFromContext : 'Unknown',
-            streamTitle: titleFromContext !== 'N/A' ? titleFromContext : 'Unknown',
-            viewerCount,
+            gameName: mergedGameName !== 'N/A' ? mergedGameName : 'Unknown',
+            streamTitle: mergedTitle !== 'N/A' ? mergedTitle : 'Unknown',
+            viewerCount: mergedViewerCount,
         };
     } catch (error) {
         logger.error({ err: error, channel: channelName }, 'Error resolving current game info');
