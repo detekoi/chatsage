@@ -141,7 +141,7 @@ describe('llmUtils', () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
             expect(logger.warn).toHaveBeenCalledWith(
-                { channel: 'testchannel', user: 'testuser' },
+                { channel: 'testchannel', user: 'testuser', trigger: 'mention' },
                 'Could not retrieve context for LLM response.'
             );
             expect(sendBotResponse).not.toHaveBeenCalled();

@@ -192,10 +192,17 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
         // Also apply markdown removal
         description = removeMarkdownAsterisks(description);
 
-        // Apply smart truncation if needed
+        // Handle length: try summarization first, then smart truncate as fallback
         if (description.length > availableChars) {
-            logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Truncating smartly.`);
-            description = smartTruncate(description, availableChars);
+            logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Attempting summarization.`);
+            const summary = await summarizeText(description, availableChars);
+            if (summary?.trim()) {
+                description = summary.trim();
+                logger.debug(`Analysis summarization successful (${description.length} chars)`);
+            } else {
+                logger.warn(`Analysis summarization failed, using smart truncation`);
+                description = smartTruncate(description, availableChars);
+            }
         }
 
         // --- Step 4: Send Final Message or Return Result ---

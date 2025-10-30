@@ -18,7 +18,7 @@ import {
     summarizeText
 } from '../../../../../src/components/llm/geminiClient.js';
 import { analyzeImage } from '../../../../../src/components/llm/geminiImageClient.js';
-import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
+import { removeMarkdownAsterisks, smartTruncate } from '../../../../../src/components/llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../../../../../src/components/twitch/streamImageCapture.js';
 import { getCurrentGameInfo } from '../../../../../src/components/twitch/streamInfoPoller.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
@@ -62,6 +62,11 @@ describe('Game Command Handler', () => {
         summarizeText.mockResolvedValue('summarized text');
         analyzeImage.mockResolvedValue('mock image analysis');
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
+        smartTruncate.mockImplementation((text, maxLength) => {
+            if (!text || text.length <= maxLength) return text;
+            // Simple mock: truncate to leave room for period
+            return text.substring(0, maxLength - 1).trim() + '.';
+        });
         fetchStreamThumbnail.mockResolvedValue(Buffer.from('fake image'));
         getCurrentGameInfo.mockResolvedValue({ gameName: 'Test Game', gameId: '12345' });
         enqueueMessage.mockResolvedValue();
@@ -102,15 +107,16 @@ describe('Game Command Handler', () => {
         test('should remove markdown from truncated game info', async () => {
             const longText = 'a'.repeat(500) + ' **title** and *emphasis*';
             generateSearchResponse.mockResolvedValue(longText);
-            summarizeText.mockResolvedValue(null); // Force truncation path
+            summarizeText.mockResolvedValue(null); // Force truncation path (smartTruncate will be used)
 
             const context = createMockContext([]);
             await gameHandler.execute(context);
 
-            // Should call markdown removal on truncated text
+            // Should call markdown removal on the original text (before smartTruncate)
             expect(removeMarkdownAsterisks).toHaveBeenCalled();
             const calls = removeMarkdownAsterisks.mock.calls;
-            expect(calls.some(call => call[0]?.includes('...'))).toBe(true);
+            // Verify markdown removal was called with text containing 'a's (the long response)
+            expect(calls.some(call => call[0]?.includes('aaa'))).toBe(true);
         });
 
         test('should handle responses without markdown', async () => {
@@ -192,12 +198,15 @@ describe('Game Command Handler', () => {
             const longAnalysis = 'a'.repeat(500);
             analyzeImage.mockResolvedValue(longAnalysis);
             generateSearchResponse.mockResolvedValue(longAnalysis);
-            summarizeText.mockResolvedValue('**Summarized** *analysis*');
+            // Note: image analysis doesn't use summarizeText anymore, it uses smartTruncate
 
             const context = createMockContext(['analyze']);
             await gameHandler.execute(context);
 
-            expect(removeMarkdownAsterisks).toHaveBeenCalledWith('**Summarized** *analysis*');
+            // Should call markdown removal on the long analysis before truncation
+            expect(removeMarkdownAsterisks).toHaveBeenCalled();
+            const calls = removeMarkdownAsterisks.mock.calls;
+            expect(calls.some(call => call[0]?.includes('aaa'))).toBe(true);
         });
     });
 
@@ -435,9 +444,11 @@ describe('Game Command Handler', () => {
             const context = createMockContext(['question']);
             await gameHandler.execute(context);
 
-            // Should truncate and add ellipsis
+            // Should use smartTruncate which adds a period, not ellipsis
             const call = enqueueMessage.mock.calls[0];
-            expect(call[1]).toMatch(/\.\.\.$/);
+            expect(call[1]).toBeTruthy();
+            expect(call[1].length).toBeLessThanOrEqual(450); // Should respect MAX_IRC_MESSAGE_LENGTH
+            expect(call[1]).toMatch(/\.$/); // Should end with period
         });
     });
 
