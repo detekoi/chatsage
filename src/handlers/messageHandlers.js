@@ -247,7 +247,6 @@ export async function handleBotMention({
 
     if (sessionId) {
         // Channel is in a shared chat session
-        const session = sharedChatManager.getSession(sessionId);
         const channelLogins = sharedChatManager.getSessionChannelLogins(sessionId);
         
         logger.info({ 

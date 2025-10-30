@@ -41,6 +41,47 @@ export function removeMarkdownAsterisks(text) {
 }
 
 /**
+ * Intelligently truncates text at natural sentence boundaries.
+ * Avoids using ellipsis (...) by finding the best break point.
+ * @param {string} text - Text to truncate
+ * @param {number} maxLength - Maximum length
+ * @returns {string} Truncated text ending at sentence boundary
+ */
+export function smartTruncate(text, maxLength) {
+    if (!text || typeof text !== 'string') return text;
+    if (text.length <= maxLength) return text;
+
+    // Try to find last complete sentence within limit
+    const truncated = text.substring(0, maxLength);
+    const sentenceEndMatch = truncated.match(/[.!?](?=\s|$)/g);
+
+    if (sentenceEndMatch) {
+        const lastSentenceEnd = truncated.lastIndexOf(sentenceEndMatch[sentenceEndMatch.length - 1]);
+        if (lastSentenceEnd > maxLength * 0.7) { // Only use if we keep at least 70%
+            return text.substring(0, lastSentenceEnd + 1).trim();
+        }
+    }
+
+    // Try to break at comma or semicolon
+    const punctuationMatch = truncated.match(/[,;](?=\s)/g);
+    if (punctuationMatch) {
+        const lastPunctuation = truncated.lastIndexOf(punctuationMatch[punctuationMatch.length - 1]);
+        if (lastPunctuation > maxLength * 0.8) {
+            return text.substring(0, lastPunctuation + 1).trim();
+        }
+    }
+
+    // Break at last space
+    const lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > maxLength * 0.8) {
+        return text.substring(0, lastSpace).trim() + '.';
+    }
+
+    // Hard truncation as last resort (add period for completeness)
+    return truncated.trim() + '.';
+}
+
+/**
  * Handles getting context, calling the standard LLM, summarizing/truncating, and replying.
  * @param {string} channel - Channel name with '#'.
  * @param {string} cleanChannel - Channel name without '#'.

@@ -403,7 +403,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nSearch the web for up-to-date information to answer this question. Provide a direct answer based on your search results in ≤340 chars. Include specific details from the sources you find.`;
+    const fullPrompt = `${contextPrompt}\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
@@ -782,9 +782,11 @@ ${textToSummarize}`;
             return null;
         }
 
-        // Final length check and cleanup
+        // Final length check - import and use smartTruncate
         if (summary.length > targetCharLength) {
-            summary = summary.substring(0, targetCharLength - 3).trim() + '...';
+            // Import smartTruncate from llmUtils at the top if not already done
+            const { smartTruncate } = await import('./llmUtils.js');
+            summary = smartTruncate(summary, targetCharLength);
         }
 
         logger.info({

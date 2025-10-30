@@ -2,7 +2,7 @@
 import logger from '../../../lib/logger.js';
 // Need context manager to get the current game
 import { getContextManager } from '../../context/contextManager.js';
-// Need LLM functions for search and summarization, and context builder
+// Need LLM functions for search, summarization, and context builder
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse, summarizeText } from '../../llm/geminiClient.js';
 // Need image analysis functions
 import { fetchStreamThumbnail } from '../../twitch/streamImageCapture.js';
@@ -12,13 +12,11 @@ import { analyzeImage } from '../../llm/geminiImageClient.js';
 
 // Need message queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
-// Import markdown removal utility
-import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
+// Import markdown removal and smart truncation utilities
+import { removeMarkdownAsterisks, smartTruncate } from '../../llm/llmUtils.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
-const SUMMARY_TARGET_LENGTH = 300; // Shortened to allow for formatting and mentions
-
-
+const SUMMARY_TARGET_LENGTH = 420; // Target length for summaries, leaving buffer for IRC limits
 
 /**
  * Handler for the !game command.
@@ -194,53 +192,19 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
         // Also apply markdown removal
         description = removeMarkdownAsterisks(description);
 
-        // Apply summarization/truncation if still too long
+        // Apply smart truncation if needed
         if (description.length > availableChars) {
-            logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Summarizing/Truncating.`);
-            // Try summarizing first
-            const summary = await summarizeText(description, availableChars - 10); // Target slightly shorter
-            if (summary && summary.trim().length > 0) {
-                 description = removeMarkdownAsterisks(summary.trim()); // Apply markdown removal to summary too
-            } else {
-                // Fallback to truncation if summary fails or is empty
-                logger.warn(`Summarization failed for verified analysis. Truncating.`);
-                const sentenceEndRegex = /[.!?][^.!?]*$/;
-                 // Try to find sentence endings
-                const matchSentenceEnd = description.substring(0, availableChars).match(sentenceEndRegex);
-
-                if (matchSentenceEnd) {
-                    const endIndex = availableChars - matchSentenceEnd[0].length + 1;
-                    description = description.substring(0, endIndex > 0 ? endIndex : 0);
-                } else {
-                    // Try to find a comma or other natural break
-                    const commaBreakRegex = /,[^,]*$/;
-                    const matchComma = description.substring(0, availableChars).match(commaBreakRegex);
-
-                    if (matchComma) {
-                        const endIndex = availableChars - matchComma[0].length + 1;
-                        description = description.substring(0, endIndex > 0 ? endIndex : 0);
-                    } else {
-                        // If no natural break, try to break at a space
-                        const lastSpaceIndex = description.substring(0, availableChars).lastIndexOf(' ');
-                        if (lastSpaceIndex > availableChars * 0.8) {
-                            description = description.substring(0, lastSpaceIndex);
-                        } else {
-                            // Last resort: hard cut
-                            description = description.substring(0, availableChars > 0 ? availableChars : 0);
-                        }
-                    }
-                }
-                 description += '...'; // Add ellipsis for truncation
-            }
+            logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Truncating smartly.`);
+            description = smartTruncate(description, availableChars);
         }
 
         // --- Step 4: Send Final Message or Return Result ---
-        const gameResponse = `${description}`;
+        let finalResponse = description;
 
-        // Final length check for IRC limits
-        let finalResponse = gameResponse;
-        if (gameResponse.length > MAX_IRC_MESSAGE_LENGTH) {
-            finalResponse = gameResponse.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+        // Final safety check for IRC limits
+        if (finalResponse.length > MAX_IRC_MESSAGE_LENGTH) {
+            logger.warn(`Description exceeds IRC limit. Truncating to ${MAX_IRC_MESSAGE_LENGTH}.`);
+            finalResponse = smartTruncate(finalResponse, MAX_IRC_MESSAGE_LENGTH);
         }
 
         if (sendToChat) {
@@ -296,13 +260,22 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
             return null;
         }
         
-        let finalText = responseText;
+        // Clean up markdown
+        let finalText = removeMarkdownAsterisks(responseText);
+
+        // If too long, try LLM summarization first, then smart truncate as fallback
         if (finalText.length > SUMMARY_TARGET_LENGTH) {
-            logger.debug(`[${channelName}] Response too long (${finalText.length}), summarizing`);
+            logger.debug(`[${channelName}] Response too long (${finalText.length}), attempting summarization`);
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
-            finalText = summary?.trim() ? summary : finalText.substring(0, SUMMARY_TARGET_LENGTH - 3) + '...';
+            if (summary?.trim()) {
+                finalText = summary.trim();
+                logger.debug(`[${channelName}] Summarization successful (${finalText.length} chars)`);
+            } else {
+                logger.warn(`[${channelName}] Summarization failed, using smart truncation`);
+                finalText = smartTruncate(finalText, SUMMARY_TARGET_LENGTH);
+            }
         }
-        
+
         logger.info(`[${channelName}] Final game info for "${gameName}": "${finalText.substring(0, 100)}..."`);
         return finalText.trim();
     } catch (error) {
@@ -331,16 +304,19 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
         const additionalInfo = await getAdditionalGameInfo(channelName, userName, gameName);
 
         if (additionalInfo) {
-            // We have additional info, format the response *just* with that
-            let responseText = additionalInfo;
-            const maxTextLength = MAX_IRC_MESSAGE_LENGTH - 3;
+            // Clean up and handle length
+            let responseText = removeMarkdownAsterisks(additionalInfo);
 
-            // Truncate *only the additional info text* if necessary
-            if (responseText.length > maxTextLength) {
-                logger.info(`Additional game info too long (${responseText.length} > ${maxTextLength}). Truncating.`);
-                responseText = removeMarkdownAsterisks(responseText.substring(0, maxTextLength < 0 ? 0 : maxTextLength) + '...');
-            } else {
-                responseText = removeMarkdownAsterisks(responseText);
+            if (responseText.length > MAX_IRC_MESSAGE_LENGTH) {
+                logger.info(`Additional game info too long (${responseText.length}). Attempting summarization.`);
+                const summary = await summarizeText(responseText, MAX_IRC_MESSAGE_LENGTH - 20);
+                if (summary?.trim()) {
+                    responseText = summary.trim();
+                    logger.debug(`Summarization successful (${responseText.length} chars)`);
+                } else {
+                    logger.warn(`Summarization failed, using smart truncation`);
+                    responseText = smartTruncate(responseText, MAX_IRC_MESSAGE_LENGTH);
+                }
             }
 
             // Defensive: avoid sending meta thought/regurgitation if present
@@ -425,25 +401,19 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
             .replace(/Sources?:[\s\S]*$/i, '')
             .trim();
 
-        // Check length and Summarize/Truncate if needed
+        // Handle length: try summarization first, smart truncate as fallback
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`[${channelName}] Help response too long (${finalReplyText.length} chars). Attempting summarization.`);
-            const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
+            const summary = await summarizeText(finalReplyText, MAX_IRC_MESSAGE_LENGTH - 20);
             if (summary?.trim()) {
-                finalReplyText = removeMarkdownAsterisks(summary);
-                logger.info(`[${channelName}] Help response summarization successful (${finalReplyText.length} chars).`);
+                finalReplyText = removeMarkdownAsterisks(summary.trim());
+                logger.debug(`[${channelName}] Summarization successful (${finalReplyText.length} chars)`);
             } else {
-                logger.warn(`[${channelName}] Summarization failed for help response. Falling back to truncation.`);
-                finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
+                logger.warn(`[${channelName}] Summarization failed, using smart truncation`);
+                finalReplyText = smartTruncate(finalReplyText, MAX_IRC_MESSAGE_LENGTH);
             }
         }
 
-        // Final length check
-        if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
-             logger.warn(`[${channelName}] Final help reply too long (${finalReplyText.length} chars). Truncating sharply.`);
-             finalReplyText = finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
-        }
-        
         enqueueMessage(channel, finalReplyText, { replyToId });
 
     } catch (error) {
