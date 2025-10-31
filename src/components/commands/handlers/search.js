@@ -44,8 +44,14 @@ const searchHandler = {
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
 
+            // Get raw chat history from context manager for initializing session history
+            const channelStates = contextManager.getAllChannelStates();
+            const channelState = channelStates.get(channelName);
+            const rawChatHistory = channelState?.chatHistory || [];
+
             // 2. Use the persistent chat session with googleSearch tool enabled
-            const chatSession = getOrCreateChatSession(channelName);
+            // Pass context and chat history so bot has stream context and recent chat history when first created
+            const chatSession = getOrCreateChatSession(channelName, contextPrompt, rawChatHistory);
             const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"`;
             const result = await chatSession.sendMessage({ message: fullPrompt });
             const initialResponseText = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');

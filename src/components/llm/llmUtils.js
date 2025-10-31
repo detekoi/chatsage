@@ -133,8 +133,16 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // b. Build context prompt string
         const contextPrompt = buildContextPrompt(llmContext);
 
-        // c. Use persistent chat session, passing context for initialization
-        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt);
+        // For single-channel sessions, seed initial chat history when creating the chat
+        let rawChatHistory = null;
+        if (!sessionId) {
+            const channelStates = contextManager.getAllChannelStates();
+            const channelState = channelStates.get(cleanChannel);
+            rawChatHistory = channelState?.chatHistory || [];
+        }
+
+        // c. Use persistent chat session, passing context and (if applicable) history for initialization
+        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
         const chatResult = await chatSession.sendMessage({ message: messageForChat });
         let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
