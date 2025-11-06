@@ -302,7 +302,7 @@ export function buildContextPrompt(context) {
     const tags = context.streamTags || "N/A";
     const summary = context.chatSummary || "No summary available.";
     const history = context.recentChatHistory || "No recent messages.";
-    return `Channel: ${channelName}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (from multiple different users - each line shows username: message):\n${history}`;
+    return `Channel: ${channelName}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}`;
 }
 
 // --- UPDATED generateStandardResponse (Standard - no search) ---
@@ -318,7 +318,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
 
-    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: The recent chat messages above are from different users. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Prioritize substance; when helpful add a specific detail/fact/tip tied to the user's topic, and optionally a short, tailored question. No meta. Don't restate the question or context. Don't repeat the username.`;
+    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: Pay attention to which user said what in the chat history above. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Prioritize substance; when helpful add a specific detail/fact/tip tied to the user's topic, and optionally a short, tailored question. No meta. Don't restate the question or context. Don't repeat the username.`;
 
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
@@ -422,7 +422,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: The recent chat messages above are from different users. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
+    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: Pay attention to which user said what in the chat history above. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
@@ -496,7 +496,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
 export async function generateUnifiedResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: The recent chat messages above are from different users. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. No meta.`;
+    const fullPrompt = `${contextPrompt}\n\nIMPORTANT: Pay attention to which user said what in the chat history above. Only attribute information to the current user based on their username in those messages.\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. No meta.`;
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
