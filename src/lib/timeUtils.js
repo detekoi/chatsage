@@ -13,6 +13,7 @@ const getCurrentTime = (timezoneOrOptions = 'UTC') => {
         minute: '2-digit',
         second: '2-digit',
         hour12: false, // Use 24-hour format for clarity
+        hourCycle: 'h23', // Ensure hours stay within 00-23
         timeZoneName: 'short', // e.g., UTC, PST, BST
         weekday: 'long',
         year: 'numeric',
@@ -37,3 +38,4 @@ const getCurrentTime = (timezoneOrOptions = 'UTC') => {
 export function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
