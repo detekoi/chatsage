@@ -4,6 +4,36 @@ import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './gem
 import { sendBotResponse } from './botResponseHandler.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 
+/**
+ * Helper to generate user-friendly error messages based on error type
+ */
+export function getUserFriendlyErrorMessage(error) {
+    const message = error?.message || '';
+
+    // Network-level failures
+    if (/fetch failed|network|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)) {
+        return "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
+    }
+
+    // API timeouts
+    if (/timeout|timed out/i.test(message)) {
+        return "Sorry, that took too long to process. Please try again.";
+    }
+
+    // Rate limiting
+    if (error?.status === 429 || /rate limit|too many requests/i.test(message)) {
+        return "I'm getting too many requests right now. Please wait a moment and try again.";
+    }
+
+    // Service unavailable
+    if (error?.status === 503 || /service unavailable/i.test(message)) {
+        return "My AI service is temporarily unavailable. Please try again in a moment.";
+    }
+
+    // Generic fallback
+    return "Sorry, an error occurred while processing that.";
+}
+
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 400;
 // Removes chain-of-thought or meta sections the model may emit
@@ -200,7 +230,8 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);
         try {
-            await sendBotResponse(channel, `Sorry, an error occurred while processing that.`, { replyToId });
+            const errorMessage = getUserFriendlyErrorMessage(error);
+            await sendBotResponse(channel, errorMessage, { replyToId });
         } catch (sayError) { logger.error({ err: sayError }, 'Failed to send LLM error message to chat.'); }
     }
 }

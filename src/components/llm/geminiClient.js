@@ -5,6 +5,74 @@ import { GoogleGenAI, Type } from "@google/genai";
 import logger from '../../lib/logger.js';
 import { getCurrentTime } from '../../lib/timeUtils.js';
 
+// --- Retry Logic for Network Failures ---
+const MAX_RETRIES = 3;
+const BASE_RETRY_DELAY_MS = 500;
+
+/**
+ * Check if an error is retryable (network failures, timeouts, 503s)
+ */
+function isRetryableError(error) {
+    const status = error?.status || error?.response?.status;
+    if (status === 503 || status === 429 || status === 500) return true;
+
+    const message = error?.message || '';
+    // Check for network-level failures
+    if (/fetch failed|network|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)) return true;
+    // Check for timeout errors
+    if (/\b503\b|Service Unavailable|timeout|timed out/i.test(message)) return true;
+
+    return false;
+}
+
+/**
+ * Sleep helper for retry backoff
+ */
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry wrapper with exponential backoff for Gemini API calls
+ * @param {Function} fn - Async function to retry
+ * @param {string} operationName - Name of the operation for logging
+ * @returns {Promise} Result of the function call
+ */
+async function retryWithBackoff(fn, operationName = 'Gemini API call') {
+    let lastError;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+            const attemptNum = attempt + 1;
+
+            if (isRetryableError(error) && attempt < MAX_RETRIES - 1) {
+                const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+                logger.warn({
+                    attempt: attemptNum,
+                    delay,
+                    operation: operationName,
+                    err: { message: error.message, status: error?.status }
+                }, `${operationName} failed with retryable error. Retrying with backoff.`);
+                await sleep(delay);
+                continue;
+            }
+
+            // Non-retryable error or out of retries
+            logger.error({
+                attempt: attemptNum,
+                operation: operationName,
+                err: { message: error.message, status: error?.status, stack: error.stack }
+            }, `${operationName} failed (not retryable or out of retries).`);
+            throw error;
+        }
+    }
+
+    throw lastError;
+}
+
 // --- Define the System Instruction ---
 const CHAT_SAGE_SYSTEM_INSTRUCTION = `You are ChatSage—an engaging, curious chat bot. Be direct and specific.
 
@@ -153,28 +221,41 @@ export function initializeGeminiClient(geminiConfig) {
         // - startChat(options) → ai.chats.create({ model, config, history })
         generativeModel = {
             async generateContent(params) {
-                const { generationConfig, systemInstruction, tools, toolConfig, ...rest } = params || {};
-                const config = {};
-                if (generationConfig && typeof generationConfig === 'object') Object.assign(config, generationConfig);
-                if (systemInstruction) config.systemInstruction = systemInstruction;
-                if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
-                if (toolConfig) config.toolConfig = toolConfig;
-                return await genAI.models.generateContent({
-                    model: configuredModelId,
-                    ...rest,
-                    ...(Object.keys(config).length > 0 ? { config } : {})
-                });
+                return await retryWithBackoff(async () => {
+                    const { generationConfig, systemInstruction, tools, toolConfig, ...rest } = params || {};
+                    const config = {};
+                    if (generationConfig && typeof generationConfig === 'object') Object.assign(config, generationConfig);
+                    if (systemInstruction) config.systemInstruction = systemInstruction;
+                    if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
+                    if (toolConfig) config.toolConfig = toolConfig;
+                    return await genAI.models.generateContent({
+                        model: configuredModelId,
+                        ...rest,
+                        ...(Object.keys(config).length > 0 ? { config } : {})
+                    });
+                }, 'generateContent');
             },
             startChat(options = {}) {
                 const { systemInstruction, tools, history = [] } = options;
                 const config = {};
                 if (systemInstruction) config.systemInstruction = systemInstruction;
                 if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
-                return genAI.chats.create({
+                const chat = genAI.chats.create({
                     model: configuredModelId,
                     ...(Object.keys(config).length > 0 ? { config } : {}),
                     history
                 });
+
+                // Wrap the sendMessage method with retry logic
+                const originalSendMessage = chat.sendMessage.bind(chat);
+                chat.sendMessage = async (message) => {
+                    return await retryWithBackoff(
+                        async () => await originalSendMessage(message),
+                        'chat.sendMessage'
+                    );
+                };
+
+                return chat;
             }
         };
 

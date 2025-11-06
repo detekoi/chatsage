@@ -9,7 +9,7 @@ import {
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
 } from '../../llm/geminiClient.js';
-import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
+import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../llm/llmUtils.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
@@ -184,7 +184,8 @@ const askHandler = {
 
         } catch (error) {
             logger.error({ err: error, command: 'ask', query: userQuery }, `Error executing !ask command.`);
-            enqueueMessage(channel, `Sorry, an error occurred while processing your question.`, { replyToId: user?.id || user?.['message-id'] || null });
+            const errorMessage = getUserFriendlyErrorMessage(error);
+            enqueueMessage(channel, errorMessage, { replyToId: user?.id || user?.['message-id'] || null });
         }
     },
 };
