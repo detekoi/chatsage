@@ -52,7 +52,7 @@ const searchHandler = {
             // 2. Use the persistent chat session with googleSearch tool enabled
             // Pass context and chat history so bot has stream context and recent chat history when first created
             const chatSession = getOrCreateChatSession(channelName, contextPrompt, rawChatHistory);
-            const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"\nReference chat history by username when relevant.`;
+            const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"\nDon't mix up different users in chat history.`;
             const result = await chatSession.sendMessage({ message: fullPrompt });
             const initialResponseText = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
 
