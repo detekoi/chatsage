@@ -118,7 +118,11 @@ export function startAdSchedulePoller() {
     intervalId = setInterval(async () => {
         try {
             const contextManager = getContextManager();
-            for (const [channelName, state] of contextManager.getAllChannelStates()) {
+            const channelStates = contextManager.getAllChannelStates();
+            const channelCount = Array.from(channelStates).length;
+            logger.info({ channelCount }, '[AdSchedule] Poller tick - checking channels');
+
+            for (const [channelName, state] of channelStates) {
                 // Only if live - check stream context directly
                 const isLive = !!(state.streamContext?.game && state.streamContext.game !== 'N/A' && state.streamContext.game !== null);
                 logger.debug({
@@ -129,12 +133,12 @@ export function startAdSchedulePoller() {
                 if (!isLive) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - stream offline'); continue; }
                 // Only if ads category enabled (independent of auto-chat mode)
                 const cfg = await getChannelAutoChatConfig(channelName);
-                logger.debug({
+                logger.info({
                     channelName,
-                    config: cfg,
+                    mode: cfg?.mode,
                     adsEnabled: cfg?.categories?.ads
-                }, '[AdSchedule] Checking ads configuration');
-                if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
+                }, '[AdSchedule] Checking ads configuration for channel');
+                if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.info({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
                 // Fetch schedule via web UI
                 try {
                     const adScheduleData = await fetchAdScheduleViaWebUI(channelName);
