@@ -23,6 +23,7 @@ import trivia from './trivia.js';
 import botLang from './botlang.js';
 import lurk from './lurk.js';
 import auto from './auto.js';
+import quote from './quote.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
@@ -67,6 +68,8 @@ const commandHandlers = {
     botlang: botLang,
     lurk: lurk,
     auto: auto,
+    quote: quote,
+    quotes: quote, // Alias
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)

@@ -7,6 +7,7 @@ import { initializeStorage as initializeTriviaStorage } from '../components/triv
 import { initializeRiddleStorage } from '../components/riddle/riddleStorage.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
+import { initializeQuotesStorage } from '../components/quotes/quoteStorage.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeGeminiClient } from '../components/llm/geminiClient.js';
 import { initializeHelixClient } from '../components/twitch/helixClient.js';
@@ -95,6 +96,9 @@ export async function initializeStorageComponents() {
 
     logger.info('Initializing Auto-Chat Storage...');
     await initializeAutoChatStorage();
+
+    logger.info('Initializing Quotes Storage...');
+    await initializeQuotesStorage();
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();
