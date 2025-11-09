@@ -18,17 +18,37 @@ function isPrivilegedUser(tags, channelName) {
     return isMod || isBroadcaster;
 }
 
-// Parse text of form: 'some quote text - author'
+// Parse text of form: 'some quote text - author' or 'some quote text-author'
+// Supports '-', '–', '—' with optional spaces
 // Returns { text, saidBy }
 function parseQuoteText(raw) {
-    const s = String(raw || '').trim().replace(/^["“”]+|["“”]+$/g, '');
-    const split = s.split(' - ');
-    if (split.length >= 2) {
-        const saidBy = split.pop().trim();
-        const text = split.join(' - ').trim();
-        return { text, saidBy: saidBy || null };
+    const s = String(raw || '').trim().replace(/^["""]+|["""]+$/g, '');
+    
+    // Find the last occurrence of any dash type
+    const lastHyphen = s.lastIndexOf('-');
+    const lastEnDash = s.lastIndexOf('–');
+    const lastEmDash = s.lastIndexOf('—');
+    const lastDashPos = Math.max(lastHyphen, lastEnDash, lastEmDash);
+    
+    if (lastDashPos === -1) {
+        return { text: s, saidBy: null };
     }
-    return { text: s, saidBy: null };
+    
+    // Split at the last dash position
+    const beforeDash = s.substring(0, lastDashPos).trim();
+    const afterDash = s.substring(lastDashPos + 1).trim();
+    
+    // Remove any leading dashes/spaces from author part
+    const author = afterDash.replace(/^[\-–—\s]+/, '').trim();
+    
+    if (!author) {
+        return { text: s, saidBy: null };
+    }
+    
+    return { 
+        text: beforeDash, 
+        saidBy: author || null 
+    };
 }
 
 const MAX_QUOTE_LENGTH = 300;

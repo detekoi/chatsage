@@ -2,8 +2,8 @@
 import { Firestore, FieldValue } from '@google-cloud/firestore';
 import logger from '../../lib/logger.js';
 
-const QUOTES_COLLECTION = 'quotes';
-const QUOTE_COUNTERS_COLLECTION = 'quoteCounters';
+const CHANNEL_QUOTES_COLLECTION = 'channelQuotes';
+const ITEMS_SUBCOLLECTION = 'items';
 
 let db = null;
 
@@ -20,7 +20,7 @@ export async function initializeQuotesStorage() {
     try {
         db = new Firestore();
         // Test access
-        await db.collection(QUOTE_COUNTERS_COLLECTION).limit(1).get();
+        await db.collection(CHANNEL_QUOTES_COLLECTION).limit(1).get();
         logger.info("[QuoteStorage] Firestore initialized for quotes.");
     } catch (err) {
         logger.fatal({ err }, "[QuoteStorage] Failed to initialize Firestore.");
@@ -37,8 +37,32 @@ function _channelKey(channelName) {
     return String(channelName || '').toLowerCase();
 }
 
-function _quoteDocId(channelName, quoteId) {
-    return `${_channelKey(channelName)}-${quoteId}`;
+/**
+ * Normalizes saidBy field: strips leading '@', collapses multiple spaces
+ */
+function _normalizeSaidBy(saidBy) {
+    if (!saidBy) return null;
+    return String(saidBy)
+        .trim()
+        .replace(/^@+/, '') // Remove leading @ symbols
+        .replace(/\s+/g, ' ') // Collapse multiple spaces
+        .trim() || null;
+}
+
+/**
+ * Gets the channel quotes document reference
+ */
+function _getChannelQuotesRef(channelName) {
+    const database = _getDb();
+    const chan = _channelKey(channelName);
+    return database.collection(CHANNEL_QUOTES_COLLECTION).doc(chan);
+}
+
+/**
+ * Gets the items subcollection reference for a channel
+ */
+function _getItemsRef(channelName) {
+    return _getChannelQuotesRef(channelName).collection(ITEMS_SUBCOLLECTION);
 }
 
 export async function addQuote(channelName, text, saidBy, addedBy) {
@@ -47,52 +71,56 @@ export async function addQuote(channelName, text, saidBy, addedBy) {
 
     if (!text || !text.trim()) throw new QuoteStorageError('Quote text is required');
 
+    const normalizedSaidBy = _normalizeSaidBy(saidBy);
+
     return await database.runTransaction(async (tx) => {
-        const counterRef = database.collection(QUOTE_COUNTERS_COLLECTION).doc(chan);
-        const counterSnap = await tx.get(counterRef);
+        const channelRef = _getChannelQuotesRef(chan);
+        const channelSnap = await tx.get(channelRef);
 
         let nextId = 1;
-        if (counterSnap.exists && Number.isFinite(counterSnap.data().nextId)) {
-            nextId = counterSnap.data().nextId;
+        if (channelSnap.exists && Number.isFinite(channelSnap.data().nextId)) {
+            nextId = channelSnap.data().nextId;
         }
 
         const quoteId = nextId;
         const newNext = quoteId + 1;
 
-        const quoteRef = database.collection(QUOTES_COLLECTION).doc(_quoteDocId(chan, quoteId));
+        const itemsRef = _getItemsRef(chan);
+        const quoteRef = itemsRef.doc(String(quoteId));
+        
         tx.set(quoteRef, {
-            channel: chan,
             quoteId,
             text: String(text).trim(),
-            saidBy: saidBy ? String(saidBy).trim() : null,
+            saidBy: normalizedSaidBy,
             addedBy: addedBy ? String(addedBy).trim() : null,
             createdAt: FieldValue.serverTimestamp(),
             lastShownAt: null,
             usageCount: 0
         });
 
-        tx.set(counterRef, { nextId: newNext }, { merge: true });
+        // Update or create channel document with nextId
+        tx.set(channelRef, { nextId: newNext }, { merge: true });
 
         return { quoteId };
     });
 }
 
 export async function getQuoteById(channelName, quoteId) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
-    const ref = database.collection(QUOTES_COLLECTION).doc(_quoteDocId(chan, quoteId));
+    const itemsRef = _getItemsRef(chan);
+    const ref = itemsRef.doc(String(quoteId));
     const snap = await ref.get();
     return snap.exists ? snap.data() : null;
 }
 
 export async function getRandomQuote(channelName) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
+    const itemsRef = _getItemsRef(chan);
 
     try {
-        // Fetch all quotes for true randomness (or a large sample)
-        const snap = await database.collection(QUOTES_COLLECTION)
-            .where('channel', '==', chan)
+        // Fetch quotes for true randomness (or a large sample)
+        // No need for where clause since we're querying a subcollection
+        const snap = await itemsRef
             .orderBy('createdAt', 'desc')
             .limit(500)
             .get();
@@ -110,8 +138,7 @@ export async function getRandomQuote(channelName) {
         // If index doesn't exist yet, try without orderBy as fallback
         if (error?.code === 9 || error?.message?.includes('index')) {
             logger.warn({ channel: chan, err: error }, '[QuoteStorage] Index missing, falling back to simple query');
-            const snap = await database.collection(QUOTES_COLLECTION)
-                .where('channel', '==', chan)
+            const snap = await itemsRef
                 .limit(500)
                 .get();
             const docs = snap.docs.map(d => d.data());
@@ -129,12 +156,11 @@ export async function getRandomQuote(channelName) {
 }
 
 export async function getLastQuote(channelName) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
+    const itemsRef = _getItemsRef(chan);
     
     try {
-        const snap = await database.collection(QUOTES_COLLECTION)
-            .where('channel', '==', chan)
+        const snap = await itemsRef
             .orderBy('createdAt', 'desc')
             .limit(1)
             .get();
@@ -145,8 +171,7 @@ export async function getLastQuote(channelName) {
         // If index doesn't exist yet, try without orderBy as fallback
         if (error?.code === 9 || error?.message?.includes('index')) {
             logger.warn({ channel: chan, err: error }, '[QuoteStorage] Index missing, falling back to simple query');
-            const snap = await database.collection(QUOTES_COLLECTION)
-                .where('channel', '==', chan)
+            const snap = await itemsRef
                 .limit(1)
                 .get();
             if (snap.empty) return null;
@@ -158,14 +183,13 @@ export async function getLastQuote(channelName) {
 }
 
 export async function searchQuotes(channelName, term) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
+    const itemsRef = _getItemsRef(chan);
     const q = String(term || '').toLowerCase();
 
     try {
         // Firestore doesn't support substring contains well; fetch a window and filter client-side.
-        const snap = await database.collection(QUOTES_COLLECTION)
-            .where('channel', '==', chan)
+        const snap = await itemsRef
             .orderBy('createdAt', 'desc')
             .limit(100)
             .get();
@@ -183,8 +207,7 @@ export async function searchQuotes(channelName, term) {
         // If index doesn't exist yet, try without orderBy as fallback
         if (error?.code === 9 || error?.message?.includes('index')) {
             logger.warn({ channel: chan, err: error }, '[QuoteStorage] Index missing, falling back to simple query');
-            const snap = await database.collection(QUOTES_COLLECTION)
-                .where('channel', '==', chan)
+            const snap = await itemsRef
                 .limit(100)
                 .get();
             const results = [];
@@ -202,9 +225,9 @@ export async function searchQuotes(channelName, term) {
 }
 
 export async function deleteQuote(channelName, quoteId) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
-    const ref = database.collection(QUOTES_COLLECTION).doc(_quoteDocId(chan, quoteId));
+    const itemsRef = _getItemsRef(chan);
+    const ref = itemsRef.doc(String(quoteId));
     const snap = await ref.get();
     if (!snap.exists) return false;
     await ref.delete();
@@ -212,9 +235,9 @@ export async function deleteQuote(channelName, quoteId) {
 }
 
 export async function editQuote(channelName, quoteId, newText, newSaidBy = null) {
-    const database = _getDb();
     const chan = _channelKey(channelName);
-    const ref = database.collection(QUOTES_COLLECTION).doc(_quoteDocId(chan, quoteId));
+    const itemsRef = _getItemsRef(chan);
+    const ref = itemsRef.doc(String(quoteId));
     const snap = await ref.get();
     if (!snap.exists) return false;
 
@@ -222,7 +245,9 @@ export async function editQuote(channelName, quoteId, newText, newSaidBy = null)
         lastEditedAt: FieldValue.serverTimestamp()
     };
     if (newText && newText.trim()) update.text = newText.trim();
-    if (newSaidBy !== undefined) update.saidBy = newSaidBy ? String(newSaidBy).trim() : null;
+    if (newSaidBy !== undefined) {
+        update.saidBy = _normalizeSaidBy(newSaidBy);
+    }
 
     await ref.update(update);
     return true;
