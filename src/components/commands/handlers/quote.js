@@ -22,7 +22,10 @@ function isPrivilegedUser(tags, channelName) {
 // Supports '-', '–', '—' with optional spaces
 // Returns { text, saidBy }
 function parseQuoteText(raw) {
-    const s = String(raw || '').trim().replace(/^["""]+|["""]+$/g, '');
+    let s = String(raw || '').trim();
+    
+    // Remove surrounding quotes first
+    s = s.replace(/^["""]+|["""]+$/g, '');
     
     // Find the last occurrence of any dash type
     const lastHyphen = s.lastIndexOf('-');
@@ -31,7 +34,7 @@ function parseQuoteText(raw) {
     const lastDashPos = Math.max(lastHyphen, lastEnDash, lastEmDash);
     
     if (lastDashPos === -1) {
-        return { text: s, saidBy: null };
+        return { text: s.trim(), saidBy: null };
     }
     
     // Split at the last dash position
@@ -41,12 +44,15 @@ function parseQuoteText(raw) {
     // Remove any leading dashes/spaces from author part
     const author = afterDash.replace(/^[\-–—\s]+/, '').trim();
     
+    // Also remove any trailing quotes from the text part
+    const text = beforeDash.replace(/["""]+$/, '').trim();
+    
     if (!author) {
-        return { text: s, saidBy: null };
+        return { text: s.trim(), saidBy: null };
     }
     
     return { 
-        text: beforeDash, 
+        text, 
         saidBy: author || null 
     };
 }
