@@ -44,10 +44,17 @@ const searchHandler = {
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
 
-            // Get raw chat history from context manager for initializing session history
-            const channelStates = contextManager.getAllChannelStates();
-            const channelState = channelStates.get(channelName);
-            const rawChatHistory = channelState?.chatHistory || [];
+            // Get raw chat history from context manager for initializing session history (guard for older mocks)
+            let rawChatHistory = [];
+            try {
+                if (contextManager && typeof contextManager.getAllChannelStates === 'function') {
+                    const channelStates = contextManager.getAllChannelStates();
+                    const channelState = channelStates?.get ? channelStates.get(channelName) : null;
+                    rawChatHistory = channelState?.chatHistory || [];
+                }
+            } catch (_) {
+                rawChatHistory = [];
+            }
 
             // 2. Use the persistent chat session with googleSearch tool enabled
             // Pass context and chat history so bot has stream context and recent chat history when first created

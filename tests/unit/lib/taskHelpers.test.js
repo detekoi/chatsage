@@ -11,6 +11,7 @@ var mockClient = {
 };
 
 jest.mock('@google-cloud/tasks', () => ({
+    CloudTasksClient: jest.fn().mockImplementation(() => mockClient)
 }));
 jest.mock('../../../src/lib/logger.js');
 // CloudTasksClient not needed in tests (mocked)
@@ -268,7 +269,8 @@ describe('taskHelpers', () => {
         });
 
         it('should give up after max attempts on retryable errors', async () => {
-            const retryableError = new Error('Unavailable');
+            const errorMessage = 'Unavailable';
+            const retryableError = new Error(errorMessage);
             retryableError.code = 14; // UNAVAILABLE
 
             mockClient.queuePath.mockReturnValue('projects/test-project/locations/us-central1/queues/test-queue');
@@ -277,12 +279,15 @@ describe('taskHelpers', () => {
             jest.useFakeTimers();
 
             const promise = scheduleNextKeepAlivePing();
+            
+            // Add error handler to prevent unhandled rejection
+            promise.catch(() => {});
 
-            // Run all timers to completion
+            // Run all timers to completion (this will process all retry delays)
             await jest.runAllTimersAsync();
 
-            // Wait for rejection
-            await expect(promise).rejects.toThrow('Unavailable');
+            // Wait for rejection and verify error
+            await expect(promise).rejects.toThrow(errorMessage);
             expect(mockClient.createTask).toHaveBeenCalledTimes(4); // Max attempts
 
             jest.useRealTimers();

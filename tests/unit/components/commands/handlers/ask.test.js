@@ -15,7 +15,7 @@ import {
     generateStandardResponse,
     decideSearchWithStructuredOutput
 } from '../../../../../src/components/llm/geminiClient.js';
-import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
+import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 
 describe('Ask Command Handler', () => {
@@ -38,6 +38,7 @@ describe('Ask Command Handler', () => {
         generateStandardResponse.mockClear();
         decideSearchWithStructuredOutput.mockClear();
         removeMarkdownAsterisks.mockClear();
+        getUserFriendlyErrorMessage.mockClear();
         enqueueMessage.mockClear();
 
         // Setup mocks
@@ -52,6 +53,7 @@ describe('Ask Command Handler', () => {
         generateStandardResponse.mockResolvedValue('mock standard response');
         decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
+        getUserFriendlyErrorMessage.mockReturnValue('Sorry, an error occurred while processing your question.');
         enqueueMessage.mockResolvedValue();
 
         // Setup context manager default return

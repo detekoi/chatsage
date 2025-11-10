@@ -29,7 +29,7 @@ describe('geminiClient utility functions', () => {
             expect(prompt).toContain('Title: Test Stream Title');
             expect(prompt).toContain('Tags: tag1, tag2, tag3');
             expect(prompt).toContain('Chat summary: Recent chat summary');
-            expect(prompt).toContain('Recent messages: user1: hello\nuser2: hi');
+            expect(prompt).toContain('Recent chat messages (each line shows username: message):\nuser1: hello\nuser2: hi');
         });
 
         it('should handle missing context fields gracefully', () => {
@@ -42,7 +42,7 @@ describe('geminiClient utility functions', () => {
             expect(prompt).toContain('Title: N/A');
             expect(prompt).toContain('Tags: N/A');
             expect(prompt).toContain('Chat summary: No summary available.');
-            expect(prompt).toContain('Recent messages: No recent messages.');
+            expect(prompt).toContain('Recent chat messages (each line shows username: message):\nNo recent messages.');
         });
 
         it('should handle partial context fields', () => {

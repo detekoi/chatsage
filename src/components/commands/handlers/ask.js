@@ -185,7 +185,10 @@ const askHandler = {
         } catch (error) {
             logger.error({ err: error, command: 'ask', query: userQuery }, `Error executing !ask command.`);
             const errorMessage = getUserFriendlyErrorMessage(error);
-            enqueueMessage(channel, errorMessage, { replyToId: user?.id || user?.['message-id'] || null });
+            const finalMessage = errorMessage === 'Sorry, an error occurred while processing that.'
+                ? 'Sorry, an error occurred while processing your question.'
+                : errorMessage;
+            enqueueMessage(channel, finalMessage, { replyToId: user?.id || user?.['message-id'] || null });
         }
     },
 };

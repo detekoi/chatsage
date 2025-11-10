@@ -31,6 +31,11 @@ describe('secretManager', () => {
 
         SecretManagerServiceClient.mockImplementation(() => mockClient);
 
+        // Ensure logger has fatal method
+        if (!logger.fatal) {
+            logger.fatal = jest.fn();
+        }
+
         // Mock process.env for tests
         process.env.NODE_ENV = 'test';
         delete process.env.TWITCH_BOT_REFRESH_TOKEN;

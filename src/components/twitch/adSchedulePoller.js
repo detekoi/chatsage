@@ -138,7 +138,7 @@ export function startAdSchedulePoller() {
                     mode: cfg?.mode,
                     adsEnabled: cfg?.categories?.ads
                 }, '[AdSchedule] Checking ads configuration for channel');
-                if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.info({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
+                if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
                 // Fetch schedule via web UI
                 try {
                     const adScheduleData = await fetchAdScheduleViaWebUI(channelName);

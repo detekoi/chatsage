@@ -23,19 +23,29 @@ describe('llmUtils', () => {
         jest.clearAllMocks();
 
         // Mock the dependencies
+        const mockChannelState = new Map([
+            ['testchannel', {
+                chatHistory: []
+            }]
+        ]);
+
         getContextManager.mockReturnValue({
             getContextForLLM: jest.fn().mockReturnValue({
                 chatHistory: [],
                 streamContext: {},
                 userStates: new Map(),
                 botLanguage: 'en'
-            })
+            }),
+            getAllChannelStates: jest.fn().mockReturnValue(mockChannelState)
         });
 
         buildContextPrompt.mockReturnValue('Mock context prompt');
         getOrCreateChatSession.mockReturnValue({
             sendMessage: jest.fn().mockResolvedValue({
-                text: jest.fn().mockReturnValue('Mock LLM response')
+                text: jest.fn().mockReturnValue('Mock LLM response'),
+                candidates: [{
+                    content: { parts: [{ text: 'Mock LLM response' }] }
+                }]
             })
         });
 
@@ -110,7 +120,7 @@ describe('llmUtils', () => {
 
             expect(getContextManager).toHaveBeenCalled();
             expect(buildContextPrompt).toHaveBeenCalled();
-            expect(getOrCreateChatSession).toHaveBeenCalledWith('testchannel', 'Mock context prompt');
+            expect(getOrCreateChatSession).toHaveBeenCalledWith('testchannel', 'Mock context prompt', expect.anything());
             expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: null });
             expect(logger.info).toHaveBeenCalledWith(
                 { channel: 'testchannel', user: 'testuser', trigger: 'mention' },
@@ -150,7 +160,8 @@ describe('llmUtils', () => {
         it('should handle empty LLM response', async () => {
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
-                    text: jest.fn().mockReturnValue('')
+                    text: jest.fn().mockReturnValue(''),
+                    candidates: []
                 })
             });
 
@@ -165,7 +176,8 @@ describe('llmUtils', () => {
         it('should handle null LLM response', async () => {
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
-                    text: jest.fn().mockReturnValue(null)
+                    text: jest.fn().mockReturnValue(null),
+                    candidates: []
                 })
             });
 
@@ -179,7 +191,10 @@ describe('llmUtils', () => {
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
-                    text: jest.fn().mockReturnValue(longResponse)
+                    text: jest.fn().mockReturnValue(longResponse),
+                    candidates: [{
+                        content: { parts: [{ text: longResponse }] }
+                    }]
                 })
             });
 
@@ -197,7 +212,10 @@ describe('llmUtils', () => {
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
-                    text: jest.fn().mockReturnValue(longResponse)
+                    text: jest.fn().mockReturnValue(longResponse),
+                    candidates: [{
+                        content: { parts: [{ text: longResponse }] }
+                    }]
                 })
             });
 
@@ -214,7 +232,10 @@ describe('llmUtils', () => {
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
-                    text: jest.fn().mockReturnValue(longResponse)
+                    text: jest.fn().mockReturnValue(longResponse),
+                    candidates: [{
+                        content: { parts: [{ text: longResponse }] }
+                    }]
                 })
             });
 

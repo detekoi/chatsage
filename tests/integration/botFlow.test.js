@@ -17,7 +17,7 @@ import { cleanupTranslationUtils } from '../../src/lib/translationUtils';
 // --- Mocks ---
 jest.mock('tmi.js');
 // jest.mock('axios'); // REMOVE - No longer mocking axios directly here
-jest.mock('@google/generative-ai');
+jest.mock('@google/genai');
 jest.mock('../../src/lib/logger');
 jest.mock('../../src/lib/ircSender');
 jest.mock('../../src/components/twitch/auth');
