@@ -382,6 +382,52 @@ describe('Quote Command Handler', () => {
             expect(addQuote).not.toHaveBeenCalled();
         });
 
+        test('should handle quote with trailing dash but no author', async () => {
+            addQuote.mockResolvedValue({ quoteId: 8 });
+
+            const context = createMockContext(['add', 'Quote text -']);
+            await quoteHandler.execute(context);
+
+            // If dash has no content after it, treat it as part of the quote text
+            // (e.g., kaomoji or intentional dash usage)
+            expect(addQuote).toHaveBeenCalledWith(
+                'testchannel',
+                'Quote text -',
+                null,
+                'TestUser'
+            );
+        });
+
+        test('should handle quote with trailing em-dash but no author', async () => {
+            addQuote.mockResolvedValue({ quoteId: 9 });
+
+            const context = createMockContext(['add', 'Quote text —']);
+            await quoteHandler.execute(context);
+
+            // Em-dash with no author should be kept as part of quote
+            expect(addQuote).toHaveBeenCalledWith(
+                'testchannel',
+                'Quote text —',
+                null,
+                'TestUser'
+            );
+        });
+
+        test('should handle quote with dash and spaces but no author', async () => {
+            addQuote.mockResolvedValue({ quoteId: 10 });
+
+            const context = createMockContext(['add', 'Quote text -   ']);
+            await quoteHandler.execute(context);
+
+            // Only spaces/dashes after the dash means no author - keep dash in quote
+            expect(addQuote).toHaveBeenCalledWith(
+                'testchannel',
+                'Quote text -',
+                null,
+                'TestUser'
+            );
+        });
+
         test('should use username if display-name not available', async () => {
             addQuote.mockResolvedValue({ quoteId: 8 });
             const context = createMockContext(['add', 'Test quote'], '#testchannel', {

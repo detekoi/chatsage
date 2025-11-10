@@ -44,12 +44,13 @@ function parseQuoteText(raw) {
     // Remove any leading dashes/spaces from author part
     const author = afterDash.replace(/^[\-–—\s]+/, '').trim();
     
-    // Also remove any trailing quotes from the text part
-    const text = beforeDash.replace(/["""]+$/, '').trim();
-    
+    // If there's no actual content after the dash, treat the dash as part of the quote text
     if (!author) {
         return { text: s.trim(), saidBy: null };
     }
+    
+    // Also remove any trailing quotes from the text part
+    const text = beforeDash.replace(/["""]+$/, '').trim();
     
     return { 
         text, 
