@@ -630,6 +630,40 @@ describe('Message Handlers', () => {
             );
         });
 
+        test('should handle mention in the middle of message', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: 'I have a theory @testbot what do you think?'
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'I have a theory what do you think?',
+                'mention',
+                'msg-123'
+            );
+        });
+
+        test('should handle mention at the end of message', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: 'What are your thoughts on this @testbot'
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'What are your thoughts on this',
+                'mention',
+                'msg-123'
+            );
+        });
+
         test('should use message-id as fallback for replyToId', async () => {
             await handleBotMention({
                 ...createBaseParams(),
