@@ -370,13 +370,13 @@ describe('Quote Command Handler', () => {
         });
 
         test('should reject quotes that are too long', async () => {
-            const longQuote = 'a'.repeat(301);
+            const longQuote = 'a'.repeat(501);
             const context = createMockContext(['add', longQuote]);
             await quoteHandler.execute(context);
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Quote too long (max 300 chars).',
+                'Quote too long (max 500 chars).',
                 { replyToId: '123' }
             );
             expect(addQuote).not.toHaveBeenCalled();
@@ -635,7 +635,7 @@ describe('Quote Command Handler', () => {
         });
 
         test('should reject edit with quote too long', async () => {
-            const longQuote = 'a'.repeat(301);
+            const longQuote = 'a'.repeat(501);
             const context = createMockContext(['edit', '5', longQuote], '#testchannel', {
                 username: 'moduser',
                 'display-name': 'ModUser',
@@ -647,7 +647,7 @@ describe('Quote Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Quote too long (max 300 chars).',
+                'Quote too long (max 500 chars).',
                 { replyToId: '123' }
             );
             expect(editQuote).not.toHaveBeenCalled();

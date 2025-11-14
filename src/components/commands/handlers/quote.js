@@ -58,7 +58,7 @@ function parseQuoteText(raw) {
     };
 }
 
-const MAX_QUOTE_LENGTH = 300;
+const MAX_QUOTE_LENGTH = 500;
 
 const quoteHandler = {
     name: 'quote',
