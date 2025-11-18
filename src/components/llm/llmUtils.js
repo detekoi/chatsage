@@ -34,7 +34,7 @@ export function getUserFriendlyErrorMessage(error) {
     return "Sorry, an error occurred while processing that.";
 }
 
-const MAX_IRC_MESSAGE_LENGTH = 450;
+const MAX_IRC_MESSAGE_LENGTH = 500; // Twitch IRC message limit
 const SUMMARY_TARGET_LENGTH = 400;
 // Removes chain-of-thought or meta sections the model may emit
 function stripMetaThoughts(text) {
@@ -215,15 +215,15 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
                 finalReplyText = removeMarkdownAsterisks(summary);
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
-                logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to truncation.`);
-                finalReplyText = removeMarkdownAsterisks(initialResponseText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...');
+                logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to smart truncation.`);
+                finalReplyText = smartTruncate(removeMarkdownAsterisks(initialResponseText), MAX_IRC_MESSAGE_LENGTH);
             }
         }
 
         // e. Final length check and Send
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
-             logger.warn(`Final reply (even after summary/truncation) too long (${finalReplyText.length} chars). Truncating sharply.`);
-             finalReplyText = removeMarkdownAsterisks(finalReplyText.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...');
+             logger.warn(`Final reply (even after summary/truncation) too long (${finalReplyText.length} chars). Applying smart truncation.`);
+             finalReplyText = smartTruncate(finalReplyText, MAX_IRC_MESSAGE_LENGTH);
         }
         await sendBotResponse(channel, finalReplyText, { replyToId });
 
