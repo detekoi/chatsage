@@ -399,7 +399,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
 
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Prioritize substance; when helpful add a specific detail/fact/tip tied to the user's topic, and optionally a short, tailored question. No meta. Don't restate the question or context. Don't repeat the username. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤450 chars. Prioritize substance; when helpful add a specific detail/fact/tip tied to the user's topic, and optionally a short, tailored question. No meta. Don't restate the question or context. Don't repeat the username. Reference chat history by username.`;
 
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
@@ -485,7 +485,8 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             logger.warn({ response }, 'Gemini response missing extractable text.');
             return null;
         }
-        logger.info({ responseLength: text.length, responsePreview: text.substring(0, 50) }, 'Standard response .');
+        logger.info(`[LLM] Standard response generated: ${text.length} chars`);
+        logger.debug({ responsePreview: text.substring(0, 100) }, 'Response preview');
         return text;
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
@@ -503,7 +504,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be ≤450 characters (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit. Reference chat history by username.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
@@ -559,8 +560,10 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
             logger.warn('Search-grounded Gemini response candidate missing extractable text.');
             return null;
         }
-        logger.info({ responseLength: text.length, responsePreview: text.substring(0, 50) }, 'Search-grounded response.');
-        return text.trim();
+        const trimmedText = text.trim();
+        logger.info(`[LLM] Search-grounded response generated: ${trimmedText.length} chars`);
+        logger.debug({ responsePreview: trimmedText.substring(0, 100) }, 'Response preview');
+        return trimmedText;
     } catch (error) {
         logger.error({ err: error }, 'Error during search-grounded generateContent call');
         return null;
@@ -577,7 +580,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
 export async function generateUnifiedResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. No meta. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤450 chars, direct, grounded if needed. No meta. Reference chat history by username.`;
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],

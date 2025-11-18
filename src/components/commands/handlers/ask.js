@@ -80,7 +80,8 @@ function extractLocationFromTimeQuery(userQuery) {
  * @param {string} userQuery - The original query for context.
  */
 async function handleAskResponseFormatting(channel, userName, responseText, userQuery, replyToId) {
-    logger.info({ responseLength: responseText?.length, userQuery }, `handleAskResponseFormatting called for ${userName}`);
+    const initialLength = responseText?.length || 0;
+    logger.info(`[!ask] Response received for ${userName}: ${initialLength} chars`);
 
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
@@ -94,7 +95,13 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
     // Remove markdown asterisks
     finalReplyText = removeMarkdownAsterisks(finalReplyText);
 
+    const finalLength = finalReplyText.length;
+    if (finalLength !== initialLength) {
+        logger.info(`[!ask] After cleanup: ${finalLength} chars (removed ${initialLength - finalLength} chars)`);
+    }
+
     // Let ircSender.js handle all length processing (summarization/truncation)
+    logger.info(`[!ask] Enqueueing message (${finalLength} chars) for ${userName}`);
     enqueueMessage(channel, finalReplyText, { replyToId });
 }
 

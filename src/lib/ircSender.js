@@ -255,39 +255,47 @@ async function enqueueMessage(channel, text, options = {}) {
 
     // Handle length limits with summarization fallback (only if not already processed)
     if (!skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.info(`Message too long (${finalText.length} chars), attempting summarization before queueing.`);
-        
+        logger.info(`[IRC Sender] Message too long (${finalText.length} chars > ${MAX_IRC_MESSAGE_LENGTH}), attempting LLM summarization.`);
+
         try {
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
+                const beforeLength = finalText.length;
                 finalText = summary.trim();
                 // Hard clamp to 450 to guarantee Twitch-safe length even if model slightly exceeds target
                 if (finalText.length > SUMMARY_TARGET_LENGTH) {
+                    logger.info(`[IRC Sender] Summary still too long (${finalText.length} > ${SUMMARY_TARGET_LENGTH}), applying intelligent truncation.`);
                     finalText = _intelligentTruncate(finalText, SUMMARY_TARGET_LENGTH);
                 }
-                logger.info(`Message summarization successful (${finalText.length} chars).`);
+                logger.info(`[IRC Sender] LLM summarization successful: ${beforeLength} chars → ${finalText.length} chars`);
             } else {
-                logger.warn(`Summarization failed. Falling back to intelligent truncation.`);
+                logger.warn(`[IRC Sender] LLM summarization failed. Falling back to intelligent truncation at ${MAX_IRC_MESSAGE_LENGTH} chars.`);
                 finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+                logger.info(`[IRC Sender] Intelligent truncation applied: final length ${finalText.length} chars`);
             }
         } catch (error) {
-            logger.error({ err: error }, 'Error during message summarization. Falling back to intelligent truncation.');
+            logger.error({ err: error }, `[IRC Sender] Error during LLM summarization. Falling back to intelligent truncation.`);
             finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+            logger.info(`[IRC Sender] Intelligent truncation applied after error: final length ${finalText.length} chars`);
         }
-        
+
         // Final safety check in case summarization still produced too long text
         if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-            logger.warn(`Summarized message still too long (${finalText.length} chars), applying intelligent truncation.`);
+            logger.warn(`[IRC Sender] Message STILL too long after processing (${finalText.length} chars), applying emergency truncation.`);
             finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+            logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
         }
     } else if (skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
         // Emergency fallback: if length processing was skipped but message is still too long
-        logger.warn(`Message marked as pre-processed but still too long (${finalText.length} chars). Applying emergency truncation.`);
+        logger.warn(`[IRC Sender] Message marked as pre-processed but still too long (${finalText.length} chars). Applying emergency truncation.`);
         finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+        logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
+    } else if (!skipLengthProcessing) {
+        logger.debug(`[IRC Sender] Message length OK (${finalText.length} chars ≤ ${MAX_IRC_MESSAGE_LENGTH}), no processing needed.`);
     }
 
     messageQueue.push({ channel, text: finalText, replyToId });
-    logger.debug(`Message queued for ${channel}. Queue size: ${messageQueue.length}`);
+    logger.info(`[IRC Sender] Message queued for ${channel}: ${finalText.length} chars. Queue size: ${messageQueue.length}`);
 
     // Trigger processing if not already running
     if (!isSending) {
