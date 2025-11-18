@@ -108,7 +108,8 @@ export function smartTruncate(text, maxLength) {
     }
 
     // Hard truncation as last resort (add period for completeness)
-    return truncated.trim() + '.';
+    // Reserve space for the period to ensure result doesn't exceed maxLength
+    return text.substring(0, maxLength - 1).trim() + '.';
 }
 
 /**
