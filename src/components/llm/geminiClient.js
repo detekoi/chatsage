@@ -485,7 +485,8 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             logger.warn({ response }, 'Gemini response missing extractable text.');
             return null;
         }
-        logger.info({ responseLength: text.length, responsePreview: text.substring(0, 50) }, 'Standard response .');
+        logger.info(`[LLM] Standard response generated: ${text.length} chars`);
+        logger.debug({ responsePreview: text.substring(0, 100) }, 'Response preview');
         return text;
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
@@ -559,8 +560,10 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
             logger.warn('Search-grounded Gemini response candidate missing extractable text.');
             return null;
         }
-        logger.info({ responseLength: text.length, responsePreview: text.substring(0, 50) }, 'Search-grounded response.');
-        return text.trim();
+        const trimmedText = text.trim();
+        logger.info(`[LLM] Search-grounded response generated: ${trimmedText.length} chars`);
+        logger.debug({ responsePreview: trimmedText.substring(0, 100) }, 'Response preview');
+        return trimmedText;
     } catch (error) {
         logger.error({ err: error }, 'Error during search-grounded generateContent call');
         return null;
