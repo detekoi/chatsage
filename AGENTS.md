@@ -49,7 +49,7 @@ ChatSage is a Twitch chat bot with LLM integration using Google Gemini. The bot 
 - **Timer Strategy**: Real timers by default, opt into fake timers when needed for deterministic testing
 
 ## Security
-- All secrets managed via Google Secret Manager
+- Secrets managed via Google Secret Manager
 - OAuth tokens handled by dedicated auth modules
 - No logging of sensitive data (tokens, user data)
 - Rate limiting implemented for all external API calls

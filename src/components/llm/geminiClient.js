@@ -272,7 +272,7 @@ export function initializeGeminiClient(geminiConfig) {
 // ... (rest of the file with export keywords on functions) ...
 
 export function getGenAIInstance() {
-     if (!genAI) {
+    if (!genAI) {
         throw new Error('Gemini client (GenAI) has not been initialized.');
     }
     return genAI;
@@ -319,7 +319,7 @@ export function getOrCreateChatSession(channelName, initialContext = null, chatH
     }
 
     const model = getGeminiClient();
-    
+
     // Combine the base persona with the initial stream/chat context.
     let finalSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
     if (initialContext) {
@@ -328,7 +328,7 @@ export function getOrCreateChatSession(channelName, initialContext = null, chatH
 --- IMPORTANT SESSION CONTEXT ---
 ${initialContext}`;
     }
-    
+
     // Prepare initial history from recent chat messages if provided
     const initialHistory = Array.isArray(chatHistory) && chatHistory.length > 0
         ? _convertChatHistoryToGeminiHistory(chatHistory, 15)
@@ -399,7 +399,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
 
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Prioritize substance; when helpful add a specific detail/fact/tip tied to the user's topic, and optionally a short, tailored question. No meta. Don't restate the question or context. Don't repeat the username. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Answer the question directly and concisely. Prioritize substance and facts. No meta. Don't restate the question or context. Don't repeat the username.`;
 
     logger.debug({ promptLength: fullPrompt.length }, 'Generating standard (no search) response');
 
@@ -467,7 +467,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
         // 4. Standard text response (no function call - this is where the hallucination happened)
         // Check if it TRIED to answer a time query without the function
         if (/\b(time|date)\b/i.test(userQuery) && !candidate?.content?.parts?.[0]?.functionCall) {
-            logger.warn({query: userQuery, responseText: candidate?.content?.parts?.[0]?.text}, "LLM attempted to answer time/date query without function call. This response is likely incorrect.");
+            logger.warn({ query: userQuery, responseText: candidate?.content?.parts?.[0]?.text }, "LLM attempted to answer time/date query without function call. This response is likely incorrect.");
             // Optionally return a specific message here instead of the hallucinated text
             // return "Sorry, I had trouble fetching the exact time. Please try again.";
         }
@@ -503,7 +503,7 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
 export async function generateSearchResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
     try {
@@ -577,7 +577,7 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
 export async function generateUnifiedResponse(contextPrompt, userQuery) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. No meta. Reference chat history by username.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. Answer the question directly. No meta.`;
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
@@ -825,9 +825,9 @@ ${textToSummarize}`;
             return null;
         }
         if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
-             logger.warn({ finishReason: candidate.finishReason }, `Summarization generation finished unexpectedly: ${candidate.finishReason}`);
-              if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
-             return null;
+            logger.warn({ finishReason: candidate.finishReason }, `Summarization generation finished unexpectedly: ${candidate.finishReason}`);
+            if (candidate.finishReason === 'SAFETY') { logger.warn('Summarization response content blocked due to safety settings.'); }
+            return null;
         }
 
         // Robust extraction using current Gemini structured output best practices
@@ -910,16 +910,16 @@ ${textToSummarize}`;
  * @returns {Promise<string|null>} The IANA timezone string or null if not found/error.
  */
 export async function fetchIanaTimezoneForLocation(locationName) {
-  if (!locationName || typeof locationName !== 'string' || locationName.trim().length === 0) {
-    logger.error('fetchIanaTimezoneForLocation called with invalid locationName.');
-    return null;
-  }
-  // Use a fresh, persona-less model instance for this specialized lookup
-  const ai = getGenAIInstance();
-  const modelId = process.env.GEMINI_MODEL_ID || configuredModelId || 'gemini-2.5-flash';
+    if (!locationName || typeof locationName !== 'string' || locationName.trim().length === 0) {
+        logger.error('fetchIanaTimezoneForLocation called with invalid locationName.');
+        return null;
+    }
+    // Use a fresh, persona-less model instance for this specialized lookup
+    const ai = getGenAIInstance();
+    const modelId = process.env.GEMINI_MODEL_ID || configuredModelId || 'gemini-2.5-flash';
 
-  // Highly specific prompt for IANA timezone, including edge cases
-  const prompt = `What is the IANA timezone for "${locationName}"?
+    // Highly specific prompt for IANA timezone, including edge cases
+    const prompt = `What is the IANA timezone for "${locationName}"?
 Examples:
 - For "New York", respond: America/New_York
 - For "London", respond: Europe/London
@@ -940,48 +940,48 @@ Examples:
 
 Respond with ONLY the valid IANA timezone string. If the location is ambiguous, invalid, or you cannot determine a valid IANA timezone, respond with the exact string "UNKNOWN".`;
 
-  logger.debug({ locationName, prompt }, 'Attempting to fetch IANA timezone via LLM');
+    logger.debug({ locationName, prompt }, 'Attempting to fetch IANA timezone via LLM');
 
-  try {
-    const result = await ai.models.generateContent({
-      model: modelId,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        temperature: 0.2,
-        maxOutputTokens: 50
-      }
-    });
-    const response = result;
+    try {
+        const result = await ai.models.generateContent({
+            model: modelId,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.2,
+                maxOutputTokens: 50
+            }
+        });
+        const response = result;
 
-    if (response.promptFeedback?.blockReason || !response.candidates?.length || !response.candidates[0].content) {
-      logger.warn({ locationName, response }, 'Gemini response for IANA timezone was blocked, empty, or invalid.');
-      return null;
+        if (response.promptFeedback?.blockReason || !response.candidates?.length || !response.candidates[0].content) {
+            logger.warn({ locationName, response }, 'Gemini response for IANA timezone was blocked, empty, or invalid.');
+            return null;
+        }
+
+        const candidate = response.candidates[0];
+        if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+            logger.warn({ locationName, finishReason: candidate.finishReason }, `IANA timezone generation finished unexpectedly: ${candidate.finishReason}`);
+            return null;
+        }
+
+        const ianaTimezone = candidate.content.parts.map(part => part.text).join('').trim();
+
+        if (ianaTimezone === "UNKNOWN" || ianaTimezone.length < 3 || !ianaTimezone.includes('/')) {
+            logger.warn({ locationName, received: ianaTimezone }, 'LLM could not determine a valid IANA timezone or returned UNKNOWN.');
+            return null;
+        }
+
+        if (!/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(ianaTimezone)) {
+            logger.warn({ locationName, received: ianaTimezone }, 'Received string does not look like a valid IANA timezone format.');
+        }
+
+        logger.info({ locationName, ianaTimezone }, 'Successfully fetched IANA timezone via LLM.');
+        return ianaTimezone;
+
+    } catch (error) {
+        logger.error({ err: error, locationName }, 'Error during LLM call for IANA timezone');
+        return null;
     }
-
-    const candidate = response.candidates[0];
-    if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
-      logger.warn({ locationName, finishReason: candidate.finishReason }, `IANA timezone generation finished unexpectedly: ${candidate.finishReason}`);
-      return null;
-    }
-
-    const ianaTimezone = candidate.content.parts.map(part => part.text).join('').trim();
-
-    if (ianaTimezone === "UNKNOWN" || ianaTimezone.length < 3 || !ianaTimezone.includes('/')) {
-      logger.warn({ locationName, received: ianaTimezone }, 'LLM could not determine a valid IANA timezone or returned UNKNOWN.');
-      return null;
-    }
-
-    if (!/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(ianaTimezone)) {
-        logger.warn({ locationName, received: ianaTimezone }, 'Received string does not look like a valid IANA timezone format.');
-    }
-
-    logger.info({ locationName, ianaTimezone }, 'Successfully fetched IANA timezone via LLM.');
-    return ianaTimezone;
-
-  } catch (error) {
-    logger.error({ err: error, locationName }, 'Error during LLM call for IANA timezone');
-    return null;
-  }
 }
 
 // Update handleFunctionCall to support get_iana_timezone_for_location_tool
