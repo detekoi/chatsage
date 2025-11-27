@@ -11,7 +11,6 @@ import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { getGeoGameManager } from '../../../../../src/components/geo/geoGameManager.js';
 import { getLeaderboard } from '../../../../../src/components/geo/geoStorage.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
-import logger from '../../../../../src/lib/logger.js';
 
 describe('Geo Command Handler', () => {
     let mockGeoManager;

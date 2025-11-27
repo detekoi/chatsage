@@ -11,7 +11,6 @@ import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { getTriviaGameManager } from '../../../../../src/components/trivia/triviaGameManager.js';
 import { getLeaderboard } from '../../../../../src/components/trivia/triviaStorage.js';
 import { formatHelpMessage } from '../../../../../src/components/trivia/triviaMessageFormatter.js';
-import logger from '../../../../../src/lib/logger.js';
 
 describe('Trivia Command Handler', () => {
     let mockTriviaManager;

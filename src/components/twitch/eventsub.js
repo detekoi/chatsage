@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { getIrcClient } from './ircClient.js';
 import { isChannelAllowed } from './channelManager.js';
 import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';

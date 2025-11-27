@@ -1,11 +1,9 @@
 import LifecycleManager from '../../../src/services/LifecycleManager.js';
-import { getHelixClient } from '../../../src/components/twitch/helixClient.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
 import { startStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
 import { startAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
 import { startAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
 import { getIrcClient, connectIrcClient } from '../../../src/components/twitch/ircClient.js';
-import logger from '../../../src/lib/logger.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');

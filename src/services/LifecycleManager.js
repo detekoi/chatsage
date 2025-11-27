@@ -1,9 +1,9 @@
 import config from '../config/index.js';
 import logger from '../lib/logger.js';
 import { getIrcClient, connectIrcClient } from '../components/twitch/ircClient.js';
-import { startStreamInfoPolling, stopStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
+import { startStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
 import { startAutoChatManager } from '../components/autoChat/autoChatManager.js';
-import { startAdSchedulePoller, stopAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
+import { startAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';

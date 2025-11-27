@@ -5,8 +5,7 @@ jest.mock('../../../../../src/components/llm/gemini/core.js');
 
 import {
     getOrCreateChatSession,
-    resetChatSession,
-    clearChatSession
+    resetChatSession
 } from '../../../../../src/components/llm/gemini/chat.js';
 import { getGeminiClient } from '../../../../../src/components/llm/gemini/core.js';
 

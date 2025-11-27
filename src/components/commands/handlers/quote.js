@@ -42,7 +42,7 @@ function parseQuoteText(raw) {
     const afterDash = s.substring(lastDashPos + 1).trim();
     
     // Remove any leading dashes/spaces from author part
-    const author = afterDash.replace(/^[\-–—\s]+/, '').trim();
+    const author = afterDash.replace(/^[-–—\s]+/, '').trim();
     
     // If there's no actual content after the dash, treat the dash as part of the quote text
     if (!author) {

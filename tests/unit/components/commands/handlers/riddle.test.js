@@ -13,7 +13,6 @@ import { getRiddleGameManager } from '../../../../../src/components/riddle/riddl
 import { getLeaderboard } from '../../../../../src/components/riddle/riddleStorage.js';
 import { formatRiddleHelpMessage, formatRiddleLeaderboardMessage } from '../../../../../src/components/riddle/riddleMessageFormatter.js';
 import config from '../../../../../src/config/index.js';
-import logger from '../../../../../src/lib/logger.js';
 
 describe('Riddle Command Handler', () => {
     let mockRiddleManager;
