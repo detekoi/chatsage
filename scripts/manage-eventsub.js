@@ -19,10 +19,11 @@ async function listSubscriptions() {
     
     if (result.success) {
         console.log('\n=== EventSub Subscriptions ===');
-        if (result.data.length === 0) {
+        const subscriptions = result.data.data || [];
+        if (subscriptions.length === 0) {
             console.log('No subscriptions found.');
         } else {
-            result.data.forEach((sub, index) => {
+            subscriptions.forEach((sub, index) => {
                 console.log(`${index + 1}. ID: ${sub.id}`);
                 console.log(`   Type: ${sub.type}`);
                 console.log(`   Status: ${sub.status}`);
@@ -107,14 +108,15 @@ async function deleteAll() {
         return;
     }
     
-    if (listResult.data.length === 0) {
+    const subscriptions = listResult.data.data || [];
+    if (subscriptions.length === 0) {
         console.log('No subscriptions to delete.');
         return;
     }
     
-    console.log(`Found ${listResult.data.length} subscriptions to delete...`);
+    console.log(`Found ${subscriptions.length} subscriptions to delete...`);
     
-    for (const sub of listResult.data) {
+    for (const sub of subscriptions) {
         const result = await deleteEventSubSubscription(sub.id);
         if (result.success) {
             console.log(`✓ Deleted: ${sub.id} (${sub.type})`);
