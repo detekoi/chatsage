@@ -5,20 +5,14 @@ import {
     getActiveManagedChannels,
     listenForChannelChanges
 } from './channelManager.js';
-import { startStreamInfoPolling, stopStreamInfoPolling } from './streamInfoPoller.js';
-import { startAutoChatManager } from '../autoChat/autoChatManager.js';
-import { initializeActiveStreamsFromPoller } from './eventsub.js';
-import { startAdSchedulePoller, stopAdSchedulePoller } from './adSchedulePoller.js';
 import { CHANNEL_SYNC_INTERVAL_MS } from '../../constants/botConstants.js';
+import LifecycleManager from '../../services/LifecycleManager.js';
 
 /**
  * Creates IRC event handlers with the necessary dependencies.
  * @param {Object} deps - Dependencies object
  * @param {Object} deps.helixClient - Helix API client
  * @param {Object} deps.contextManager - Context manager instance
- * @param {Function} deps.setFullyInitialized - Function to mark bot as fully initialized
- * @param {Function} deps.getStreamInfoIntervalId - Function to get current stream info interval ID
- * @param {Function} deps.setStreamInfoIntervalId - Function to set stream info interval ID
  * @param {Function} deps.getChannelChangeListener - Function to get current channel change listener
  * @param {Function} deps.setChannelChangeListener - Function to set channel change listener
  * @param {Function} deps.getChannelSyncIntervalId - Function to get channel sync interval ID
@@ -27,11 +21,6 @@ import { CHANNEL_SYNC_INTERVAL_MS } from '../../constants/botConstants.js';
  */
 export function createIrcEventHandlers(deps) {
     const {
-        helixClient,
-        contextManager,
-        setFullyInitialized,
-        getStreamInfoIntervalId,
-        setStreamInfoIntervalId,
         getChannelChangeListener,
         setChannelChangeListener,
         getChannelSyncIntervalId,
@@ -97,51 +86,9 @@ export function createIrcEventHandlers(deps) {
         }
         // --- End Conditional Syncing/Listening ---
 
-        // Start stream info polling (skip if already started in LAZY_CONNECT mode)
-        if (!getStreamInfoIntervalId()) {
-            logger.info(`Starting stream info polling every ${config.app.streamInfoFetchIntervalMs / 1000}s...`);
-            try {
-                // Await first poll to complete so context manager is populated
-                const intervalId = await startStreamInfoPolling(
-                    config.twitch.channels,
-                    config.app.streamInfoFetchIntervalMs,
-                    helixClient,
-                    contextManager
-                );
-                setStreamInfoIntervalId(intervalId);
-                logger.info('Stream info polling first cycle complete');
-            } catch (err) {
-                logger.error({ err }, 'Failed to start stream info polling');
-            }
-        } else {
-            logger.info('Stream info polling already running (started in LAZY_CONNECT mode)');
-        }
-
-        // Start Auto-Chat manager after polling begins
-        try {
-            await startAutoChatManager();
-            logger.info('Auto-Chat Manager started.');
-        } catch (err) {
-            logger.error({ err }, 'Failed to start Auto-Chat Manager');
-        }
-
-        try {
-            await startAdSchedulePoller();
-            logger.info('Ad Schedule Poller started.');
-        } catch (err) {
-            logger.error({ err }, 'Failed to start Ad Schedule Poller');
-        }
-
-        // After stream polling completes first cycle, check for streams that are already live
-        try {
-            await initializeActiveStreamsFromPoller();
-            // Mark as fully initialized after all setup is complete
-            setFullyInitialized(true);
-            logger.info('Bot is now fully initialized and ready to handle traffic');
-        } catch (error) {
-            logger.error({ err: error }, 'Error initializing active streams from poller');
-            setFullyInitialized(true); // Mark as initialized anyway
-        }
+        // Join channels that LifecycleManager knows are active
+        const lifecycle = LifecycleManager.get();
+        await lifecycle.ensureJoinedToActiveStreams();
     }
 
     /**
@@ -149,17 +96,6 @@ export function createIrcEventHandlers(deps) {
      */
     function onDisconnected(reason) {
         logger.warn(`Disconnected from Twitch IRC: ${reason || 'Unknown reason'}`);
-
-        const streamInfoIntervalId = getStreamInfoIntervalId();
-        if (streamInfoIntervalId) {
-            stopStreamInfoPolling(streamInfoIntervalId);
-        }
-
-        try {
-            stopAdSchedulePoller();
-        } catch (e) {
-            /* ignore */
-        }
 
         const channelSyncIntervalId = getChannelSyncIntervalId();
         if (channelSyncIntervalId) {
