@@ -41,7 +41,8 @@ let channelSyncIntervalId = null;
 /**
  * Gracefully shuts down the application.
  */
-async function gracefulShutdown(_signal) {
+async function gracefulShutdown(signal) {
+    logger.info(`Received ${signal} signal. Initiating graceful shutdown...`);
     const shutdownTasks = [];
 
     // Close health check server if it exists
