@@ -4,6 +4,7 @@ import { getContextManager } from '../../../../src/components/context/contextMan
 import { getLiveStreams } from '../../../../src/components/twitch/helixClient.js';
 import { deleteTask, scheduleNextKeepAlivePing } from '../../../../src/lib/taskHelpers.js';
 import logger from '../../../../src/lib/logger.js';
+import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -12,12 +13,22 @@ jest.mock('../../../../src/lib/taskHelpers.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/components/twitch/ircClient.js');
+jest.mock('../../../../src/services/LifecycleManager.js');
 
 describe('EventSub Keep-Alive Logic', () => {
+    let mockLifecycle;
+
     beforeEach(() => {
         // Reset mocks and clear any phantom entries before each test
         jest.clearAllMocks();
-        clearPhantomEventSubEntries(); // Ensure activeStreams is empty
+
+        // Setup LifecycleManager mock
+        mockLifecycle = {
+            getActiveStreams: jest.fn().mockReturnValue([]),
+            onStreamStatusChange: jest.fn()
+        };
+        LifecycleManager.get.mockReturnValue(mockLifecycle);
+
         // Ensure keep-alive task scheduling returns a task name so deletion logic can run
         scheduleNextKeepAlivePing.mockResolvedValue('keep-alive-task-test');
     });
@@ -42,6 +53,9 @@ describe('EventSub Keep-Alive Logic', () => {
         expect(deleteTask).not.toHaveBeenCalled();
         const infoLog = logger.info.mock.calls.find(call => call[0].includes('Keep-alive check passed'));
         expect(infoLog[0]).toContain('1 stream(s) live via poller');
+
+        // Should notify lifecycle about the poller-detected stream
+        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('testchannel', true);
     });
 
     test('should scale down after MAX_FAILED_CHECKS if no activity is detected', async () => {
@@ -52,6 +66,7 @@ describe('EventSub Keep-Alive Logic', () => {
             getChannelsForPolling: jest.fn().mockResolvedValue([]),
         });
         getLiveStreams.mockResolvedValue([]); // Helix fallback finds nothing
+        mockLifecycle.getActiveStreams.mockReturnValue([]);
 
         // Act: Simulate 3 consecutive failed checks
         await handleKeepAlivePing(); // Check 1
@@ -114,6 +129,18 @@ describe('EventSub Keep-Alive Logic', () => {
         expect(scheduleNextKeepAlivePing).toHaveBeenCalledTimes(1);
         const infoLog = logger.info.mock.calls.find(call => call[0].includes('Helix fallback detected live streams'));
         expect(infoLog).toBeDefined();
+
+        // Should notify lifecycle about the helix-detected stream
+        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('livechannel', true);
+    });
+
+    test('should clear phantom entries using LifecycleManager', async () => {
+        mockLifecycle.getActiveStreams.mockReturnValue(['phantom1', 'phantom2']);
+
+        await clearPhantomEventSubEntries();
+
+        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('phantom1', false);
+        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('phantom2', false);
     });
 });
 
