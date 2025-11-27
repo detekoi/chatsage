@@ -1,10 +1,20 @@
 // src/components/twitch/ircAuthHelper.js
 import axios from 'axios';
+import http from 'http';
+import https from 'https';
+import dns from 'dns';
+import { promisify } from 'util';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 import { getSecretValue, setSecretValue } from '../../lib/secretManager.js'; // Import setSecretValue
 
+const dnsResolve = promisify(dns.resolve4);
+
 const TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
+
+// Create persistent HTTP agents for better connection stability in Cloud Run
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 30000 });
+const httpsAgent = new https.Agent({ keepAlive: true, timeout: 30000 });
 
 // Store the currently active access token in memory for the session
 // eslint-disable-next-line no-unused-vars
@@ -24,8 +34,8 @@ async function refreshIrcToken() {
         logger.info('Attempting to refresh Twitch IRC Access Token...');
 
         // Wrap entire refresh operation with timeout to prevent indefinite hangs
-        // Increased to 80s to allow for 3 retries with delays (3 × 10s timeout + 2s + 5s + 10s delays + overhead)
-        const TOTAL_REFRESH_TIMEOUT_MS = 80000; // 80 seconds total timeout
+        // Increased to 120s to allow for 3 retries with delays (3 × 30s timeout + 5s + 10s + 15s delays + overhead)
+        const TOTAL_REFRESH_TIMEOUT_MS = 120000; // 120 seconds total timeout
         const refreshTimeoutPromise = new Promise((_, reject) => {
             setTimeout(() => {
                 reject(new Error(`Token refresh operation timed out after ${TOTAL_REFRESH_TIMEOUT_MS}ms`));
@@ -70,7 +80,7 @@ async function refreshIrcToken() {
 
             // Retry logic for network timeouts
             const MAX_RETRIES = 3;
-            const RETRY_DELAYS = [2000, 5000, 10000]; // 2s, 5s, 10s - longer delays for network issues
+            const RETRY_DELAYS = [5000, 10000, 15000]; // 5s, 10s, 15s - longer delays for network issues in Cloud Run
 
             for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
                 try {
@@ -78,6 +88,25 @@ async function refreshIrcToken() {
                         const delay = RETRY_DELAYS[attempt - 1];
                         logger.info({ attempt: attempt + 1, delayMs: delay }, 'Retrying token refresh after delay...');
                         await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+
+                    // Pre-flight DNS check to diagnose network issues
+                    try {
+                        const dnsStart = Date.now();
+                        const addresses = await dnsResolve('id.twitch.tv');
+                        const dnsElapsed = Date.now() - dnsStart;
+                        logger.debug({
+                            attempt: attempt + 1,
+                            addresses,
+                            dnsResolutionTimeMs: dnsElapsed
+                        }, 'DNS resolution successful for id.twitch.tv');
+                    } catch (dnsError) {
+                        logger.warn({
+                            attempt: attempt + 1,
+                            err: dnsError,
+                            errorCode: dnsError.code
+                        }, 'DNS resolution failed for id.twitch.tv - network connectivity issue detected');
+                        // Continue anyway - axios might still work with cached DNS or different resolver
                     }
 
                     // Create form data parameters for request body (consistent with curl -d approach)
@@ -95,15 +124,26 @@ async function refreshIrcToken() {
                         hasRefreshToken: !!refreshToken
                     }, 'Sending token refresh request to Twitch...');
 
+                    const requestStart = Date.now();
                     const response = await axios.post(TWITCH_TOKEN_URL, params, {
                         headers: {
                             'Content-Type': 'application/x-www-form-urlencoded'
                         },
-                        timeout: 10000,
+                        timeout: 30000, // Increased from 10s to 30s for Cloud Run environments
                         // Add explicit network options for better Cloud Run compatibility
                         maxRedirects: 5,
                         validateStatus: (status) => status === 200,
+                        // Use persistent HTTP agents for better connection stability
+                        httpAgent,
+                        httpsAgent,
                     });
+                    const requestElapsed = Date.now() - requestStart;
+
+                    logger.info({
+                        attempt: attempt + 1,
+                        requestTimeMs: requestElapsed,
+                        status: response.status
+                    }, 'Token refresh request completed');
 
                     if (response.status === 200 && response.data?.access_token) {
                         const newAccessToken = response.data.access_token;
