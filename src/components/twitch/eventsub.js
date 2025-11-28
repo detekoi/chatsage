@@ -217,7 +217,7 @@ export async function handleKeepAlivePing() {
         logger.info(`Keep-alive check passed: ${reasons.join(' and ')}.`);
 
         try {
-            keepAliveTaskName = await scheduleNextKeepAlivePing(360); // 6 minutes
+            keepAliveTaskName = await scheduleNextKeepAlivePing(60); // 1 minute
         } catch (error) {
             logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
         }
@@ -238,7 +238,7 @@ export async function handleKeepAlivePing() {
         } else {
             // Schedule next check even after failure (until max failures reached)
             try {
-                keepAliveTaskName = await scheduleNextKeepAlivePing(360); // 6 minutes
+                keepAliveTaskName = await scheduleNextKeepAlivePing(60); // 1 minute
             } catch (error) {
                 logger.error({ err: error }, 'Failed to schedule next keep-alive ping after failure');
             }
@@ -339,7 +339,7 @@ export async function eventSubHandler(req, res, rawBody) {
             if (lifecycle.getActiveStreams().length === 1 && !keepAliveTaskName) {
                 try {
                     logger.info('First stream went live - starting keep-alive pings');
-                    keepAliveTaskName = await scheduleNextKeepAlivePing(360); // Start in 6 minutes
+                    keepAliveTaskName = await scheduleNextKeepAlivePing(60); // Start in 1 minute
                 } catch (error) {
                     logger.error({ err: error }, 'Failed to start keep-alive pings');
                 }

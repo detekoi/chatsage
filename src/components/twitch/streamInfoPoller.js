@@ -41,7 +41,7 @@ async function fetchBatch(channels, helixClient, contextManager, lifecycleManage
         for (const channel of channels) {
             const isLive = liveStreamIds.has(channel.broadcasterId);
             const wasLive = contextManager.getStreamContextSnapshot(channel.channelName)?.startedAt !== null &&
-                            contextManager.getStreamContextSnapshot(channel.channelName)?.startedAt !== 'N/A';
+                contextManager.getStreamContextSnapshot(channel.channelName)?.startedAt !== 'N/A';
 
             if (isLive) {
                 const streamInfo = liveStreamMap.get(channel.broadcasterId);
