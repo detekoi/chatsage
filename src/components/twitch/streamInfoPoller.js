@@ -11,8 +11,9 @@ let pollingIntervalId = null;
  * @param {Array<{channelName: string, broadcasterId: string}>} channels - Batch of channels with IDs.
  * @param {import('./helixClient.js').HelixClient} helixClient - Initialized Helix client instance (still needed for potential future direct calls).
  * @param {import('../context/contextManager.js').ContextManager} contextManager - Context manager instance.
+ * @param {import('../../services/LifecycleManager.js').default} lifecycleManager - Optional lifecycle manager for stream status notifications.
  */
-async function fetchBatch(channels, helixClient, contextManager) {
+async function fetchBatch(channels, helixClient, contextManager, lifecycleManager = null) {
     if (!channels || channels.length === 0) return;
 
     const broadcasterIds = channels.map(c => c.broadcasterId);
@@ -33,14 +34,19 @@ async function fetchBatch(channels, helixClient, contextManager) {
         const liveStreamMap = new Map(liveStreams.map(stream => [stream.user_id, stream]));
         const infoMap = new Map(channelInfoList.map(info => [info.broadcaster_id, info]));
 
+        // Track which channels changed status for lifecycle notifications
+        const statusChanges = [];
+
         // Update context for each channel in the batch
         for (const channel of channels) {
             const isLive = liveStreamIds.has(channel.broadcasterId);
-            
+            const wasLive = contextManager.getStreamContextSnapshot(channel.channelName)?.startedAt !== null &&
+                            contextManager.getStreamContextSnapshot(channel.channelName)?.startedAt !== 'N/A';
+
             if (isLive) {
                 const streamInfo = liveStreamMap.get(channel.broadcasterId);
                 const channelInfo = infoMap.get(channel.broadcasterId);
-                
+
                 // Stream is live, update with live context
                 contextManager.updateStreamContext(channel.channelName, {
                     game: streamInfo?.game_name || channelInfo?.game_name || 'Unknown',
@@ -52,17 +58,46 @@ async function fetchBatch(channels, helixClient, contextManager) {
                     viewerCount: streamInfo?.viewer_count || 0,
                     startedAt: streamInfo?.started_at || null,
                 });
-                
+
                 logger.debug(`Updated live stream context for ${channel.channelName}: ${streamInfo?.game_name} (${streamInfo?.viewer_count} viewers)`);
+
+                // Notify lifecycle manager if stream transitioned to live
+                if (!wasLive && lifecycleManager) {
+                    statusChanges.push({ channel: channel.channelName, isLive: true });
+                }
             } else {
                 // Stream is offline (for this poll). Use a grace mechanism before clearing context
                 try {
+                    const snapshot = contextManager.getStreamContextSnapshot(channel.channelName);
                     contextManager.recordOfflineMiss(channel.channelName);
                     logger.debug(`Recorded offline miss for ${channel.channelName}`);
+
+                    // Check if context was cleared (indicating stream went offline after threshold)
+                    const snapshotAfter = contextManager.getStreamContextSnapshot(channel.channelName);
+                    if (wasLive && snapshotAfter?.game === 'N/A' && lifecycleManager) {
+                        // Context was just cleared, stream is now considered offline
+                        statusChanges.push({ channel: channel.channelName, isLive: false });
+                    }
                 } catch (e) {
                     // Fallback to immediate clear only if recordOfflineMiss is unavailable
                     contextManager.clearStreamContext(channel.channelName);
                     logger.debug(`Cleared context for offline stream (fallback): ${channel.channelName}`);
+
+                    if (wasLive && lifecycleManager) {
+                        statusChanges.push({ channel: channel.channelName, isLive: false });
+                    }
+                }
+            }
+        }
+
+        // Notify lifecycle manager of all status changes
+        if (lifecycleManager && statusChanges.length > 0) {
+            for (const { channel, isLive } of statusChanges) {
+                try {
+                    await lifecycleManager.onStreamStatusChange(channel, isLive);
+                    logger.debug(`Notified LifecycleManager: ${channel} is now ${isLive ? 'ONLINE' : 'OFFLINE'}`);
+                } catch (err) {
+                    logger.error({ err, channel, isLive }, 'Error notifying LifecycleManager of stream status change');
                 }
             }
         }
@@ -82,9 +117,10 @@ async function fetchBatch(channels, helixClient, contextManager) {
  * @param {number} intervalMs - Polling interval in milliseconds.
  * @param {import('./helixClient.js').HelixClient} helixClient - Initialized Helix client instance.
  * @param {import('../context/contextManager.js').ContextManager} contextManager - Context manager instance.
+ * @param {import('../../services/LifecycleManager.js').default} lifecycleManager - Optional lifecycle manager for stream status notifications.
  * @returns {Promise<NodeJS.Timeout>} Promise that resolves with interval timer ID after first poll completes.
  */
-async function startStreamInfoPolling(initialChannelNames, intervalMs, helixClient, contextManager) {
+async function startStreamInfoPolling(initialChannelNames, intervalMs, helixClient, contextManager, lifecycleManager = null) {
     if (pollingIntervalId) {
         logger.warn('Stream info polling is already running.');
         return pollingIntervalId;
@@ -109,7 +145,7 @@ async function startStreamInfoPolling(initialChannelNames, intervalMs, helixClie
             const batchSize = 100;
             for (let i = 0; i < channelsToPoll.length; i += batchSize) {
                 const batch = channelsToPoll.slice(i, i + batchSize);
-                await fetchBatch(batch, helixClient, contextManager);
+                await fetchBatch(batch, helixClient, contextManager, lifecycleManager);
                 // Optional: Add a small delay between batches if hitting rate limits aggressively
                 // await new Promise(resolve => setTimeout(resolve, 200));
             }

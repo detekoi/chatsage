@@ -46,7 +46,8 @@ class LifecycleManager {
                 config.twitch.channels,
                 config.app.streamInfoFetchIntervalMs,
                 helixClient,
-                contextManager
+                contextManager,
+                this // Pass the lifecycle manager instance to receive stream status updates
             );
 
             // 2. Start Auto Chat Manager
@@ -92,11 +93,20 @@ class LifecycleManager {
         let foundLive = 0;
 
         for (const [channelName] of channelStates) {
-            const context = contextManager.getContextForLLM(channelName, 'system', 'startup-check');
-            if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
+            const streamContext = contextManager.getStreamContextSnapshot(channelName);
+            // A stream is live if startedAt is set (not null) and game is not 'N/A'
+            // Both conditions ensure we're checking current live status, not stale data
+            const isLive = streamContext &&
+                           streamContext.startedAt !== null &&
+                           streamContext.startedAt !== 'N/A' &&
+                           streamContext.game !== 'N/A' &&
+                           streamContext.game !== null;
+
+            if (isLive) {
                 const login = String(channelName).toLowerCase();
                 this.activeStreams.add(login);
                 foundLive++;
+                logger.debug(`LifecycleManager: Detected live stream: ${login} (game: ${streamContext.game}, started: ${streamContext.startedAt})`);
             }
         }
 
