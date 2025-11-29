@@ -68,7 +68,6 @@ async function fetchBatch(channels, helixClient, contextManager, lifecycleManage
             } else {
                 // Stream is offline (for this poll). Use a grace mechanism before clearing context
                 try {
-                    const snapshot = contextManager.getStreamContextSnapshot(channel.channelName);
                     contextManager.recordOfflineMiss(channel.channelName);
                     logger.debug(`Recorded offline miss for ${channel.channelName}`);
 

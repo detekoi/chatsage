@@ -2,20 +2,12 @@ import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { isChannelAllowed } from './channelManager.js';
-import { scheduleNextKeepAlivePing, deleteTask } from '../../lib/taskHelpers.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
-import { getLiveStreams, getUsersByLogin } from './helixClient.js';
 import * as sharedChatManager from './sharedChatManager.js';
 import LifecycleManager from '../../services/LifecycleManager.js';
-
-// Track keep-alive tasks
-let keepAliveTaskName = null;
-let consecutiveFailedChecks = 0;
-const MAX_FAILED_CHECKS = 3; // Require 3 consecutive failures before scaling down
-const CHAT_ACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Idempotency and replay protection (in-memory window)
 const processedEventIds = new Map(); // messageId -> timestamp(ms)
@@ -52,198 +44,24 @@ function shouldProcessEvent(req) {
 /**
  * Cleans up any existing keep-alive tasks on startup to prevent orphaned tasks
  * from previous instances from interfering with the new instance.
+ *
+ * Note: Keep-alive is now managed by KeepAliveActor, so this is a no-op.
  */
 export async function cleanupKeepAliveTasks() {
-    if (keepAliveTaskName) {
-        logger.info('Cleaning up existing keep-alive task on startup...');
-        try {
-            await deleteTask(keepAliveTaskName);
-            keepAliveTaskName = null;
-            logger.info('Successfully cleaned up existing keep-alive task.');
-        } catch (error) {
-            logger.warn({ err: error }, 'Failed to cleanup existing keep-alive task (might not exist).');
-            keepAliveTaskName = null; // Reset anyway
-        }
-    }
-
-    // Reset consecutive failed checks on startup
-    consecutiveFailedChecks = 0;
-    logger.debug('Reset consecutive failed checks counter on startup.');
+    logger.debug('Cleaning up any orphaned keep-alive tasks...');
+    // Keep-alive is now managed by KeepAliveActor in LifecycleManager
+    // No action needed here
 }
 
 /**
  * Handles the keep-alive ping from Cloud Tasks
  * This is called by the /keep-alive endpoint
+ *
+ * Simplified: Delegates to KeepAliveActor which handles all logic
  */
 export async function handleKeepAlivePing() {
-    logger.info('Keep-alive ping received.');
-
     const lifecycle = LifecycleManager.get();
-    const activeStreams = new Set(lifecycle.getActiveStreams());
-
-    // Verification step: Cross-reference activeStreams with Twitch Helix API to detect missed offline notifications
-    if (activeStreams.size > 0) {
-        try {
-            logger.debug(`[Keep-Alive] Verifying ${activeStreams.size} active streams against Helix API...`);
-
-            // Convert channel names to broadcaster IDs
-            const channelNames = Array.from(activeStreams);
-            const userData = await getUsersByLogin(channelNames);
-
-            if (userData.length === 0) {
-                logger.warn(`[Keep-Alive] Could not find any user data for ${channelNames.length} channels. Clearing activeStreams.`);
-                // Notify lifecycle manager to clear these
-                for (const channel of channelNames) {
-                    await lifecycle.onStreamStatusChange(channel, false);
-                }
-            } else {
-                const idToChannel = new Map(userData.map(user => [user.id, user.login]));
-                const broadcasterIds = Array.from(idToChannel.keys());
-
-                // Query live streams from Helix API (ground truth)
-                const liveStreams = await getLiveStreams(broadcasterIds);
-                const liveStreamUserIds = new Set(liveStreams.map(stream => stream.user_id));
-
-                // Check for phantom streams (in activeStreams but not live according to API)
-                const phantomStreams = [];
-                for (const [broadcasterId, channelName] of idToChannel) {
-                    const login = String(channelName).toLowerCase();
-                    if (!liveStreamUserIds.has(broadcasterId)) {
-                        phantomStreams.push(login);
-                    }
-                }
-
-                // Remove phantom streams and log discrepancies
-                if (phantomStreams.length > 0) {
-                    logger.warn(`[Keep-Alive] Phantom streams detected (missed offline notifications): ${phantomStreams.join(', ')}. EventSub state is out of sync. Forcing removal.`);
-
-                    for (const streamName of phantomStreams) {
-                        const login = String(streamName).toLowerCase();
-                        await lifecycle.onStreamStatusChange(login, false);
-                        logger.warn(`[Keep-Alive] Removed phantom stream: ${login}. Stream.offline EventSub notification was likely missed.`);
-
-                        // Clear the stream context to ensure consistency
-                        getContextManager().clearStreamContext(login);
-                    }
-
-                    logger.info(`[Keep-Alive] Verification complete. Removed ${phantomStreams.length} phantom streams.`);
-                } else {
-                    logger.debug(`[Keep-Alive] All ${activeStreams.size} streams verified as live by Helix API.`);
-                }
-            }
-        } catch (error) {
-            logger.warn({ err: error }, '[Keep-Alive] Failed to verify active streams against Helix API. Continuing with existing state.');
-        }
-    }
-
-    const contextManager = getContextManager();
-    const channelStates = contextManager.getAllChannelStates();
-
-    // Check for recent chat activity and poller-detected active streams
-    let recentChatActivity = false;
-    let pollerActiveCount = 0;
-    const activeChannelsFromPoller = [];
-    let recentChatDetails = [];
-
-    for (const [channelName, state] of channelStates) {
-        const login = String(channelName).toLowerCase();
-        // Check for recent chat messages
-        if (state.chatHistory && state.chatHistory.length > 0) {
-            const lastMessage = state.chatHistory[state.chatHistory.length - 1];
-            // Ensure timestamp is a Date object
-            const messageTimestamp = lastMessage.timestamp instanceof Date ? lastMessage.timestamp : new Date(lastMessage.timestamp);
-            const timeSinceLastMessage = Date.now() - messageTimestamp.getTime();
-
-            if (timeSinceLastMessage < CHAT_ACTIVITY_THRESHOLD) {
-                recentChatActivity = true;
-                recentChatDetails.push(`${login} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
-                logger.debug(`Recent chat activity detected in ${login} (${Math.round(timeSinceLastMessage / 1000)}s ago)`);
-            }
-        }
-
-        // Check poller context - a stream is considered active if it has valid game info
-        const context = contextManager.getContextForLLM(login, 'system', 'keep-alive-check');
-        if (context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null) {
-            pollerActiveCount++;
-            activeChannelsFromPoller.push(login);
-            // Add channels found live by poller to activeStreams if missing from Lifecycle
-            if (!activeStreams.has(login)) {
-                logger.info(`Adding ${login} to activeStreams - detected as live by poller but missing from Lifecycle`);
-                await lifecycle.onStreamStatusChange(login, true);
-            }
-        }
-    }
-
-    // Determine if we should keep the instance alive.
-    const hasEventSubActive = lifecycle.getActiveStreams().length > 0;
-    let shouldStayAlive = hasEventSubActive || pollerActiveCount > 0 || recentChatActivity;
-
-    // Fallback: If everything looks inactive, do a direct Helix check once to avoid false negatives.
-    if (!shouldStayAlive) {
-        try {
-            const channelsToPoll = await contextManager.getChannelsForPolling();
-            if (channelsToPoll.length > 0) {
-                const idToChannel = new Map(channelsToPoll.map(c => [c.broadcasterId, c.channelName]));
-                const liveStreams = await getLiveStreams(channelsToPoll.map(c => c.broadcasterId));
-                if (liveStreams && liveStreams.length > 0) {
-                    const newlyDetected = [];
-                    for (const stream of liveStreams) {
-                        const channelName = idToChannel.get(stream.user_id);
-                        const login = channelName ? String(channelName).toLowerCase() : null;
-                        if (login && !activeStreams.has(login)) {
-                            await lifecycle.onStreamStatusChange(login, true);
-                            newlyDetected.push(login);
-                        }
-                    }
-                    if (newlyDetected.length > 0) {
-                        logger.info(`Helix fallback detected live streams: ${newlyDetected.join(', ')}. Preventing premature scale-down.`);
-                        pollerActiveCount = new Set([...(activeChannelsFromPoller || []), ...newlyDetected]).size;
-                        shouldStayAlive = true;
-                    }
-                }
-            }
-        } catch (fallbackErr) {
-            logger.warn({ err: fallbackErr }, 'Helix fallback live-check during keep-alive failed.');
-        }
-    }
-
-    if (shouldStayAlive) {
-        consecutiveFailedChecks = 0; // Reset failure counter
-        const reasons = [];
-        if (hasEventSubActive) reasons.push(`${lifecycle.getActiveStreams().length} stream(s) active via EventSub`);
-        if (pollerActiveCount > 0) reasons.push(`${pollerActiveCount} stream(s) live via poller`);
-        if (recentChatActivity) reasons.push(`recent chat in: ${recentChatDetails.join(', ')}`);
-
-        logger.info(`Keep-alive check passed: ${reasons.join(' and ')}.`);
-
-        try {
-            keepAliveTaskName = await scheduleNextKeepAlivePing(60); // 1 minute
-        } catch (error) {
-            logger.error({ err: error }, 'Failed to schedule next keep-alive ping');
-        }
-    } else {
-        consecutiveFailedChecks++;
-        logger.warn(`Keep-alive check failed (${consecutiveFailedChecks}/${MAX_FAILED_CHECKS}): No active streams or recent chat activity detected.`);
-
-        if (consecutiveFailedChecks >= MAX_FAILED_CHECKS) {
-            logger.warn(`${MAX_FAILED_CHECKS} consecutive failed keep-alive checks. Allowing instance to scale down.`);
-            if (keepAliveTaskName) {
-                try {
-                    await deleteTask(keepAliveTaskName);
-                    keepAliveTaskName = null;
-                } catch (error) {
-                    logger.error({ err: error }, 'Failed to delete final keep-alive task.');
-                }
-            }
-        } else {
-            // Schedule next check even after failure (until max failures reached)
-            try {
-                keepAliveTaskName = await scheduleNextKeepAlivePing(60); // 1 minute
-            } catch (error) {
-                logger.error({ err: error }, 'Failed to schedule next keep-alive ping after failure');
-            }
-        }
-    }
+    await lifecycle.keepAliveActor.handlePing();
 }
 
 /**
@@ -332,18 +150,8 @@ export async function eventSubHandler(req, res, rawBody) {
                 return;
             }
 
-            // Notify Lifecycle Manager
+            // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
             await lifecycle.onStreamStatusChange(login, true);
-
-            // Start keep-alive pings if this is the first stream to go live
-            if (lifecycle.getActiveStreams().length === 1 && !keepAliveTaskName) {
-                try {
-                    logger.info('First stream went live - starting keep-alive pings');
-                    keepAliveTaskName = await scheduleNextKeepAlivePing(60); // Start in 1 minute
-                } catch (error) {
-                    logger.error({ err: error }, 'Failed to start keep-alive pings');
-                }
-            }
 
             // Inform AutoChatManager so it can greet once
             try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
@@ -354,22 +162,11 @@ export async function eventSubHandler(req, res, rawBody) {
             const login = String(broadcaster_user_name).toLowerCase();
             logger.info(`🔌 ${login} went offline.`);
 
-            // Notify Lifecycle Manager
+            // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
             await lifecycle.onStreamStatusChange(login, false);
 
             // Clear the stream context
             getContextManager().clearStreamContext(login);
-
-            // If no more streams are active, stop keep-alive pings
-            if (lifecycle.getActiveStreams().length === 0 && keepAliveTaskName) {
-                try {
-                    logger.info('Last stream went offline - stopping keep-alive pings to allow scale-down');
-                    await deleteTask(keepAliveTaskName);
-                    keepAliveTaskName = null;
-                } catch (error) {
-                    logger.error({ err: error }, 'Failed to stop keep-alive pings');
-                }
-            }
 
             try {
                 // Optionally send a short farewell before parting

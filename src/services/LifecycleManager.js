@@ -7,6 +7,7 @@ import { startAdSchedulePoller } from '../components/twitch/adSchedulePoller.js'
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
+import KeepAliveActor from './KeepAliveActor.js';
 
 class LifecycleManager {
     constructor() {
@@ -15,6 +16,7 @@ class LifecycleManager {
         this.streamInfoIntervalId = null;
         this.channelChangeListener = null;
         this._instance = null;
+        this.keepAliveActor = new KeepAliveActor();
     }
 
     static getInstance() {
@@ -122,6 +124,7 @@ class LifecycleManager {
     async onStreamStatusChange(channel, isLive) {
         const login = channel.toLowerCase();
         const wasLive = this.activeStreams.has(login);
+        const hadStreams = this.activeStreams.size > 0;
 
         if (isLive) {
             this.activeStreams.add(login);
@@ -131,7 +134,21 @@ class LifecycleManager {
             if (wasLive) logger.info(`LifecycleManager: Stream ${login} went OFFLINE.`);
         }
 
+        const hasStreams = this.activeStreams.size > 0;
+
+        // Trigger IRC actor response
         await this.reassessConnectionState();
+
+        // Trigger keep-alive actor response
+        if (!hadStreams && hasStreams) {
+            // First stream went live - start keep-alive
+            logger.info('LifecycleManager: First stream went live - starting keep-alive actor');
+            await this.keepAliveActor.start();
+        } else if (hadStreams && !hasStreams) {
+            // Last stream went offline - stop keep-alive
+            logger.info('LifecycleManager: Last stream went offline - stopping keep-alive actor');
+            await this.keepAliveActor.stop();
+        }
     }
 
     /**
