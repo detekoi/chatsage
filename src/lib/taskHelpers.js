@@ -52,16 +52,16 @@ export async function createKeepAliveTask() {
                 httpRequest: {
                     httpMethod: 'HEAD',
                     url,
-                    oidcToken: { 
-                        serviceAccountEmail: `${project}@appspot.gserviceaccount.com` 
+                    oidcToken: {
+                        serviceAccountEmail: `${project}@appspot.gserviceaccount.com`
                     }
                 },
-                scheduleTime: { 
+                scheduleTime: {
                     seconds: Math.floor(Date.now() / 1000) + 30 // first ping in 30 seconds
                 },
                 dispatchDeadline: { seconds: 30 }
             }
-        });
+        }, { timeout: 30000 }); // 30 second API call timeout (max allowed)
 
         logger.info({ taskName: task.name }, 'Keep-alive task created successfully');
         return task.name;
@@ -112,16 +112,16 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
                     httpRequest: {
                         httpMethod: 'POST',
                         url,
-                        oidcToken: { 
-                            serviceAccountEmail: `${project}@appspot.gserviceaccount.com` 
+                        oidcToken: {
+                            serviceAccountEmail: `${project}@appspot.gserviceaccount.com`
                         }
                     },
-                    scheduleTime: { 
+                    scheduleTime: {
                         seconds: Math.floor(Date.now() / 1000) + delaySeconds
                     },
                     dispatchDeadline: { seconds: 30 }
                 }
-            });
+            }, { timeout: 30000 }); // 30 second API call timeout (max allowed)
 
             logger.debug({ taskName: task.name, delaySeconds }, 'Next keep-alive ping scheduled');
             return task.name;
