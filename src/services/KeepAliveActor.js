@@ -2,6 +2,7 @@
 import logger from '../lib/logger.js';
 import { getUsersByLogin, getLiveStreams } from '../components/twitch/helixClient.js';
 import LifecycleManager from './LifecycleManager.js';
+import config from '../config/index.js';
 
 /**
  * KeepAliveActor
@@ -78,13 +79,44 @@ class KeepAliveActor {
     /**
      * Perform a periodic check of stream status
      * This method:
-     * 1. Verifies streams are still live (cross-checks with Twitch API)
-     * 2. Cleans up phantom streams
-     * 3. Decides whether to continue or stop the keep-alive actor
+     * 1. Makes HTTP request to our own /healthz endpoint (generates request activity)
+     * 2. Verifies streams are still live (cross-checks with Twitch API)
+     * 3. Cleans up phantom streams
+     * 4. Decides whether to continue or stop the keep-alive actor
      * @private
      */
     async performCheck() {
         logger.debug('KeepAliveActor: Performing periodic stream check');
+
+        // CRITICAL: Make HTTP request to ourselves to generate "request activity"
+        // Cloud Run only counts incoming HTTP requests, not outgoing API calls
+        try {
+            const publicUrl = process.env.PUBLIC_URL || config.app.publicUrl;
+            if (publicUrl) {
+                const healthUrl = `${publicUrl}/healthz`;
+                logger.debug({ url: healthUrl }, 'KeepAliveActor: Pinging self to generate request activity');
+
+                // Use fetch with short timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                await fetch(healthUrl, {
+                    method: 'HEAD',
+                    signal: controller.signal
+                }).catch(err => {
+                    // Ignore errors - the request itself is what matters
+                    logger.debug({ err: err.message }, 'KeepAliveActor: Self-ping failed (non-critical)');
+                }).finally(() => {
+                    clearTimeout(timeoutId);
+                });
+
+                logger.debug('KeepAliveActor: Self-ping completed');
+            } else {
+                logger.warn('KeepAliveActor: PUBLIC_URL not set - cannot generate request activity');
+            }
+        } catch (error) {
+            logger.error({ err: error }, 'KeepAliveActor: Error during self-ping');
+        }
 
         if (!this.isActive) {
             logger.warn('KeepAliveActor: Check triggered but actor is not active - stopping');
