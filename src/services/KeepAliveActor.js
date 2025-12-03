@@ -94,7 +94,7 @@ class KeepAliveActor {
             const publicUrl = process.env.PUBLIC_URL || config.app.publicUrl;
             if (publicUrl) {
                 const healthUrl = `${publicUrl}/healthz`;
-                logger.debug({ url: healthUrl }, 'KeepAliveActor: Pinging self to generate request activity');
+                logger.info({ url: healthUrl }, 'KeepAliveActor: Pinging self to generate request activity');
 
                 // Use fetch with short timeout
                 const controller = new AbortController();
@@ -105,12 +105,12 @@ class KeepAliveActor {
                     signal: controller.signal
                 }).catch(err => {
                     // Ignore errors - the request itself is what matters
-                    logger.debug({ err: err.message }, 'KeepAliveActor: Self-ping failed (non-critical)');
+                    logger.info({ err: err.message }, 'KeepAliveActor: Self-ping failed (non-critical)');
                 }).finally(() => {
                     clearTimeout(timeoutId);
                 });
 
-                logger.debug('KeepAliveActor: Self-ping completed');
+                logger.info('KeepAliveActor: Self-ping completed');
             } else {
                 logger.warn('KeepAliveActor: PUBLIC_URL not set - cannot generate request activity');
             }
