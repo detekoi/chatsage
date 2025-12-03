@@ -139,54 +139,62 @@ export async function eventSubHandler(req, res, rawBody) {
         const lifecycle = LifecycleManager.get();
 
         if (subscription.type === 'stream.online') {
-            const { broadcaster_user_name } = event;
-            const login = String(broadcaster_user_name).toLowerCase();
-            logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
+            try {
+                const { broadcaster_user_name } = event;
+                const login = String(broadcaster_user_name).toLowerCase();
+                logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
 
-            // Enforce allow-list
-            const allowed = await isChannelAllowed(login);
-            if (!allowed) {
-                logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
-                return;
+                // Enforce allow-list
+                const allowed = await isChannelAllowed(login);
+                if (!allowed) {
+                    logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
+                    return;
+                }
+
+                // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
+                await lifecycle.onStreamStatusChange(login, true);
+
+                // Inform AutoChatManager so it can greet once
+                try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
+            } catch (error) {
+                logger.error({ err: error, event }, '[EventSub] Error handling stream.online');
             }
-
-            // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
-            await lifecycle.onStreamStatusChange(login, true);
-
-            // Inform AutoChatManager so it can greet once
-            try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
         }
 
         if (subscription.type === 'stream.offline') {
-            const { broadcaster_user_name } = event;
-            const login = String(broadcaster_user_name).toLowerCase();
-            logger.info(`🔌 ${login} went offline.`);
-
-            // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
-            await lifecycle.onStreamStatusChange(login, false);
-
-            // Clear the stream context
-            getContextManager().clearStreamContext(login);
-
             try {
-                // Optionally send a short farewell before parting
+                const { broadcaster_user_name } = event;
+                const login = String(broadcaster_user_name).toLowerCase();
+                logger.info(`🔌 ${login} went offline.`);
+
+                // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
+                await lifecycle.onStreamStatusChange(login, false);
+
+                // Clear the stream context
+                getContextManager().clearStreamContext(login);
+
                 try {
-                    const cfg = await getChannelAutoChatConfig(login);
-                    if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
-                        const channel = `#${login}`;
-                        await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
+                    // Optionally send a short farewell before parting
+                    try {
+                        const cfg = await getChannelAutoChatConfig(login);
+                        if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
+                            const channel = `#${login}`;
+                            await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
+                        }
+                    } catch (e) {
+                        logger.debug({ err: e }, 'Farewell send skipped or failed');
                     }
-                } catch (e) {
-                    logger.debug({ err: e }, 'Farewell send skipped or failed');
+                    // Note: LifecycleManager handles disconnection/parting if needed,
+                    // but we might want to send a farewell message first.
+                    // The LifecycleManager's reassessConnectionState might disconnect the client,
+                    // so we should ensure the message is queued/sent before that happens.
+                    // However, reassessConnectionState is async and we just called it via onStreamStatusChange.
+                    // Ideally, LifecycleManager should wait for queues to drain or we accept that farewells might be lost on quick disconnect.
+                } catch (error) {
+                    logger.error({ err: error, channel: login }, 'Error trying to send farewell via EventSub offline notification.');
                 }
-                // Note: LifecycleManager handles disconnection/parting if needed, 
-                // but we might want to send a farewell message first. 
-                // The LifecycleManager's reassessConnectionState might disconnect the client,
-                // so we should ensure the message is queued/sent before that happens.
-                // However, reassessConnectionState is async and we just called it via onStreamStatusChange.
-                // Ideally, LifecycleManager should wait for queues to drain or we accept that farewells might be lost on quick disconnect.
             } catch (error) {
-                logger.error({ err: error, channel: login }, 'Error trying to send farewell via EventSub offline notification.');
+                logger.error({ err: error, event }, '[EventSub] Error handling stream.offline');
             }
         }
 
