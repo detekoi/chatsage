@@ -1,14 +1,17 @@
 // src/services/KeepAliveActor.js
 import logger from '../lib/logger.js';
-import { scheduleNextKeepAlivePing, deleteTask } from '../lib/taskHelpers.js';
 import { getUsersByLogin, getLiveStreams } from '../components/twitch/helixClient.js';
 import LifecycleManager from './LifecycleManager.js';
 
 /**
  * KeepAliveActor
  *
- * Manages Cloud Tasks keep-alive pings to prevent Cloud Run from scaling down
+ * Manages in-process keep-alive mechanism to prevent Cloud Run from scaling down
  * when streams are active.
+ *
+ * Uses setInterval to periodically verify stream status and make HTTP requests
+ * to keep the instance alive. This avoids the Cloud Tasks API dependency which
+ * has reliability issues during cold starts.
  *
  * This is an "Actor" in the Observer-Actor pattern:
  * - Observers (Stream Poller, EventSub) detect stream state
@@ -17,10 +20,11 @@ import LifecycleManager from './LifecycleManager.js';
  */
 class KeepAliveActor {
     constructor() {
-        this.keepAliveTaskName = null;
+        this.intervalId = null;
         this.isActive = false;
         this.consecutiveFailedChecks = 0;
         this.maxFailedChecks = 3; // Require 3 consecutive failures before giving up
+        this.checkIntervalMs = 60000; // Check every 60 seconds
     }
 
     /**
@@ -33,25 +37,21 @@ class KeepAliveActor {
             return;
         }
 
-        logger.info('KeepAliveActor: Starting keep-alive pings');
+        logger.info('KeepAliveActor: Starting in-process keep-alive checks');
         this.isActive = true;
         this.consecutiveFailedChecks = 0;
 
-        try {
-            await this.schedulePing();
-        } catch (error) {
-            logger.error({ err: error }, 'KeepAliveActor: Failed to schedule initial ping - will retry in background');
-            // Don't fail startup - schedule a retry instead
-            // This is critical for cold starts where gRPC client may not be ready
-            setTimeout(() => {
-                if (this.isActive) {
-                    logger.info('KeepAliveActor: Retrying initial ping after cold start delay');
-                    this.schedulePing().catch(err => {
-                        logger.error({ err }, 'KeepAliveActor: Retry also failed - keep-alive may not work this instance');
-                    });
-                }
-            }, 5000); // Retry after 5 seconds
-        }
+        // Start interval timer for periodic checks
+        this.intervalId = setInterval(() => {
+            this.performCheck().catch(err => {
+                logger.error({ err }, 'KeepAliveActor: Error during periodic check');
+            });
+        }, this.checkIntervalMs);
+
+        // Perform first check immediately
+        await this.performCheck();
+
+        logger.info({ intervalMs: this.checkIntervalMs }, 'KeepAliveActor: In-process keep-alive started');
     }
 
     /**
@@ -64,33 +64,30 @@ class KeepAliveActor {
             return;
         }
 
-        logger.info('KeepAliveActor: Stopping keep-alive pings');
+        logger.info('KeepAliveActor: Stopping in-process keep-alive checks');
         this.isActive = false;
         this.consecutiveFailedChecks = 0;
 
-        if (this.keepAliveTaskName) {
-            try {
-                await deleteTask(this.keepAliveTaskName);
-                this.keepAliveTaskName = null;
-            } catch (error) {
-                logger.error({ err: error }, 'KeepAliveActor: Failed to delete keep-alive task');
-            }
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+            logger.info('KeepAliveActor: Interval timer cleared');
         }
     }
 
     /**
-     * Handle a keep-alive ping (called by /keep-alive endpoint)
-     *
+     * Perform a periodic check of stream status
      * This method:
      * 1. Verifies streams are still live (cross-checks with Twitch API)
-     * 2. Decides whether to continue or stop pings
-     * 3. Schedules the next ping if needed
+     * 2. Cleans up phantom streams
+     * 3. Decides whether to continue or stop the keep-alive actor
+     * @private
      */
-    async handlePing() {
-        logger.info('KeepAliveActor: Keep-alive ping received');
+    async performCheck() {
+        logger.debug('KeepAliveActor: Performing periodic stream check');
 
         if (!this.isActive) {
-            logger.warn('KeepAliveActor: Ping received but actor is not active - stopping');
+            logger.warn('KeepAliveActor: Check triggered but actor is not active - stopping');
             return;
         }
 
@@ -157,12 +154,6 @@ class KeepAliveActor {
         if (shouldContinue) {
             this.consecutiveFailedChecks = 0;
             logger.info(`KeepAliveActor: Check passed - ${reasons.join('; ')}`);
-
-            try {
-                await this.schedulePing();
-            } catch (error) {
-                logger.error({ err: error }, 'KeepAliveActor: Failed to schedule next ping');
-            }
         } else {
             this.consecutiveFailedChecks++;
             logger.warn(`KeepAliveActor: Check failed (${this.consecutiveFailedChecks}/${this.maxFailedChecks}) - No active streams detected`);
@@ -170,40 +161,19 @@ class KeepAliveActor {
             if (this.consecutiveFailedChecks >= this.maxFailedChecks) {
                 logger.warn(`KeepAliveActor: ${this.maxFailedChecks} consecutive failures - stopping keep-alive`);
                 await this.stop();
-            } else {
-                // Schedule next check even after failure (until max failures reached)
-                try {
-                    await this.schedulePing();
-                } catch (error) {
-                    logger.error({ err: error }, 'KeepAliveActor: Failed to schedule ping after failure');
-                }
             }
         }
     }
 
     /**
-     * Schedule the next ping (internal helper)
-     * @private
-     */
-    async schedulePing() {
-        try {
-            this.keepAliveTaskName = await scheduleNextKeepAlivePing(60); // 1 minute
-            logger.debug({ taskName: this.keepAliveTaskName }, 'KeepAliveActor: Next ping scheduled');
-        } catch (error) {
-            logger.error({ err: error }, 'KeepAliveActor: Failed to schedule ping');
-            throw error;
-        }
-    }
-
-    /**
      * Get the current status of the keep-alive actor
-     * @returns {{ isActive: boolean, consecutiveFailedChecks: number }}
+     * @returns {{ isActive: boolean, consecutiveFailedChecks: number, hasActiveInterval: boolean }}
      */
     getStatus() {
         return {
             isActive: this.isActive,
             consecutiveFailedChecks: this.consecutiveFailedChecks,
-            hasScheduledTask: this.keepAliveTaskName !== null
+            hasActiveInterval: this.intervalId !== null
         };
     }
 }

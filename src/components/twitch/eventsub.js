@@ -54,14 +54,12 @@ export async function cleanupKeepAliveTasks() {
 }
 
 /**
- * Handles the keep-alive ping from Cloud Tasks
- * This is called by the /keep-alive endpoint
- *
- * Simplified: Delegates to KeepAliveActor which handles all logic
+ * Legacy endpoint - no longer used with in-process keep-alive
+ * Kept for backwards compatibility but does nothing
+ * @deprecated Use in-process KeepAliveActor instead
  */
 export async function handleKeepAlivePing() {
-    const lifecycle = LifecycleManager.get();
-    await lifecycle.keepAliveActor.handlePing();
+    logger.debug('Legacy /keep-alive endpoint called - now using in-process keep-alive');
 }
 
 /**
