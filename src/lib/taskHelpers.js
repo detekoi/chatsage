@@ -61,7 +61,7 @@ export async function createKeepAliveTask() {
                 },
                 dispatchDeadline: { seconds: 30 }
             }
-        }, { timeout: 30000 }); // 30 second API call timeout (max allowed)
+        }, { timeout: 10000 }); // 10 second API call timeout (shorter for fast-fail during cold starts)
 
         logger.info({ taskName: task.name }, 'Keep-alive task created successfully');
         return task.name;
@@ -95,8 +95,10 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
     }
     
     // Retry with exponential backoff to handle transient DEADLINE_EXCEEDED/UNAVAILABLE
-    const maxAttempts = 4; // ~1.75s total backoff before giving up (0.25 + 0.5 + 1.0)
-    const baseDelayMs = 250;
+    // During cold starts, gRPC client initialization can be slow (30-40s per attempt)
+    // Reduced to 2 attempts to avoid blocking startup for too long
+    const maxAttempts = 2; // Fast-fail during cold start, let KeepAliveActor retry later
+    const baseDelayMs = 500;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -121,7 +123,7 @@ export async function scheduleNextKeepAlivePing(delaySeconds = 240) {
                     },
                     dispatchDeadline: { seconds: 30 }
                 }
-            }, { timeout: 30000 }); // 30 second API call timeout (max allowed)
+            }, { timeout: 10000 }); // 10 second API call timeout (shorter for fast-fail during cold starts)
 
             logger.debug({ taskName: task.name, delaySeconds }, 'Next keep-alive ping scheduled');
             return task.name;

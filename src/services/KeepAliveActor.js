@@ -40,8 +40,17 @@ class KeepAliveActor {
         try {
             await this.schedulePing();
         } catch (error) {
-            logger.error({ err: error }, 'KeepAliveActor: Failed to schedule initial ping');
-            // Don't set isActive to false - let handlePing deal with failures
+            logger.error({ err: error }, 'KeepAliveActor: Failed to schedule initial ping - will retry in background');
+            // Don't fail startup - schedule a retry instead
+            // This is critical for cold starts where gRPC client may not be ready
+            setTimeout(() => {
+                if (this.isActive) {
+                    logger.info('KeepAliveActor: Retrying initial ping after cold start delay');
+                    this.schedulePing().catch(err => {
+                        logger.error({ err }, 'KeepAliveActor: Retry also failed - keep-alive may not work this instance');
+                    });
+                }
+            }, 5000); // Retry after 5 seconds
         }
     }
 
