@@ -169,6 +169,26 @@ describe('secretManager', () => {
             expect(logger.info).toHaveBeenCalledWith('Successfully retrieved secret: test-secret');
         });
 
+        it('should cache secret value after first retrieval', async () => {
+            const mockVersion = {
+                payload: {
+                    data: Buffer.from('cached-secret-value', 'utf8')
+                }
+            };
+
+            mockClient.accessSecretVersion.mockResolvedValue([mockVersion]);
+
+            // First call - should hit the API
+            const result1 = await getSecretValue('projects/test/secrets/cached-secret/versions/latest');
+            expect(result1).toBe('cached-secret-value');
+            expect(mockClient.accessSecretVersion).toHaveBeenCalledTimes(1);
+
+            // Second call - should be served from cache
+            const result2 = await getSecretValue('projects/test/secrets/cached-secret/versions/latest');
+            expect(result2).toBe('cached-secret-value');
+            expect(mockClient.accessSecretVersion).toHaveBeenCalledTimes(1); // Still 1 call
+        });
+
         it('should return null when secret payload is missing', async () => {
             const mockVersion = {
                 payload: null

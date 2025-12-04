@@ -7,6 +7,8 @@ let client = null;
 // Helper for async sleep
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const secretCache = new Map();
+
 /**
  * Initializes the Secret Manager client.
  */
@@ -88,6 +90,13 @@ async function getSecretValue(secretResourceName) {
         logger.error('getSecretValue called with empty secretResourceName.');
         return null;
     }
+
+    // Check cache first
+    if (secretCache.has(secretResourceName)) {
+        // logger.debug(`Serving secret from cache: ${secretResourceName.split('/secrets/')[1].split('/')[0]}`);
+        return secretCache.get(secretResourceName);
+    }
+
     const smClient = getSecretManagerClient();
 
     const MAX_RETRIES = 3;
@@ -120,6 +129,10 @@ async function getSecretValue(secretResourceName) {
             // Decode the secret value (it's base64 encoded by default)
             const secretValue = version.payload.data.toString('utf8');
             logger.info(`Successfully retrieved secret: ${secretResourceName.split('/secrets/')[1].split('/')[0]}`);
+
+            // Cache the value
+            secretCache.set(secretResourceName, secretValue);
+
             return secretValue;
         } catch (error) {
             lastError = error;
@@ -169,6 +182,12 @@ async function setSecretValue(secretResourceName, secretValue) {
         });
 
         logger.info(`Successfully added new version to secret: ${secretResourceName.split('/secrets/')[1]} (version: ${version.name.split('/').pop()})`);
+
+        // Update cache with the new value
+        // Construct the 'latest' version path for this secret
+        const latestVersionPath = `${secretResourceName}/versions/latest`;
+        secretCache.set(latestVersionPath, secretValue);
+
         return true;
     } catch (error) {
         logger.error(
@@ -189,7 +208,17 @@ async function setSecretValue(secretResourceName, secretValue) {
 function resetSecretManagerClient() {
     if (process.env.NODE_ENV === 'test') {
         client = null;
+        secretCache.clear();
     }
+}
+
+/**
+ * Clears the secret cache.
+ * Useful for testing or forcing a refresh.
+ */
+function clearSecretCache() {
+    secretCache.clear();
+    logger.info('Secret cache cleared.');
 }
 
 /**
@@ -229,7 +258,8 @@ function getSecretManagerStatus() {
         clientAvailable: !!client,
         environment: process.env.NODE_ENV || 'development',
         hasLocalToken: hasLocalRefreshToken,
-        allowMissing: allowMissing
+        allowMissing: allowMissing,
+        cacheSize: secretCache.size
     };
 }
 
@@ -239,5 +269,6 @@ export {
     setSecretValue,
     resetSecretManagerClient,
     validateSecretManager,
-    getSecretManagerStatus
+    getSecretManagerStatus,
+    clearSecretCache
 };
