@@ -187,7 +187,7 @@ describe('llmUtils', () => {
         });
 
         it('should handle long responses with summarization', async () => {
-            const longResponse = 'A'.repeat(500); // Longer than MAX_IRC_MESSAGE_LENGTH (450)
+            const longResponse = 'A'.repeat(600); // Longer than MAX_IRC_MESSAGE_LENGTH (500)
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
@@ -208,7 +208,7 @@ describe('llmUtils', () => {
         });
 
         it('should handle summarization failure', async () => {
-            const longResponse = 'A'.repeat(500);
+            const longResponse = 'A'.repeat(600);
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
@@ -223,12 +223,12 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', longResponse.substring(0, 447) + '...', { replyToId: null });
-            expect(logger.warn).toHaveBeenCalledWith('Summarization failed or returned empty for mention response. Falling back to truncation.');
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'A'.repeat(499) + '.', { replyToId: null });
+            expect(logger.warn).toHaveBeenCalledWith('Summarization failed or returned empty for mention response. Falling back to smart truncation.');
         });
 
         it('should handle responses that are too long even after summarization', async () => {
-            const longResponse = 'A'.repeat(500);
+            const longResponse = 'A'.repeat(600);
 
             getOrCreateChatSession.mockReturnValue({
                 sendMessage: jest.fn().mockResolvedValue({
@@ -239,12 +239,12 @@ describe('llmUtils', () => {
                 })
             });
 
-            summarizeText.mockResolvedValue('B'.repeat(500)); // Summary still too long
+            summarizeText.mockResolvedValue('B'.repeat(600)); // Summary still too long
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'B'.repeat(447) + '...', { replyToId: null });
-            expect(logger.warn).toHaveBeenCalledWith('Final reply (even after summary/truncation) too long (500 chars). Truncating sharply.');
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'B'.repeat(499) + '.', { replyToId: null });
+            expect(logger.warn).toHaveBeenCalledWith('Final reply (even after summary/truncation) too long (600 chars). Applying smart truncation.');
         });
 
         it('should handle LLM errors gracefully', async () => {

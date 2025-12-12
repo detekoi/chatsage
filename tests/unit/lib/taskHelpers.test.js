@@ -100,7 +100,7 @@ describe('taskHelpers', () => {
                     },
                     dispatchDeadline: { seconds: 30 }
                 }
-            });
+            }, { timeout: 10000 });
             expect(logger.info).toHaveBeenCalledWith(
                 expect.objectContaining({
                     project: 'test-project',
@@ -206,7 +206,7 @@ describe('taskHelpers', () => {
                     },
                     dispatchDeadline: { seconds: 30 }
                 }
-            });
+            }, { timeout: 10000 });
         });
 
         it('should schedule next ping with custom delay', async () => {
@@ -233,9 +233,8 @@ describe('taskHelpers', () => {
 
             mockClient.queuePath.mockReturnValue('projects/test-project/locations/us-central1/queues/test-queue');
 
-            // Fail first two attempts, succeed on third
+            // Fail first attempt, succeed on second (maxAttempts is intentionally low for cold starts)
             mockClient.createTask
-                .mockRejectedValueOnce(retryableError)
                 .mockRejectedValueOnce(retryableError)
                 .mockResolvedValue([{
                     name: 'projects/test-project/locations/us-central1/queues/test-queue/tasks/test-task-id'
@@ -252,7 +251,7 @@ describe('taskHelpers', () => {
             const taskName = await taskPromise;
 
             expect(taskName).toBeDefined();
-            expect(mockClient.createTask).toHaveBeenCalledTimes(3);
+            expect(mockClient.createTask).toHaveBeenCalledTimes(2);
 
             jest.useRealTimers();
         });
@@ -288,7 +287,7 @@ describe('taskHelpers', () => {
 
             // Wait for rejection and verify error
             await expect(promise).rejects.toThrow(errorMessage);
-            expect(mockClient.createTask).toHaveBeenCalledTimes(4); // Max attempts
+            expect(mockClient.createTask).toHaveBeenCalledTimes(2); // Max attempts
 
             jest.useRealTimers();
         });

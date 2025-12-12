@@ -15,7 +15,7 @@ jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/components/twitch/ircClient.js');
 jest.mock('../../../../src/services/LifecycleManager.js');
 
-describe('EventSub Keep-Alive Logic', () => {
+describe('EventSub Legacy Keep-Alive Endpoint', () => {
     let mockLifecycle;
 
     beforeEach(() => {
@@ -29,109 +29,23 @@ describe('EventSub Keep-Alive Logic', () => {
         };
         LifecycleManager.get.mockReturnValue(mockLifecycle);
 
-        // Ensure keep-alive task scheduling returns a task name so deletion logic can run
+        // Legacy keep-alive endpoint no longer schedules tasks (keep-alive is handled in-process)
         scheduleNextKeepAlivePing.mockResolvedValue('keep-alive-task-test');
     });
 
-    test('should keep instance alive if poller detects an active stream', async () => {
-        // Arrange
-        const mockChannelStates = new Map([
-            ['testchannel', { chatHistory: [], streamContext: { streamGame: 'Some Game' } }]
-        ]);
-        getContextManager.mockReturnValue({
-            getAllChannelStates: () => mockChannelStates,
-            getContextForLLM: () => ({ streamGame: 'Some Game', streamTitle: 'Title' }),
-            getChannelsForPolling: jest.fn().mockResolvedValue([]), // Mock to avoid unrelated errors
-        });
-        getLiveStreams.mockResolvedValue([]); // No live streams from Helix fallback
-
-        // Act
+    test('handleKeepAlivePing is a no-op (keep-alive is now in-process)', async () => {
         await handleKeepAlivePing();
 
-        // Assert
-        expect(scheduleNextKeepAlivePing).toHaveBeenCalledTimes(1);
+        expect(logger.debug).toHaveBeenCalledWith(
+            'Legacy /keep-alive endpoint called - now using in-process keep-alive'
+        );
+
+        // Nothing legacy should fire anymore
+        expect(scheduleNextKeepAlivePing).not.toHaveBeenCalled();
         expect(deleteTask).not.toHaveBeenCalled();
-        const infoLog = logger.info.mock.calls.find(call => call[0].includes('Keep-alive check passed'));
-        expect(infoLog[0]).toContain('1 stream(s) live via poller');
-
-        // Should notify lifecycle about the poller-detected stream
-        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('testchannel', true);
-    });
-
-    test('should scale down after MAX_FAILED_CHECKS if no activity is detected', async () => {
-        // Arrange
-        getContextManager.mockReturnValue({
-            getAllChannelStates: () => new Map(),
-            getContextForLLM: () => ({ streamGame: null }),
-            getChannelsForPolling: jest.fn().mockResolvedValue([]),
-        });
-        getLiveStreams.mockResolvedValue([]); // Helix fallback finds nothing
-        mockLifecycle.getActiveStreams.mockReturnValue([]);
-
-        // Act: Simulate 3 consecutive failed checks
-        await handleKeepAlivePing(); // Check 1
-        await handleKeepAlivePing(); // Check 2
-        await handleKeepAlivePing(); // Check 3
-
-        // Assert
-        // It schedules the next ping on the first 2 failures
-        expect(scheduleNextKeepAlivePing).toHaveBeenCalledTimes(2);
-        // On the 3rd failure, it deletes the task
-        expect(deleteTask).toHaveBeenCalledTimes(1);
-        const warnLog = logger.warn.mock.calls.find(call => call[0].includes('Allowing instance to scale down'));
-        expect(warnLog).toBeDefined();
-    });
-
-    test('should keep instance alive if there is recent chat activity', async () => {
-        // Arrange
-        const recentTimestamp = new Date(Date.now() - 60 * 1000); // 1 minute ago
-        const mockChannelStates = new Map([
-            ['chattychannel', {
-                chatHistory: [{ timestamp: recentTimestamp, message: 'hello' }],
-                streamContext: { streamGame: null }
-            }]
-        ]);
-        getContextManager.mockReturnValue({
-            getAllChannelStates: () => mockChannelStates,
-            getContextForLLM: () => ({ streamGame: null }),
-            getChannelsForPolling: jest.fn().mockResolvedValue([]),
-        });
-        getLiveStreams.mockResolvedValue([]);
-
-        // Act
-        await handleKeepAlivePing();
-
-        // Assert
-        expect(scheduleNextKeepAlivePing).toHaveBeenCalledTimes(1);
-        expect(deleteTask).not.toHaveBeenCalled();
-        const infoLog = logger.info.mock.calls.find(call => call[0].includes('Keep-alive check passed'));
-        expect(infoLog[0]).toContain('recent chat in: chattychannel');
-    });
-
-    test('should use Helix fallback check if all other signals are negative', async () => {
-        // Arrange
-        getContextManager.mockReturnValue({
-            getAllChannelStates: () => new Map(),
-            getContextForLLM: () => ({ streamGame: null }),
-            // This time, the poller will find channels to check
-            getChannelsForPolling: jest.fn().mockResolvedValue([
-                { channelName: 'livechannel', broadcasterId: '123' }
-            ]),
-        });
-        // Helix fallback *does* find a live stream
-        getLiveStreams.mockResolvedValue([{ user_id: '123', user_name: 'LiveChannel' }]);
-
-        // Act
-        await handleKeepAlivePing();
-
-        // Assert
-        expect(getLiveStreams).toHaveBeenCalledWith(['123']);
-        expect(scheduleNextKeepAlivePing).toHaveBeenCalledTimes(1);
-        const infoLog = logger.info.mock.calls.find(call => call[0].includes('Helix fallback detected live streams'));
-        expect(infoLog).toBeDefined();
-
-        // Should notify lifecycle about the helix-detected stream
-        expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith('livechannel', true);
+        expect(getLiveStreams).not.toHaveBeenCalled();
+        expect(getContextManager).not.toHaveBeenCalled();
+        expect(LifecycleManager.get).not.toHaveBeenCalled();
     });
 
     test('should clear phantom entries using LifecycleManager', async () => {

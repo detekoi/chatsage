@@ -2,6 +2,9 @@
 
 jest.mock('../../../src/lib/logger');
 jest.mock('../../../src/components/twitch/ircClient.js');
+jest.mock('../../../src/components/llm/geminiClient.js', () => ({
+    summarizeText: jest.fn()
+}));
 
 import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
 import * as geminiClient from '../../../src/components/llm/geminiClient.js';
@@ -42,13 +45,13 @@ describe('ircSender enqueueMessage summarization behavior', () => {
     test('summarizes long messages via summarizeText and sends summary', async () => {
         const longText = buildLongText(1200);
         const summary = 'Short summary within 400 chars.';
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue(summary);
+    geminiClient.summarizeText.mockResolvedValue(summary);
 
         await enqueueMessage('#test', longText, { replyToId: null, skipTranslation: true });
 
         // Verify summarization was called with correct parameters
-        expect(summarizeSpy).toHaveBeenCalledTimes(1);
-        expect(summarizeSpy).toHaveBeenCalledWith(longText, 400); // SUMMARY_TARGET_LENGTH constant
+    expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
+    expect(geminiClient.summarizeText).toHaveBeenCalledWith(longText, 400); // SUMMARY_TARGET_LENGTH constant
 
         // Wait for queue processing to complete
         await waitForQueueEmpty();
@@ -63,13 +66,13 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('falls back to truncation when summarization returns null', async () => {
         const longText = buildLongText(1200);
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue(null);
+    geminiClient.summarizeText.mockResolvedValue(null);
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was attempted
-        expect(summarizeSpy).toHaveBeenCalledTimes(1);
-        expect(summarizeSpy).toHaveBeenCalledWith(longText, 400);
+    expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
+    expect(geminiClient.summarizeText).toHaveBeenCalledWith(longText, 400);
 
         await waitForQueueEmpty();
 
@@ -86,12 +89,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('skips summarization when skipLengthProcessing is true but still truncates if needed', async () => {
         const longText = buildLongText(1000);
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue('irrelevant');
+    geminiClient.summarizeText.mockResolvedValue('irrelevant');
 
         await enqueueMessage('#test', longText, { skipTranslation: true, skipLengthProcessing: true });
 
         // Verify summarization was NOT called
-        expect(summarizeSpy).not.toHaveBeenCalled();
+    expect(geminiClient.summarizeText).not.toHaveBeenCalled();
 
         await waitForQueueEmpty();
 
@@ -110,19 +113,19 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         const longText = buildLongText(1200);
         // Return a summary that is still too long (longer than 500 chars)
         const tooLongSummary = 'A'.repeat(600);
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue(tooLongSummary);
+    geminiClient.summarizeText.mockResolvedValue(tooLongSummary);
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was called
-        expect(summarizeSpy).toHaveBeenCalledTimes(1);
+    expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
         // Verify emergency truncation was applied to the summary itself
         expect(mockIrcClient.say).toHaveBeenCalledTimes(1);
         const sent = mockIrcClient.say.mock.calls[0][1];
-        expect(sent.length).toBeLessThanOrEqual(500);
+    expect(sent.length).toBeLessThanOrEqual(400);
         expect(sent.endsWith('...')).toBe(true);
         // Should start with the summary content, not the original text
         expect(sent.startsWith('A')).toBe(true);
@@ -131,12 +134,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
     test('handles empty summary result after trimming', async () => {
         const longText = buildLongText(1200);
         // Return a summary that becomes empty after trimming
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue('   ');
+    geminiClient.summarizeText.mockResolvedValue('   ');
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was called
-        expect(summarizeSpy).toHaveBeenCalledTimes(1);
+    expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
@@ -150,12 +153,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('handles summarization API errors gracefully', async () => {
         const longText = buildLongText(1200);
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockRejectedValue(new Error('API Error'));
+    geminiClient.summarizeText.mockRejectedValue(new Error('API Error'));
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was attempted
-        expect(summarizeSpy).toHaveBeenCalledTimes(1);
+    expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
@@ -169,12 +172,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('processes messages at or below IRC limit without summarization', async () => {
         const shortText = 'This is a short message under 500 characters.';
-        const summarizeSpy = jest.spyOn(geminiClient, 'summarizeText').mockResolvedValue('should not be called');
+    geminiClient.summarizeText.mockResolvedValue('should not be called');
 
         await enqueueMessage('#test', shortText, { skipTranslation: true });
 
         // Verify summarization was NOT called for short messages
-        expect(summarizeSpy).not.toHaveBeenCalled();
+    expect(geminiClient.summarizeText).not.toHaveBeenCalled();
 
         await waitForQueueEmpty();
 
