@@ -363,10 +363,13 @@ describe('Translate Command Handler', () => {
             // ContextManager/Twitch might fail later, but the command succeeds in calling enabling.
             // This is acceptable behavior (trying to target a user provided).
 
+            // "german" is known. "invaliduser" is not known / verified.
+            // Heuristic 2 now verifies user existence. Since "invaliduser" doesn't exist (mocked),
+            // it falls back to treating "german invaliduser" as language for self.
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'invaliduser',
-                'german'
+                'moduser', // targeting self
+                'german invaliduser' // full args as language
             );
         });
 

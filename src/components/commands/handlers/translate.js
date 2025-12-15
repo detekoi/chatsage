@@ -114,7 +114,28 @@ const translateHandler = {
                     // This creates robustness against chatty syntax like "!translate english for user"
                     potentialUser = args[args.length - 1];
 
+                    if (isModOrBroadcaster) {
+                        try {
+                            const users = await getUsersByLogin([potentialUser]);
+                            if (!users || users.length === 0) {
+                                // User not found, fallback to self (assuming all args are language)
+                                potentialUser = invokingUsernameLower;
+                                potentialLang = args.join(' ');
+                            }
+                        } catch (err) {
+                            // API error, fallback to self
+                            potentialUser = invokingUsernameLower;
+                            potentialLang = args.join(' ');
+                        }
+                    }
 
+
+                    // Verify if user info was found, but also check permissions immediately
+                    // If not privileged and trying to target someone else, default back to self.
+                    if (!isModOrBroadcaster && potentialUser !== invokingUsernameLower) {
+                        potentialUser = invokingUsernameLower;
+                        potentialLang = args.join(' ');
+                    }
                 }
                 else if (isKnownLanguage(lastArg)) {
                     // Last arg is known language -> First is likely user
