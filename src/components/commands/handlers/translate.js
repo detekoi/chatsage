@@ -37,7 +37,7 @@ const translateHandler = {
         }
 
         const action = args[0].toLowerCase();
-        const isStopAction = action === 'stop';
+        let isStopAction = action === 'stop';
 
         // --- Handle !translate stop all ---
         if (isStopAction && args.length > 1 && args[1].toLowerCase() === 'all') {
@@ -132,7 +132,7 @@ const translateHandler = {
 
                     // Verify if user info was found, but also check permissions immediately
                     // If not privileged and trying to target someone else, default back to self.
-                    if (!isModOrBroadcaster && potentialUser !== invokingUsernameLower) {
+                    if (!isModOrBroadcaster && cleanUser(potentialUser) !== invokingUsernameLower) {
                         potentialUser = invokingUsernameLower;
                         potentialLang = args.join(' ');
                     }
@@ -189,6 +189,10 @@ const translateHandler = {
             }
             if (potentialLang) {
                 language = potentialLang;
+                if (language.toLowerCase() === 'stop') {
+                    isStopAction = true;
+                    language = null; // Clear language so it doesn't try to enable translation with 'stop'
+                }
             }
 
             // Permission Check again (if heuristics found a different user)

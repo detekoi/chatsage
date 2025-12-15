@@ -99,6 +99,23 @@ describe('Translate Command Handler', () => {
                 'pig latin'
             );
         });
+
+        test('should allow non-mod to target self using mixed-case username', async () => {
+            const context = createMockContext(['english', 'TestUser'], '#testchannel', {
+                username: 'testuser',
+                'display-name': 'TestUser',
+                id: '123',
+                mod: '0'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
+                'testchannel',
+                'testuser',
+                'english'
+            );
+        });
     });
 
     describe('Stop Translation', () => {
@@ -153,6 +170,31 @@ describe('Translate Command Handler', () => {
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Okay, stopped translating messages for otheruser.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should allow mod to stop translation using suffix format: user stop', async () => {
+            // !translate targetuser stop -> Currently might parse as lang="stop"
+            // Desired: treat as stop command
+            mockContextManager.disableUserTranslation.mockReturnValue(true);
+
+            const context = createMockContext(['targetuser', 'stop'], '#testchannel', {
+                username: 'moduser',
+                'display-name': 'ModUser',
+                id: '123',
+                mod: '1'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
+                'testchannel',
+                'targetuser'
+            );
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Okay, stopped translating messages for targetuser.',
                 { replyToId: '123' }
             );
         });
