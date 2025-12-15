@@ -116,7 +116,7 @@ const translateHandler = {
 
                     if (isModOrBroadcaster) {
                         try {
-                            const users = await getUsersByLogin([potentialUser]);
+                            const users = await getUsersByLogin([cleanUser(potentialUser)]);
                             if (!users || users.length === 0) {
                                 // User not found, fallback to self (assuming all args are language)
                                 potentialUser = invokingUsernameLower;
