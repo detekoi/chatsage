@@ -30,7 +30,21 @@ export function cleanupTranslationUtils() {
     translationCache.clear();
 }
 
-// Enhanced text extraction function similar to lurk command fixes
+// Common languages for heuristic detection
+export const COMMON_LANGUAGES = [
+    'english', 'spanish', 'french', 'german', 'japanese',
+    'portuguese', 'italian', 'russian', 'chinese', 'korean',
+    'dutch', 'polish', 'turkish', 'arabic', 'hindi',
+    'vietnamese', 'thai', 'swedish', 'danish', 'norwegian',
+    'finnish', 'greek', 'czech', 'hungarian', 'romanian'
+];
+
+/**
+ * Enhanced text extraction function similar to lurk command fixes
+ * @param {Object} response - Gemini response object
+ * @param {Object} candidate - Response candidate
+ * @returns {string|null} Extracted text or null
+ */
 function extractTextFromResponse(response, candidate) {
     if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
         const joined = candidate.content.parts.map(p => p?.text || '').join('').trim();
@@ -60,7 +74,7 @@ export async function translateText(textToTranslate, targetLanguage) {
     // Create cache key with normalized inputs
     const cacheKey = `${targetLanguage.toLowerCase()}:${textToTranslate.toLowerCase().trim()}`;
     const now = Date.now();
-    
+
     // Check cache first
     const cachedEntry = translationCache.get(cacheKey);
     if (cachedEntry && (now - cachedEntry.timestamp < CACHE_EXPIRY_MS)) {
@@ -72,7 +86,17 @@ export async function translateText(textToTranslate, targetLanguage) {
     }
     const model = getGeminiClient();
 
-    const translationPrompt = `You are an expert interpreter. Translate the following text into ${targetLanguage}. Do not include any other text or commentary. Do not wrap your translation in quotation marks:\n\n${textToTranslate}\n\nTranslation:`;
+    const translationPrompt = `You are a professional interpreter. Translate the following text from its original language into ${targetLanguage}.
+Rules:
+1. Output ONLY the translated text.
+2. Do not explain the translation.
+3. If the text is already in ${targetLanguage}, correct any grammar errors if clearly present, otherwise keep it as is.
+4. Do not wrap the output in quotes.
+
+Text to translate:
+${textToTranslate}
+
+Translation:`;
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
 
@@ -82,7 +106,7 @@ export async function translateText(textToTranslate, targetLanguage) {
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
-            generationConfig: { 
+            generationConfig: {
                 maxOutputTokens: 2048, // Increased from 1024 to match recent fixes
                 temperature: 0.3,
                 responseMimeType: 'text/plain'
@@ -98,7 +122,7 @@ export async function translateText(textToTranslate, targetLanguage) {
 
         if (candidate && candidate.finishReason !== 'SAFETY') {
             const text = extractTextFromResponse(response, candidate);
-            logger.debug({ 
+            logger.debug({
                 phase: 'attempt1',
                 finishReason: candidate?.finishReason,
                 hasText: !!text,
@@ -116,7 +140,7 @@ export async function translateText(textToTranslate, targetLanguage) {
             const simplePrompt = `Translate to ${targetLanguage}: ${textToTranslate}`;
             const result2 = await model.generateContent({
                 contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],
-                generationConfig: { 
+                generationConfig: {
                     maxOutputTokens: 1536,
                     temperature: 0.2,
                     responseMimeType: 'text/plain'
@@ -124,7 +148,7 @@ export async function translateText(textToTranslate, targetLanguage) {
             });
             const response2 = result2;
             const candidate2 = response2?.candidates?.[0];
-            
+
             if (candidate2 && candidate2.finishReason !== 'SAFETY') {
                 const text2 = extractTextFromResponse(response2, candidate2);
                 logger.debug({
@@ -146,7 +170,7 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     // Only remove quotation marks if they surround the entire message
     const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
-    
+
     // Cache the successful translation
     if (cleanedText && cleanedText.length > 0) {
         // Implement LRU eviction if cache is full
@@ -155,14 +179,14 @@ export async function translateText(textToTranslate, targetLanguage) {
             translationCache.delete(oldestKey);
             logger.debug(`[TranslationCache] Evicted oldest entry: "${oldestKey.substring(0, 30)}..."`);
         }
-        
+
         translationCache.set(cacheKey, {
             translation: cleanedText,
             timestamp: now
         });
         logger.debug(`[TranslationCache] Cached translation for: "${textToTranslate.substring(0, 30)}..." (cache size: ${translationCache.size})`);
     }
-    
+
     logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
     return cleanedText;
 }

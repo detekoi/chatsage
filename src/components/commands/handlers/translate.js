@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 // Need contextManager functions to update user state
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { translateText } from '../../../lib/translationUtils.js';
+import { translateText, COMMON_LANGUAGES } from '../../../lib/translationUtils.js';
 import { getUsersByLogin } from '../../twitch/helixClient.js';
 
 
@@ -19,12 +19,12 @@ function isPrivilegedUser(tags, channelName) {
 const translateHandler = {
     name: 'translate',
     description: 'Manage automatic message translation for users.',
-    usage: '!translate <language> | !translate stop | !translate <language> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)',
+    usage: '!translate <language> [user] | !translate <user> <language> | !translate stop [user|all]',
     permission: 'everyone',
     execute: async (context) => {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
-        const invokingUsernameLower = user.username;
+        const invokingUsernameLower = user.username.toLowerCase();
         const invokingDisplayName = user['display-name'] || user.username;
         const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
@@ -32,7 +32,7 @@ const translateHandler = {
 
         // --- Input Validation ---
         if (args.length === 0) {
-            enqueueMessage(channel, `Usage: !translate <language> | !translate stop | !translate <lang> <user> | !translate stop <user> | !translate stop all (Mods/Broadcaster)`, { replyToId });
+            enqueueMessage(channel, `Usage: !translate <language> [user] | !translate <user> <language> | !translate stop [user|all]`, { replyToId });
             return;
         }
 
@@ -72,42 +72,111 @@ const translateHandler = {
                 targetUsernameLower = invokingUsernameLower;
             }
         } else {
-            // Handle !translate <language> [username]
-            if (args.length === 1) {
-                // Single argument is always language, target self
-                targetUsernameLower = invokingUsernameLower;
-                language = args[0];
-            } else { // args.length > 1
-                // Check if the last argument could be a username *intended* as such
-                const potentialUsername = args[args.length - 1].toLowerCase().replace(/^@/, '');
-                let isTargetingOther = false; // Assume not targeting other initially
+            // Flexible parsing: Identify Language vs Username
+            // args could be ["spanish", "xenmag_yt"] OR ["@xenmag_yt", "spanish"] OR ["spanish"] (self)
 
-                // Only mods/broadcasters can target others explicitly
-                if (isModOrBroadcaster) {
-                    // Check if the last arg *is* a real user AND it's not the invoking user themselves
-                    // (prevents "!translate Pig Latin" from being interpreted as targeting user 'latin')
-                    try {
-                        const users = await getUsersByLogin([potentialUsername]);
-                        if (users && users.length > 0 && potentialUsername !== invokingUsernameLower) {
-                            // It's a real user, and it's not self. Treat as targeting.
-                            isTargetingOther = true;
-                            targetUsernameLower = potentialUsername;
-                            language = args.slice(0, -1).join(' ');
-                        }
-                    } catch (e) {
-                        logger.error({ err: e, potentialUsername }, 'Error checking username with Twitch API');
-                        // Error out for clarity when API fails
-                        enqueueMessage(channel, `Error checking username. Could not process command.`, { replyToId });
-                        return;
+            // Helper to check if string matches a known language
+            const isKnownLanguage = (str) => COMMON_LANGUAGES.includes(str.toLowerCase());
+
+            // Helper to clean username
+            const cleanUser = (str) => str.toLowerCase().replace(/^@/, '');
+
+            let potentialLang = null;
+            let potentialUser = null;
+
+            if (args.length === 1) {
+                // One arg: Must be language, target is self
+                potentialLang = args[0];
+                potentialUser = invokingUsernameLower; // Target self
+            } else if (args.length >= 2) {
+                const firstArg = args[0];
+                const lastArg = args[args.length - 1]; // Assume multi-word lang is possible, but usually user is one word
+
+                const firstClean = cleanUser(firstArg);
+                const lastClean = cleanUser(lastArg);
+
+                // Heuristic 1: Explicit User Mention (@user)
+                if (firstArg.startsWith('@')) {
+                    potentialUser = firstClean;
+                    potentialLang = args.slice(1).join(' ');
+                } else if (lastArg.startsWith('@')) {
+                    potentialUser = lastClean;
+                    potentialLang = args.slice(0, -1).join(' ');
+                }
+                // Heuristic 2: Known Language Match
+                else if (isKnownLanguage(firstArg)) {
+                    // First arg is definitely a language -> Second is likely user
+                    potentialLang = firstArg; // Assume single word lang if matched
+                    // If more than 2 args, things get messy, but "english otheruser" -> lang=english, user=otheruser
+                    // "traditional chinese otheruser" -> lang="traditional chinese" (not in simple list), so this check fails.
+                    // But if "english" is in list:
+                    potentialUser = args.slice(1).join(' '); // Treat rest as user? or just last arg? 
+                    // Let's assume user is always ONE token if not self.
+                    potentialUser = args[args.length - 1];
+                    if (args.length > 2) {
+                        // If args > 2 and first is lang, maybe middle is filler? Or lang is multi-word?
+                        // e.g. "german user" (len 2) -> ok.
+                        // "traditional chinese user" -> first "traditional" not in list.
                     }
                 }
-
-                // If we didn't identify the last arg as an intended target username...
-                if (!isTargetingOther) {
-                    // Treat all args as language, target self
-                    targetUsernameLower = invokingUsernameLower;
-                    language = args.join(' ');
+                else if (isKnownLanguage(lastArg)) {
+                    // Last arg is known language -> First is likely user
+                    potentialLang = lastArg;
+                    potentialUser = args.slice(0, -1).join(' '); // multi-word user? unlikely.
+                    potentialUser = args[0];
                 }
+                // Heuristic 3: User Verification (only if we have permission to target others)
+                else if (isModOrBroadcaster) {
+                    // Try to resolve first arg as user
+                    // "user language"
+                    try {
+                        const users = await getUsersByLogin([firstClean]);
+                        if (users && users.length > 0) {
+                            // First arg is a valid user
+                            potentialUser = firstClean;
+                            potentialLang = args.slice(1).join(' ');
+                        } else {
+                            // First arg not user, maybe last arg is user?
+                            const usersLast = await getUsersByLogin([lastClean]);
+                            if (usersLast && usersLast.length > 0) {
+                                potentialUser = lastClean;
+                                potentialLang = args.slice(0, -1).join(' ');
+                            } else {
+                                // Neither looks like a valid user. 
+                                // Assume all is language for SELF ?? Or error?
+                                // Let's assume standard syntax: !translate language (target self)
+                                // or !translate user language (if accidental)
+                                // Only default to self if we can't find another user.
+                                potentialUser = invokingUsernameLower;
+                                potentialLang = args.join(' ');
+                            }
+                        }
+                    } catch (err) {
+                        logger.error({ err }, 'Error looking up users for translate command parsing');
+                        // Fallback: assume all is language for self
+                        potentialUser = invokingUsernameLower;
+                        potentialLang = args.join(' ');
+                    }
+                } else {
+                    // Not mod/broadcaster? Cannot target others.
+                    // Treat all as language for self
+                    potentialUser = invokingUsernameLower;
+                    potentialLang = args.join(' ');
+                }
+            }
+
+            // Refine Parsing Result
+            if (potentialUser) {
+                targetUsernameLower = cleanUser(potentialUser);
+            }
+            if (potentialLang) {
+                language = potentialLang;
+            }
+
+            // Permission Check again (if heuristics found a different user)
+            if (targetUsernameLower !== invokingUsernameLower && !isModOrBroadcaster) {
+                enqueueMessage(channel, `Only mods or the broadcaster can translate for other users.`, { replyToId });
+                return;
             }
         }
 
@@ -133,10 +202,11 @@ const translateHandler = {
                 const baseConfirmation = `Okay, translating messages for ${effectiveDisplayName} into ${language}. Use "!translate stop${targetUsernameLower !== invokingUsernameLower ? ' ' + targetUsernameLower : ''}" to disable.`;
                 const translatedConfirmation = await translateText(baseConfirmation, language);
                 let finalConfirmation = `${baseConfirmation}`;
-                if (translatedConfirmation?.trim()) {
+                if (translatedConfirmation?.trim() && translatedConfirmation.toLowerCase() !== baseConfirmation.toLowerCase()) {
+                    // Only append if different (prevent echoing if translation fails/is same)
                     finalConfirmation += ` / ${translatedConfirmation}`;
                 } else {
-                    logger.warn(`Could not translate confirmation message into ${language}.`);
+                    logger.warn(`Could not translate confirmation message into ${language} (or it was identical).`);
                 }
                 enqueueMessage(channel, finalConfirmation, { replyToId });
             }
