@@ -142,7 +142,6 @@ class LifecycleManager {
      * Decides whether the IRC client should be connected or disconnected.
      */
     async reassessConnectionState() {
-        const shouldBeConnected = this.activeStreams.size > 0;
         const ircClient = getIrcClient();
 
         // If no client yet, we can't check status, but we might need to create it.
@@ -158,10 +157,15 @@ class LifecycleManager {
         const isConnecting = status === 'CONNECTING';
 
         const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
+        // In development, we generally want the bot present in chat even if the channel is offline.
+        // In non-dev, LAZY_CONNECT controls whether we only connect when streams are active.
+        const shouldBeConnected = (config.app.nodeEnv === 'development')
+            ? !isLazyConnect
+            : (!isLazyConnect || this.activeStreams.size > 0);
 
         if (shouldBeConnected) {
             if (!isConnected && !isConnecting) {
-                logger.info('LifecycleManager: Active streams detected. Connecting IRC client...');
+                logger.info('LifecycleManager: Connecting IRC client...');
                 try {
                     await connectIrcClient();
                     // Join channels is handled by onConnected in ircEventHandlers, 

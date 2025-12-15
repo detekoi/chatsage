@@ -86,6 +86,22 @@ export function createIrcEventHandlers(deps) {
         }
         // --- End Conditional Syncing/Listening ---
 
+        // In development (or anytime channels are configured locally), ensure we are joined to all configured channels.
+        // This makes local behavior predictable even if the stream is offline and LifecycleManager has no "active" streams.
+        try {
+            const joinedChannels = this.getChannels().map(c => c.replace('#', '').toLowerCase());
+            const configuredChannels = (config.twitch.channels || []).map(c => String(c).replace('#', '').toLowerCase());
+
+            for (const channel of configuredChannels) {
+                if (!joinedChannels.includes(channel)) {
+                    logger.info(`Joining configured channel: #${channel}`);
+                    await this.join(`#${channel}`);
+                }
+            }
+        } catch (error) {
+            logger.warn({ err: error }, 'Failed while ensuring join to configured channels on connect.');
+        }
+
         // Join channels that LifecycleManager knows are active
         const lifecycle = LifecycleManager.get();
         await lifecycle.ensureJoinedToActiveStreams();
