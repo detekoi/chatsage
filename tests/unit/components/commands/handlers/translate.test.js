@@ -369,7 +369,27 @@ describe('Translate Command Handler', () => {
                 'german'
             );
         });
+
+        test('should handle multi-word user args via Heuristic 2 without overwriting', async () => {
+            // "english" is known. "user one" is the rest.
+            // Current bug: overwrites "user one" with "one".
+            const context = createMockContext(['english', 'user', 'one'], '#testchannel', {
+                username: 'moduser',
+                'display-name': 'ModUser',
+                id: '123',
+                mod: '1'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
+                'testchannel',
+                'user one', // We Expect the full slice
+                'english'
+            );
+        });
     });
+
     describe('Username Detection', () => {
         test('should strip @ prefix from username', async () => {
             mockContextManager.disableUserTranslation.mockReturnValue(true);

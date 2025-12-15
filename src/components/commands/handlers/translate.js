@@ -111,19 +111,14 @@ const translateHandler = {
                     // "traditional chinese otheruser" -> lang="traditional chinese" (not in simple list), so this check fails.
                     // But if "english" is in list:
                     potentialUser = args.slice(1).join(' '); // Treat rest as user? or just last arg? 
-                    // Let's assume user is always ONE token if not self.
-                    potentialUser = args[args.length - 1];
-                    if (args.length > 2) {
-                        // If args > 2 and first is lang, maybe middle is filler? Or lang is multi-word?
-                        // e.g. "german user" (len 2) -> ok.
-                        // "traditional chinese user" -> first "traditional" not in list.
-                    }
+
+
                 }
                 else if (isKnownLanguage(lastArg)) {
                     // Last arg is known language -> First is likely user
                     potentialLang = lastArg;
                     potentialUser = args.slice(0, -1).join(' '); // multi-word user? unlikely.
-                    potentialUser = args[0];
+
                 }
                 // Heuristic 3: User Verification (only if we have permission to target others)
                 else if (isModOrBroadcaster) {
