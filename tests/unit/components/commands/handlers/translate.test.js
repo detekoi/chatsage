@@ -370,10 +370,10 @@ describe('Translate Command Handler', () => {
             );
         });
 
-        test('should handle multi-word user args via Heuristic 2 without overwriting', async () => {
-            // "english" is known. "user one" is the rest.
-            // Current bug: overwrites "user one" with "one".
-            const context = createMockContext(['english', 'user', 'one'], '#testchannel', {
+        test('should handle chatty args by picking last token as user (since usernames have no spaces)', async () => {
+            // "english" is known. "hey user" is the rest.
+            // Should interpret "user" as the target, ignoring "hey".
+            const context = createMockContext(['english', 'hey', 'targetuser'], '#testchannel', {
                 username: 'moduser',
                 'display-name': 'ModUser',
                 id: '123',
@@ -384,7 +384,7 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'user one', // We Expect the full slice
+                'targetuser',
                 'english'
             );
         });

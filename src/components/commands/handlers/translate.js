@@ -110,7 +110,9 @@ const translateHandler = {
                     // If more than 2 args, things get messy, but "english otheruser" -> lang=english, user=otheruser
                     // "traditional chinese otheruser" -> lang="traditional chinese" (not in simple list), so this check fails.
                     // But if "english" is in list:
-                    potentialUser = args.slice(1).join(' '); // Treat rest as user? or just last arg? 
+                    // Twitch usernames don't have spaces. If first arg is lang, assume last arg is user.
+                    // This creates robustness against chatty syntax like "!translate english for user"
+                    potentialUser = args[args.length - 1];
 
 
                 }
