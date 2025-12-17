@@ -74,8 +74,9 @@ Output JSON only.`;
             generationConfig: {
                 temperature: 0,
                 maxOutputTokens: 80,
-                responseMimeType: 'application/json',
-                responseSchema: schema
+                responseMimeType: 'text/json', // Using text/json as schema enforcement is strict enough; application/json sometimes stricter
+                responseSchema: schema,
+                thinkingConfig: { thinkingLevel: 'low' }
             }
         });
         const response = result;

@@ -8,11 +8,11 @@ const envPath = path.resolve(projectRoot, '.env');
 
 // Check if the .env file actually exists at that path before trying to load it
 if (fs.existsSync(envPath)) {
-  console.log(`[ConfigLoader] Loading .env file from: ${envPath}`); // Optional: for debugging
-  dotenv.config({ path: envPath });
+    console.log(`[ConfigLoader] Loading .env file from: ${envPath}`); // Optional: for debugging
+    dotenv.config({ path: envPath });
 } else {
-  // Optional: Log if not found, relying on environment variables instead
-  // console.warn(`[ConfigLoader] .env file not found at ${envPath}. Relying on system environment variables.`);
+    // Optional: Log if not found, relying on environment variables instead
+    // console.warn(`[ConfigLoader] .env file not found at ${envPath}. Relying on system environment variables.`);
 }
 
 /**
@@ -63,7 +63,7 @@ function loadConfig() {
         // Google Gemini API
         gemini: {
             apiKey: process.env.GEMINI_API_KEY,
-            modelId: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash-preview-05-20',
+            modelId: process.env.GEMINI_MODEL_ID || 'gemini-3-flash-preview',
         },
 
         // Application Behavior
@@ -96,8 +96,8 @@ function loadConfig() {
 
     // Validate interval is a positive number
     if (isNaN(config.app.streamInfoFetchIntervalMs) || config.app.streamInfoFetchIntervalMs <= 0) {
-         console.warn(`Invalid STREAM_INFO_FETCH_INTERVAL_SECONDS. Using default 120 seconds.`);
-         config.app.streamInfoFetchIntervalMs = 120 * 1000;
+        console.warn(`Invalid STREAM_INFO_FETCH_INTERVAL_SECONDS. Using default 120 seconds.`);
+        config.app.streamInfoFetchIntervalMs = 120 * 1000;
     }
 
     const eventSubSecretSource = process.env.TWITCH_EVENTSUB_SECRET;

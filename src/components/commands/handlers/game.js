@@ -68,7 +68,7 @@ const gameHandler = {
 
             // --- Execute Help Search if requested ---
             if (helpRequested) {
-            await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId, imageAnalysisResult);
+                await handleGameHelpRequest(channel, channelName, userName, helpQuery, replyToId, imageAnalysisResult);
                 return;
             }
 
@@ -106,20 +106,20 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
         // Get the official game info from the API/context FIRST
         const gameInfo = await getCurrentGameInfo(channelName);
         const officialGameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
-        
+
         if (!officialGameName) {
             enqueueMessage(channel, `Couldn't determine the current game. The channel might not be streaming a game.`, { replyToId });
             return;
         }
-        
+
         // Fetch the stream thumbnail
         const thumbnailBuffer = await fetchStreamThumbnail(channelName);
-        
+
         if (!thumbnailBuffer) {
             enqueueMessage(channel, `Couldn't fetch the stream thumbnail. The channel might be offline.`, { replyToId });
             return;
         }
-        
+
         // --- Step 1: Initial Image Analysis ---
         // Prompt focuses purely on description now
         const initialAnalysisPrompt = `Describe the in-game scene from "${officialGameName}" in 1–2 sentences. Focus on game elements only; ignore overlays. Plain text.`;
@@ -131,7 +131,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
             enqueueMessage(channel, `AI couldn't analyze the ${officialGameName} gameplay initially.`, { replyToId });
             return;
         }
-        logger.debug(`[${channelName}] Initial analysis for ${officialGameName}: "${initialAnalysisResult.substring(0,100)}..."`);
+        logger.debug(`[${channelName}] Initial analysis for ${officialGameName}: "${initialAnalysisResult.substring(0, 100)}..."`);
 
         // --- Step 2: Verify/Refine with Search Grounding ---
         let verifiedAnalysisResult = initialAnalysisResult; // Default to initial if verification fails
@@ -149,7 +149,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
 
 Rules: focus on in-game elements only (ignore overlays), fix only clear factual errors, output 1–2 sentences of plain text. Reply with the refined description only.`;
 
-            const searchResult = await generateSearchResponse(contextPrompt, verificationQuery);
+            const searchResult = await generateSearchResponse(contextPrompt, verificationQuery, { thinkingLevel: 'high' });
 
             if (searchResult && searchResult.trim().length > 0) {
                 verifiedAnalysisResult = searchResult;
@@ -157,9 +157,9 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
             } else {
                 logger.warn(`[${channelName}] Search verification step returned empty result. Using initial analysis.`);
             }
-        } catch(verificationError) {
-             logger.error({ err: verificationError }, `[${channelName}] Error during search verification step. Using initial analysis.`);
-             // Keep verifiedAnalysisResult = initialAnalysisResult
+        } catch (verificationError) {
+            logger.error({ err: verificationError }, `[${channelName}] Error during search verification step. Using initial analysis.`);
+            // Keep verifiedAnalysisResult = initialAnalysisResult
         }
 
         // --- Step 3: Process and Format Final Result ---
@@ -188,7 +188,7 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
             // Fix any double spaces that might have been created
             .replace(/\s{2,}/g, ' ')
             .trim();
-        
+
         // Also apply markdown removal
         description = removeMarkdownAsterisks(description);
 
@@ -243,30 +243,30 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
             logger.warn(`[${channelName}] Invalid game name for info request: "${gameName}"`);
             return null;
         }
-        
+
         const contextManager = getContextManager();
         const llmContext = contextManager.getContextForLLM(channelName, userName, `general info request for ${gameName}`);
         const contextPrompt = buildContextPrompt(llmContext || {});
         const gameQuery = `Tell me something interesting or provide a brief overview about the game: "${gameName}"`;
-        
+
         logger.info(`[${channelName}] Fetching additional info for game: "${gameName}"`);
-        
+
         // First try with search
-        let responseText = await generateSearchResponse(contextPrompt, gameQuery);
+        let responseText = await generateSearchResponse(contextPrompt, gameQuery, { thinkingLevel: 'high' });
         logger.info(`[${channelName}] Search response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
-        
+
         // If search fails, try standard response as fallback
         if (!responseText?.trim()) {
             logger.warn(`[${channelName}] Search response failed for "${gameName}", trying standard response`);
-            responseText = await generateStandardResponse(contextPrompt, gameQuery);
+            responseText = await generateStandardResponse(contextPrompt, gameQuery, { thinkingLevel: 'high' });
             logger.info(`[${channelName}] Standard response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
         }
-        
+
         if (!responseText?.trim()) {
             logger.error(`[${channelName}] Both search and standard responses failed for "${gameName}"`);
             return null;
         }
-        
+
         // Clean up markdown
         let finalText = removeMarkdownAsterisks(responseText);
 
@@ -382,7 +382,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         let searchResultText = null;
         const maxRetries = 3;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-            searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery);
+            searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { thinkingLevel: 'high' });
             if (searchResultText && searchResultText.trim().length > 0) {
                 logger.info(`[${channelName}] Search successful on attempt ${attempt + 1}.`);
                 break;

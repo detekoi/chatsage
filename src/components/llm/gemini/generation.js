@@ -51,7 +51,8 @@ Respond with ONLY the valid IANA timezone string. If the location is ambiguous, 
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 temperature: 0.2,
-                maxOutputTokens: 50
+                maxOutputTokens: 50,
+                thinkingConfig: { thinkingLevel: 'low' } // Ensure low latency for this specialized lookup
             }
         });
         const response = result;
@@ -119,8 +120,9 @@ async function handleFunctionCall(functionCall) {
  * @param {string} userQuery - The user's query.
  * @returns {Promise<string | null>} Resolves with the generated text response, or null.
  */
-export async function generateStandardResponse(contextPrompt, userQuery) {
+export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'low';
 
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
@@ -137,7 +139,11 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
             tools: [standardAnswerTools],
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+            generationConfig: {
+                maxOutputTokens: 1024,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
+            }
         });
         const response = result;
         const candidate = response.candidates?.[0];
@@ -169,7 +175,11 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
                         tools: [standardAnswerTools],
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-                        generationConfig: { maxOutputTokens: 512, responseMimeType: 'text/plain' }
+                        generationConfig: {
+                            maxOutputTokens: 512,
+                            responseMimeType: 'text/plain',
+                            thinkingConfig: { thinkingLevel }
+                        }
                     });
                     const followupResponse = followup;
                     const followupCandidate = followupResponse.candidates?.[0];
@@ -227,9 +237,10 @@ export async function generateStandardResponse(contextPrompt, userQuery) {
  * @param {string} userQuery - The user's query.
  * @returns {Promise<string | null>} Resolves with the generated text response, or null.
  */
-export async function generateSearchResponse(contextPrompt, userQuery) {
+export async function generateSearchResponse(contextPrompt, userQuery, options = {}) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'low';
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
@@ -239,7 +250,11 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
             tools: searchTool,
             // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 1536, responseMimeType: 'text/plain' }
+            generationConfig: {
+                maxOutputTokens: 1536,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
+            }
         });
 
         const response = result;
@@ -304,9 +319,10 @@ export async function generateSearchResponse(contextPrompt, userQuery) {
  * @param {string} userQuery
  * @returns {Promise<string|null>}
  */
-export async function generateUnifiedResponse(contextPrompt, userQuery) {
+export async function generateUnifiedResponse(contextPrompt, userQuery, options = {}) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'low';
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. Answer the question directly. No meta.`;
     try {
         const result = await model.generateContent({
@@ -314,7 +330,11 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
             // IMPORTANT: Do not combine googleSearch tool with function calling / function tools in this SDK
             tools: [{ googleSearch: {} }],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
-            generationConfig: { maxOutputTokens: 1024, responseMimeType: 'text/plain' }
+            generationConfig: {
+                maxOutputTokens: 1024,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
+            }
         });
         const response = result;
         if (response.promptFeedback?.blockReason) {
@@ -355,7 +375,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery) {
  * @param {number} [targetCharLength=400] - An approximate target character length for the summary.
  * @returns {Promise<string|null>} The summarized text, or null on failure.
  */
-export async function summarizeText(textToSummarize, targetCharLength = 400) {
+export async function summarizeText(textToSummarize, targetCharLength = 400, options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || textToSummarize.trim().length === 0) {
         logger.error('summarizeText called with invalid textToSummarize.');
         return null;
@@ -398,7 +418,8 @@ ${textToSummarize}`;
                     propertyOrdering: ['summary']
                 },
                 maxOutputTokens: 320,
-                temperature: 0.3
+                temperature: 0.3,
+                thinkingConfig: { thinkingLevel: options.thinkingLevel || 'low' }
             }
         });
     }
