@@ -25,7 +25,7 @@ function _convertChatHistoryToGeminiHistory(chatHistory, maxMessages = 15) {
  * @param {string} channelName - Clean channel name without '#'
  * @param {string|null} initialContext - Optional context string to append to system instruction
  * @param {Array|null} chatHistory - Optional raw chat history array (recent messages) to seed history
- * @returns {import('@google/generative-ai').ChatSession}
+ * @returns {import('@google/genai').ChatSession}
  */
 export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null) {
     if (!channelName || typeof channelName !== 'string') {
