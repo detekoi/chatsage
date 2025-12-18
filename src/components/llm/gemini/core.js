@@ -36,8 +36,9 @@ export function initializeGeminiClient(geminiConfig) {
                     if (systemInstruction) config.systemInstruction = systemInstruction;
                     if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
                     if (toolConfig) config.toolConfig = toolConfig;
+
                     return await genAI.models.generateContent({
-                        model: configuredModelId,
+                        model: params.model || configuredModelId,
                         ...rest,
                         ...(Object.keys(config).length > 0 ? { config } : {})
                     });
