@@ -11,7 +11,8 @@ function inferSearchNeedByHeuristic(userQuery) {
         'news', 'latest', 'update', 'updates', 'today', 'tonight', 'this week', 'this weekend', 'new', 'breaking',
         'release date', 'released', 'announced', 'announcement', 'earnings', 'score', 'final score', 'who won', 'winner',
         'price today', 'stock today', 'crypto', 'patch notes', 'season', 'episode', 'live', 'trending',
-        'current', 'current information', 'up to date', 'current status'
+        'current', 'current information', 'up to date', 'current status',
+        'weather', 'forecast', 'temperature', 'now', 'right now', 'how about', 'what about'
     ];
     if (searchKeywords.some(k => q.includes(k))) {
         return { searchNeeded: true, reasoning: 'Query contains real-time/news-related keywords.' };

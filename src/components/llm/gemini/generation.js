@@ -124,7 +124,7 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
     const thinkingLevel = options.thinkingLevel || 'high';
 
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
-    const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
+    const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date (e.g., "what time is it?", "date today").\n- Do NOT use 'getCurrentTime' for queries about weather, facts, or general chat, even if they contain words like "now" or "today".`;
 
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Answer the question directly and concisely. Prioritize substance and facts. No meta. Don't restate the question or context. Don't repeat the username.`;
 
