@@ -19,19 +19,19 @@ const META_CONCEPT_BLACKLIST = [
  */
 function shouldUseSearchForTopic(topic) {
     if (!topic) return false;
-    
+
     const topicLower = topic.toLowerCase();
-    
+
     // Always use search for video game topics (specific games or general gaming)
     if (topicLower.includes('game') || topicLower.includes('gaming')) {
         return true;
     }
-    
+
     // General knowledge doesn't typically need search
     if (topicLower === 'general knowledge') {
         return false;
     }
-    
+
     // For other topics, use search if they seem specific enough
     // (more than 2 words or contains specific markers)
     const words = topic.trim().split(/\s+/);
@@ -189,7 +189,7 @@ export async function generateRiddle(topic, difficulty, excludedKeywordSets = []
         });
         logger.info(`[RiddleService] Applied meta-concept blacklist for general knowledge. Total excluded answers: ${allExcludedAnswers.length}`);
     }
-    
+
     let answerExclusionInstruction = "";
     if (allExcludedAnswers.length > 0) {
         answerExclusionInstruction = `\n\n🚫 ANSWER EXCLUSION (MANDATORY):
@@ -202,7 +202,7 @@ If you generate a riddle with any of these answers, it will be rejected.`;
     // Step 1: Determine if we need search context for this topic
     const needsSearch = shouldUseSearchForTopic(actualTopic);
     let searchContext = "";
-    
+
     if (needsSearch) {
         logger.info(`[RiddleService] Topic "${actualTopic}" requires search context. Fetching...`);
         try {
@@ -220,7 +220,7 @@ If you generate a riddle with any of these answers, it will be rejected.`;
                     tools: [{ googleSearch: {} }]
                 }
             });
-            
+
             const searchCandidate = searchResult?.candidates?.[0];
             if (searchCandidate?.content?.parts) {
                 searchContext = searchCandidate.content.parts
@@ -235,7 +235,7 @@ If you generate a riddle with any of these answers, it will be rejected.`;
     } else {
         logger.info(`[RiddleService] Generating riddle for topic "${actualTopic}" (no search needed)`);
     }
-    
+
     let finalGenerationPrompt = "";
     // --- Improved riddle prompt for better guessability ---
     let contextSection = "";
@@ -245,7 +245,7 @@ ${searchContext}
 
 Use this information to create an accurate, fact-based riddle. The clues should reference real characteristics.`;
     }
-    
+
     const baseGenerationPrompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
 ${promptDetails}${contextSection}
 ${fullExclusionInstructions}
@@ -417,28 +417,28 @@ Call "generate_riddle_with_answer_and_keywords" with your response.`;
             });
             return null; // This will trigger a retry
         }
-            // Heuristic check for trivia-like riddles
-            if (args.riddle_question.toLowerCase().includes("what am i?") && args.riddle_question.split('\n').length <= 4) {
-                const characteristics = args.riddle_question.toLowerCase().split('\n').slice(0, -1).join(' ');
-                if ((characteristics.includes("i am") || characteristics.includes("i have") || characteristics.includes("i can")) &&
-                    !characteristics.includes("speak without a mouth") &&
-                    !characteristics.includes("no eyes but see") &&
-                    !characteristics.includes("no hands but knock")) {
-                    logger.warn(`[RiddleService] Generated riddle might be too trivia-like: "${args.riddle_question}". Topic: ${actualTopic}`);
-                }
+        // Heuristic check for trivia-like riddles
+        if (args.riddle_question.toLowerCase().includes("what am i?") && args.riddle_question.split('\n').length <= 4) {
+            const characteristics = args.riddle_question.toLowerCase().split('\n').slice(0, -1).join(' ');
+            if ((characteristics.includes("i am") || characteristics.includes("i have") || characteristics.includes("i can")) &&
+                !characteristics.includes("speak without a mouth") &&
+                !characteristics.includes("no eyes but see") &&
+                !characteristics.includes("no hands but knock")) {
+                logger.warn(`[RiddleService] Generated riddle might be too trivia-like: "${args.riddle_question}". Topic: ${actualTopic}`);
             }
+        }
 
-            logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0,50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search Used (reported by tool): ${args.search_used}`);
-            return {
-                question: args.riddle_question,
-                answer: args.riddle_answer,
-                keywords: args.keywords,
-                difficulty: args.difficulty_generated || difficulty,
-                explanation: args.explanation || "No explanation provided.",
-                searchUsed: args.search_used, // Trust the value set by the LLM in the function call
-                topic: actualTopic,
-                requestedTopic: topic // Always return the originally requested topic for answer verification
-            };
+        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question.substring(0, 50)}...", A: "${args.riddle_answer}", Keywords: [${args.keywords.join(', ')}], Search Used (reported by tool): ${args.search_used}`);
+        return {
+            question: args.riddle_question,
+            answer: args.riddle_answer,
+            keywords: args.keywords,
+            difficulty: args.difficulty_generated || difficulty,
+            explanation: args.explanation || "No explanation provided.",
+            searchUsed: args.search_used, // Trust the value set by the LLM in the function call
+            topic: actualTopic,
+            requestedTopic: topic // Always return the originally requested topic for answer verification
+        };
     } catch (error) {
         logger.error({
             err: {
@@ -600,7 +600,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
             };
         }
         if (directMatch) {
-             logger.info(`[RiddleService] Pre-LLM check: User guess "${userAnswer}" is an exact match to "${correctAnswer}". Marking as correct.`);
+            logger.info(`[RiddleService] Pre-LLM check: User guess "${userAnswer}" is an exact match to "${correctAnswer}". Marking as correct.`);
             return {
                 isCorrect: true,
                 reasoning: "Exact match.",
@@ -612,17 +612,20 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
         const genWithSchema = async (maxTokens = 512, minimalPrompt = false) => {
             const res = await genaiModels.generateContent({
                 model: modelId,
-                contents: [{ role: 'user', parts: [{ text: minimalPrompt ? (() => {
-                    const q = typeof riddleQuestion === 'string' && riddleQuestion.length > 300 ? (riddleQuestion.slice(0, 300) + '...') : riddleQuestion;
-                    return `Question: "${q}"
+                contents: [{
+                    role: 'user', parts: [{
+                        text: minimalPrompt ? (() => {
+                            const q = typeof riddleQuestion === 'string' && riddleQuestion.length > 300 ? (riddleQuestion.slice(0, 300) + '...') : riddleQuestion;
+                            return `Question: "${q}"
 Answer: "${correctAnswer}"
 Guess: "${userAnswer}"
 
 Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning under 6 words.`;
-                })() : `${prompt}` }] }],
+                        })() : `${prompt}`
+                    }]
+                }],
                 config: {
                     temperature: 0.0,
-                    maxOutputTokens: maxTokens,
                     responseMimeType: 'application/json',
                     responseSchema: {
                         type: GenAIType.OBJECT,
@@ -753,7 +756,7 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
                     }
                 } catch (_) { /* ignore */ }
             }
-            
+
             if (parsed && typeof parsed.is_correct === 'boolean') {
                 try {
                     logger.info(`[RiddleService] Parsed-json verification: guess "${userAnswer}", correct "${correctAnswer}" -> ${parsed.is_correct} (conf ${typeof parsed.confidence === 'number' ? parsed.confidence : 'n/a'}). Reason: ${parsed.reasoning || ''}`);
@@ -773,7 +776,7 @@ Return JSON ONLY: {"is_correct": boolean, "reasoning": string}. Keep reasoning u
         try {
             const plainJsonResp = await model.generateContent({
                 contents: [{ role: 'user', parts: [{ text: `${prompt}\n\nRespond ONLY as JSON: {"is_correct": true|false, "confidence": number, "reasoning": string}` }] }],
-                generationConfig: { temperature: 0.0, maxOutputTokens: 80, responseMimeType: 'text/plain' }
+                generationConfig: { temperature: 0.0, responseMimeType: 'text/plain' }
             });
             text = extractText(plainJsonResp);
         } catch (_) { text = ''; }

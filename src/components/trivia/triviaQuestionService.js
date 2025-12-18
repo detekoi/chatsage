@@ -65,7 +65,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
     if (excludedAnswers.length > 0) {
         exclusionInstructions.push(`Aim for variety`);
     }
-    const exclusionInstructionText = exclusionInstructions.length > 0 
+    const exclusionInstructionText = exclusionInstructions.length > 0
         ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
@@ -78,9 +78,9 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
         const searchResult = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: searchFactsPrompt }] }],
             tools: [{ googleSearch: {} }], // Only search tool for this call
-            generationConfig: { maxOutputTokens: 512 }
+            generationConfig: {}
         });
-        
+
         factualInfoText = searchResult?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!factualInfoText || factualInfoText.trim() === "") {
             logger.warn(`[TriviaService-ExplicitSearch] Step 1: No factual information returned from search for topic "${topic}".`);
@@ -90,7 +90,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
 
     } catch (searchError) {
         logger.error({ err: searchError, topic }, `[TriviaService-ExplicitSearch] Step 1: Error during search for facts about "${topic}".`);
-        return null; 
+        return null;
     }
 
     // STEP 2: Use the gathered facts to generate a structured question via function call - SIMPLIFIED PROMPT
@@ -106,7 +106,7 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
                     mode: "ANY",
                 }
             },
-            generationConfig: { maxOutputTokens: 512 }
+            generationConfig: {}
         });
 
         const functionCall = result?.candidates?.[0]?.content?.parts?.[0]?.functionCall;
@@ -145,17 +145,17 @@ async function generateQuestionWithExplicitSearch(topic, difficulty, excludedQue
                 return null;
             }
             // Heuristic: Warn if answer is too long
-            if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) { 
+            if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) {
                 logger.warn(`[TriviaService-ExplicitSearch] Step 2: Generated 'correct_answer' may be too long: "${correctAnswerText}". Length: ${correctAnswerText.length}, Words: ${correctAnswerText.split(' ').length}`);
             }
-            
+
             const questionObject = {
                 question: questionText,
                 answer: correctAnswerText,
                 alternateAnswers: alternateAnswersList,
                 explanation: explanationText,
                 difficulty: actualDifficulty,
-                searchUsed: true, 
+                searchUsed: true,
                 verified: true,   // Mark as verified since it is search-based
                 topic: topic,
                 category
@@ -233,16 +233,16 @@ function calculateStringSimilarity(str1, str2) {
  */
 export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = []) {
     const model = getGeminiClient();
-    
+
     let specificTopic = topic;
     if (topic && topic.toLowerCase() === 'game' && channelName) {
         specificTopic = getGameFromContext(channelName);
         logger.info(`[TriviaService] Topic 'game' resolved to '${specificTopic}' from channel context.`);
     }
-    
+
     // Determine if we need search-based generation for specific topics
     const isGeneralTopic = !specificTopic || specificTopic.toLowerCase() === 'general' || specificTopic.toLowerCase() === 'general knowledge';
-    
+
     if (!isGeneralTopic) {
         // For specific topics, use the existing search-based approach which is more reliable for factual accuracy
         logger.info(`[TriviaService] Specific topic "${specificTopic}" identified. Using search-based question generation.`);
@@ -261,12 +261,12 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
     if (excludedAnswers.length > 0) {
         exclusionInstructions.push(`Aim for variety`);
     }
-    const exclusionInstructionText = exclusionInstructions.length > 0 
+    const exclusionInstructionText = exclusionInstructions.length > 0
         ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
     const functionCallPrompt = `Generate an engaging general knowledge trivia question.\nDifficulty: ${difficulty}.${exclusionInstructionText}\nBe precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.\n\nCall 'generate_trivia_question' function. Keep 'correct_answer' concise (1-3 words). Set 'search_used: false'. Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).`;
-    
+
     try {
         logger.debug(`[TriviaService] Generating general knowledge trivia question using function calling.`);
         const result = await model.generateContent({
@@ -278,26 +278,25 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
                 }
             },
             generationConfig: {
-                temperature: 0.7, 
-                maxOutputTokens: 512
+                temperature: 0.7,
             }
         });
-        
+
         const response = result;
         const candidate = response?.candidates?.[0];
-        
+
         if (!candidate) {
             logger.warn('[TriviaService] No candidate found in Gemini response.');
             return null;
         }
-        
-        
+
+
         const functionCall = candidate.content?.parts?.[0]?.functionCall;
         if (!functionCall || functionCall.name !== 'generate_trivia_question') {
             logger.warn(`[TriviaService] Expected function call 'generate_trivia_question' but got: ${functionCall?.name || 'none'}`);
             return null;
         }
-        
+
         const args = functionCall.args;
         const questionText = args.question || "";
         const correctAnswerText = args.correct_answer || "";
@@ -332,19 +331,19 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             logger.warn(`[TriviaService] Function call 'generate_trivia_question' missing question or answer. Args: ${JSON.stringify(args)}`);
             return null;
         }
-        
+
         // Heuristic: Warn if answer is too long
-        if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) { 
+        if (correctAnswerText.split(' ').length > 7 && correctAnswerText.length > 40) {
             logger.warn(`[TriviaService] Generated 'correct_answer' may be too long: "${correctAnswerText}". Length: ${correctAnswerText.length}, Words: ${correctAnswerText.split(' ').length}`);
         }
-        
+
         const questionObject = {
             question: questionText,
             answer: correctAnswerText,
             alternateAnswers: alternateAnswersList,
             explanation: explanationText,
             difficulty: actualDifficulty,
-            searchUsed: searchUsed, 
+            searchUsed: searchUsed,
             verified: true,   // Mark as verified since using function calling
             topic: 'general',
             category
@@ -354,10 +353,10 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
             logger.warn(`[TriviaService] LLM generated an excluded question: "${questionObject.question}". Returning null.`);
             return null;
         }
-        
+
         logger.info(`[TriviaService] Successfully generated general knowledge question. Answer: "${correctAnswerText}", Alternates: "${alternateAnswersList.join(', ')}"`);
         return questionObject;
-        
+
     } catch (error) {
         logger.error({ err: error }, '[TriviaService] Error generating general knowledge trivia question using function calling');
         return null;
@@ -472,7 +471,6 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
                 contents: [{ role: 'user', parts: [{ text: textForModel }] }],
                 config: {
                     temperature: 0.0,
-                    maxOutputTokens: maxTokens,
                     responseMimeType: 'application/json',
                     responseSchema: {
                         type: GenAIType.OBJECT,
@@ -573,7 +571,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
     } catch (error) {
         logger.error({ err: error }, '[TriviaService] Error verifying answer with structured output. Falling back to basic similarity.');
         const similarity = calculateStringSimilarity(lowerCorrectAnswer, lowerUserAnswer);
-        let isFallbackCorrect = similarity > 0.8; 
+        let isFallbackCorrect = similarity > 0.8;
         if (!isFallbackCorrect && Array.isArray(alternateAnswers) && alternateAnswers.some(alt => calculateStringSimilarity(alt.toLowerCase().trim(), lowerUserAnswer) > 0.8)) isFallbackCorrect = true;
         return { is_correct: isFallbackCorrect, confidence: similarity, reasoning: `Similarity check: ${Math.round(similarity * 100)}% (LLM fallback).`, search_used: false };
     }
@@ -589,7 +587,7 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
  */
 export async function generateExplanation(question, answer, topic = "general") {
     const model = getGeminiClient();
-    
+
     // Simple prompt for explanation
     const prompt = `Provide a brief, interesting explanation for this trivia answer:
     
@@ -603,16 +601,15 @@ Your explanation should be informative, engaging, and around 1-2 sentences long.
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: {
-                maxOutputTokens: 256, // Keep it concise
                 temperature: 0.7
             }
         });
-        
+
         const response = result;
         if (response?.candidates?.[0]?.content?.parts?.[0]?.text) {
             return response.candidates[0].content.parts[0].text.trim();
         }
-        
+
         return `The correct answer is ${answer}.`;
     } catch (error) {
         logger.error({ err: error }, 'Error generating explanation');
