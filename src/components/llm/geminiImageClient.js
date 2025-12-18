@@ -22,7 +22,12 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             model = {
                 ai: genAI,
                 modelId: modelId,
-                config: { responseMimeType: 'text/plain', maxOutputTokens: 1024, temperature: 0.2 }
+                config: {
+                    responseMimeType: 'text/plain',
+                    maxOutputTokens: 8192,
+                    temperature: 0.2,
+                    thinkingConfig: { thinkingLevel: 'high' }
+                }
             };
             logger.debug(`Using image model: ${modelId}`);
         } catch (_) {
@@ -36,7 +41,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         logger.info({ promptLength: prompt.length }, 'Generating image analysis response');
 
         // Convert buffer to base64 if needed
-        const base64Data = Buffer.isBuffer(imageData) 
+        const base64Data = Buffer.isBuffer(imageData)
             ? imageData.toString('base64')
             : imageData;
 
@@ -101,7 +106,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                             { text: shortPrompt }
                         ]
                     }],
-                    config: { ...model.config, maxOutputTokens: 320 }
+                    config: { ...model.config, maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: 'high' } }
                 });
             } else {
                 // Fallback to wrapper model
@@ -168,11 +173,11 @@ export async function detectObjects(imageData, objectTypes = '') {
                     For each object, provide a JSON object with "label" and "box_2d" properties. 
                     The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000.
                     Return the results as a valid JSON array of objects.`;
-    
+
     try {
         const result = await analyzeImage(imageData, prompt);
         if (!result) return null;
-        
+
         // Try to extract the JSON array from the response
         const jsonMatch = result.match(/\[\s*{[\s\S]*}\s*\]/);
         if (jsonMatch) {
@@ -183,7 +188,7 @@ export async function detectObjects(imageData, objectTypes = '') {
                 return null;
             }
         }
-        
+
         // If no JSON array could be extracted, return the text response
         return result;
     } catch (error) {
@@ -202,11 +207,11 @@ export async function analyzeGameStream(imageData) {
                    Analyze what game is being played, what's happening in the game,
                    and any notable UI elements visible.
                    Format response as a JSON object with "game", "activity", and "ui_elements" properties.`;
-    
+
     try {
         const result = await analyzeImage(imageData, prompt);
         if (!result) return null;
-        
+
         // Try to extract the JSON object from the response
         const jsonMatch = result.match(/{[\s\S]*}/);
         if (jsonMatch) {
@@ -222,7 +227,7 @@ export async function analyzeGameStream(imageData) {
                 };
             }
         }
-        
+
         // If no JSON object could be extracted, return a structured object with the text
         return {
             game: "Unknown",

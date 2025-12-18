@@ -56,7 +56,12 @@ ${initialContext}`;
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
         // Enable Google Search grounding inside the chat session
         tools: [{ googleSearch: {} }],
-        history: initialHistory
+        history: initialHistory,
+        generationConfig: {
+            maxOutputTokens: 8192,
+            responseMimeType: 'text/plain',
+            thinkingConfig: { thinkingLevel: 'high' }
+        }
     });
 
     channelChatSessions.set(channelName, chat);

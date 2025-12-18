@@ -44,8 +44,9 @@ export function initializeGeminiClient(geminiConfig) {
                 }, 'generateContent');
             },
             startChat(options = {}) {
-                const { systemInstruction, tools, history = [] } = options;
+                const { systemInstruction, tools, generationConfig, history = [] } = options;
                 const config = {};
+                if (generationConfig && typeof generationConfig === 'object') Object.assign(config, generationConfig);
                 if (systemInstruction) config.systemInstruction = systemInstruction;
                 if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
                 const chat = genAI.chats.create({
