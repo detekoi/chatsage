@@ -139,7 +139,6 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
             generationConfig: {
-                maxOutputTokens: 8192,
                 responseMimeType: 'text/plain',
                 thinkingConfig: { thinkingLevel }
             }
@@ -175,7 +174,6 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
                         generationConfig: {
-                            maxOutputTokens: 8192,
                             responseMimeType: 'text/plain',
                             thinkingConfig: { thinkingLevel }
                         }
@@ -250,7 +248,6 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
             // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: {
-                maxOutputTokens: 8192,
                 responseMimeType: 'text/plain',
                 thinkingConfig: { thinkingLevel }
             }
@@ -330,7 +327,6 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
             tools: [{ googleSearch: {} }],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: {
-                maxOutputTokens: 8192,
                 responseMimeType: 'text/plain',
                 thinkingConfig: { thinkingLevel }
             }
@@ -416,7 +412,6 @@ ${textToSummarize}`;
                     required: ['summary'],
                     propertyOrdering: ['summary']
                 },
-                maxOutputTokens: 8192,
                 temperature: 0.3,
                 thinkingConfig: { thinkingLevel: options.thinkingLevel || 'high' }
             }

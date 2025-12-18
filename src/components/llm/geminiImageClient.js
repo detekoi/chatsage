@@ -17,14 +17,13 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         let model = null;
         try {
             const genAI = getGenAIInstance();
-            const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
+            const modelId = process.env.GEMINI_MODEL_ID || 'gemini-3-flash-preview';
             // Store the AI instance and model config for later use
             model = {
                 ai: genAI,
                 modelId: modelId,
                 config: {
                     responseMimeType: 'text/plain',
-                    maxOutputTokens: 8192,
                     temperature: 0.2,
                     thinkingConfig: { thinkingLevel: 'high' }
                 }
@@ -106,7 +105,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
                             { text: shortPrompt }
                         ]
                     }],
-                    config: { ...model.config, maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: 'high' } }
+                    config: { ...model.config, maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: 'high' } }
                 });
             } else {
                 // Fallback to wrapper model

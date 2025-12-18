@@ -58,7 +58,6 @@ ${initialContext}`;
         tools: [{ googleSearch: {} }],
         history: initialHistory,
         generationConfig: {
-            maxOutputTokens: 8192,
             responseMimeType: 'text/plain',
             thinkingConfig: { thinkingLevel: 'high' }
         }
