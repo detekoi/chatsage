@@ -1,7 +1,7 @@
 // src/components/commands/handlers/lurk.js
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { getOrCreateChatSession, buildContextPrompt } from '../../llm/geminiClient.js';
+import { getGeminiClient, buildContextPrompt } from '../../llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 
@@ -38,11 +38,24 @@ const lurkHandler = {
                 prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, write a brief, natural send-off. Wordplay and unexpected poetry are welcome, but avoid tired clichés like "catch you on the flip side", "see you later", or "enjoy". Be fresh. Keep it under 20 words.`;
             }
 
-            // Use the persistent chat session and send one concise prompt including context
-            const chatSession = getOrCreateChatSession(channelName);
+            // Use generateContent directly for a single-turn, low-latency response
+            // This bypasses the shared session's default "high" thinking level
+            const model = getGeminiClient();
             const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
-            const result = await chatSession.sendMessage({ message: fullPrompt });
-            let llmResponse = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
+
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+                generationConfig: {
+                    thinkingConfig: {
+                        thinkingLevel: 'minimal'
+                    }
+                }
+            });
+            let llmResponse = result?.response?.text ? result.response.text() : extractTextFromCandidate(result);
+
+            function extractTextFromCandidate(res) {
+                return res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            }
 
             let response;
             if (llmResponse && llmResponse.trim()) {

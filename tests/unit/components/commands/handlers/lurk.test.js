@@ -10,14 +10,14 @@ import lurkHandler from '../../../../../src/components/commands/handlers/lurk.js
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import {
     buildContextPrompt,
-    getOrCreateChatSession
+    getGeminiClient
 } from '../../../../../src/components/llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 
 describe('Lurk Command Handler', () => {
     let mockContextManager;
-    let mockChatSession;
+    let mockGeminiClient;
 
     const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
         channel,
@@ -32,7 +32,7 @@ describe('Lurk Command Handler', () => {
         // Clear mocks (except logger which is mocked at module level)
         getContextManager.mockClear();
         buildContextPrompt.mockClear();
-        getOrCreateChatSession.mockClear();
+        getGeminiClient.mockClear();
         removeMarkdownAsterisks.mockClear();
         enqueueMessage.mockClear();
 
@@ -41,14 +41,14 @@ describe('Lurk Command Handler', () => {
             getContextForLLM: jest.fn()
         };
 
-        mockChatSession = {
-            sendMessage: jest.fn()
+        mockGeminiClient = {
+            generateContent: jest.fn()
         };
 
         // Mock the imported functions
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
-        getOrCreateChatSession.mockReturnValue(mockChatSession);
+        getGeminiClient.mockReturnValue(mockGeminiClient);
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         enqueueMessage.mockResolvedValue();
 
@@ -60,8 +60,9 @@ describe('Lurk Command Handler', () => {
         });
 
         // Setup chat session default response
-        mockChatSession.sendMessage.mockResolvedValue({
-            text: () => 'off to conquer the snack dimension',
+        // Setup generateContent default response
+        mockGeminiClient.generateContent.mockResolvedValue({
+            response: { text: () => 'off to conquer the snack dimension' },
             candidates: [{ content: { parts: [{ text: 'off to conquer the snack dimension' }] } }]
         });
     });
@@ -77,8 +78,8 @@ describe('Lurk Command Handler', () => {
 
     describe('Markdown Removal', () => {
         test('should remove asterisk markdown from lurk responses', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'enjoy your **snack quest** adventurer',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => 'enjoy your **snack quest** adventurer' },
                 candidates: [{ content: { parts: [{ text: 'enjoy your **snack quest** adventurer' }] } }]
             });
 
@@ -94,8 +95,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove italic asterisk markdown', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'lurking in *stealth mode* activated',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => 'lurking in *stealth mode* activated' },
                 candidates: [{ content: { parts: [{ text: 'lurking in *stealth mode* activated' }] } }]
             });
 
@@ -111,8 +112,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should handle responses without markdown', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'catch you on the flip',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => 'catch you on the flip' },
                 candidates: [{ content: { parts: [{ text: 'catch you on the flip' }] } }]
             });
 
@@ -128,8 +129,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove markdown from multiple occurrences', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'off to the **kitchen** for some *chaos*',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => 'off to the **kitchen** for some *chaos*' },
                 candidates: [{ content: { parts: [{ text: 'off to the **kitchen** for some *chaos*' }] } }]
             });
 
@@ -155,8 +156,9 @@ describe('Lurk Command Handler', () => {
                 'TestUser',
                 'is going to lurk. Reason: getting coffee'
             );
-            expect(mockChatSession.sendMessage).toHaveBeenCalledWith({
-                message: expect.stringContaining('getting coffee')
+            expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
+                contents: [{ role: 'user', parts: [{ text: expect.stringContaining('getting coffee') }] }],
+                generationConfig: { thinkingConfig: { thinkingLevel: 'minimal' } }
             });
         });
 
@@ -182,14 +184,14 @@ describe('Lurk Command Handler', () => {
                 'TestUser',
                 'is going to lurk. Reason: none'
             );
-            expect(mockChatSession.sendMessage).toHaveBeenCalled();
+            expect(mockGeminiClient.generateContent).toHaveBeenCalled();
         });
     });
 
     describe('Fallback Messages', () => {
         test('should use fallback when LLM returns empty response', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => '' },
                 candidates: []
             });
 
@@ -205,8 +207,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should use fallback when LLM returns null', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => null,
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => null },
                 candidates: []
             });
 
@@ -218,8 +220,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('fallback messages should not contain markdown', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => '' },
                 candidates: []
             });
 
@@ -236,8 +238,8 @@ describe('Lurk Command Handler', () => {
 
     describe('Quote Removal', () => {
         test('should remove surrounding quotes from LLM response', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '"enjoy the lurk"',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => '"enjoy the lurk"' },
                 candidates: [{ content: { parts: [{ text: '"enjoy the lurk"' }] } }]
             });
 
@@ -252,8 +254,8 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove quotes and markdown together', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '"enjoy your **snack quest**"',
+            mockGeminiClient.generateContent.mockResolvedValue({
+                response: { text: () => '"enjoy your **snack quest**"' },
                 candidates: [{ content: { parts: [{ text: '"enjoy your **snack quest**"' }] } }]
             });
 
@@ -277,11 +279,11 @@ describe('Lurk Command Handler', () => {
 
             // Should still proceed with empty context
             expect(buildContextPrompt).toHaveBeenCalledWith({});
-            expect(mockChatSession.sendMessage).toHaveBeenCalled();
+            expect(mockGeminiClient.generateContent).toHaveBeenCalled();
         });
 
         test('should handle LLM errors gracefully', async () => {
-            mockChatSession.sendMessage.mockRejectedValue(new Error('LLM error'));
+            mockGeminiClient.generateContent.mockRejectedValue(new Error('LLM error'));
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
@@ -320,8 +322,9 @@ describe('Lurk Command Handler', () => {
             });
             await lurkHandler.execute(context);
 
-            expect(mockChatSession.sendMessage).toHaveBeenCalledWith({
-                message: expect.stringContaining('MixedCaseUser')
+            expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
+                contents: [{ role: 'user', parts: [{ text: expect.stringContaining('MixedCaseUser') }] }],
+                generationConfig: { thinkingConfig: { thinkingLevel: 'minimal' } }
             });
         });
     });
