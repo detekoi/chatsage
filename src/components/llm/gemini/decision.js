@@ -73,9 +73,10 @@ Output JSON only.`;
             systemInstruction: { parts: [{ text: 'You emit only strict JSON per the provided schema.' }] },
             generationConfig: {
                 temperature: 0,
-                maxOutputTokens: 80,
+                maxOutputTokens: 8192,
                 responseMimeType: 'text/json', // Using text/json as schema enforcement is strict enough; application/json sometimes stricter
-                responseSchema: schema
+                responseSchema: schema,
+                thinkingConfig: { thinkingLevel: 'high' }
             }
         });
         const response = result;

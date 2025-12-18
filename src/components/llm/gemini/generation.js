@@ -121,6 +121,7 @@ async function handleFunctionCall(functionCall) {
  */
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'high';
 
     // --- Add CRITICAL INSTRUCTION to systemInstruction ---
     const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nCRITICAL INSTRUCTION: If the User Query asks for the current time or date, you MUST call the 'getCurrentTime' function tool to get the accurate information. Do NOT answer time/date queries from your internal knowledge.`;
@@ -138,8 +139,9 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
             generationConfig: {
-                maxOutputTokens: 1024,
-                responseMimeType: 'text/plain'
+                maxOutputTokens: 8192,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
             }
         });
         const response = result;
@@ -173,8 +175,9 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                         toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                         systemInstruction: { parts: [{ text: standardSystemInstruction }] },
                         generationConfig: {
-                            maxOutputTokens: 512,
-                            responseMimeType: 'text/plain'
+                            maxOutputTokens: 8192,
+                            responseMimeType: 'text/plain',
+                            thinkingConfig: { thinkingLevel }
                         }
                     });
                     const followupResponse = followup;
@@ -236,6 +239,7 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
 export async function generateSearchResponse(contextPrompt, userQuery, options = {}) {
     if (!userQuery?.trim()) { return null; }
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'high';
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web for up-to-date information to answer this question. Your response MUST be 420 characters or less (strict limit). Provide a direct, complete answer based on your search results. Include specific details from sources. Write complete sentences that fit within the limit.`;
     logger.debug({ promptLength: fullPrompt.length }, 'Generating search-grounded response');
 
@@ -246,8 +250,9 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
             // Note: Do NOT include functionCallingConfig when no functionDeclarations are provided
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: {
-                maxOutputTokens: 1536,
-                responseMimeType: 'text/plain'
+                maxOutputTokens: 8192,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
             }
         });
 
@@ -316,6 +321,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
 export async function generateUnifiedResponse(contextPrompt, userQuery, options = {}) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
+    const thinkingLevel = options.thinkingLevel || 'high';
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct, grounded if needed. Answer the question directly. No meta.`;
     try {
         const result = await model.generateContent({
@@ -324,8 +330,9 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
             tools: [{ googleSearch: {} }],
             systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
             generationConfig: {
-                maxOutputTokens: 1024,
-                responseMimeType: 'text/plain'
+                maxOutputTokens: 8192,
+                responseMimeType: 'text/plain',
+                thinkingConfig: { thinkingLevel }
             }
         });
         const response = result;
@@ -409,8 +416,9 @@ ${textToSummarize}`;
                     required: ['summary'],
                     propertyOrdering: ['summary']
                 },
-                maxOutputTokens: 320,
-                temperature: 0.3
+                maxOutputTokens: 8192,
+                temperature: 0.3,
+                thinkingConfig: { thinkingLevel: options.thinkingLevel || 'high' }
             }
         });
     }
