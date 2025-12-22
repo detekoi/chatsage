@@ -124,7 +124,29 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             }
         }
 
-        return extractTextFromResponse(response, candidate, 'standard');
+
+        // Extract text from the response
+        let text = extractTextFromResponse(response, candidate, 'standard');
+
+        // Fix: Newer models/Thinking models sometimes return JSON structured output even when not requested.
+        // If the text looks like JSON and has a "text" field, unwrap it.
+        // Heuristic: Check if it starts/ends with curly braces and parses successfully.
+        if (text && typeof text === 'string') {
+            const trimmed = text.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    if (parsed && typeof parsed.text === 'string') {
+                        logger.debug(' unwrapped JSON-structured response from generateStandardResponse');
+                        text = parsed.text;
+                    }
+                } catch (e) {
+                    // Not valid JSON, ignore and use original text
+                }
+            }
+        }
+
+        return text;
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
         return null;
