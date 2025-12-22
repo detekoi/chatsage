@@ -137,38 +137,42 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                     }
                 });
 
+                const followupCandidate = followup.candidates?.[0];
+                if (followupCandidate?.finishReason === 'SAFETY') {
+                    logger.warn({ prompt: userQuery }, 'Followup response blocked by safety filters.');
+                    return "I can't answer that due to safety guidelines.";
+                }
+
                 // For followup, we also expect JSON now
-                const rawJson = extractTextFromResponse(followup, followup.candidates?.[0], 'standard-followup');
-                try {
-                    if (rawJson) {
-                        const parsed = JSON.parse(rawJson);
+                const followupResponseText = followupCandidate?.content?.parts?.[0]?.text;
+                if (followupResponseText) {
+                    try {
+                        const parsed = JSON.parse(followupResponseText);
                         return parsed.text || null;
+                    } catch (e) {
+                        logger.warn({ err: e, followupResponseText }, 'Failed to parse structured output from standard followup');
                     }
-                } catch (e) {
-                    logger.warn({ err: e, rawJson }, 'Failed to parse structured output from standard followup');
                 }
                 return null;
             }
         }
 
-        // Extract text from the response - it should be a JSON string now
-        const rawJsonText = extractTextFromResponse(response, candidate, 'standard');
-
-        if (rawJsonText) {
+        // Valid JSON response expected
+        const responseText = candidate?.content?.parts?.[0]?.text;
+        if (responseText) {
             try {
-                const parsed = JSON.parse(rawJsonText);
+                const parsed = JSON.parse(responseText);
                 return parsed.text || null;
             } catch (e) {
-                logger.warn({ err: e, rawJsonText }, 'Failed to parse structured output from standard response');
-                // Fallback: if it's not valid JSON, maybe the model ignored instructions and just sent text?
-                // In a strict schema world, this is an error, but for robustness we could return the raw text if it doesn't look like JSON.
-                // However, the goal is *single source of truth*. If it fails schema, it fails.
+                // With responseSchema, this should be rare/impossible unless model failure
+                logger.error({ err: e, responseText }, 'Failed to parse JSON from strict schema response');
                 return null;
             }
         }
-
         return null;
+
     } catch (error) {
+        // Check for 503 Overloaded or other retryable errors? SDK usually handles retries if configured.
         logger.error({ err: error }, 'Error during standard generateContent call');
         return null;
     }
@@ -236,40 +240,29 @@ export async function summarizeText(textToSummarize, targetCharLength = 400, opt
     const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-2.5-flash-lite';
 
     const prompt = `Summarize the following text in under ${targetCharLength} characters.
-Text: ${textToSummarize}
-Return STRICT JSON.`;
+Text: ${textToSummarize}`;
 
     try {
-        // Simplified retry loop
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                const result = await ai.models.generateContent({
-                    model: modelId,
-                    contents: [{ role: "user", parts: [{ text: prompt }] }],
-                    config: {
-                        responseMimeType: 'application/json',
-                        responseSchema: SummarySchema,
-                        temperature: 0.3,
-                        thinkingConfig: { thinkingLevel: options.thinkingLevel || 'high' }
-                    }
-                });
+        const result = await ai.models.generateContent({
+            model: modelId,
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: SummarySchema,
+                thinkingConfig: { thinkingLevel: options.thinkingLevel || 'high' }
+            }
+        });
 
-                const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (responseText) {
-                    const parsed = JSON.parse(responseText);
-                    let summary = parsed.summary;
-                    if (summary) {
-                        if (summary.length > targetCharLength) {
-                            const { smartTruncate } = await import('../llmUtils.js');
-                            summary = smartTruncate(summary, targetCharLength);
-                        }
-                        return summary;
-                    }
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (responseText) {
+            const parsed = JSON.parse(responseText);
+            let summary = parsed.summary;
+            if (summary) {
+                if (summary.length > targetCharLength) {
+                    const { smartTruncate } = await import('../llmUtils.js');
+                    summary = smartTruncate(summary, targetCharLength);
                 }
-                break; // Stop if we got a response but it wasn't valid, don't spam retry
-            } catch (error) {
-                if (attempt === 2) throw error;
-                await sleep(500 * Math.pow(2, attempt));
+                return summary;
             }
         }
         return null;
