@@ -12,6 +12,7 @@ import {
 } from '../../../../../src/components/llm/gemini/generation.js';
 import { getGeminiClient, getGenAIInstance } from '../../../../../src/components/llm/gemini/core.js';
 import { extractTextFromResponse } from '../../../../../src/components/llm/gemini/utils.js';
+import logger from '../../../../../src/lib/logger.js';
 
 describe('gemini/generation.js', () => {
     let mockGenerateContent;
@@ -25,15 +26,21 @@ describe('gemini/generation.js', () => {
     });
 
     describe('generateStandardResponse', () => {
-        it('should call generateContent with standard tools', async () => {
+        it('should call generateContent with standard tools and structured output schema', async () => {
+            extractTextFromResponse.mockReturnValue(JSON.stringify({ text: 'Mocked response text' }));
+
             mockGenerateContent.mockResolvedValue({
-                candidates: [{ content: { parts: [{ text: 'Response' }] } }]
+                candidates: [{ content: { parts: [{ text: JSON.stringify({ text: 'Mocked response text' }) }] } }]
             });
 
             const response = await generateStandardResponse('context', 'query');
 
             expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
-                tools: expect.arrayContaining([expect.objectContaining({ functionDeclarations: expect.any(Array) })])
+                tools: expect.arrayContaining([expect.objectContaining({ functionDeclarations: expect.any(Array) })]),
+                generationConfig: expect.objectContaining({
+                    responseMimeType: 'application/json',
+                    responseSchema: expect.any(Object)
+                })
             }));
             expect(response).toBe('Mocked response text');
         });

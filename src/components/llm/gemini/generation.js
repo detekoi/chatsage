@@ -82,6 +82,17 @@ async function handleFunctionCall(functionCall) {
 }
 
 // --- Standard Response (mostly unchanged, just import/export management) ---
+
+// --- Standard Response Schema ---
+const StandardResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        text: { type: Type.STRING, description: "The response text to be sent to chat." }
+    },
+    required: ["text"]
+};
+
+// --- Standard Response ---
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
@@ -95,7 +106,8 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
             generationConfig: {
-                responseMimeType: 'text/plain',
+                responseMimeType: 'application/json',
+                responseSchema: StandardResponseSchema,
                 thinkingConfig: { thinkingLevel }
             }
         });
@@ -118,35 +130,44 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                     tools: [standardAnswerTools],
                     toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                     systemInstruction: { parts: [{ text: standardSystemInstruction }] },
-                    generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                        responseSchema: StandardResponseSchema,
+                        thinkingConfig: { thinkingLevel }
+                    }
                 });
-                return extractTextFromResponse(followup, followup.candidates?.[0], 'standard-followup');
-            }
-        }
 
-
-        // Extract text from the response
-        let text = extractTextFromResponse(response, candidate, 'standard');
-
-        // Fix: Newer models/Thinking models sometimes return JSON structured output even when not requested.
-        // If the text looks like JSON and has a "text" field, unwrap it.
-        // Heuristic: Check if it starts/ends with curly braces and parses successfully.
-        if (text && typeof text === 'string') {
-            const trimmed = text.trim();
-            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                // For followup, we also expect JSON now
+                const rawJson = extractTextFromResponse(followup, followup.candidates?.[0], 'standard-followup');
                 try {
-                    const parsed = JSON.parse(trimmed);
-                    if (parsed && typeof parsed.text === 'string') {
-                        logger.debug(' unwrapped JSON-structured response from generateStandardResponse');
-                        text = parsed.text;
+                    if (rawJson) {
+                        const parsed = JSON.parse(rawJson);
+                        return parsed.text || null;
                     }
                 } catch (e) {
-                    // Not valid JSON, ignore and use original text
+                    logger.warn({ err: e, rawJson }, 'Failed to parse structured output from standard followup');
                 }
+                return null;
             }
         }
 
-        return text;
+        // Extract text from the response - it should be a JSON string now
+        const rawJsonText = extractTextFromResponse(response, candidate, 'standard');
+
+        if (rawJsonText) {
+            try {
+                const parsed = JSON.parse(rawJsonText);
+                return parsed.text || null;
+            } catch (e) {
+                logger.warn({ err: e, rawJsonText }, 'Failed to parse structured output from standard response');
+                // Fallback: if it's not valid JSON, maybe the model ignored instructions and just sent text?
+                // In a strict schema world, this is an error, but for robustness we could return the raw text if it doesn't look like JSON.
+                // However, the goal is *single source of truth*. If it fails schema, it fails.
+                return null;
+            }
+        }
+
+        return null;
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
         return null;

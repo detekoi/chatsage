@@ -49,24 +49,9 @@ describe('generateStandardResponse JSON Fix', () => {
         });
     });
 
-    it('should return plain text as is', async () => {
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: {
-                    parts: [{ text: 'Hello world' }]
-                }
-            }],
-            text: () => 'Hello world'
-        });
-
-        const result = await generateStandardResponse('context', 'query');
-        expect(result).toBe('Hello world');
-    });
-
-    it('should extract text from JSON response', async () => {
+    it('should extract text from consistent structured JSON response', async () => {
         const jsonResponse = JSON.stringify({
-            action: "reply",
-            text: "Extracted message"
+            text: "Hello from structured output"
         });
 
         mockGenerateContent.mockResolvedValue({
@@ -79,15 +64,12 @@ describe('generateStandardResponse JSON Fix', () => {
         });
 
         const result = await generateStandardResponse('context', 'query');
-        expect(result).toBe('Extracted message');
-        expect(logger.debug).toHaveBeenCalledWith(
-            expect.stringContaining('unwrapped JSON-structured response')
-        ); // Verify logging happened
+        expect(result).toBe('Hello from structured output');
     });
 
-    it('should return raw JSON if text field is missing in JSON object', async () => {
+    it('should return null if valid JSON but missing text field', async () => {
         const jsonResponse = JSON.stringify({
-            other: "field"
+            somethingElse: "oops"
         });
 
         mockGenerateContent.mockResolvedValue({
@@ -100,12 +82,11 @@ describe('generateStandardResponse JSON Fix', () => {
         });
 
         const result = await generateStandardResponse('context', 'query');
-        // parsed correctly but no 'text' field -> returns original text (which is the JSON string)
-        expect(result).toBe(jsonResponse);
+        expect(result).toBeNull();
     });
 
-    it('should handle malformed JSON gracefully', async () => {
-        const malformed = '{ "text": "oops';
+    it('should return null (and log warning) on malformed JSON', async () => {
+        const malformed = '{ "text": "oops...';
 
         mockGenerateContent.mockResolvedValue({
             candidates: [{
@@ -117,6 +98,10 @@ describe('generateStandardResponse JSON Fix', () => {
         });
 
         const result = await generateStandardResponse('context', 'query');
-        expect(result).toBe(malformed);
+        expect(result).toBeNull();
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.objectContaining({ rawJsonText: malformed }),
+            expect.stringContaining('Failed to parse structured output')
+        );
     });
 });
