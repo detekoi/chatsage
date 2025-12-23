@@ -99,9 +99,9 @@ describe('generateStandardResponse JSON Fix', () => {
 
         const result = await generateStandardResponse('context', 'query');
         expect(result).toBeNull();
-        expect(logger.warn).toHaveBeenCalledWith(
-            expect.objectContaining({ rawJsonText: malformed }),
-            expect.stringContaining('Failed to parse structured output')
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ responseText: malformed }),
+            expect.stringContaining('Failed to parse JSON from strict schema response')
         );
     });
 });

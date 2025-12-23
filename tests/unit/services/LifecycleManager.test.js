@@ -96,12 +96,14 @@ describe('LifecycleManager', () => {
             expect(connectIrcClient).toHaveBeenCalled();
         });
 
-        test('should NOT connect IRC if no streams are active', async () => {
+        test('should NOT connect IRC if no streams are active and LAZY_CONNECT is true', async () => {
+            process.env.LAZY_CONNECT = 'true';
             mockIrcClient.readyState.mockReturnValue('CLOSED');
 
             await lifecycleManager.reassessConnectionState();
 
             expect(connectIrcClient).not.toHaveBeenCalled();
+            delete process.env.LAZY_CONNECT;
         });
 
         test('should disconnect IRC if no streams active and LAZY_CONNECT is true', async () => {

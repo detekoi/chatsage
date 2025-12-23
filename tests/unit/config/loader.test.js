@@ -14,16 +14,16 @@ describe('Config Loader', () => {
         // Save original environment
         originalEnv = { ...process.env };
         originalCwd = process.cwd();
-        
+
         // Clear all mocks
         jest.clearAllMocks();
-        
+
         // Reset process.env
         process.env = {};
-        
+
         // Mock fs.existsSync to return false by default
         fs.existsSync.mockReturnValue(false);
-        
+
         // Mock dotenv.config to do nothing
         dotenv.config.mockReturnValue({});
 
@@ -35,7 +35,7 @@ describe('Config Loader', () => {
         // Restore original environment
         process.env = originalEnv;
         process.chdir(originalCwd);
-        
+
         // Clear module cache to force reload
         jest.resetModules();
     });
@@ -120,7 +120,7 @@ describe('Config Loader', () => {
 
         test('should use default GEMINI_MODEL_ID when not provided', async () => {
             const config = await loadConfig();
-            expect(config.gemini.modelId).toBe('gemini-2.5-flash-preview-05-20');
+            expect(config.gemini.modelId).toBe('gemini-3-flash-preview');
         });
 
         test('should use custom GEMINI_MODEL_ID when provided', async () => {
@@ -238,11 +238,11 @@ describe('Config Loader', () => {
         test('should read secret from file when path exists', async () => {
             const secretPath = '/path/to/secret';
             process.env.TWITCH_EVENTSUB_SECRET = secretPath;
-            
+
             // Clear mocks first
             fs.existsSync.mockClear();
             fs.readFileSync.mockClear();
-            
+
             // Setup mocks BEFORE any import - this is critical
             fs.existsSync.mockImplementation((filePath) => {
                 // Check if the path is the one we expect
@@ -253,17 +253,17 @@ describe('Config Loader', () => {
             // Reset modules and import fresh - ES modules cache is separate from Jest's cache
             // but resetModules should help clear any Jest-level caching
             jest.resetModules();
-            
+
             // Import after mocks are set up
             // Note: ES modules are cached by Node.js, so if this module was imported
             // in a previous test, it won't re-execute top-level code. However, the mocks
             // should still be active when the module code runs.
             const configModule = await import('../../../src/config/loader.js');
             const config = configModule.default;
-            
+
             // Verify config loaded (if module was cached, config still exists)
             expect(config).toBeDefined();
-            
+
             // The mocks should have been called if the module executed
             // If they weren't called, the module was likely cached from a previous test
             // In that case, we can't reliably test top-level execution
@@ -280,11 +280,11 @@ describe('Config Loader', () => {
         test('should use direct value when file does not exist', async () => {
             const secretValue = 'direct-secret-value';
             process.env.TWITCH_EVENTSUB_SECRET = secretValue;
-            
+
             // Clear mocks first
             fs.existsSync.mockClear();
             fs.readFileSync.mockClear();
-            
+
             // Setup mocks BEFORE any import - this is critical
             fs.existsSync.mockImplementation((filePath) => {
                 if (filePath === secretValue) {
@@ -299,14 +299,14 @@ describe('Config Loader', () => {
 
             // Reset modules and import fresh
             jest.resetModules();
-            
+
             // Import after mocks are set up
             const configModule = await import('../../../src/config/loader.js');
             const config = configModule.default;
-            
+
             // Verify config loaded
             expect(config).toBeDefined();
-            
+
             // The mocks should have been called if the module executed
             if (fs.existsSync.mock.calls.length > 0) {
                 expect(fs.existsSync).toHaveBeenCalledWith(secretValue);
@@ -336,7 +336,7 @@ describe('Config Loader', () => {
         test('should have correct twitch configuration structure', async () => {
             process.env.PUBLIC_URL = 'https://example.com';
             const config = await loadConfig();
-            
+
             expect(config.twitch).toHaveProperty('username', 'testbot');
             expect(config.twitch).toHaveProperty('channels');
             expect(config.twitch).toHaveProperty('clientId', 'test-client-id');
@@ -346,14 +346,14 @@ describe('Config Loader', () => {
 
         test('should have correct gemini configuration structure', async () => {
             const config = await loadConfig();
-            
+
             expect(config.gemini).toHaveProperty('apiKey', 'test-key');
             expect(config.gemini).toHaveProperty('modelId');
         });
 
         test('should have correct app configuration structure', async () => {
             const config = await loadConfig();
-            
+
             expect(config.app).toHaveProperty('streamInfoFetchIntervalMs');
             expect(config.app).toHaveProperty('logLevel');
             expect(config.app).toHaveProperty('prettyLog');
@@ -365,7 +365,7 @@ describe('Config Loader', () => {
             process.env.TWITCH_CHANNELS_SECRET_NAME = 'channels-secret';
             process.env.ALLOWED_CHANNELS_SECRET_NAME = 'allowed-secret';
             const config = await loadConfig();
-            
+
             expect(config.secrets).toHaveProperty('twitchBotRefreshTokenName', 'test-secret-name');
             expect(config.secrets).toHaveProperty('twitchChannelsSecretName', 'channels-secret');
             expect(config.secrets).toHaveProperty('allowedChannelsSecretName', 'allowed-secret');
@@ -375,7 +375,7 @@ describe('Config Loader', () => {
             process.env.WEBUI_BASE_URL = 'https://custom-webui.com';
             process.env.WEBUI_INTERNAL_TOKEN = 'internal-token';
             const config = await loadConfig();
-            
+
             expect(config.webui).toHaveProperty('baseUrl', 'https://custom-webui.com');
             expect(config.webui).toHaveProperty('internalToken', 'internal-token');
         });
@@ -400,23 +400,23 @@ describe('Config Loader', () => {
             // Clear mocks first
             fs.existsSync.mockClear();
             dotenv.config.mockClear();
-            
+
             // Setup mock BEFORE any import - this is critical
             fs.existsSync.mockImplementation((filePath) => {
-                 // Check if the file path ends with .env
-                 return filePath.endsWith('.env');
+                // Check if the file path ends with .env
+                return filePath.endsWith('.env');
             });
-            
+
             // Reset modules and import fresh
             jest.resetModules();
-            
+
             // Import after mocks are set up
             const configModule = await import('../../../src/config/loader.js');
             const config = configModule.default;
-            
+
             // Verify the config loaded successfully
             expect(config).toBeDefined();
-            
+
             // The mocks should have been called if the module executed
             // If dotenv.config was called, it means .env file check passed
             if (fs.existsSync.mock.calls.length > 0) {
@@ -430,9 +430,9 @@ describe('Config Loader', () => {
 
         test('should not load .env file when it does not exist', async () => {
             // fs.existsSync is mocked to return false by default in beforeEach
-            
+
             await loadConfig();
-            
+
             expect(dotenv.config).not.toHaveBeenCalled();
         });
     });
