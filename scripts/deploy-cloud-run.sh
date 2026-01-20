@@ -127,10 +127,6 @@ DEPLOYED_URL=$(gcloud run deploy "$SERVICE" \
   "${ALLOW_FLAG[@]}" \
   --min-instances "$MIN_INSTANCES" \
   --memory "$MEMORY" \
-  --startup-probe-http-get-path="/startupz" \
-  --startup-probe-timeout-seconds=30 \
-  --startup-probe-period-seconds=10 \
-  --startup-probe-failure-threshold=3 \
   --set-env-vars "$ENV_ARG" \
   --set-secrets "$SECRETS_ARG" \
   --labels "managed-by=local,commit-sha=$COMMIT_SHA" \
