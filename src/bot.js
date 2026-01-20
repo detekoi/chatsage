@@ -112,7 +112,7 @@ async function gracefulShutdown(signal) {
         process.exit(1);
     }, SHUTDOWN_FORCE_EXIT_TIMEOUT_MS);
 
-    logger.info('ChatSage shutdown complete.');
+    logger.info('WildcatSage shutdown complete.');
     clearTimeout(forceExitTimeout);
     process.exit(0);
 }
@@ -122,7 +122,7 @@ async function gracefulShutdown(signal) {
  */
 async function main() {
     try {
-        logger.info(`Starting ChatSage v${process.env.npm_package_version || '1.0.0'}...`);
+        logger.info(`Starting WildcatSage v${process.env.npm_package_version || '1.0.0'}...`);
         logger.info(`Node Env: ${config.app.nodeEnv}, Log Level: ${config.app.logLevel}`);
 
         // --- Start HTTP server EARLY so Cloud Run sees the container as ready ---
@@ -321,11 +321,11 @@ async function main() {
         await lifecycle.startMonitoring();
 
         // --- Post-Connection Logging ---
-        logger.info('ChatSage components initialized and event listeners attached.');
+        logger.info('WildcatSage components initialized and event listeners attached.');
         logger.info('Lifecycle Manager is running. IRC connection will be managed automatically.');
 
     } catch (error) {
-        logger.fatal({ err: error }, 'Fatal error during ChatSage initialization.');
+        logger.fatal({ err: error }, 'Fatal error during WildcatSage initialization.');
         process.exit(1);
     }
 }

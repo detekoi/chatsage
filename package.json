@@ -1,7 +1,7 @@
 {
-    "name": "chatsage",
+    "name": "wildcatsage",
     "version": "1.0.0",
-    "description": "An AI-powered chatbot for Twitch chat, providing contextually relevant responses.",
+    "description": "An AI-powered chatbot for Twitch chat (WildcatSage), providing contextually relevant responses.",
     "main": "src/bot.js",
     "type": "module",
     "scripts": {
