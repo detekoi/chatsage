@@ -6,6 +6,14 @@ import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 
 /**
+ * Helper to extract text from a Gemini result object.
+ */
+function extractTextFromCandidate(res) {
+    return res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+
+/**
  * Handler for the !lurk command.
  * Provides a fun, contextual send-off to a user who is going to lurk.
  */
@@ -49,9 +57,7 @@ const lurkHandler = {
             });
             let llmResponse = result?.response?.text ? result.response.text() : extractTextFromCandidate(result);
 
-            function extractTextFromCandidate(res) {
-                return res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            }
+
 
             let response;
             if (llmResponse && llmResponse.trim()) {

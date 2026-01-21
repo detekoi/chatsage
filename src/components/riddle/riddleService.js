@@ -2,7 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
-import { GoogleGenAI, Type as GenAIType } from '@google/genai';
+import { Type as GenAIType } from '@google/genai';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
 const META_CONCEPT_BLACKLIST = [

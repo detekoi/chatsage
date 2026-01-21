@@ -69,13 +69,7 @@ async function exchangeCodeForTokens(authCode) {
 
     // Check if required scopes are present
     // Scopes match those listed in botcommands.html + modern equivalents
-    const requiredScopes = [
-        'chat:read',
-        'chat:edit',
-        'channel:read:subscriptions',
-        'channel:manage:redemptions',
-        'user:read:email'
-    ];
+
 
     // Note: Twitch might return user:read:chat instead of chat:read, etc.
     // We check if at least these base capabilities are present.

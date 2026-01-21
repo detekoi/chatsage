@@ -1,6 +1,6 @@
 import { getGeminiClient } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
-import { GoogleGenAI, Type as GenAIType } from '@google/genai';
+import { Type as GenAIType } from '@google/genai';
 
 const GeoClueSchema = {
     type: GenAIType.OBJECT,

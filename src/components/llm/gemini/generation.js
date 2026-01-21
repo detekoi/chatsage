@@ -2,7 +2,7 @@ import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 import { getGeminiClient, getGenAIInstance, getConfiguredModelId } from './core.js';
-import { extractTextFromResponse, sleep } from './utils.js';
+import { extractTextFromResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
 

@@ -2,7 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
-import { GoogleGenAI, Type as GenAIType } from '@google/genai';
+import { Type as GenAIType } from '@google/genai';
 
 // --- Schemas ---
 

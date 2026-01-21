@@ -12,7 +12,7 @@ import {
 } from '../../../../../src/components/llm/gemini/generation.js';
 import { getGeminiClient, getGenAIInstance } from '../../../../../src/components/llm/gemini/core.js';
 import { extractTextFromResponse } from '../../../../../src/components/llm/gemini/utils.js';
-import logger from '../../../../../src/lib/logger.js';
+
 
 describe('gemini/generation.js', () => {
     let mockGenerateContent;
