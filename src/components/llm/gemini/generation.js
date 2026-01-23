@@ -81,17 +81,6 @@ async function handleFunctionCall(functionCall) {
     return null;
 }
 
-// --- Standard Response (mostly unchanged, just import/export management) ---
-
-// --- Standard Response Schema ---
-const StandardResponseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        text: { type: Type.STRING, description: "The response text to be sent to chat." }
-    },
-    required: ["text"]
-};
-
 // --- Standard Response ---
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const model = getGeminiClient();
@@ -100,14 +89,13 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Answer directly.`;
 
     try {
+        // Note: Cannot combine responseMimeType: 'application/json' with custom function tools in Gemini 3
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: [standardAnswerTools],
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
             generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: StandardResponseSchema,
                 thinkingConfig: { thinkingLevel }
             }
         });
@@ -131,8 +119,6 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                     toolConfig: { functionCallingConfig: { mode: "AUTO" } },
                     systemInstruction: { parts: [{ text: standardSystemInstruction }] },
                     generationConfig: {
-                        responseMimeType: 'application/json',
-                        responseSchema: StandardResponseSchema,
                         thinkingConfig: { thinkingLevel }
                     }
                 });
@@ -143,33 +129,13 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                     return "I can't answer that due to safety guidelines.";
                 }
 
-                // For followup, we also expect JSON now
                 const followupResponseText = followupCandidate?.content?.parts?.[0]?.text;
-                if (followupResponseText) {
-                    try {
-                        const parsed = JSON.parse(followupResponseText);
-                        return parsed.text || null;
-                    } catch (e) {
-                        logger.warn({ err: e, followupResponseText }, 'Failed to parse structured output from standard followup');
-                    }
-                }
-                return null;
+                return followupResponseText?.trim() || null;
             }
         }
 
-        // Valid JSON response expected
         const responseText = candidate?.content?.parts?.[0]?.text;
-        if (responseText) {
-            try {
-                const parsed = JSON.parse(responseText);
-                return parsed.text || null;
-            } catch (e) {
-                // With responseSchema, this should be rare/impossible unless model failure
-                logger.error({ err: e, responseText }, 'Failed to parse JSON from strict schema response');
-                return null;
-            }
-        }
-        return null;
+        return responseText?.trim() || null;
 
     } catch (error) {
         // Check for 503 Overloaded or other retryable errors? SDK usually handles retries if configured.

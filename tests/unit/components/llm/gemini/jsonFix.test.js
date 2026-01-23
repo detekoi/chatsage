@@ -1,5 +1,7 @@
 
 // tests/unit/components/llm/gemini/jsonFix.test.js
+// Updated: generateStandardResponse now returns plain text (no JSON parsing)
+// because Gemini 3 doesn't support combining structured JSON output with custom function tools
 
 jest.mock('../../../../../src/lib/logger.js', () => ({
     __esModule: true,
@@ -26,11 +28,10 @@ jest.mock('../../../../../src/components/llm/gemini/core.js', () => {
 });
 
 
-import logger from '../../../../../src/lib/logger.js';
 import { generateStandardResponse } from '../../../../../src/components/llm/gemini/generation.js';
 import { getGeminiClient } from '../../../../../src/components/llm/gemini/core.js';
 
-describe('generateStandardResponse JSON Fix', () => {
+describe('generateStandardResponse plain text handling', () => {
     let mockGenerateContent;
 
     beforeEach(() => {
@@ -49,59 +50,63 @@ describe('generateStandardResponse JSON Fix', () => {
         });
     });
 
-    it('should extract text from consistent structured JSON response', async () => {
-        const jsonResponse = JSON.stringify({
-            text: "Hello from structured output"
-        });
+    it('should return plain text response directly', async () => {
+        const plainTextResponse = "Hello from the model";
 
         mockGenerateContent.mockResolvedValue({
             candidates: [{
                 content: {
-                    parts: [{ text: jsonResponse }]
+                    parts: [{ text: plainTextResponse }]
                 }
             }],
-            text: () => jsonResponse
+            text: () => plainTextResponse
         });
 
         const result = await generateStandardResponse('context', 'query');
-        expect(result).toBe('Hello from structured output');
+        expect(result).toBe('Hello from the model');
     });
 
-    it('should return null if valid JSON but missing text field', async () => {
-        const jsonResponse = JSON.stringify({
-            somethingElse: "oops"
-        });
+    it('should trim whitespace from response', async () => {
+        const responseWithWhitespace = "  Hello with spaces  \n";
 
         mockGenerateContent.mockResolvedValue({
             candidates: [{
                 content: {
-                    parts: [{ text: jsonResponse }]
+                    parts: [{ text: responseWithWhitespace }]
                 }
             }],
-            text: () => jsonResponse
+            text: () => responseWithWhitespace
+        });
+
+        const result = await generateStandardResponse('context', 'query');
+        expect(result).toBe('Hello with spaces');
+    });
+
+    it('should return null for empty response', async () => {
+        mockGenerateContent.mockResolvedValue({
+            candidates: [{
+                content: {
+                    parts: [{ text: '' }]
+                }
+            }],
+            text: () => ''
         });
 
         const result = await generateStandardResponse('context', 'query');
         expect(result).toBeNull();
     });
 
-    it('should return null (and log warning) on malformed JSON', async () => {
-        const malformed = '{ "text": "oops...';
-
+    it('should return null for whitespace-only response', async () => {
         mockGenerateContent.mockResolvedValue({
             candidates: [{
                 content: {
-                    parts: [{ text: malformed }]
+                    parts: [{ text: '   \n\t  ' }]
                 }
             }],
-            text: () => malformed
+            text: () => '   \n\t  '
         });
 
         const result = await generateStandardResponse('context', 'query');
         expect(result).toBeNull();
-        expect(logger.error).toHaveBeenCalledWith(
-            expect.objectContaining({ responseText: malformed }),
-            expect.stringContaining('Failed to parse JSON from strict schema response')
-        );
     });
 });

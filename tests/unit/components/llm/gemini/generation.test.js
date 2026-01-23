@@ -26,11 +26,9 @@ describe('gemini/generation.js', () => {
     });
 
     describe('generateStandardResponse', () => {
-        it('should call generateContent with standard tools and structured output schema', async () => {
-            extractTextFromResponse.mockReturnValue(JSON.stringify({ text: 'Mocked response text' }));
-
+        it('should call generateContent with standard tools (no JSON schema due to Gemini 3 limitation)', async () => {
             mockGenerateContent.mockResolvedValue({
-                candidates: [{ content: { parts: [{ text: JSON.stringify({ text: 'Mocked response text' }) }] } }]
+                candidates: [{ content: { parts: [{ text: 'Mocked response text' }] } }]
             });
 
             const response = await generateStandardResponse('context', 'query');
@@ -38,10 +36,13 @@ describe('gemini/generation.js', () => {
             expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
                 tools: expect.arrayContaining([expect.objectContaining({ functionDeclarations: expect.any(Array) })]),
                 generationConfig: expect.objectContaining({
-                    responseMimeType: 'application/json',
-                    responseSchema: expect.any(Object)
+                    thinkingConfig: expect.any(Object)
                 })
             }));
+            // Verify JSON schema is NOT used (Gemini 3 doesn't support it with custom function tools)
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.generationConfig.responseMimeType).toBeUndefined();
+            expect(callArgs.generationConfig.responseSchema).toBeUndefined();
             expect(response).toBe('Mocked response text');
         });
 
