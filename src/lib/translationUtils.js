@@ -1,5 +1,7 @@
+import { Type } from "@google/genai";
 import logger from './logger.js';
 import { getGeminiClient } from '../components/llm/geminiClient.js';
+import { getGenAIInstance } from '../components/llm/gemini/core.js';
 
 // Translation cache with LRU-style eviction and time-based expiration
 const translationCache = new Map();
@@ -38,6 +40,147 @@ export const COMMON_LANGUAGES = [
     'vietnamese', 'thai', 'swedish', 'danish', 'norwegian',
     'finnish', 'greek', 'czech', 'hungarian', 'romanian'
 ];
+
+// Schema for translate command parsing
+const TranslateCommandSchema = {
+    type: Type.OBJECT,
+    properties: {
+        action: {
+            type: Type.STRING,
+            description: "The action to take: 'enable' to start translation, 'stop' to stop for one user, 'stop_all' to stop all translations"
+        },
+        targetUser: {
+            type: Type.STRING,
+            nullable: true,
+            description: "The username to target, or null if targeting self"
+        },
+        language: {
+            type: Type.STRING,
+            nullable: true,
+            description: "The target language for translation, or null for stop actions"
+        }
+    },
+    required: ['action']
+};
+
+/**
+ * Heuristic fallback for parsing translate commands when LLM fails
+ */
+function parseTranslateCommandHeuristic(commandText, _invokingUsername) {
+    const args = commandText.trim().split(/\s+/);
+    if (args.length === 0) {
+        return { action: 'enable', targetUser: null, language: null };
+    }
+
+    const first = args[0].toLowerCase();
+
+    // Handle stop commands
+    if (first === 'stop') {
+        if (args.length > 1 && args[1].toLowerCase() === 'all') {
+            return { action: 'stop_all', targetUser: null, language: null };
+        }
+        if (args.length > 1) {
+            return { action: 'stop', targetUser: args[1].replace(/^@/, '').toLowerCase(), language: null };
+        }
+        return { action: 'stop', targetUser: null, language: null };
+    }
+
+    // Check if first arg is a known language
+    const isKnownLang = (s) => COMMON_LANGUAGES.includes(s.toLowerCase());
+
+    if (args.length === 1) {
+        // Single arg = language for self
+        return { action: 'enable', targetUser: null, language: args[0] };
+    }
+
+    // Two+ args: try to figure out which is language and which is user
+    if (args[0].startsWith('@')) {
+        return { action: 'enable', targetUser: args[0].replace(/^@/, '').toLowerCase(), language: args.slice(1).join(' ') };
+    }
+    if (args[args.length - 1].startsWith('@')) {
+        return { action: 'enable', targetUser: args[args.length - 1].replace(/^@/, '').toLowerCase(), language: args.slice(0, -1).join(' ') };
+    }
+    if (isKnownLang(first)) {
+        // First is language, last might be user
+        return { action: 'enable', targetUser: args[args.length - 1].toLowerCase(), language: first };
+    }
+    if (isKnownLang(args[args.length - 1])) {
+        // Last is language, first might be user
+        return { action: 'enable', targetUser: first, language: args[args.length - 1] };
+    }
+
+    // Default: treat all as language for self
+    return { action: 'enable', targetUser: null, language: args.join(' ') };
+}
+
+/**
+ * Parse a translate command using LLM with chat context
+ * Uses gemini-2.5-flash-lite for speed and cost efficiency
+ *
+ * @param {string} commandText - The command arguments (everything after "!translate")
+ * @param {string} invokingUsername - The username of the person who invoked the command
+ * @param {string} chatContext - Recent chat context to help interpret the command
+ * @returns {Promise<{action: string, targetUser: string|null, language: string|null}>}
+ */
+export async function parseTranslateCommand(commandText, invokingUsername, chatContext = '') {
+    if (!commandText?.trim()) {
+        return { action: 'enable', targetUser: null, language: null };
+    }
+
+    const ai = getGenAIInstance();
+
+    const prompt = `Parse this Twitch chat translate command and extract the action, target user, and language.
+
+Command: !translate ${commandText}
+Invoked by: ${invokingUsername}
+
+${chatContext ? `Recent chat context:\n${chatContext}\n` : ''}
+Rules:
+- action: "enable" to start translating, "stop" to stop for one user, "stop_all" for "stop all"
+- targetUser: The username to affect, or null if the invoker is targeting themselves
+- language: The language to translate into (can be multi-word like "traditional chinese"), or null for stop actions
+- Remove @ prefix from usernames
+- If ambiguous, use chat context to identify who might need translation (e.g., someone speaking another language)
+- Common patterns:
+  - "!translate spanish" → enable, null, "spanish" (self)
+  - "!translate @user french" → enable, "user", "french"
+  - "!translate french @user" → enable, "user", "french"
+  - "!translate stop" → stop, null, null (self)
+  - "!translate stop @user" → stop, "user", null
+  - "!translate stop all" → stop_all, null, null
+
+Return JSON only.`;
+
+    try {
+        const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-lite',
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                responseSchema: TranslateCommandSchema
+            }
+        });
+
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (responseText) {
+            const parsed = JSON.parse(responseText);
+            logger.debug({ commandText, parsed }, 'LLM parsed translate command');
+            return {
+                action: parsed.action || 'enable',
+                targetUser: parsed.targetUser?.toLowerCase() || null,
+                language: parsed.language || null
+            };
+        }
+
+        logger.warn('Empty response from LLM for translate command parsing, falling back to heuristic');
+        return parseTranslateCommandHeuristic(commandText, invokingUsername);
+
+    } catch (err) {
+        logger.warn({ err, commandText }, 'LLM translate command parsing failed, falling back to heuristic');
+        return parseTranslateCommandHeuristic(commandText, invokingUsername);
+    }
+}
 
 /**
  * Enhanced text extraction function similar to lurk command fixes

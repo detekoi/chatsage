@@ -4,16 +4,18 @@ jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/lib/ircSender.js');
 jest.mock('../../../../../src/lib/translationUtils.js', () => ({
     translateText: jest.fn(),
-    COMMON_LANGUAGES: ['english', 'spanish', 'french', 'german'] // partial mock list
+    parseTranslateCommand: jest.fn(),
+    COMMON_LANGUAGES: ['english', 'spanish', 'french', 'german']
 }));
 jest.mock('../../../../../src/components/context/contextManager.js');
-jest.mock('../../../../../src/components/twitch/helixClient.js');
+jest.mock('../../../../../src/components/llm/geminiClient.js', () => ({
+    buildContextPrompt: jest.fn().mockReturnValue('mock chat context')
+}));
 
 import translateHandler from '../../../../../src/components/commands/handlers/translate.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
-import { translateText } from '../../../../../src/lib/translationUtils.js';
+import { translateText, parseTranslateCommand } from '../../../../../src/lib/translationUtils.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
-import { getUsersByLogin } from '../../../../../src/components/twitch/helixClient.js';
 import logger from '../../../../../src/lib/logger.js';
 
 describe('Translate Command Handler', () => {
@@ -34,16 +36,19 @@ describe('Translate Command Handler', () => {
         mockContextManager = {
             enableUserTranslation: jest.fn(),
             disableUserTranslation: jest.fn().mockReturnValue(false),
-            disableAllTranslationsInChannel: jest.fn().mockReturnValue(0)
+            disableAllTranslationsInChannel: jest.fn().mockReturnValue(0),
+            getContextForLLM: jest.fn().mockReturnValue({ recentChatHistory: 'mock history' })
         };
         getContextManager.mockReturnValue(mockContextManager);
 
         enqueueMessage.mockResolvedValue();
         translateText.mockResolvedValue('Translated text');
-        getUsersByLogin.mockImplementation(async (logins) => {
-            const knownUsers = ['targetuser', 'otheruser', 'validuser', 'testuser'];
-            const found = logins.filter(l => knownUsers.includes(l.toLowerCase()));
-            return found.map(l => ({ id: '123', login: l }));
+
+        // Default mock for parseTranslateCommand - enable for self
+        parseTranslateCommand.mockResolvedValue({
+            action: 'enable',
+            targetUser: null,
+            language: 'spanish'
         });
     });
 
@@ -62,7 +67,7 @@ describe('Translate Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Usage: !translate <language> [user] | !translate <user> <language> | !translate stop [user|all]',
+                'Usage: !translate <language> [user] | !translate stop [user|all]',
                 { replyToId: '123' }
             );
         });
@@ -70,25 +75,35 @@ describe('Translate Command Handler', () => {
 
     describe('Self Translation', () => {
         test('should enable translation for self with language', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'spanish'
+            });
             translateText.mockResolvedValue('Traducción');
-            const context = createMockContext(['es']);
+            const context = createMockContext(['spanish']);
 
             await translateHandler.execute(context);
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
                 'testuser',
-                'es'
+                'spanish'
             );
             expect(translateText).toHaveBeenCalled();
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                expect.stringContaining('Okay, translating messages for TestUser into es'),
+                expect.stringContaining('Okay, translating messages for TestUser into spanish'),
                 { replyToId: '123' }
             );
         });
 
         test('should handle multi-word language names', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'pig latin'
+            });
             const context = createMockContext(['pig', 'latin']);
 
             await translateHandler.execute(context);
@@ -99,27 +114,15 @@ describe('Translate Command Handler', () => {
                 'pig latin'
             );
         });
-
-        test('should allow non-mod to target self using mixed-case username', async () => {
-            const context = createMockContext(['english', 'TestUser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
-                id: '123',
-                mod: '0'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'testuser',
-                'english'
-            );
-        });
     });
 
     describe('Stop Translation', () => {
         test('should stop translation for self', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop',
+                targetUser: null,
+                language: null
+            });
             mockContextManager.disableUserTranslation.mockReturnValue(true);
             const context = createMockContext(['stop']);
 
@@ -137,6 +140,11 @@ describe('Translate Command Handler', () => {
         });
 
         test('should handle already stopped translation', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop',
+                targetUser: null,
+                language: null
+            });
             mockContextManager.disableUserTranslation.mockReturnValue(false);
             const context = createMockContext(['stop']);
 
@@ -152,6 +160,11 @@ describe('Translate Command Handler', () => {
 
     describe('Mod/Broadcaster Controls', () => {
         test('should allow mod to stop translation for another user', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop',
+                targetUser: 'otheruser',
+                language: null
+            });
             mockContextManager.disableUserTranslation.mockReturnValue(true);
 
             const context = createMockContext(['stop', 'otheruser'], '#testchannel', {
@@ -174,32 +187,12 @@ describe('Translate Command Handler', () => {
             );
         });
 
-        test('should allow mod to stop translation using suffix format: user stop', async () => {
-            // !translate targetuser stop -> Currently might parse as lang="stop"
-            // Desired: treat as stop command
-            mockContextManager.disableUserTranslation.mockReturnValue(true);
-
-            const context = createMockContext(['targetuser', 'stop'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser'
-            );
-            expect(enqueueMessage).toHaveBeenCalledWith(
-                '#testchannel',
-                'Okay, stopped translating messages for targetuser.',
-                { replyToId: '123' }
-            );
-        });
-
         test('should reject non-mod stopping translation for others', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop',
+                targetUser: 'otheruser',
+                language: null
+            });
 
             const context = createMockContext(['stop', 'otheruser'], '#testchannel', {
                 username: 'testuser',
@@ -212,15 +205,20 @@ describe('Translate Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Only mods or the broadcaster can stop translation for other users.',
+                'Only mods or the broadcaster can manage translation for other users.',
                 { replyToId: '123' }
             );
             expect(mockContextManager.disableUserTranslation).not.toHaveBeenCalled();
         });
 
         test('should allow mod to enable translation for another user', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: 'otheruser',
+                language: 'spanish'
+            });
 
-            const context = createMockContext(['es', 'otheruser'], '#testchannel', {
+            const context = createMockContext(['spanish', 'otheruser'], '#testchannel', {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
@@ -232,13 +230,18 @@ describe('Translate Command Handler', () => {
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
                 'otheruser',
-                'es'
+                'spanish'
             );
         });
 
         test('should reject non-mod enabling translation for others', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: 'otheruser',
+                language: 'spanish'
+            });
 
-            const context = createMockContext(['es', 'otheruser'], '#testchannel', {
+            const context = createMockContext(['spanish', 'otheruser'], '#testchannel', {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
@@ -247,15 +250,19 @@ describe('Translate Command Handler', () => {
 
             await translateHandler.execute(context);
 
-            // Should treat as self-translation since non-mod can't target others
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'testuser',
-                'es otheruser'
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Only mods or the broadcaster can manage translation for other users.',
+                { replyToId: '123' }
             );
         });
 
         test('should allow mod to stop all translations', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop_all',
+                targetUser: null,
+                language: null
+            });
             mockContextManager.disableAllTranslationsInChannel.mockReturnValue(5);
             const context = createMockContext(['stop', 'all'], '#testchannel', {
                 username: 'testuser',
@@ -277,6 +284,11 @@ describe('Translate Command Handler', () => {
         });
 
         test('should reject non-mod stopping all translations', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop_all',
+                targetUser: null,
+                language: null
+            });
             const context = createMockContext(['stop', 'all'], '#testchannel', {
                 username: 'testuser',
                 'display-name': 'TestUser',
@@ -295,257 +307,65 @@ describe('Translate Command Handler', () => {
         });
     });
 
-    describe('Flexible Parsing Heuristics', () => {
-
-
-        test('should detect [Language User] format: english targetuser', async () => {
-            const context = createMockContext(['english', 'targetuser'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
+    describe('LLM Parsing Integration', () => {
+        test('should pass chat context to parseTranslateCommand', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'spanish'
             });
+            const context = createMockContext(['spanish']);
 
             await translateHandler.execute(context);
 
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser',
-                'english'
-            );
-        });
-
-        test('should detect [User Language] format: targetuser english', async () => {
-            const context = createMockContext(['targetuser', 'english'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser',
-                'english'
-            );
-        });
-
-        test('should detect [User Language] format with @: @targetuser english', async () => {
-            const context = createMockContext(['@targetuser', 'english'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser',
-                'english'
-            );
-        });
-
-        test('should detect [Language User] format with @: english @targetuser', async () => {
-            const context = createMockContext(['english', '@targetuser'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser',
-                'english'
-            );
-        });
-
-        test('should defaulting to self if "user" is actually part of language (e.g. invalid user)', async () => {
-            getUsersByLogin.mockResolvedValue([]); // "traditional" is not a user
-            // "traditional chinese" -> traditional matches nothing, chinese matches nothing (conceptually)
-            // But here we test "traditional" (unknown) "chinese" (known lang, not in mock list though? wait)
-            // Mock list: english, spanish, french, german.
-            // Let's use 'german invaliduser' where invaliduser is not in twitch.
-
-            const context = createMockContext(['german', 'invaliduser'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            // "german" is known. "invaliduser" is not known. 
-            // Logic: if first is known lang, assume second is user.
-            // But then we check permission and valid user?
-            // "If args > 2 and first is lang, maybe middle is filler?"
-            // Wait, logic says: if known lang (first), potentialUser = remainder.
-            // Then permission check. If mod, we check DB/API. 
-            // If API says no user: catch block logs error? No, tries fallback?
-            // In code:
-            // "If mod... try getUsers... if users.length > 0... else... check last arg... else... assume all language for self"
-            // Wait, my code implementation of "Heuristic 2: Known Language Match" DOES NOT do an API check inside that block.
-            // It just assigns potentialUser.
-            // THEN later: "Permission Check again". 
-            // It doesn't check if user exists if identified via heuristic 2?
-            // Ah, I missed the API validation step inside Heuristic 2 in my implementation thought process vs code?
-            // Let's check `translate.js` content I wrote.
-            // Code: 
-            // else if (isKnownLanguage(firstArg)) { potentialLang = firstArg; potentialUser = ... }
-            // THEN: if (targetUsernameLower !== invokingUsernameLower && !isModOrBroadcaster) ...
-            // It lacks the "User Verification" step that Heuristic 3 has.
-            // So if I say "!translate german invaliduser", it will try `enableUserTranslation(..., 'invaliduser', 'german')`.
-            // ContextManager/Twitch might fail later, but the command succeeds in calling enabling.
-            // This is acceptable behavior (trying to target a user provided).
-
-            // "german" is known. "invaliduser" is not known / verified.
-            // Heuristic 2 now verifies user existence. Since "invaliduser" doesn't exist (mocked),
-            // it falls back to treating "german invaliduser" as language for self.
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'moduser', // targeting self
-                'german invaliduser' // full args as language
-            );
-        });
-
-        test('should handle chatty args by picking last token as user (since usernames have no spaces)', async () => {
-            // "english" is known. "hey user" is the rest.
-            // Should interpret "user" as the target, ignoring "hey".
-            const context = createMockContext(['english', 'hey', 'targetuser'], '#testchannel', {
-                username: 'moduser',
-                'display-name': 'ModUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'targetuser',
-                'english'
-            );
-        });
-    });
-
-    describe('Username Detection', () => {
-        test('should strip @ prefix from username', async () => {
-            mockContextManager.disableUserTranslation.mockReturnValue(true);
-            getUsersByLogin.mockResolvedValue([{ id: '456', login: 'otheruser' }]);
-            const context = createMockContext(['stop', '@otheruser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'otheruser'
-            );
-        });
-
-        test('should verify username exists via Twitch API for mod targeting', async () => {
-
-            const context = createMockContext(['es', 'validuser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(getUsersByLogin).toHaveBeenCalledWith(['validuser']);
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'validuser',
-                'es'
-            );
-        });
-
-        test('should treat invalid username as language for mod', async () => {
-            getUsersByLogin.mockResolvedValue([]);
-            const context = createMockContext(['es', 'invaliduser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            // Should treat as language since user doesn't exist
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
+            expect(parseTranslateCommand).toHaveBeenCalledWith(
+                'spanish',
                 'testuser',
-                'es invaliduser'
+                'mock chat context'
             );
         });
 
-        test('should prevent targeting self when username matches', async () => {
+        test('should handle LLM parsing with @mention format', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: 'targetuser',
+                language: 'french'
+            });
 
-            const context = createMockContext(['es', 'testuser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
+            const context = createMockContext(['@targetuser', 'french'], '#testchannel', {
+                username: 'moduser',
+                'display-name': 'ModUser',
                 id: '123',
                 mod: '1'
             });
 
             await translateHandler.execute(context);
 
-            // When username matches, it still treats all args as language (not targeting)
-            // When username matches (targeting self), we now correctly identifying it as target=self, lang=es
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'testuser',
-                'es'
+                'targetuser',
+                'french'
             );
         });
     });
 
     describe('Error Handling', () => {
-        test('should Fallback to self-translation on Twitch API error', async () => {
-            // New behavior: Catch API error and fallback to treating args as language for self
-            getUsersByLogin.mockRejectedValue(new Error('API error'));
-            const context = createMockContext(['es', 'otheruser'], '#testchannel', {
-                username: 'testuser',
-                'display-name': 'TestUser',
-                id: '123',
-                mod: '1'
-            });
-
-            await translateHandler.execute(context);
-
-            expect(logger.error).toHaveBeenCalled();
-            // Should now translate "es otheruser" for self
-            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
-                'testchannel',
-                'testuser',
-                'es otheruser'
-            );
-        });
-
         test('should handle translation errors', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'spanish'
+            });
             const error = new Error('Translation error');
             mockContextManager.enableUserTranslation.mockImplementation(() => {
                 throw error;
             });
-            const context = createMockContext(['es']);
+            const context = createMockContext(['spanish']);
 
             await translateHandler.execute(context);
 
             expect(logger.error).toHaveBeenCalledWith(
-                { err: error, action: 'es', language: 'es', targetUsernameLower: 'testuser' },
+                expect.objectContaining({ err: error }),
                 'Error executing translate command action.'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
@@ -556,9 +376,10 @@ describe('Translate Command Handler', () => {
         });
 
         test('should handle missing language for enable', async () => {
-            // This shouldn't happen with current logic, but test defensive behavior
-            mockContextManager.enableUserTranslation.mockImplementation(() => {
-                throw new Error('Language required');
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: null
             });
             const context = createMockContext(['']);
 
@@ -566,7 +387,7 @@ describe('Translate Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Please specify a language.',
+                'Please specify a language. Example: !translate spanish',
                 { replyToId: '123' }
             );
         });
@@ -574,8 +395,13 @@ describe('Translate Command Handler', () => {
 
     describe('Translation Confirmation', () => {
         test('should include translated confirmation when available', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'spanish'
+            });
             translateText.mockResolvedValue('Traducción confirmada');
-            const context = createMockContext(['es']);
+            const context = createMockContext(['spanish']);
 
             await translateHandler.execute(context);
 
@@ -587,14 +413,16 @@ describe('Translate Command Handler', () => {
         });
 
         test('should handle missing translation gracefully', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: null,
+                language: 'spanish'
+            });
             translateText.mockResolvedValue(null);
-            const context = createMockContext(['es']);
+            const context = createMockContext(['spanish']);
 
             await translateHandler.execute(context);
 
-            expect(logger.warn).toHaveBeenCalledWith(
-                'Could not translate confirmation message into es (or it was identical).'
-            );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Okay, translating messages'),
@@ -602,5 +430,4 @@ describe('Translate Command Handler', () => {
             );
         });
     });
-
 });
