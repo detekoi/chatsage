@@ -64,7 +64,7 @@ async function fetchAdScheduleViaWebUI(channelName, retryCount = 0) {
         const isServerError = e.response?.status >= 500;
         const isAuthError = e.response?.status === 401 || e.response?.status === 403;
         const isMissingScope = e.response?.data?.details?.message?.includes('Missing required scope') ||
-                               e.response?.data?.details?.message?.includes('channel:read:ads');
+            e.response?.data?.details?.message?.includes('channel:read:ads');
         const canRetry = (isTimeout || isServerError) && retryCount < MAX_RETRIES;
 
         if (isAuthError || isMissingScope) {
@@ -209,7 +209,7 @@ export function startAdSchedulePoller() {
                         }
                     }
 
-                    const fireIn = Math.max(5_000, msUntil - 60_000); // 60s before
+                    const fireIn = Math.max(0, msUntil - 60_000); // 60s before
                     const fireAt = new Date(Date.now() + fireIn);
                     logger.info({
                         channelName,
@@ -226,12 +226,17 @@ export function startAdSchedulePoller() {
                     clearTimer(channelName);
                     timers.set(channelName, setTimeout(async () => {
                         try {
+                            // re-calculate actual remaining time
+                            const remainingMs = nextAd.getTime() - Date.now();
+                            const remainingSecs = Math.max(0, Math.round(remainingMs / 1000));
+
                             logger.info({
                                 channelName,
                                 expectedAdAt: nextAd.toISOString(),
-                                secondsUntilAd: Math.floor((nextAd.getTime() - Date.now()) / 1000)
-                            }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
-                            await notifyAdSoon(channelName, 60);
+                                secondsUntilAd: remainingSecs
+                            }, `[AdSchedule] 📢 Sending pre-ad notification now (${remainingSecs}s warning)`);
+
+                            await notifyAdSoon(channelName, remainingSecs);
                             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
                             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
