@@ -182,16 +182,16 @@ async function addMessage(channelName, username, message, tags) {
                 state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
                 logger.debug(`Summarized and pruned history for ${channelName}. New length: ${state.chatHistory.length}`);
             } else {
-                 // If summarization failed, prune more aggressively to prevent unbounded growth
-                 logger.warn(`[${channelName}] Summarization failed, pruning chat history more aggressively to prevent token overflow.`);
-                 state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
-                 logger.debug(`Pruned history for ${channelName} after summarization failure. New length: ${state.chatHistory.length}`);
+                // If summarization failed, prune more aggressively to prevent unbounded growth
+                logger.warn(`[${channelName}] Summarization failed, pruning chat history more aggressively to prevent token overflow.`);
+                state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+                logger.debug(`Pruned history for ${channelName} after summarization failure. New length: ${state.chatHistory.length}`);
             }
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "Error during summarization trigger/pruning.");
-             // Prune aggressively to prevent unbounded growth when summarization throws errors
-             logger.warn(`[${channelName}] Exception during summarization, pruning chat history aggressively to prevent token overflow.`);
-             state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+            // Prune aggressively to prevent unbounded growth when summarization throws errors
+            logger.warn(`[${channelName}] Exception during summarization, pruning chat history aggressively to prevent token overflow.`);
+            state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
         } finally {
             state.isSummarizing = false; // Release lock
         }
@@ -267,6 +267,22 @@ function clearStreamContext(channelName) {
     state.streamContext.fetchErrorCount = 0; // Reset error count
     state.streamContext.offlineMissCount = 0; // Reset after clearing
     logger.info(`[${channelName}] Stream context has been cleared.`);
+}
+
+/**
+ * Clears the thematic context (chatSummary) when a significant context shift
+ * occurs, like a game change. This prevents old themes from contaminating
+ * new game prompts while preserving recent chat history.
+ * @param {string} channelName - Channel name (without '#').
+ */
+function clearThematicContext(channelName) {
+    const state = _getOrCreateChannelState(channelName);
+    if (state.chatSummary) {
+        logger.info(`[${channelName}] Clearing thematic context (old summary: "${state.chatSummary.substring(0, 50)}...").`);
+        state.chatSummary = '';
+    }
+    // Keep chatHistory intact - it will naturally cycle out old messages
+    // and provides useful recent context even across game changes
 }
 
 /**
@@ -467,10 +483,10 @@ async function getChannelsForPolling() {
     const channelsNeedingId = new Set();
 
     for (const channelName of channelStates.keys()) {
-         const state = channelStates.get(channelName);
-         if (state.broadcasterId) {
+        const state = channelStates.get(channelName);
+        if (state.broadcasterId) {
             channelsToPoll.push({ channelName: state.channelName, broadcasterId: state.broadcasterId });
-         } else {
+        } else {
             // Only add if not already trying to fetch
             if (!channelsNeedingId.has(channelName)) {
                 channelsNeedingId.add(channelName);
@@ -492,7 +508,7 @@ async function getChannelsForPolling() {
                     })
                 );
             }
-         }
+        }
     }
 
     // Wait for all fetches initiated in *this cycle* to complete
@@ -542,9 +558,9 @@ function disableUserTranslation(channelName, username) {
  * @returns {UserState | null} The user's state or null if not found (shouldn't happen with getOrCreate).
  */
 function getUserTranslationState(channelName, username) {
-     const channelState = channelStates.get(channelName); // Only check existing channels
-     if (!channelState) return null;
-     return channelState.userStates.get(username.toLowerCase()) || null; // Return null if user state doesn't exist yet
+    const channelState = channelStates.get(channelName); // Only check existing channels
+    if (!channelState) return null;
+    return channelState.userStates.get(username.toLowerCase()) || null; // Return null if user state doesn't exist yet
 }
 
 /**
@@ -659,6 +675,7 @@ const manager = {
     setBotLanguage,
     getBotLanguage,
     clearStreamContext,
+    clearThematicContext,
     getAllChannelStates,
 };
 
@@ -678,4 +695,5 @@ export {
     setBotLanguage,
     getBotLanguage,
     clearStreamContext,
+    clearThematicContext,
 };

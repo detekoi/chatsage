@@ -82,6 +82,9 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     const state = getState(channelName);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
 
+    // Clear stale chat summary so old game themes don't contaminate new prompts
+    getContextManager().clearThematicContext(channelName);
+
     const context = getContextManager().getContextForLLM(channelName, 'system', 'game-change');
     const contextPrompt = buildContextPrompt(context);
     const styles = [
