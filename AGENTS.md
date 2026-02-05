@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project Overview
-ChatSage is a Twitch chat bot with LLM integration using Google Gemini. The bot provides interactive chat commands, games (trivia, geo-guessing), and automated responses with multi-language support.
+WildcatSage is a Twitch chat bot with LLM integration using Google Gemini. The bot provides interactive chat commands, games (trivia, geo-guessing), and automated responses with multi-language support.
 
 ## Setup Commands
 - Install dependencies: `npm install`

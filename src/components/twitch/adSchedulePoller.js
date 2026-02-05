@@ -226,17 +226,12 @@ export function startAdSchedulePoller() {
                     clearTimer(channelName);
                     timers.set(channelName, setTimeout(async () => {
                         try {
-                            // re-calculate actual remaining time
-                            const remainingMs = nextAd.getTime() - Date.now();
-                            const remainingSecs = Math.max(0, Math.round(remainingMs / 1000));
-
                             logger.info({
                                 channelName,
-                                expectedAdAt: nextAd.toISOString(),
-                                secondsUntilAd: remainingSecs
-                            }, `[AdSchedule] 📢 Sending pre-ad notification now (${remainingSecs}s warning)`);
+                                expectedAdAt: nextAd.toISOString()
+                            }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
 
-                            await notifyAdSoon(channelName, remainingSecs);
+                            await notifyAdSoon(channelName, 60);
                             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
                             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
