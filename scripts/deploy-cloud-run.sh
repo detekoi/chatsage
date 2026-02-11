@@ -70,7 +70,7 @@ TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME:-pro
 KEEP_ALIVE_QUEUE=${KEEP_ALIVE_QUEUE:-self-ping}
 GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-$PROJECT_ID}
 WEBUI_BASE_URL=${WEBUI_BASE_URL:-https://webui-zpqjdsguqa-uc.a.run.app}
-WEBUI_INTERNAL_TOKEN=${WEBUI_INTERNAL_TOKEN:-projects/907887386166/secrets/webui-internal-token}
+WEBUI_INTERNAL_TOKEN=${WEBUI_INTERNAL_TOKEN:-projects/907887386166/secrets/webui-internal-token/versions/latest}
 ALLOWED_CHANNELS_SECRET_NAME=${ALLOWED_CHANNELS_SECRET_NAME:-projects/907887386166/secrets/allowed-channels/versions/latest}
 
 # Secret Manager secret ids used for --set-secrets
