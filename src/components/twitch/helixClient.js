@@ -22,26 +22,26 @@ async function retryWithBackoff(fn, retries = 3, delay = 1000) {
         if (retries === 0) {
             throw error;
         }
-        
+
         // Check if this is a timeout or network error that should be retried
         const code = error.code || '';
         const status = error.response?.status;
         const message = error.message || '';
         const networkNoResponse = !!error.request && !error.response; // request made, no response
         const shouldRetry = code === 'ECONNABORTED' ||
-                           code === 'ETIMEDOUT' ||
-                           code === 'ESOCKETTIMEDOUT' ||
-                           code === 'ENOTFOUND' ||
-                           code === 'EAI_AGAIN' ||
-                           message.toLowerCase().includes('timeout') ||
-                           status === 408 ||
-                           (status && status >= 500) ||
-                           networkNoResponse;
-        
+            code === 'ETIMEDOUT' ||
+            code === 'ESOCKETTIMEDOUT' ||
+            code === 'ENOTFOUND' ||
+            code === 'EAI_AGAIN' ||
+            message.toLowerCase().includes('timeout') ||
+            status === 408 ||
+            (status && status >= 500) ||
+            networkNoResponse;
+
         if (!shouldRetry) {
             throw error;
         }
-        
+
         logger.warn({ error: error.message, retriesLeft: retries, delayMs: delay }, 'Retrying API call after error');
         await new Promise(resolve => setTimeout(resolve, delay));
         return retryWithBackoff(fn, retries - 1, delay * 2);
@@ -112,17 +112,17 @@ async function initializeHelixClient() {
         },
         (error) => {
             // Calculate latency even for errors if possible
-             const latencyMs = error.config?.meta?.requestStartedAt ? Date.now() - error.config.meta.requestStartedAt : -1;
+            const latencyMs = error.config?.meta?.requestStartedAt ? Date.now() - error.config.meta.requestStartedAt : -1;
 
             // Log failed responses
             const commonLogData = {
-                 url: error.config?.url,
-                 method: error.config?.method,
-                 latencyMs: latencyMs,
-                 err: { // Avoid logging the full huge error object directly
-                     message: error.message,
-                     code: error.code,
-                 }
+                url: error.config?.url,
+                method: error.config?.method,
+                latencyMs: latencyMs,
+                err: { // Avoid logging the full huge error object directly
+                    message: error.message,
+                    code: error.code,
+                }
             };
 
             if (error.response) {
@@ -137,20 +137,20 @@ async function initializeHelixClient() {
                 }, `Helix API call failed with status ${error.response.status}`);
 
                 // Specific handling/logging based on status code can be added here
-                 if (error.response.status === 401) {
+                if (error.response.status === 401) {
                     // Unauthorized - token might be invalid. Clear the cached token and log this occurrence.
                     logger.warn('Received 401 Unauthorized from Helix. Clearing cached App Access Token.');
                     clearCachedAppAccessToken();
-                 } else if (error.response.status === 429) {
+                } else if (error.response.status === 429) {
                     // Rate limit exceeded
                     const resetTime = error.response.headers['ratelimit-reset'];
                     const resetDate = resetTime ? new Date(parseInt(resetTime, 10) * 1000) : 'N/A';
                     logger.warn({ resetTimestamp: resetTime, resetDate }, 'Helix API rate limit exceeded (429).');
                     // NOTE: Actual retry/backoff logic should be implemented in the calling function (e.g., the poller)
-                 } else if (error.response.status >= 500) {
+                } else if (error.response.status >= 500) {
                     // Server-side error
                     logger.error('Helix API encountered a server-side error (5xx).');
-                 }
+                }
 
             } else if (error.request) {
                 // The request was made but no response was received
@@ -215,7 +215,7 @@ async function getChannelInformation(broadcasterIds, context = null) {
         return response.data?.data || [];
     } catch (error) {
         // Errors are already logged by the response interceptor
-        logger.error({ err: { message: error.message, code: error.code } , broadcasterIds }, `Failed to get channel information for IDs: ${broadcasterIds.join(',')}`);
+        logger.error({ err: { message: error.message, code: error.code }, broadcasterIds }, `Failed to get channel information for IDs: ${broadcasterIds.join(',')}`);
         // Return empty array for graceful degradation
         return [];
     }
@@ -257,10 +257,10 @@ async function getUsersByLogin(loginNames, context = null) {
         // Data is expected in response.data.data
         return response.data?.data || [];
     } catch (error) {
-         // Errors are already logged by the response interceptor
-         logger.error({ err: { message: error.message, code: error.code } , loginNames }, `Failed to get user information for logins after retries: ${loginNames.join(',')}`);
-         // Return empty array for graceful degradation
-         return [];
+        // Errors are already logged by the response interceptor
+        logger.error({ err: { message: error.message, code: error.code }, loginNames }, `Failed to get user information for logins after retries: ${loginNames.join(',')}`);
+        // Return empty array for graceful degradation
+        return [];
     }
 }
 
@@ -300,7 +300,7 @@ async function getLiveStreams(broadcasterIds, context = null) {
         return response.data?.data || [];
     } catch (error) {
         // Errors are already logged by the response interceptor
-        logger.error({ err: { message: error.message, code: error.code } , broadcasterIds }, `Failed to get live stream information for IDs: ${broadcasterIds.join(',')}`);
+        logger.error({ err: { message: error.message, code: error.code }, broadcasterIds }, `Failed to get live stream information for IDs: ${broadcasterIds.join(',')}`);
         // Return empty array for graceful degradation
         return [];
     }
@@ -328,21 +328,21 @@ async function getSharedChatSession(broadcasterId) {
         const response = await retryWithBackoff(async () => {
             return await client.get('/shared_chat/session', { params });
         }, 2, 500);
-        
+
         // Spec: https://dev.twitch.tv/docs/api/reference#get-shared-chat-session
         // Returns session data if channel is in a shared chat session
         const sessionData = response.data?.data?.[0] || null;
-        
+
         if (sessionData) {
-            logger.info({ 
-                broadcasterId, 
+            logger.info({
+                broadcasterId,
                 sessionId: sessionData.session_id,
                 participantCount: sessionData.participants?.length || 0
             }, 'Channel is in shared chat session');
         } else {
             logger.debug({ broadcasterId }, 'Channel is not in a shared chat session');
         }
-        
+
         return sessionData;
     } catch (error) {
         // If the channel is not in a shared chat session, the API returns 404
@@ -350,13 +350,13 @@ async function getSharedChatSession(broadcasterId) {
             logger.debug({ broadcasterId }, 'Channel is not in a shared chat session (404)');
             return null;
         }
-        
+
         // Other errors are already logged by the response interceptor
-        logger.error({ 
-            err: { message: error.message, code: error.code }, 
-            broadcasterId 
+        logger.error({
+            err: { message: error.message, code: error.code },
+            broadcasterId
         }, 'Failed to get shared chat session information');
-        
+
         // Return null for graceful degradation
         return null;
     }
@@ -372,6 +372,50 @@ export {
     getLiveStreams,
     getSharedChatSession,
 };
+
+// Helper: get follower relationship with broadcaster user token
+// Requires moderator:read:followers scope on the broadcaster's user access token
+/**
+ * Checks if a specific user follows a broadcaster.
+ * @param {string} broadcasterId - The broadcaster's Twitch user ID.
+ * @param {string} userId - The user's Twitch user ID to check follow status for.
+ * @param {string} userAccessToken - Broadcaster's user access token with moderator:read:followers scope.
+ * @param {string} clientId - Twitch Client ID.
+ * @returns {Promise<object|null>} Follow data object { followed_at, user_id, user_login, user_name } or null if not following.
+ */
+export async function getChannelFollower(broadcasterId, userId, userAccessToken, clientId) {
+    if (!broadcasterId || !userId || !userAccessToken || !clientId) {
+        logger.warn('getChannelFollower called with missing params');
+        return null;
+    }
+    try {
+        const response = await axios.get(`${TWITCH_HELIX_URL}/channels/followers`, {
+            params: {
+                broadcaster_id: String(broadcasterId),
+                user_id: String(userId),
+            },
+            headers: {
+                Authorization: `Bearer ${userAccessToken}`,
+                'Client-ID': clientId,
+            },
+            timeout: 15000,
+        });
+        // Spec: https://dev.twitch.tv/docs/api/reference/#get-channel-followers
+        // Returns { total, data: [{ followed_at, user_id, user_login, user_name }] }
+        const followers = response.data?.data;
+        if (followers && followers.length > 0) {
+            return followers[0]; // { followed_at, user_id, user_login, user_name }
+        }
+        return null; // User is not following the broadcaster
+    } catch (error) {
+        logger.error({
+            err: { message: error.message, code: error.code, status: error.response?.status },
+            broadcasterId,
+            userId,
+        }, 'Failed to get channel follower information');
+        throw error;
+    }
+}
 
 // Helper: get ad schedule with broadcaster user token
 export async function getAdScheduleForBroadcaster(broadcasterId, userAccessToken, clientId) {

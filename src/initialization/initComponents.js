@@ -9,6 +9,7 @@ import { initializeLanguageStorage } from '../components/context/languageStorage
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
 import { initializeQuotesStorage } from '../components/quotes/quoteStorage.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
+import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeGeminiClient } from '../components/llm/geminiClient.js';
 import { initializeHelixClient } from '../components/twitch/helixClient.js';
 import { initializeContextManager } from '../components/context/contextManager.js';
@@ -102,6 +103,9 @@ export async function initializeStorageComponents() {
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();
+
+    logger.info('Initializing Custom Commands Storage...');
+    await initializeCustomCommandsStorage();
 }
 
 /**

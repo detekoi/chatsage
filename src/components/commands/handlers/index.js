@@ -35,8 +35,12 @@ import quote from './quote.js';
 // Moderator/Broadcaster Commands
 import enable from './enable.js';
 import disable from './disable.js';
+import command from './command.js';
 // import cooldown from './cooldown.js';
 // import setthreshold from './setthreshold.js';
+
+// Custom/Social Commands
+import followage from './followage.js';
 
 
 logger.debug('Loading command handlers...');
@@ -81,8 +85,12 @@ const commandHandlers = {
     // --- Moderator/Broadcaster Commands ---
     enable: enable,
     disable: disable,
+    command: command,
     // cooldown: cooldown,
     // setthreshold: setthreshold,
+
+    // --- Custom/Social Commands ---
+    followage: followage,
 };
 
 // Log loaded commands dynamically
@@ -90,7 +98,7 @@ const loadedCommands = Object.keys(commandHandlers);
 if (loadedCommands.length > 0) {
     logger.debug(`Successfully loaded command handlers for: ${loadedCommands.join(', ')}`);
 } else {
-     logger.warn('No command handlers were imported or mapped in handlers/index.js');
+    logger.warn('No command handlers were imported or mapped in handlers/index.js');
 }
 
 export default commandHandlers;

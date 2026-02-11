@@ -7,12 +7,22 @@ import { getIrcClient } from '../twitch/ircClient.js';
 import { getContextManager } from '../context/contextManager.js';
 // Import command state manager for checking if commands are disabled
 import { isCommandDisabled } from '../context/commandStateManager.js';
+// Custom commands support
+import { getCustomCommand, incrementUseCount } from '../customCommands/customCommandsStorage.js';
+import { parseVariables } from '../customCommands/variableParser.js';
+import { getChannelFollower, getUsersByLogin } from '../twitch/helixClient.js';
+import { getBroadcasterAccessToken } from '../twitch/broadcasterTokenHelper.js';
+import { formatFollowAge } from '../customCommands/variableParser.js';
+import config from '../../config/index.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
 // Simple duplicate suppression to avoid double responses when a message is processed twice rapidly
 const recentCommandInvocations = new Map(); // key -> timestamp ms
 const DUPLICATE_WINDOW_MS = 20000; // 20 seconds to reliably prevent double-fires
+
+// Cooldown tracking for custom commands
+const customCommandCooldowns = new Map(); // "channel:command" -> last used timestamp
 
 function _makeDedupKey(channelName, username, command, args, messageId = null) {
     // Prefer messageId if available (tmi.js may provide tags.id)
@@ -42,6 +52,85 @@ function _shouldSuppressDuplicate(key) {
 }
 
 /**
+ * Checks if a custom command is on cooldown.
+ * @param {string} channelName - Channel name.
+ * @param {string} commandName - Command name.
+ * @param {number} cooldownMs - Cooldown in milliseconds.
+ * @returns {boolean} True if on cooldown.
+ */
+function _isCustomCommandOnCooldown(channelName, commandName, cooldownMs) {
+    if (cooldownMs <= 0) return false;
+    const key = `${channelName}:${commandName}`;
+    const lastUsed = customCommandCooldowns.get(key);
+    if (lastUsed && (Date.now() - lastUsed) < cooldownMs) {
+        return true;
+    }
+    customCommandCooldowns.set(key, Date.now());
+    return false;
+}
+
+/**
+ * Checks if a user has the required custom command permission.
+ * @param {string} permission - Required permission level.
+ * @param {object} tags - tmi.js message tags.
+ * @param {string} channelName - Channel name.
+ * @returns {boolean} True if user has permission.
+ */
+function _hasCustomCommandPermission(permission, tags, channelName) {
+    if (!permission || permission === 'everyone') return true;
+
+    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
+    const isModerator = tags.mod === '1' || tags.badges?.moderator === '1';
+    const isVip = tags.badges?.vip === '1';
+    const isSubscriber = tags.subscriber === '1' || tags.badges?.subscriber === '1';
+
+    switch (permission) {
+        case 'broadcaster': return isBroadcaster;
+        case 'moderator': return isModerator || isBroadcaster;
+        case 'vip': return isVip || isModerator || isBroadcaster;
+        case 'subscriber': return isSubscriber || isVip || isModerator || isBroadcaster;
+        default: return true;
+    }
+}
+
+/**
+ * Creates a getFollowage function bound to the current request context.
+ * This is passed to the variable parser for resolving $(followage).
+ */
+function _createFollowageResolver(channelName) {
+    return async (targetDisplayName, channel) => {
+        try {
+            const broadcasterToken = await getBroadcasterAccessToken(channel || channelName);
+            if (!broadcasterToken) return 'followage unavailable (auth required)';
+
+            const contextManager = getContextManager();
+            const broadcasterId = await contextManager.getBroadcasterId(channel || channelName);
+            if (!broadcasterId) return 'followage unavailable';
+
+            // Look up the user ID from their display name
+            const users = await getUsersByLogin([targetDisplayName.toLowerCase()]);
+            if (!users || users.length === 0) return 'user not found';
+
+            const followData = await getChannelFollower(
+                broadcasterId,
+                users[0].id,
+                broadcasterToken.accessToken,
+                config.twitch.clientId,
+            );
+
+            if (followData) {
+                return formatFollowAge(followData.followed_at);
+            }
+            return 'not following';
+        } catch (error) {
+            logger.warn({ error: error.message }, '[CommandProcessor] Error resolving followage variable');
+            return 'followage unavailable';
+        }
+    };
+}
+
+
+/**
  * Initializes the Command Processor.
  * Currently just logs, but could pre-load/validate handlers in the future.
  */
@@ -50,7 +139,7 @@ function initializeCommandProcessor() {
     // Log registered commands
     const registeredCommands = Object.keys(commandHandlers);
     if (registeredCommands.length > 0) {
-         logger.info(`Registered commands: ${registeredCommands.join(', ')}`);
+        logger.info(`Registered commands: ${registeredCommands.join(', ')}`);
     } else {
         logger.warn('No command handlers found or loaded.');
     }
@@ -118,7 +207,7 @@ function hasPermission(handler, tags, channelName) {
 async function processMessage(channelName, tags, message) {
     // Add debugging for incoming message
     logger.debug({ channelName, user: tags.username, message }, 'processMessage called');
-    
+
     const parsed = parseCommand(message);
 
     if (!parsed) {
@@ -128,20 +217,21 @@ async function processMessage(channelName, tags, message) {
 
     const { command, args } = parsed;
     logger.debug({ command, args }, 'Parsed command');
-    
+
     const handler = commandHandlers[command];
     logger.debug({ command, handlerExists: !!handler }, 'Command handler lookup result');
 
     if (!handler || typeof handler.execute !== 'function') {
-        logger.debug(`Command prefix used, but no handler found for: ${command}`);
-        return false;
+        // No built-in handler found — check for custom commands
+        logger.debug(`No built-in handler for: ${command}. Checking custom commands...`);
+        return await _tryCustomCommand(channelName, tags, command, args);
     }
 
     // --- Command Disabled Check ---
     logger.debug(`Checking if command !${command} is disabled in #${channelName}`);
     const commandDisabled = isCommandDisabled(channelName, command);
     logger.debug({ commandDisabled }, 'Command disabled check result');
-    
+
     if (commandDisabled) {
         logger.debug(`Command !${command} is disabled in #${channelName}, ignoring silently`);
         return false; // Silently ignore disabled commands
@@ -151,7 +241,7 @@ async function processMessage(channelName, tags, message) {
     logger.debug(`Checking permission for command !${command}`);
     const permitted = hasPermission(handler, tags, channelName);
     logger.debug({ permitted }, 'Permission check result');
-    
+
     if (!permitted) {
         logger.debug(`User ${tags.username} lacks permission for command !${command} in #${channelName}`);
         // Optional: Send a whisper or message indicating lack of permission? Be careful about spam.
@@ -190,9 +280,72 @@ async function processMessage(channelName, tags, message) {
             const ircClient = getIrcClient();
             await ircClient.say(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
         } catch (sayError) {
-             logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
+            logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
         }
         return true; // Command was attempted, even though it failed
+    }
+}
+
+/**
+ * Tries to execute a custom command for the given channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {object} tags - tmi.js message tags.
+ * @param {string} command - Command name (without !).
+ * @param {string[]} args - Command arguments.
+ * @returns {Promise<boolean>} True if a custom command was found and executed.
+ */
+async function _tryCustomCommand(channelName, tags, command, args) {
+    try {
+        const customCmd = await getCustomCommand(channelName, command);
+        if (!customCmd) {
+            return false; // No custom command found either
+        }
+
+        logger.debug({ command, channel: channelName }, 'Found custom command');
+
+        // Permission check
+        if (!_hasCustomCommandPermission(customCmd.permission, tags, channelName)) {
+            logger.debug(`User ${tags.username} lacks permission for custom command !${command}`);
+            return false;
+        }
+
+        // Cooldown check
+        if (_isCustomCommandOnCooldown(channelName, command, customCmd.cooldownMs || 0)) {
+            logger.debug(`Custom command !${command} is on cooldown in ${channelName}`);
+            return true; // Consumed the command, just not responding
+        }
+
+        // Increment use count (non-blocking)
+        const useCountPromise = incrementUseCount(channelName, command);
+
+        // Get stream context for variable resolution
+        const contextManager = getContextManager();
+        const streamContext = contextManager.getStreamContextSnapshot(channelName);
+
+        // Resolve the use count before parsing variables
+        const useCount = await useCountPromise;
+
+        // Parse variables in the response
+        const displayName = tags['display-name'] || tags.username;
+        const resolvedResponse = await parseVariables(customCmd.response, {
+            user: displayName,
+            channel: channelName,
+            args,
+            useCount,
+            streamContext,
+            getFollowage: _createFollowageResolver(channelName),
+        });
+
+        // Send the response
+        const ircClient = getIrcClient();
+        await ircClient.say(`#${channelName}`, resolvedResponse);
+
+        logger.info(`Executed custom command !${command} for ${tags.username} in #${channelName}`);
+        return true;
+    } catch (error) {
+        logger.error({ err: error, command, channel: channelName },
+            '[CommandProcessor] Error executing custom command');
+        return false;
     }
 }
 
