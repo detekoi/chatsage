@@ -89,13 +89,14 @@ export async function getBroadcasterAccessToken(channelName) {
 
     // Exchange refresh token for a new access token
     try {
-        const response = await axios.post(TWITCH_TOKEN_URL, null, {
-            params: {
-                client_id: config.twitch.clientId,
-                client_secret: config.twitch.clientSecret,
-                grant_type: 'refresh_token',
-                refresh_token: refreshToken,
-            },
+        const body = new URLSearchParams({
+            client_id: config.twitch.clientId,
+            client_secret: config.twitch.clientSecret,
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+        });
+
+        const response = await axios.post(TWITCH_TOKEN_URL, body.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 15000,
         });
@@ -145,8 +146,9 @@ export async function getBroadcasterAccessToken(channelName) {
         return { accessToken: newAccessToken, twitchUserId };
     } catch (error) {
         const status = error.response?.status;
+        const responseData = error.response?.data;
         logger.error({
-            err: { message: error.message, status },
+            err: { message: error.message, status, responseData },
             channel: lowerChannel,
         }, '[BroadcasterTokenHelper] Failed to refresh broadcaster token');
 
