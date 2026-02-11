@@ -4,14 +4,17 @@ import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/geminiClient.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
+import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
+import { analyzeImage } from '../llm/geminiImageClient.js';
 
 // AutoChatManager periodically scans channel state and emits context-aware messages
 
 let intervalId = null;
 const TICK_MS = 60 * 1000; // 1 minute cadence
+const IMAGE_REFRESH_MS = 3 * 60 * 1000; // Refresh thumbnail analysis every 3 minutes
 
 // Internal per-channel runtime state (not persisted)
-const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion, lastAutoKind }
+const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion, lastAutoKind, lastImageContext, lastImageFetchAtMs }
 
 function now() { return Date.now(); }
 
@@ -56,6 +59,45 @@ function endsWithQuestion(text) {
     return typeof text === 'string' && /\?\s*$/.test(text);
 }
 
+/**
+ * Fetches and analyzes the stream thumbnail to build a visual context string.
+ * Throttled to run at most once every IMAGE_REFRESH_MS per channel.
+ * On failure, preserves the previous (stale) context rather than clearing it.
+ * @param {string} channelName - Channel name without #
+ */
+async function refreshImageContext(channelName) {
+    const state = getState(channelName);
+    // Throttle: skip if we fetched recently
+    if (state.lastImageFetchAtMs && (now() - state.lastImageFetchAtMs) < IMAGE_REFRESH_MS) return;
+
+    try {
+        const thumbnailBuffer = await fetchStreamThumbnail(channelName);
+        if (!thumbnailBuffer) {
+            logger.debug(`[AutoChatManager] No thumbnail for ${channelName}, keeping previous image context`);
+            return;
+        }
+
+        const prompt = 'Describe the on-screen gameplay in 1–2 sentences, ≤120 chars. Focus on the game scene only; ignore overlays and webcam. Plain text.';
+        const description = await analyzeImage(thumbnailBuffer, prompt);
+
+        if (description && description.trim().length > 0) {
+            state.lastImageContext = description.trim();
+            logger.info(`[AutoChatManager] Refreshed image context for ${channelName}: "${state.lastImageContext.substring(0, 80)}..."`);
+        } else {
+            logger.debug(`[AutoChatManager] Image analysis returned empty for ${channelName}, keeping previous context`);
+        }
+    } catch (err) {
+        logger.warn({ err }, `[AutoChatManager] Failed to refresh image context for ${channelName}`);
+    } finally {
+        state.lastImageFetchAtMs = now();
+    }
+}
+
+function buildImageContextLine(channelName) {
+    const state = getState(channelName);
+    return state.lastImageContext ? ` Stream screenshot context: "${state.lastImageContext}"` : '';
+}
+
 async function maybeSendGreeting(channelName) {
     // Greet once per stream start
     const cfg = await getChannelAutoChatConfig(channelName);
@@ -94,11 +136,12 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
         'ask an open-ended question that invites a story or opinion'
     ];
     const style = choose(styles);
+    const imageCtx = buildImageContextLine(channelName);
     const baseConstraints = `One sentence. ≤28 words. Relaxed, confident, witty. No trivia phrasing ("did you know"/"fun fact"). No emojis. Don’t repeat: "${state.lastQuestion}" or cliches like "OMG, PS2 nostalgia!". Do not attribute quotes to specific users.`;
     const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.6);
     let prompt = requireQuestion
-        ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Ask ONE open-ended question that makes a specific connection or invites a story about "${newGame}". Must end with a question mark. Avoid generic questions.`
-        : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} ${style}. Make it specific to "${newGame}" and, if relevant, connect it to "${prevGame}". Avoid generic hype or fact-dumps.`;
+        ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}".${imageCtx} ${baseConstraints} Ask ONE open-ended question that makes a specific connection or invites a story about "${newGame}". Must end with a question mark. Avoid generic questions.`
+        : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}".${imageCtx} ${baseConstraints} ${style}. Make it specific to "${newGame}" and, if relevant, connect it to "${prevGame}". Avoid generic hype or fact-dumps.`;
     // Prefer creative riff first; fall back to grounded if needed
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
@@ -139,12 +182,13 @@ async function maybeHandleLull(channelName) {
         'set up a small prompt that encourages storytelling'
     ];
     const style = choose(styles);
+    const imageCtx = buildImageContextLine(channelName);
     const baseConstraints = `One sentence. ≤25 words. Relaxed, confident, not anxious. No meta about the lull. No emojis. Don’t repeat: "${state.lastQuestion}". Do not attribute to specific users.`;
     // Prefer statement nudge over question to avoid anxious vibe, unless last auto was statement
     const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.45);
     let prompt = requireQuestion
-        ? `Chat is quiet. Based on "${topic}", ${baseConstraints} Ask ONE open-ended question that invites a short story or opinion (not yes/no, not trivia). Must end with a question mark.`
-        : `Chat is quiet. Based on "${topic}", ${baseConstraints} ${style}. Make it feel like a natural nudge, not a forced icebreaker. No trivia tone or filler.`;
+        ? `Chat is quiet. Based on "${topic}",${imageCtx} ${baseConstraints} Ask ONE open-ended question that invites a short story or opinion (not yes/no, not trivia). Must end with a question mark.`
+        : `Chat is quiet. Based on "${topic}",${imageCtx} ${baseConstraints} ${style}. Make it feel like a natural nudge, not a forced icebreaker. No trivia tone or filler.`;
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text && (requireQuestion && !endsWithQuestion(text))) {
@@ -181,11 +225,12 @@ async function maybeHandleTopicShift(channelName) {
         'ask an open-ended question that builds on what was just said'
     ];
     const style = choose(styles);
+    const imageCtx = buildImageContextLine(channelName);
     const baseConstraints = `One sentence. ≤28 words. Natural, conversational, and specific. No trivia phrasing. No emojis. Don’t repeat: "${state.lastQuestion}". Do not invent usernames or attribute quotes unless explicitly provided.`;
     const requireQuestion = state.lastAutoKind === 'statement' || randomChance(0.55);
     let prompt = requireQuestion
-        ? `Topic shifted. ${baseConstraints} Ask ONE open-ended question that shows you noticed the pivot and, if relevant, connects the new topic to the prior one. Must end with a question mark.`
-        : `Topic shifted. ${baseConstraints} ${style}. If possible, connect the new topic to the prior one to show you followed the thread. Avoid generic hype or fact-dumps.`;
+        ? `Topic shifted.${imageCtx} ${baseConstraints} Ask ONE open-ended question that shows you noticed the pivot and, if relevant, connects the new topic to the prior one. Must end with a question mark.`
+        : `Topic shifted.${imageCtx} ${baseConstraints} ${style}. If possible, connect the new topic to the prior one to show you followed the thread. Avoid generic hype or fact-dumps.`;
     let text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text && (requireQuestion && !endsWithQuestion(text))) {
@@ -308,6 +353,9 @@ export async function startAutoChatManager() {
                 const isLive = !!(ctx && ctx.streamGame && ctx.streamGame !== 'N/A');
                 if (!isLive) continue;
 
+                // Refresh thumbnail image context (throttled internally)
+                await refreshImageContext(channelName);
+
                 // Detect game change
                 const currentGame = state.streamContext?.game || null;
                 const prevGame = getState(channelName).lastGame;
@@ -387,3 +435,7 @@ export async function notifyAdBreak(channelName, adEvent) {
     const duration = adEvent?.duration_seconds || adEvent?.duration || 60;
     await sendAdNotification(channelName, 'starting', duration);
 }
+
+// Exported for testing only
+export { refreshImageContext, buildImageContextLine };
+export function _getRuntime() { return runtime; }
