@@ -272,5 +272,43 @@ export async function enrichMessageWithEmoteDescriptions(tags, message) {
     }
 }
 
+/**
+ * Get a standalone emote context string for use as LLM context.
+ * Unlike enrichMessageWithEmoteDescriptions, this doesn't modify the message text —
+ * it returns a separate annotation string describing all emotes found.
+ * This is safe to use when message text has been modified (e.g., command prefix stripped).
+ *
+ * @param {Object} tags - tmi.js message tags (must contain .emotes)
+ * @param {string} fullMessage - The ORIGINAL full message text (positions are relative to this)
+ * @returns {Promise<string | null>} Context string like "[Emotes: Kappa = smirking face]", or null
+ */
+export async function getEmoteContextString(tags, fullMessage) {
+    if (!genAI || !tags?.emotes || !fullMessage) return null;
+
+    const emotes = parseEmotesFromIRC(tags.emotes, fullMessage);
+    if (emotes.length === 0) return null;
+
+    try {
+        const descriptionResults = await Promise.all(
+            emotes.map(async (emote) => {
+                const description = await describeSingleEmote(emote.id, emote.name);
+                return { ...emote, description };
+            })
+        );
+
+        const described = descriptionResults.filter(r => r.description);
+        if (described.length === 0) return null;
+
+        const parts = described.map(r => `${r.name} = ${r.description}`);
+        const contextStr = `[Emotes in message: ${parts.join(', ')}]`;
+
+        logger.debug({ emoteCount: described.length, context: contextStr }, 'Built emote context string');
+        return contextStr;
+    } catch (error) {
+        logger.info({ err: error.message }, 'Failed to build emote context string');
+        return null;
+    }
+}
+
 // For testing
 export { descriptionCache as _descriptionCache };

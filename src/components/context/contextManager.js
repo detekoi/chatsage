@@ -2,7 +2,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
-import { enrichMessageWithEmoteDescriptions } from '../../lib/geminiEmoteDescriber.js';
+import { getEmoteContextString } from '../../lib/geminiEmoteDescriber.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
 /*
@@ -159,19 +159,19 @@ function _getOrCreateUserState(channelName, username) {
 async function addMessage(channelName, username, message, tags) {
     const state = _getOrCreateChannelState(channelName);
 
-    // Enrich message with emote descriptions for LLM context
-    // Non-blocking: falls back to original message on failure
-    let enrichedMessage = message;
+    // Compute emote context as a separate field (does not modify the original message)
+    let emoteContext = null;
     try {
-        enrichedMessage = await enrichMessageWithEmoteDescriptions(tags, message);
+        emoteContext = await getEmoteContextString(tags, message);
     } catch (err) {
-        logger.debug({ err: err.message, channel: channelName }, 'Emote enrichment failed, using original message');
+        logger.debug({ err: err.message, channel: channelName }, 'Emote context generation failed');
     }
 
     const newMessage = {
         timestamp: new Date(),
         username,
-        message: enrichedMessage,
+        message,
+        emoteContext,
         tags,
     };
 
@@ -302,7 +302,10 @@ function clearThematicContext(channelName) {
  * @returns {string} Formatted string (e.g., "User1: msg1\nUser2: msg2").
  */
 function _formatRecentHistory(history) {
-    return history.map(msg => `${msg.username}: ${msg.message}`).join('\n');
+    return history.map(msg => {
+        const base = `${msg.username}: ${msg.message}`;
+        return msg.emoteContext ? `${base} ${msg.emoteContext}` : base;
+    }).join('\n');
 }
 
 
@@ -443,7 +446,8 @@ function _formatRecentHistoryWithOrigin(messages) {
     }
     return messages.map(msg => {
         const channelMarker = msg.originChannel ? `[${msg.originChannel}] ` : '';
-        return `${channelMarker}${msg.username}: ${msg.message}`;
+        const base = `${channelMarker}${msg.username}: ${msg.message}`;
+        return msg.emoteContext ? `${base} ${msg.emoteContext}` : base;
     }).join('\n');
 }
 

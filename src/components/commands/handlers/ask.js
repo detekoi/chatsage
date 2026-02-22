@@ -13,6 +13,7 @@ import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../llm/
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { getEmoteContextString } from '../../../lib/geminiEmoteDescriber.js';
 
 // Note: IRC message length limits are handled by ircSender.js
 // This handler focuses on response generation, not formatting
@@ -134,6 +135,11 @@ const askHandler = {
 
         logger.info(`Executing !ask command for ${userName} in ${channel} with query: "${userQuery}"`);
 
+        // Describe emotes in the original message for LLM context
+        // Uses full message (context.message) since emote positions are relative to the original
+        const emoteContext = await getEmoteContextString(user, context.message);
+        const queryForLLM = emoteContext ? `${emoteContext} ${userQuery}` : userQuery;
+
         try {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
             if (!llmContext) {
@@ -171,7 +177,7 @@ const askHandler = {
             }
 
             // --- Not a regex-matched time query. Decide if search is needed, then route. ---
-            const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
+            const userQueryWithContext = `The user is ${userName}. Their message is: ${queryForLLM}`;
             const decision = await decideSearchWithStructuredOutput(contextPrompt, userQueryWithContext);
             logger.info({ searchNeeded: decision?.searchNeeded, reason: decision?.reasoning }, `[${channelName}] Search decision for !ask`);
 
