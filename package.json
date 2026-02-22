@@ -25,7 +25,7 @@
         "chatsage"
     ],
     "author": "Henry Manes",
-    "license": "BSD-2-Clause",
+    "license": "AGPL-3.0-or-later",
     "dependencies": {
         "@google-cloud/firestore": "^7.11.0",
         "@google-cloud/secret-manager": "^6.0.1",
