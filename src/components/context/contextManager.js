@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
+import { enrichMessageWithEmoteDescriptions } from '../../lib/geminiEmoteDescriber.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
 /*
@@ -157,10 +158,20 @@ function _getOrCreateUserState(channelName, username) {
  */
 async function addMessage(channelName, username, message, tags) {
     const state = _getOrCreateChannelState(channelName);
+
+    // Enrich message with emote descriptions for LLM context
+    // Non-blocking: falls back to original message on failure
+    let enrichedMessage = message;
+    try {
+        enrichedMessage = await enrichMessageWithEmoteDescriptions(tags, message);
+    } catch (err) {
+        logger.debug({ err: err.message, channel: channelName }, 'Emote enrichment failed, using original message');
+    }
+
     const newMessage = {
         timestamp: new Date(),
         username,
-        message,
+        message: enrichedMessage,
         tags,
     };
 

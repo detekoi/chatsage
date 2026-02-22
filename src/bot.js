@@ -1,4 +1,5 @@
 import config from './config/index.js';
+import { initEmoteDescriber } from './lib/geminiEmoteDescriber.js';
 import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
 import { createIrcClient, getIrcClient } from './components/twitch/ircClient.js';
@@ -137,6 +138,9 @@ async function main() {
 
         // --- Initialize All Components ---
         await initializeAllComponents();
+
+        // --- Initialize Gemini Emote Describer ---
+        initEmoteDescriber(config.gemini?.apiKey || process.env.GEMINI_API_KEY);
 
         // --- Get Instances needed before IRC connection ---
         const contextManager = getContextManager();
