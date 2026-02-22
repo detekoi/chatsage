@@ -646,6 +646,40 @@ describe('Message Handlers', () => {
                 'fallback-id'
             );
         });
+
+        test('should handle mention in the middle of a message', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: 'hi @testbot how are you?'
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'hi how are you?',
+                'mention',
+                'msg-123'
+            );
+        });
+
+        test('should handle mention at the end of a message', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: 'hello @testbot'
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'hello',
+                'mention',
+                'msg-123'
+            );
+        });
     });
 
     describe('processGameGuesses', () => {

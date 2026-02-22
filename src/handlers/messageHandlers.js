@@ -217,7 +217,7 @@ export async function handleBotMention({
     const botLower = config.twitch.username.toLowerCase();
     const mentionPrefix = `@${botLower}`;
     const lowerMsg = message.toLowerCase();
-    const isMention = lowerMsg.startsWith(mentionPrefix);
+    const isMention = lowerMsg.includes(mentionPrefix);
     const isReplyToBot = (tags && tags['reply-parent-user-login'] && tags['reply-parent-user-login'].toLowerCase() === botLower) || false;
 
     if (!isMention && !isReplyToBot) {
@@ -230,7 +230,8 @@ export async function handleBotMention({
 
     let userMessageContent = message;
     if (isMention) {
-        userMessageContent = message.substring(mentionPrefix.length).trim();
+        // Remove the @mention from wherever it appears (case-insensitive)
+        userMessageContent = message.replace(new RegExp(`@${botLower}`, 'i'), '').replace(/  +/g, ' ').trim();
     }
 
     if (!userMessageContent) {
