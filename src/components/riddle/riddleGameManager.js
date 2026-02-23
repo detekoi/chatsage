@@ -4,6 +4,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
 import { generateRiddle, verifyRiddleAnswer } from './riddleService.js';
+import { calculateStringSimilarity } from '../trivia/triviaQuestionService.js';
 import {
     formatRiddleStartMessage,
     formatRiddleQuestionMessage,
@@ -118,7 +119,7 @@ async function _getOrCreateGameState(channelName) {
         if (!state.gameSessionExcludedKeywordSets) {
             state.gameSessionExcludedKeywordSets = [];
         }
-         if (!state.gameSessionScores) {
+        if (!state.gameSessionScores) {
             state.gameSessionScores = new Map();
         }
     }
@@ -130,6 +131,41 @@ function _clearTimers(gameState) {
         clearTimeout(gameState.riddleTimeoutTimer);
         gameState.riddleTimeoutTimer = null;
     }
+}
+
+/**
+ * Checks whether a newly generated answer is too similar to any previously excluded answer.
+ * Catches exact matches, containment, and high Levenshtein similarity (> 0.75).
+ * @param {string} newAnswer - The candidate answer to check.
+ * @param {string[]} excludedAnswers - Array of lowercased answers to avoid.
+ * @returns {boolean} true if the answer should be rejected.
+ */
+function _isAnswerTooSimilar(newAnswer, excludedAnswers) {
+    if (!newAnswer || !excludedAnswers || excludedAnswers.length === 0) return false;
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    const newNorm = norm(newAnswer);
+    if (!newNorm) return false;
+
+    for (const excluded of excludedAnswers) {
+        const exNorm = norm(excluded);
+        if (!exNorm) continue;
+
+        // 1. Exact match
+        if (newNorm === exNorm) return true;
+
+        // 2. Containment: one answer is a substring of the other
+        if (newNorm.length >= 3 && exNorm.length >= 3) {
+            if (newNorm.includes(exNorm) || exNorm.includes(newNorm)) {
+                return true;
+            }
+        }
+
+        // 3. High string similarity (Levenshtein)
+        const similarity = calculateStringSimilarity(newNorm, exNorm);
+        if (similarity > 0.75) return true;
+    }
+
+    return false;
 }
 
 async function _resetGameToIdle(gameState) {
@@ -252,7 +288,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         } else if (reason === "stopped") {
             endMessage = formatRiddleStopMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation);
         } else {
-             endMessage = `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
+            endMessage = `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
         }
         enqueueMessage(`#${channelName}`, endMessage.substring(0, 490)); // Ensure message length
 
@@ -282,7 +318,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         }
     } else {
         logger.warn(`[RiddleGameManager][${channelName}] TransitionToEnding called but currentRiddle is null. Reason: ${reason}`);
-         if (reason === "riddle_error") {
+        if (reason === "riddle_error") {
             enqueueMessage(`#${channelName}`, "Apologies, I couldn't come up with a riddle this time!");
         }
     }
@@ -295,13 +331,13 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
             const scoresMsg = formatRiddleSessionScoresMessage(gameState.gameSessionScores);
             enqueueMessage(`#${channelName}`, scoresMsg);
         }
-        if (config.scoreTracking && (reason !== "riddle_error" || totalRounds > 1) ) { // Show leaderboard unless it was a single round riddle error
-             try {
+        if (config.scoreTracking && (reason !== "riddle_error" || totalRounds > 1)) { // Show leaderboard unless it was a single round riddle error
+            try {
                 const leaderboardData = await getLeaderboard(channelName, 5);
                 const leaderboardMsg = formatRiddleLeaderboardMessage(leaderboardData, channelName);
                 enqueueMessage(`#${channelName}`, leaderboardMsg);
-            } catch(e){
-                logger.error({e}, `Error fetching riddle leaderboard for ${channelName}`);
+            } catch (e) {
+                logger.error({ e }, `Error fetching riddle leaderboard for ${channelName}`);
             }
         }
         logger.info(`[RiddleGameManager][${channelName}] Riddle game session finished. Resetting.`);
@@ -321,7 +357,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
 
 async function _startNextRound(gameState) {
     if (gameState.state === 'ending' || gameState.state === 'idle') {
-         logger.warn(`[RiddleGameManager][${gameState.channelName}] Attempted to start next round while game is ${gameState.state}. Aborting.`);
+        logger.warn(`[RiddleGameManager][${gameState.channelName}] Attempted to start next round while game is ${gameState.state}. Aborting.`);
         return;
     }
     logger.info(`[RiddleGameManager][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
@@ -343,7 +379,7 @@ async function _startNextRound(gameState) {
             });
         }
         // Fetch recent answers for exclusion
-        const recentGlobalAnswers = await getRecentAnswers(channelName, 15);
+        const recentGlobalAnswers = await getRecentAnswers(channelName, 30);
         recentGlobalAnswers.forEach(ans => {
             if (!excludedAnswers.includes(ans)) {
                 excludedAnswers.push(ans);
@@ -359,9 +395,13 @@ async function _startNextRound(gameState) {
         try {
             generatedRiddle = await generateRiddle(topic, config.difficulty, combinedExcludedKeywordSets, channelName, excludedAnswers);
             if (generatedRiddle && generatedRiddle.question && generatedRiddle.answer && generatedRiddle.keywords) {
-                // Optional: Could add a check here to see if the *new* riddle's keywords heavily overlap with an excluded set,
-                // though the LLM should ideally handle this. For now, we trust the LLM's avoidance.
-                break; 
+                // Post-generation answer similarity check
+                if (_isAnswerTooSimilar(generatedRiddle.answer, excludedAnswers)) {
+                    logger.warn(`[RiddleGameManager][${channelName}] Generated riddle has a repeat answer "${generatedRiddle.answer}" (attempt ${retries + 1}). Retrying.`);
+                    generatedRiddle = null;
+                } else {
+                    break;
+                }
             } else {
                 logger.warn(`[RiddleGameManager][${channelName}] Riddle generation attempt ${retries + 1} failed or returned invalid data.`);
                 generatedRiddle = null; // Ensure it's null for retry
@@ -529,11 +569,11 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
         );
         enqueueMessage(`#${channelName}`, startMessage);
     }
-    
+
     // Start the first round
-    await _startNextRound(gameState); 
-    if(gameState.state === 'idle'){ // Game failed to start properly
-        return { success: false, error: "Failed to start the riddle game. Could not generate the first riddle."};
+    await _startNextRound(gameState);
+    if (gameState.state === 'idle') { // Game failed to start properly
+        return { success: false, error: "Failed to start the riddle game. Could not generate the first riddle." };
     }
     return { success: true };
 }
@@ -546,7 +586,7 @@ export function stopGame(channelName) {
     }
     logger.info(`[RiddleGameManager][${channelName}] Game stop requested. Current state: ${gameState.state}`);
     // _transitionToEnding will send the actual "game stopped" message with answer.
-    _transitionToEnding(gameState, "stopped"); 
+    _transitionToEnding(gameState, "stopped");
     return { message: "Riddle game is being stopped." }; // Confirmation to initiator
 }
 
@@ -576,7 +616,7 @@ export async function configureRiddleGame(channelName, options) {
             appliedChanges.push(`Question time set to ${time}s`);
             changed = true;
         } else {
-             appliedChanges.push(`Invalid question time (15-120s)`);
+            appliedChanges.push(`Invalid question time (15-120s)`);
         }
     }
     // Add other config options here: pointsBase, scoreTracking, etc.
@@ -587,8 +627,8 @@ export async function configureRiddleGame(channelName, options) {
             logger.info(`[RiddleGameManager][${channelName}] Riddle config updated: ${appliedChanges.join(', ')}`);
             return { message: `Riddle settings updated: ${appliedChanges.join('. ')}.` };
         } catch (e) {
-            logger.error({e}, `Failed to save riddle config for ${channelName}`);
-            return { message: `Settings changed in memory but failed to save.`};
+            logger.error({ e }, `Failed to save riddle config for ${channelName}`);
+            return { message: `Settings changed in memory but failed to save.` };
         }
     }
     return { message: appliedChanges.length > 0 ? `Riddle settings: ${appliedChanges.join('. ')}.` : "No valid riddle settings changed." };
@@ -597,13 +637,13 @@ export async function configureRiddleGame(channelName, options) {
 export async function resetRiddleConfig(channelName) {
     const gameState = await _getOrCreateGameState(channelName);
     gameState.config = { ...DEFAULT_RIDDLE_CONFIG };
-     try {
+    try {
         await saveChannelRiddleConfig(channelName, gameState.config);
         logger.info(`[RiddleGameManager][${channelName}] Riddle config reset to defaults.`);
         return { message: "Riddle game configuration reset to defaults." };
     } catch (e) {
-        logger.error({e}, `Failed to save reset riddle config for ${channelName}`);
-        return { message: `Config reset in memory but failed to save.`};
+        logger.error({ e }, `Failed to save reset riddle config for ${channelName}`);
+        return { message: `Config reset in memory but failed to save.` };
     }
 }
 
@@ -621,7 +661,7 @@ export async function clearLeaderboard(channelName) {
         const result = await clearRiddleLeaderboardData(channelName);
         return { success: true, message: result.message };
     } catch (e) {
-         logger.error({ err: e, channelName }, '[RiddleGameManager] Error clearing riddle leaderboard');
+        logger.error({ err: e, channelName }, '[RiddleGameManager] Error clearing riddle leaderboard');
         return { success: false, message: e.message || "Failed to clear riddle leaderboard." };
     }
 }
@@ -636,7 +676,7 @@ async function getLastPlayedRiddleDetails(channelName) {
     try {
         const riddleDetails = await getMostRecentRiddlePlayed(channelName);
         if (riddleDetails) {
-            logger.info(`[RiddleGameManager][${channelName}] Last played riddle details fetched: Q: ${riddleDetails.question ? riddleDetails.question.substring(0,30) : ''}...`);
+            logger.info(`[RiddleGameManager][${channelName}] Last played riddle details fetched: Q: ${riddleDetails.question ? riddleDetails.question.substring(0, 30) : ''}...`);
             return riddleDetails; // Contains docId, question, answer
         }
         logger.info(`[RiddleGameManager][${channelName}] No last played riddle found to report.`);
@@ -663,7 +703,7 @@ async function reportLastRiddle(channelName, reason, reportedByUsername) {
     }
 
     if (!lastRiddle.question) {
-         logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
+        logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
         return { success: false, message: "The last riddle found seems incomplete and cannot be reported." };
     }
 
@@ -701,7 +741,7 @@ export function getRiddleGameManager() {
 }
 
 // Export activeGames for testing
-export { activeGames };
+export { activeGames, _isAnswerTooSimilar };
 
 async function initiateReportProcess(channelName, reason, reportedByUsername) {
     logger.info(`[RiddleGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
@@ -710,7 +750,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     // Detailed logging of sessionInfo
     logger.debug(`[RiddleGameManager][${channelName}] sessionInfo received from getLatestCompletedSessionInfo: gameSessionId=${sessionInfo?.gameSessionId}, totalRounds=${sessionInfo?.totalRounds}, riddlesInSessionCount=${sessionInfo?.riddlesInSession?.length}`);
     if (sessionInfo && sessionInfo.riddlesInSession && sessionInfo.riddlesInSession.length > 0) {
-        sessionInfo.riddlesInSession.forEach((r, idx) => logger.debug(`[RiddleGameManager][${channelName}] Session Riddle [${idx}]: Round ${r.roundNumber}, Q: ${r.question?.substring(0,20)}...`));
+        sessionInfo.riddlesInSession.forEach((r, idx) => logger.debug(`[RiddleGameManager][${channelName}] Session Riddle [${idx}]: Round ${r.roundNumber}, Q: ${r.question?.substring(0, 20)}...`));
     }
 
     if (!sessionInfo || !sessionInfo.riddlesInSession || sessionInfo.riddlesInSession.length === 0) {
@@ -740,7 +780,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
                 logger.info(`[RiddleGameManager] Expired pending report for ${reportKey}`);
             }
         }, PENDING_REPORT_TIMEOUT_MS + 1000);
-        
+
         let promptMessage = `@${reportedByUsername}, the last riddle game had ${totalRoundsFromInfo} rounds. Which round (1-${totalRoundsFromInfo}) is your report about? Reply with just the number.`;
         if (riddlesFoundInSession.length < totalRoundsFromInfo) {
             promptMessage = `@${reportedByUsername}, I found ${riddlesFoundInSession.length} riddles from the last session (expected ${totalRoundsFromInfo}). Which round (1-${riddlesFoundInSession.length}) is your report about? Reply with the number.`
@@ -750,7 +790,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         logger.info(`[RiddleGameManager][${channelName}] Single riddle report scenario. totalRoundsFromInfo: ${totalRoundsFromInfo}, riddlesFoundInSession.length: ${riddlesFoundInSession.length}`);
         const riddleToReport = riddlesFoundInSession[0];
         if (!riddleToReport || !riddleToReport.docId) {
-             return { success: false, message: "Could not identify a specific riddle to report." };
+            return { success: false, message: "Could not identify a specific riddle to report." };
         }
         try {
             await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
