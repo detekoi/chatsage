@@ -41,7 +41,7 @@ const DEFAULT_RIDDLE_CONFIG = {
     scoreTracking: true,
     maxRounds: 10,
     recentKeywordsFetchLimit: 50, // How many recent keyword sets to fetch for exclusion
-    multiRoundDelayMs: 8000,      // Delay between rounds (reading time for answer/explanation)
+    multiRoundDelayMs: 12000,      // Delay between rounds (reading time for answer/explanation)
     maxRiddleGenerationRetries: 3
 };
 

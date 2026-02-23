@@ -89,7 +89,7 @@ const DEFAULT_CONFIG = {
 
 const MAX_IRC_MESSAGE_LENGTH = 450; // Should match ircSender.js
 const SUMMARY_TARGET_LENGTH = 400; // Slightly less than max to allow for prefixes
-const MULTI_ROUND_DELAY_MS = 8000; // Delay between rounds (reading time for answer/explanation)
+const MULTI_ROUND_DELAY_MS = 12000; // Delay between rounds (reading time for answer/explanation)
 
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
