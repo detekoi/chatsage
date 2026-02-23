@@ -259,9 +259,24 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
         logger.debug(`[TriviaService] Exact match: User "${lowerUser}" vs Correct "${lowerCorrect}"`);
         return { is_correct: true, confidence: 1.0, reasoning: "Exact match with correct answer.", search_used: false };
     }
+    // Secondary fast path: compare without spaces (handles "Hand unit" vs "HandUnit")
+    const spacelessUser = lowerUser.replace(/\s/g, '');
+    const spacelessCorrect = lowerCorrect.replace(/\s/g, '');
+    if (spacelessUser && spacelessCorrect && spacelessUser === spacelessCorrect) {
+        logger.debug(`[TriviaService] Spaceless match: User "${lowerUser}" vs Correct "${lowerCorrect}"`);
+        return { is_correct: true, confidence: 1.0, reasoning: "Exact match ignoring spaces.", search_used: false };
+    }
     if (Array.isArray(alternateAnswers) && alternateAnswers.some(alt => normalize(alt) === lowerUser)) {
         logger.debug(`[TriviaService] Alternate match: User "${lowerUser}"`);
         return { is_correct: true, confidence: 1.0, reasoning: "Exact match with an alternate answer.", search_used: false };
+    }
+    // Spaceless check against alternates too
+    if (Array.isArray(alternateAnswers) && alternateAnswers.some(alt => {
+        const spacelessAlt = normalize(alt).replace(/\s/g, '');
+        return spacelessAlt && spacelessUser === spacelessAlt;
+    })) {
+        logger.debug(`[TriviaService] Spaceless alternate match: User "${lowerUser}"`);
+        return { is_correct: true, confidence: 1.0, reasoning: "Exact match with an alternate answer (ignoring spaces).", search_used: false };
     }
 
     // 2. Structured Verification via LLM
