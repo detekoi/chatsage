@@ -64,7 +64,7 @@ describe('Trivia Command Handler', () => {
             );
         });
 
-        test('should start game with specified rounds', async () => {
+        test('should start game with specified rounds only', async () => {
             const context = createMockContext(['5']);
             await triviaHandler.execute(context);
 
@@ -76,7 +76,7 @@ describe('Trivia Command Handler', () => {
             );
         });
 
-        test('should start game with topic', async () => {
+        test('should start game with topic only (1 round default)', async () => {
             const context = createMockContext(['science']);
             await triviaHandler.execute(context);
 
@@ -88,7 +88,9 @@ describe('Trivia Command Handler', () => {
             );
         });
 
-        test('should start game with topic and rounds', async () => {
+        // --- Topic-first ordering: !trivia <topic> <rounds> ---
+
+        test('should start game with topic then rounds (!trivia science 3)', async () => {
             const context = createMockContext(['science', '3']);
             await triviaHandler.execute(context);
 
@@ -99,6 +101,84 @@ describe('Trivia Command Handler', () => {
                 3
             );
         });
+
+        test('should start game with multi-word topic then rounds (!trivia 90s music 3)', async () => {
+            const context = createMockContext(['90s', 'music', '3']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                '90s music',
+                'testuser',
+                3
+            );
+        });
+
+        test('should start game with long multi-word topic then rounds (!trivia world war 2 history 5)', async () => {
+            const context = createMockContext(['world', 'war', '2', 'history', '5']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'world war 2 history',
+                'testuser',
+                5
+            );
+        });
+
+        // --- Rounds-first ordering: !trivia <rounds> <topic> ---
+
+        test('should start game with rounds then topic (!trivia 3 animals)', async () => {
+            const context = createMockContext(['3', 'animals']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'animals',
+                'testuser',
+                3
+            );
+        });
+
+        test('should start game with rounds then multi-word topic (!trivia 3 90s music)', async () => {
+            const context = createMockContext(['3', '90s', 'music']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                '90s music',
+                'testuser',
+                3
+            );
+        });
+
+        test('should start game with rounds then long multi-word topic (!trivia 5 world war 2 history)', async () => {
+            const context = createMockContext(['5', 'world', 'war', '2', 'history']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'world war 2 history',
+                'testuser',
+                5
+            );
+        });
+
+        // --- Multi-word topic without rounds ---
+
+        test('should start game with multi-word topic and no rounds (!trivia 90s music)', async () => {
+            const context = createMockContext(['90s', 'music']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                '90s music',
+                'testuser',
+                1
+            );
+        });
+
+        // --- Game subcommand ---
 
         test('should start game based on current stream game', async () => {
             const context = createMockContext(['game']);
@@ -111,6 +191,20 @@ describe('Trivia Command Handler', () => {
                 1
             );
         });
+
+        test('should start game based on current stream game with rounds (!trivia game 5)', async () => {
+            const context = createMockContext(['game', '5']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'game',
+                'testuser',
+                5
+            );
+        });
+
+        // --- Edge cases ---
 
         test('should handle game start failure', async () => {
             mockTriviaManager.startGame.mockResolvedValue({
@@ -128,7 +222,7 @@ describe('Trivia Command Handler', () => {
             );
         });
 
-        test('should cap rounds at maximum', async () => {
+        test('should cap rounds at maximum (rounds only)', async () => {
             const context = createMockContext(['15']);
             await triviaHandler.execute(context);
 
@@ -143,6 +237,69 @@ describe('Trivia Command Handler', () => {
                 'Maximum number of rounds is 10. Starting a 10-round game.',
                 { replyToId: '123' }
             );
+        });
+
+        test('should cap rounds at maximum with rounds-first topic (!trivia 15 animals)', async () => {
+            const context = createMockContext(['15', 'animals']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'animals',
+                'testuser',
+                10
+            );
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Maximum number of rounds is 10. Starting a 10-round game.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should cap rounds at maximum with topic-first (!trivia animals 15)', async () => {
+            const context = createMockContext(['animals', '15']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'animals',
+                'testuser',
+                10
+            );
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Maximum number of rounds is 10. Starting a 10-round game.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should strip quotes from topic (!trivia "animals")', async () => {
+            const context = createMockContext(['"animals"']);
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'animals',
+                'testuser',
+                1
+            );
+        });
+
+        test('both orderings produce same result: !trivia 3 animals == !trivia animals 3', async () => {
+            // Rounds-first
+            const context1 = createMockContext(['3', 'animals']);
+            await triviaHandler.execute(context1);
+            const call1 = mockTriviaManager.startGame.mock.calls[0];
+
+            mockTriviaManager.startGame.mockClear();
+
+            // Topic-first
+            const context2 = createMockContext(['animals', '3']);
+            await triviaHandler.execute(context2);
+            const call2 = mockTriviaManager.startGame.mock.calls[0];
+
+            // Both should produce identical startGame calls
+            expect(call1).toEqual(call2);
         });
     });
 
