@@ -13,28 +13,14 @@ const META_CONCEPT_BLACKLIST = [
 ];
 
 /**
- * Determines if a topic needs web search to generate accurate riddles.
+ * Determines the effective topic for riddle generation.
  * @param {string} topic - The riddle topic
- * @returns {boolean} Whether search is needed
+ * @returns {boolean} Whether the topic is general knowledge
  */
-function shouldUseSearchForTopic(topic) {
-    if (!topic) return false;
+function isGeneralKnowledgeTopic(topic) {
+    if (!topic) return true;
     const topicLower = topic.toLowerCase();
-
-    // Always use search for video game topics (specific games or general gaming)
-    if (topicLower.includes('game') || topicLower.includes('gaming')) {
-        return true;
-    }
-
-    // General knowledge doesn't typically need search
-    if (topicLower === 'general knowledge') {
-        return false;
-    }
-
-    // For other topics, use search if they seem specific enough
-    // (more than 2 words or contains specific markers)
-    const words = topic.trim().split(/\s+/);
-    return words.length >= 2;
+    return topicLower === 'general knowledge' || topicLower === 'general';
 }
 
 // --- Schema ---
@@ -178,14 +164,12 @@ These have been used recently or are banned. Pick something COMPLETELY DIFFERENT
     }
     const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\n\nRequirement: Each riddle must have a UNIQUE, CONCRETE answer.`;
 
-    // Determine if we need search
-    const needsSearch = shouldUseSearchForTopic(actualTopic);
-    let searchInstruction = needsSearch ? "You MUST use Google Search to ensure accuracy about this topic." : "Use your internal knowledge.";
+
 
     const prompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
 ${promptDetails}
 ${fullExclusionInstructions}
-${searchInstruction}
+Only use Google Search if the riddle requires very recent or obscure facts that may be beyond general knowledge.
 
 CORE PRINCIPLE: The riddle should be solvable by someone familiar with the topic.
 MANDATORY ANSWER REQUIREMENTS:
@@ -204,7 +188,8 @@ EXPLANATION STYLE:
 Return JSON matching the schema.`;
 
     try {
-        const tools = needsSearch ? [{ googleSearch: {} }] : undefined;
+        // Always provide Google Search tool — Gemini auto-decides whether to use it
+        const tools = [{ googleSearch: {} }];
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -246,7 +231,10 @@ Return JSON matching the schema.`;
             return null;
         }
 
-        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}". Q: "${args.riddle_question}", A: "${args.riddle_answer}"`);
+        // Derive searchUsed from actual response grounding metadata
+        const actuallySearched = args.search_used || !!(result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
+
+        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" (search=${actuallySearched}). Q: "${args.riddle_question}", A: "${args.riddle_answer}"`);
 
         return {
             question: args.riddle_question,
@@ -254,7 +242,7 @@ Return JSON matching the schema.`;
             keywords: args.keywords,
             difficulty: args.difficulty_generated || difficulty,
             explanation: args.explanation || "No explanation provided.",
-            searchUsed: args.search_used || needsSearch,
+            searchUsed: actuallySearched,
             topic: actualTopic,
             requestedTopic: topic
         };

@@ -41,7 +41,7 @@ const DEFAULT_RIDDLE_CONFIG = {
     scoreTracking: true,
     maxRounds: 10,
     recentKeywordsFetchLimit: 50, // How many recent keyword sets to fetch for exclusion
-    multiRoundDelayMs: 5000,      // Delay between rounds
+    multiRoundDelayMs: 2000,      // Delay between rounds (reduced from 5s for snappier transitions)
     maxRiddleGenerationRetries: 3
 };
 
@@ -111,6 +111,7 @@ async function _getOrCreateGameState(channelName) {
             gameSessionExcludedKeywordSets: [],
             gameSessionExcludedAnswers: [],
             guessCache: new Map(),
+            prefetchedRiddle: null, // Prefetched next riddle for faster round transitions
         });
     } else {
         // Ensure config is up-to-date if manager was re-initialized
@@ -190,6 +191,7 @@ async function _resetGameToIdle(gameState) {
     newState.gameSessionExcludedKeywordSets = [];
     newState.gameSessionExcludedAnswers = [];
     newState.guessCache = new Map();
+    newState.prefetchedRiddle = null;
 }
 
 function _calculatePoints(gameState, timeElapsedMs) {
@@ -361,16 +363,64 @@ async function _startNextRound(gameState) {
         return;
     }
     logger.info(`[RiddleGameManager][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
-
-    let generatedRiddle = null;
-    let retries = 0;
     const { channelName, topic, config } = gameState;
 
-    // Fetch recent keywords from Firestore for broader exclusion + session exclusions
+    // 1. Check for prefetched riddle first
+    if (gameState.prefetchedRiddle) {
+        const prefetched = gameState.prefetchedRiddle;
+        gameState.prefetchedRiddle = null;
+
+        // Validate the prefetched riddle's answer isn't too similar to excluded answers
+        const allExcluded = [...gameState.gameSessionExcludedAnswers];
+        if (!_isAnswerTooSimilar(prefetched.answer, allExcluded)) {
+            logger.info(`[RiddleGameManager][${channelName}] Using prefetched riddle for round ${gameState.currentRound}.`);
+            gameState.currentRiddle = prefetched;
+            gameState.startTime = Date.now();
+            gameState.state = 'inProgress';
+            gameState.guessCache.clear();
+
+            const questionMsg = formatRiddleQuestionMessage(
+                gameState.currentRound,
+                gameState.totalRounds,
+                gameState.currentRiddle.question,
+                gameState.currentRiddle.difficulty,
+                config.questionTimeSeconds
+            );
+            enqueueMessage(`#${channelName}`, questionMsg);
+
+            const timeoutMs = (config.questionTimeSeconds || DEFAULT_RIDDLE_CONFIG.questionTimeSeconds) * 1000;
+            gameState.riddleTimeoutTimer = setTimeout(async () => {
+                if (gameState.state === 'inProgress') {
+                    logger.info(`[RiddleGameManager][${channelName}] Riddle for round ${gameState.currentRound} timed out.`);
+                    await _transitionToEnding(gameState, "timeout");
+                }
+            }, timeoutMs);
+            logger.info(`[RiddleGameManager][${channelName}] Round ${gameState.currentRound} started with ${timeoutMs}ms timer (prefetched).`);
+
+            // Prefetch next riddle
+            if (gameState.currentRound < gameState.totalRounds) {
+                _prefetchNextRiddle(gameState);
+            }
+            return;
+        } else {
+            logger.warn(`[RiddleGameManager][${channelName}] Prefetched riddle has duplicate answer "${prefetched.answer}". Generating fresh.`);
+        }
+    }
+
+    // 2. Generate riddle on-demand (fallback if no prefetch or prefetch was invalid)
+    let generatedRiddle = null;
+    let retries = 0;
+
+    // Fetch recent keywords and answers in parallel from Firestore for broader exclusion + session exclusions
     let combinedExcludedKeywordSets = [...gameState.gameSessionExcludedKeywordSets];
     let excludedAnswers = [...gameState.gameSessionExcludedAnswers];
     try {
-        const recentGlobalKeywords = await getRecentKeywords(channelName, config.recentKeywordsFetchLimit || DEFAULT_RIDDLE_CONFIG.recentKeywordsFetchLimit);
+        const [recentGlobalKeywords, recentGlobalAnswers] = await Promise.all([
+            getRecentKeywords(channelName, config.recentKeywordsFetchLimit || DEFAULT_RIDDLE_CONFIG.recentKeywordsFetchLimit)
+                .catch(err => { logger.error({ err, channelName }, '[RiddleGameManager] Error fetching recent keywords.'); return []; }),
+            getRecentAnswers(channelName, 30)
+                .catch(err => { logger.error({ err, channelName }, '[RiddleGameManager] Error fetching recent answers.'); return []; })
+        ]);
         if (recentGlobalKeywords.length > 0) {
             recentGlobalKeywords.forEach(globalSet => {
                 if (!combinedExcludedKeywordSets.some(sessionSet => JSON.stringify(sessionSet.sort()) === JSON.stringify(globalSet.sort()))) {
@@ -378,8 +428,6 @@ async function _startNextRound(gameState) {
                 }
             });
         }
-        // Fetch recent answers for exclusion
-        const recentGlobalAnswers = await getRecentAnswers(channelName, 30);
         recentGlobalAnswers.forEach(ans => {
             if (!excludedAnswers.includes(ans)) {
                 excludedAnswers.push(ans);
@@ -387,7 +435,7 @@ async function _startNextRound(gameState) {
         });
         logger.debug(`[RiddleGameManager][${channelName}] Total ${excludedAnswers.length} answers for exclusion.`);
     } catch (error) {
-        logger.error({ err: error, channelName }, "[RiddleGameManager] Failed to fetch recent global keywords/answers for exclusion.");
+        logger.error({ err: error, channelName }, "[RiddleGameManager] Failed to fetch recent global data for exclusion.");
     }
 
 
@@ -443,7 +491,68 @@ async function _startNextRound(gameState) {
             await _transitionToEnding(gameState, "timeout");
         }
     }, timeoutMs);
-    logger.info(`[RiddleGameManager][${channelName}] Round ${gameState.currentRound} started. Timer set for ${timeoutMs}ms.`);
+    logger.info(`[RiddleGameManager][${channelName}] Round ${gameState.currentRound} started. Timer set for ${timeoutMs}ms (on-demand).`);
+
+    // Prefetch next riddle while players are answering
+    if (gameState.currentRound < gameState.totalRounds) {
+        _prefetchNextRiddle(gameState);
+    }
+}
+
+/**
+ * Prefetches the next riddle in the background while the current round is in progress.
+ * Stores the result in gameState.prefetchedRiddle for use by _startNextRound.
+ * @param {Object} gameState - Game state object.
+ */
+async function _prefetchNextRiddle(gameState) {
+    const { channelName, topic, config } = gameState;
+    logger.info(`[RiddleGameManager][${channelName}] Prefetching next riddle in background...`);
+
+    try {
+        // Build exclusion lists from current session + current riddle
+        const excludedKeywordSets = [...gameState.gameSessionExcludedKeywordSets];
+        if (gameState.currentRiddle?.keywords?.length > 0) {
+            excludedKeywordSets.push([...gameState.currentRiddle.keywords]);
+        }
+
+        const excludedAnswers = [...gameState.gameSessionExcludedAnswers];
+        if (gameState.currentRiddle?.answer) {
+            const currentAns = gameState.currentRiddle.answer.toLowerCase();
+            if (!excludedAnswers.includes(currentAns)) {
+                excludedAnswers.push(currentAns);
+            }
+        }
+
+        const riddle = await generateRiddle(
+            topic,
+            config.difficulty,
+            excludedKeywordSets,
+            channelName,
+            excludedAnswers
+        );
+
+        if (riddle && riddle.question && riddle.answer && riddle.keywords) {
+            if (_isAnswerTooSimilar(riddle.answer, excludedAnswers)) {
+                logger.warn(`[RiddleGameManager][${channelName}] Prefetched riddle has repeat answer "${riddle.answer}". Discarding.`);
+                gameState.prefetchedRiddle = null;
+                return;
+            }
+
+            // Only store if game is still active
+            if (gameState.state === 'inProgress' || gameState.state === 'selecting' || gameState.state === 'answered' || gameState.state === 'timeout' || gameState.state === 'ending') {
+                gameState.prefetchedRiddle = riddle;
+                logger.info(`[RiddleGameManager][${channelName}] Prefetched riddle ready. Q: "${riddle.question.substring(0, 60)}..."`);
+            } else {
+                logger.debug(`[RiddleGameManager][${channelName}] Game state changed to '${gameState.state}' during prefetch. Discarding.`);
+            }
+        } else {
+            logger.warn(`[RiddleGameManager][${channelName}] Prefetch generated an invalid riddle. Will generate on-demand.`);
+            gameState.prefetchedRiddle = null;
+        }
+    } catch (error) {
+        logger.error({ err: error }, `[RiddleGameManager][${channelName}] Error prefetching next riddle. Will generate on-demand.`);
+        gameState.prefetchedRiddle = null;
+    }
 }
 
 async function _handleAnswer(channelName, username, displayName, message) {
@@ -585,6 +694,8 @@ export function stopGame(channelName) {
         return { message: "No active riddle game to stop." };
     }
     logger.info(`[RiddleGameManager][${channelName}] Game stop requested. Current state: ${gameState.state}`);
+    // Clear any prefetched riddle
+    gameState.prefetchedRiddle = null;
     // _transitionToEnding will send the actual "game stopped" message with answer.
     _transitionToEnding(gameState, "stopped");
     return { message: "Riddle game is being stopped." }; // Confirmation to initiator

@@ -102,9 +102,8 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         logger.info(`[TriviaService] Topic 'game' resolved to '${specificTopic}' from channel context.`);
     }
 
-    // Determine if we need search-based generation
+    // Determine topic type for prompt context
     const isGeneralTopic = !specificTopic || specificTopic.toLowerCase() === 'general' || specificTopic.toLowerCase() === 'general knowledge';
-    const enableSearch = !isGeneralTopic;
 
     // Build Prompt
     const exclusionInstructions = [];
@@ -122,8 +121,8 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `\nIMPORTANT: ${exclusionInstructions.join('. ')}.`
         : '';
 
-    const contextPrompt = enableSearch
-        ? `Topic: "${specificTopic}". Use Google Search to find reliable, interesting facts.`
+    const contextPrompt = !isGeneralTopic
+        ? `Topic: "${specificTopic}".`
         : `Topic: General Knowledge.`;
 
     const prompt = `Generate an engaging trivia question.
@@ -133,12 +132,13 @@ ${exclusionInstructionText}
 Be precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.
 Keep 'correct_answer' concise (1-3 words).
 Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).
-Search Used: ${enableSearch ? 'true' : 'false'}.`;
+Only use Google Search if the question requires very recent or obscure facts that may be beyond general knowledge.`;
 
     try {
-        logger.debug({ topic: specificTopic, enableSearch }, `[TriviaService] Generating question via Structured Output.`);
+        logger.debug({ topic: specificTopic }, `[TriviaService] Generating question via Structured Output.`);
 
-        const tools = enableSearch ? [{ googleSearch: {} }] : undefined;
+        // Always provide Google Search tool — Gemini auto-decides whether to use it
+        const tools = [{ googleSearch: {} }];
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -196,19 +196,22 @@ Search Used: ${enableSearch ? 'true' : 'false'}.`;
             return null;
         }
 
+        // Derive searchUsed from actual response grounding metadata
+        const actuallySearched = search_used || !!(result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
+
         const questionObject = {
             question: question,
             answer: correct_answer,
             alternateAnswers: alternate_answers || [],
             explanation: explanation || "No explanation provided.",
             difficulty: actualDiff || difficulty,
-            searchUsed: search_used || enableSearch,
-            verified: true, // Structured output + search = implicitly verified
+            searchUsed: actuallySearched,
+            verified: true, // Structured output = implicitly verified
             topic: isGeneralTopic ? 'general' : specificTopic,
             category: category || ""
         };
 
-        logger.info(`[TriviaService] Successfully generated question. Q: "${question}", A: "${correct_answer}"`);
+        logger.info(`[TriviaService] Successfully generated question (search=${actuallySearched}). Q: "${question}", A: "${correct_answer}"`);
         return questionObject;
 
     } catch (error) {
