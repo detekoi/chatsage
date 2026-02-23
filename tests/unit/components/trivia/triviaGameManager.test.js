@@ -86,7 +86,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
             mockGameState.startTime = Date.now();
             mockGameState.lastMessageTimestamp = 0; // Reset for throttling
             mockGameState.config = { // Ensure config is present
-                 ...mockGameState.config,
+                ...mockGameState.config,
                 questionTimeSeconds: 30,
                 scoreTracking: true,
                 pointsBase: 10,
@@ -94,19 +94,19 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
                 pointsDifficultyMultiplier: true,
             };
         } else {
-             console.error("Failed to initialize mockGameState for Trivia tests. startGame did not populate activeGames as expected.");
-             // Manually create the game state
-             mockGameState = {
+            console.error("Failed to initialize mockGameState for Trivia tests. startGame did not populate activeGames as expected.");
+            // Manually create the game state
+            mockGameState = {
                 channelName,
                 state: 'inProgress',
                 currentQuestion: { question: "What is the capital of France?", answer: "Paris", alternateAnswers: [], difficulty: "easy", topic: "geography" },
-                config: { questionTimeSeconds: 30, scoreTracking:true, pointsBase:10, pointsTimeBonus:true, pointsDifficultyMultiplier:true },
+                config: { questionTimeSeconds: 30, scoreTracking: true, pointsBase: 10, pointsTimeBonus: true, pointsDifficultyMultiplier: true },
                 startTime: Date.now(),
                 lastMessageTimestamp: 0,
                 answers: [],
                 streakMap: new Map(),
-             };
-             activeGames.set(channelName, mockGameState);
+            };
+            activeGames.set(channelName, mockGameState);
         }
         // Restore original generateQuestion
         jest.spyOn(triviaQuestionService, 'generateQuestion').mockImplementation(originalGenerateQuestion);
@@ -185,7 +185,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         );
         expect(logger.warn).toHaveBeenCalled();
     });
-    
+
     // Test to ensure basic answer processing and throttling
     test('Throttling: subsequent answers from same user are throttled', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
@@ -195,17 +195,18 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(1);
-        mockGameState.lastMessageTimestamp = Date.now(); // Simulate update
 
-        // Immediate second answer
+        // Immediate second answer from same user — should be throttled
         triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer + " again");
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(1); // Should be throttled
 
-        // Wait for throttle (500ms in triviaGameManager)
-        mockGameState.lastMessageTimestamp = Date.now() - 1000; // Simulate time has passed
+        // Simulate time passing by resetting per-user timestamp
+        if (mockGameState.userLastMessageTimestamps) {
+            mockGameState.userLastMessageTimestamps.set('userTriviaSpam', Date.now() - 1000);
+        }
 
-        // Third answer
+        // Third answer after cooldown
         triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer + " yet again");
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(2);

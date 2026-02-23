@@ -181,9 +181,7 @@ async function _getOrCreateGameState(channelName) {
             streakMap: new Map(),
             guessCache: new Map(), // Cache for incorrect guesses this round
             questionSignatureSet: new Set(), // Track normalized signatures to avoid paraphrased duplicates
-            prefetchedQuestion: null, // Prefetched next question for faster round transitions
-            answerBeingVerified: false, // Lock to serialize answer verification
-            pendingAnswers: [] // Queue for answers waiting to be verified
+            prefetchedQuestion: null // Prefetched next question for faster round transitions
         });
     } else {
         // Ensure new fields exist on potentially older state objects
@@ -202,12 +200,6 @@ async function _getOrCreateGameState(channelName) {
         }
         if (!state.questionSignatureSet) {
             state.questionSignatureSet = new Set();
-        }
-        if (state.answerBeingVerified === undefined) {
-            state.answerBeingVerified = false;
-        }
-        if (!state.pendingAnswers) {
-            state.pendingAnswers = [];
         }
     }
     return activeGames.get(channelName);
@@ -255,8 +247,7 @@ async function _resetGameToIdle(gameState) {
     newState.streakMap = new Map();
     newState.guessCache = new Map();
     newState.prefetchedQuestion = null;
-    newState.answerBeingVerified = false;
-    newState.pendingAnswers = [];
+    newState.userLastMessageTimestamps = new Map();
 }
 
 /**
@@ -484,8 +475,6 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.answers = [];
         gameState.winner = null;
         gameState.guessCache.clear(); // Clear guess cache for next round
-        gameState.pendingAnswers = []; // Clear pending answers for next round
-        gameState.answerBeingVerified = false;
 
         // Start next round after delay
         setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
@@ -802,9 +791,6 @@ async function _prefetchNextQuestion(gameState) {
 
 /**
  * Processes a potential answer from a user.
- * Uses a serialization lock to ensure answers are verified one at a time
- * in arrival order, preventing race conditions where a later answer's
- * LLM response could return before an earlier one.
  * @param {string} channelName - Channel name without #.
  * @param {string} username - User's lowercase username.
  * @param {string} displayName - User's display name.
@@ -820,11 +806,14 @@ async function _handleAnswer(channelName, username, displayName, message) {
     }
 
     const now = Date.now();
-    if (now - gameState.lastMessageTimestamp < 500) {
-        logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer from ${username} (${now - gameState.lastMessageTimestamp}ms since last)`);
+    // Per-user rate limit (prevents same user spamming, but doesn't block other users)
+    if (!gameState.userLastMessageTimestamps) gameState.userLastMessageTimestamps = new Map();
+    const userLastTs = gameState.userLastMessageTimestamps.get(username) || 0;
+    if (now - userLastTs < 500) {
+        logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer from ${username} (${now - userLastTs}ms since their last)`);
         return;
     }
-    gameState.lastMessageTimestamp = now;
+    gameState.userLastMessageTimestamps.set(username, now);
 
     const userAnswer = message.trim();
     if (!userAnswer) return;
@@ -839,74 +828,6 @@ async function _handleAnswer(channelName, username, displayName, message) {
     logger.debug(`[TriviaGame][${channelName}] Processing answer: "${userAnswer}" from ${username}`);
     gameState.answers.push({ username, displayName, answer: userAnswer, timestamp: new Date() });
 
-    // If another answer is already being verified, queue this one
-    if (gameState.answerBeingVerified) {
-        logger.debug(`[TriviaGame][${channelName}] Answer verification in progress. Queuing answer "${userAnswer}" from ${username}.`);
-        gameState.pendingAnswers.push({ channelName, username, displayName, userAnswer, normalizedUserAnswer });
-        return;
-    }
-
-    // Process this answer (and any queued answers afterward)
-    await _processAnswerVerification(gameState, channelName, username, displayName, userAnswer, normalizedUserAnswer);
-}
-
-/**
- * Processes answer verification serially. After verifying the current answer,
- * drains the pending queue one at a time.
- * @param {Object} gameState - Game state object.
- * @param {string} channelName - Channel name without #.
- * @param {string} username - User's lowercase username.
- * @param {string} displayName - User's display name.
- * @param {string} userAnswer - The trimmed user answer.
- * @param {string} normalizedUserAnswer - Lowercased, trimmed answer for caching.
- * @returns {Promise<void>}
- */
-async function _processAnswerVerification(gameState, channelName, username, displayName, userAnswer, normalizedUserAnswer) {
-    gameState.answerBeingVerified = true;
-
-    try {
-        await _verifySingleAnswer(gameState, channelName, username, displayName, userAnswer, normalizedUserAnswer);
-    } finally {
-        gameState.answerBeingVerified = false;
-
-        // Drain queued answers one at a time
-        while (gameState.pendingAnswers.length > 0) {
-            // Stop if game is no longer accepting answers
-            if (gameState.state !== 'inProgress') {
-                logger.debug(`[TriviaGame][${channelName}] Game no longer inProgress (${gameState.state}). Clearing ${gameState.pendingAnswers.length} queued answers.`);
-                gameState.pendingAnswers = [];
-                return;
-            }
-
-            const next = gameState.pendingAnswers.shift();
-
-            // Skip if this answer is now in the guess cache (already verified as wrong)
-            if (gameState.guessCache.has(next.normalizedUserAnswer)) {
-                logger.debug(`[TriviaGame][${channelName}] Queued answer "${next.userAnswer}" now in cache. Skipping.`);
-                continue;
-            }
-
-            gameState.answerBeingVerified = true;
-            try {
-                await _verifySingleAnswer(gameState, next.channelName, next.username, next.displayName, next.userAnswer, next.normalizedUserAnswer);
-            } finally {
-                gameState.answerBeingVerified = false;
-            }
-        }
-    }
-}
-
-/**
- * Verifies a single answer against the current question.
- * @param {Object} gameState - Game state object.
- * @param {string} channelName - Channel name without #.
- * @param {string} username - User's lowercase username.
- * @param {string} displayName - User's display name.
- * @param {string} userAnswer - The trimmed user answer.
- * @param {string} normalizedUserAnswer - Lowercased, trimmed answer for caching.
- * @returns {Promise<void>}
- */
-async function _verifySingleAnswer(gameState, channelName, username, displayName, userAnswer, normalizedUserAnswer) {
     // Added: Translate user's answer if botlang is set
     const contextManager = getContextManager();
     const botLanguage = contextManager.getBotLanguage(channelName);
