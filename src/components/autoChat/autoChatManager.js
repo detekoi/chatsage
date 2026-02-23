@@ -391,34 +391,58 @@ export function stopAutoChatManager() {
 
 // --- Ad Notification (unified handler) ---
 /**
- * Sends an ad notification to chat. Single source of truth for all ad-related notifications.
+ * Generates an ad notification message WITHOUT sending it. Used for prefetching.
  * @param {string} channelName - Channel name
- * @param {'warning'|'starting'} type - Notification type: 'warning' for pre-ad alert, 'starting' for ad start
- * @param {number} seconds - For 'warning': seconds until ad. For 'starting': ad duration in seconds.
+ * @param {'warning'|'starting'} type - Notification type
+ * @param {number} seconds - Seconds until ad or ad duration
+ * @returns {Promise<string|null>} Generated message text, or null if generation failed
  */
-async function sendAdNotification(channelName, type, seconds) {
+export async function generateAdNotification(channelName, type, seconds) {
     try {
         const cfg = await getChannelAutoChatConfig(channelName);
-        // Ad notifications are independent of auto-chat mode - only check ads category
-        if (!cfg || cfg.categories?.ads !== true) return;
+        if (!cfg || cfg.categories?.ads !== true) return null;
 
         const context = getContextManager().getContextForLLM(channelName, 'system', `event-ad-${type}`);
-        if (!context) return;
+        if (!context) return null;
 
         const contextPrompt = buildContextPrompt(context);
         const gameName = context.streamGame || 'the stream';
         const secs = Math.max(5, Math.round(seconds || 60));
 
-        // Build prompt based on notification type
         const prompt = type === 'warning'
             ? `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`
             : `An ad break of ${secs} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
 
         const text = await generateStandardResponse(contextPrompt, prompt)
             || await generateSearchResponse(contextPrompt, prompt);
+        return text ? removeMarkdownAsterisks(text) : null;
+    } catch (error) {
+        logger.error({ err: error, channelName, type }, '[AutoChatManager] Error generating ad notification');
+        return null;
+    }
+}
+
+/**
+ * Sends an ad notification to chat. Single source of truth for all ad-related notifications.
+ * @param {string} channelName - Channel name
+ * @param {'warning'|'starting'} type - Notification type: 'warning' for pre-ad alert, 'starting' for ad start
+ * @param {number} seconds - For 'warning': seconds until ad. For 'starting': ad duration in seconds.
+ * @param {string} [prefetchedText] - Optional pre-generated message text to send directly
+ */
+async function sendAdNotification(channelName, type, seconds, prefetchedText) {
+    try {
+        const cfg = await getChannelAutoChatConfig(channelName);
+        // Ad notifications are independent of auto-chat mode - only check ads category
+        if (!cfg || cfg.categories?.ads !== true) return;
+
+        let text = prefetchedText;
+        if (!text) {
+            // No prefetched text — generate on the fly as fallback
+            text = await generateAdNotification(channelName, type, seconds);
+        }
         if (!text) return;
 
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueMessage(`#${channelName}`, text);
         const state = getState(channelName);
         recordAutoText(state, text);
     } catch (error) {
@@ -427,8 +451,8 @@ async function sendAdNotification(channelName, type, seconds) {
 }
 
 // Public API - backwards compatible wrappers
-export async function notifyAdSoon(channelName, secondsUntil) {
-    await sendAdNotification(channelName, 'warning', secondsUntil);
+export async function notifyAdSoon(channelName, secondsUntil, prefetchedText) {
+    await sendAdNotification(channelName, 'warning', secondsUntil, prefetchedText);
 }
 
 export async function notifyAdBreak(channelName, adEvent) {

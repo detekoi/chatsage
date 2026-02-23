@@ -1,13 +1,15 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { notifyAdSoon } from '../autoChat/autoChatManager.js';
+import { notifyAdSoon, generateAdNotification } from '../autoChat/autoChatManager.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import config from '../../config/index.js';
 import { getSecretValue } from '../../lib/secretManager.js';
 
 let timers = new Map(); // channel -> NodeJS.Timeout
+let prefetchTimers = new Map(); // channel -> NodeJS.Timeout (for prefetch)
 let intervalId = null; // background poll
 let notifiedAds = new Map(); // channel -> Set of ad timestamps we've already notified about
+let prefetchedMessages = new Map(); // channel -> prefetched message text
 
 /**
  * Fetches the ad schedule for a channel by calling the web UI's internal API.
@@ -109,6 +111,9 @@ async function fetchAdScheduleViaWebUI(channelName, retryCount = 0) {
 function clearTimer(channelName) {
     const t = timers.get(channelName);
     if (t) { clearTimeout(t); timers.delete(channelName); }
+    const p = prefetchTimers.get(channelName);
+    if (p) { clearTimeout(p); prefetchTimers.delete(channelName); }
+    prefetchedMessages.delete(channelName);
 }
 
 export function startAdSchedulePoller() {
@@ -222,16 +227,41 @@ export function startAdSchedulePoller() {
                     // Mark as notified IMMEDIATELY when scheduling (prevents race condition with next poller tick)
                     channelNotifiedAds.add(adTimestamp);
 
-                    // If a timer exists but significantly different, reset
+                    // Clear existing timers before scheduling new ones
                     clearTimer(channelName);
+
+                    // Schedule prefetch timer ~45s before the send timer
+                    const PREFETCH_LEAD_MS = 45_000;
+                    const prefetchIn = Math.max(0, fireIn - PREFETCH_LEAD_MS);
+
+                    prefetchTimers.set(channelName, setTimeout(async () => {
+                        try {
+                            logger.info({ channelName }, '[AdSchedule] 🔄 Prefetching ad notification message...');
+                            const text = await generateAdNotification(channelName, 'warning', 60);
+                            if (text) {
+                                prefetchedMessages.set(channelName, text);
+                                logger.info({ channelName, textLength: text.length }, '[AdSchedule] ✓ Ad notification prefetched successfully');
+                            } else {
+                                logger.warn({ channelName }, '[AdSchedule] Prefetch returned no text, will fall back to live generation');
+                            }
+                        } catch (e) {
+                            logger.warn({ err: e, channelName }, '[AdSchedule] Prefetch failed, will fall back to live generation');
+                        }
+                    }, prefetchIn));
+
                     timers.set(channelName, setTimeout(async () => {
                         try {
+                            // Use prefetched message if available, otherwise notifyAdSoon will generate live
+                            const cachedText = prefetchedMessages.get(channelName) || null;
+                            prefetchedMessages.delete(channelName);
+
                             logger.info({
                                 channelName,
-                                expectedAdAt: nextAd.toISOString()
+                                expectedAdAt: nextAd.toISOString(),
+                                usedPrefetch: !!cachedText
                             }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
 
-                            await notifyAdSoon(channelName, 60);
+                            await notifyAdSoon(channelName, 60, cachedText);
                             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
                         } catch (e) {
                             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
@@ -259,5 +289,8 @@ export function stopAdSchedulePoller() {
     if (intervalId) { clearInterval(intervalId); intervalId = null; }
     for (const t of timers.values()) { clearTimeout(t); }
     timers.clear();
+    for (const t of prefetchTimers.values()) { clearTimeout(t); }
+    prefetchTimers.clear();
+    prefetchedMessages.clear();
     notifiedAds.clear();
 }

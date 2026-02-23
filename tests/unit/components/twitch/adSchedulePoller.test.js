@@ -2,7 +2,7 @@
 import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../../src/components/twitch/adSchedulePoller.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { getChannelAutoChatConfig } from '../../../../src/components/context/autoChatStorage.js';
-import { notifyAdSoon } from '../../../../src/components/autoChat/autoChatManager.js';
+import { notifyAdSoon, generateAdNotification } from '../../../../src/components/autoChat/autoChatManager.js';
 import axios from 'axios';
 import logger from '../../../../src/lib/logger.js';
 
@@ -462,6 +462,172 @@ describe('Ad Schedule Poller', () => {
             expect.objectContaining({ channelName: 'testchannel' }),
             '[AdSchedule] 🔔 Ad notification scheduled'
         );
+    });
+
+    test('should schedule prefetch timer ~45s before send timer', async () => {
+        // Arrange
+        const nextAdTime = new Date(Date.now() + 180_000); // 3 minutes from now (fireIn = 120s, prefetchIn = 75s)
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        generateAdNotification.mockResolvedValue('Heads up, ads incoming in about a minute!');
+
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000); // Trigger first poll
+
+        // Advance to prefetch time (~75s after scheduling)
+        await jest.advanceTimersByTimeAsync(75_000);
+
+        // Assert - generateAdNotification should have been called for prefetch
+        expect(generateAdNotification).toHaveBeenCalledWith('testchannel', 'warning', 60);
+
+        // But notifyAdSoon should NOT have been called yet (send timer hasn't fired)
+        expect(notifyAdSoon).not.toHaveBeenCalled();
+    });
+
+    test('should send prefetched message when send timer fires', async () => {
+        // Arrange
+        const nextAdTime = new Date(Date.now() + 180_000); // 3 minutes from now
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        generateAdNotification.mockResolvedValue('Ads coming up in about a minute, hang tight!');
+
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000); // Trigger poll
+
+        // Advance past prefetch time and send time (120s total from scheduling)
+        await jest.advanceTimersByTimeAsync(120_000);
+
+        // Assert - notifyAdSoon should be called with the prefetched text
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads coming up in about a minute, hang tight!');
+    });
+
+    test('should fall back to live generation when prefetch returns null', async () => {
+        // Arrange
+        const nextAdTime = new Date(Date.now() + 180_000);
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        // Prefetch returns null (generation failed)
+        generateAdNotification.mockResolvedValue(null);
+
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000); // Trigger poll
+        await jest.advanceTimersByTimeAsync(120_000); // Past both prefetch + send
+
+        // Assert - notifyAdSoon should be called with null (will fall back to live generation internally)
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, null);
+    });
+
+    test('should prefetch immediately when ad is less than 105s away', async () => {
+        // Arrange - ad in 90s means fireIn=30s, prefetchIn=max(0, 30-45)=0 (immediate)
+        const nextAdTime = new Date(Date.now() + 90_000);
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        generateAdNotification.mockResolvedValue('Quick heads up, ads soon!');
+
+        axios.get.mockResolvedValue({
+            data: {
+                success: true,
+                data: {
+                    data: [{
+                        next_ad_at: nextAdTime.toISOString(),
+                        duration: 60,
+                    }]
+                }
+            }
+        });
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000); // Trigger poll
+
+        // Prefetch should fire immediately (0ms delay), just need microtask flush
+        await jest.advanceTimersByTimeAsync(1);
+
+        // Assert - prefetch should have already been called
+        expect(generateAdNotification).toHaveBeenCalledWith('testchannel', 'warning', 60);
     });
 
     // Note: Testing missing config requires mocking the config module,
