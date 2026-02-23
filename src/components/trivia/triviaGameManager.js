@@ -3,11 +3,15 @@ import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
-import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
-import { formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage, 
-         formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage } from './triviaMessageFormatter.js';
-import { loadChannelConfig, saveChannelConfig, recordGameResult, 
-         updatePlayerScore, getRecentQuestions, getRecentAnswers, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId } from './triviaStorage.js';
+import { generateQuestion, verifyAnswer, calculateStringSimilarity } from './triviaQuestionService.js';
+import {
+    formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
+    formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage
+} from './triviaMessageFormatter.js';
+import {
+    loadChannelConfig, saveChannelConfig, recordGameResult,
+    updatePlayerScore, getRecentQuestions, getRecentAnswers, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId
+} from './triviaStorage.js';
 import crypto from 'crypto';
 
 // --- Default Configuration ---
@@ -25,7 +29,7 @@ const DEFAULT_CONFIG = {
 const MAX_IRC_MESSAGE_LENGTH = 450; // Should match ircSender.js
 const MULTI_ROUND_DELAY_MS = 5000; // Delay between rounds
 const MAX_QUESTION_RETRIES = 3; // Maximum number of retries for question generation
-const RECENT_QUESTION_FETCH_LIMIT = 25; // How many recent questions to fetch for exclusion
+const RECENT_QUESTION_FETCH_LIMIT = 50; // How many recent questions to fetch for exclusion
 
 // --- In-Memory Storage for Active Games ---
 /** @type {Map<string, GameState>} */
@@ -41,7 +45,7 @@ function _tokenizeForSignature(text) {
     const cleaned = lower.replace(/[^a-z0-9\s]/g, ' ');
     const rawTokens = cleaned.split(/\s+/).filter(Boolean);
     const STOPWORDS = new Set([
-        'the','a','an','and','or','but','if','then','else','when','where','why','how','what','which','who','whom','whose','is','are','was','were','be','been','being','of','to','in','for','on','by','with','about','into','over','after','before','between','during','from','as','at','that','this','these','those','do','does','did','done','has','have','had','having','many','much','number','count'
+        'the', 'a', 'an', 'and', 'or', 'but', 'if', 'then', 'else', 'when', 'where', 'why', 'how', 'what', 'which', 'who', 'whom', 'whose', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'of', 'to', 'in', 'for', 'on', 'by', 'with', 'about', 'into', 'over', 'after', 'before', 'between', 'during', 'from', 'as', 'at', 'that', 'this', 'these', 'those', 'do', 'does', 'did', 'done', 'has', 'have', 'had', 'having', 'many', 'much', 'number', 'count'
     ]);
     const tokens = rawTokens
         .map(t => t.trim())
@@ -54,6 +58,43 @@ function _buildQuestionSignature(text) {
     const tokens = _tokenizeForSignature(text);
     const uniqueSorted = Array.from(new Set(tokens)).sort();
     return uniqueSorted.join('|');
+}
+
+/**
+ * Checks whether a newly generated answer is too similar to any previously excluded answer.
+ * Catches exact matches, containment ("Wilbur" in "Orville and Wilbur"), and
+ * high Levenshtein similarity (> 0.75).
+ * @param {string} newAnswer - The candidate answer to check.
+ * @param {string[]} excludedAnswers - Array of lowercased answers to avoid.
+ * @returns {boolean} true if the answer should be rejected.
+ */
+function _isAnswerTooSimilar(newAnswer, excludedAnswers) {
+    if (!newAnswer || !excludedAnswers || excludedAnswers.length === 0) return false;
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    const newNorm = norm(newAnswer);
+    if (!newNorm) return false;
+
+    for (const excluded of excludedAnswers) {
+        const exNorm = norm(excluded);
+        if (!exNorm) continue;
+
+        // 1. Exact match
+        if (newNorm === exNorm) return true;
+
+        // 2. Containment: one answer is a substring of the other
+        //    e.g. "wilbur" contained in "orville and wilbur"
+        if (newNorm.length >= 3 && exNorm.length >= 3) {
+            if (newNorm.includes(exNorm) || exNorm.includes(newNorm)) {
+                return true;
+            }
+        }
+
+        // 3. High string similarity (Levenshtein)
+        const similarity = calculateStringSimilarity(newNorm, exNorm);
+        if (similarity > 0.75) return true;
+    }
+
+    return false;
 }
 
 /*
@@ -116,7 +157,7 @@ async function _getOrCreateGameState(channelName) {
             logger.info(`[TriviaGame][${channelName}] Loaded saved config.`);
             loadedConfig = { ...DEFAULT_CONFIG, ...loadedConfig };
         }
-        
+
         activeGames.set(channelName, {
             channelName,
             topic: null,
@@ -129,7 +170,7 @@ async function _getOrCreateGameState(channelName) {
             initiatorUsername: null,
             config: loadedConfig,
             lastMessageTimestamp: 0,
-            
+
             // Multi-round fields
             gameSessionId: null,
             totalRounds: 1,
@@ -181,13 +222,13 @@ function _clearTimers(gameState) {
 async function _resetGameToIdle(gameState) {
     logger.info(`[TriviaGame][${gameState.channelName}] Resetting game state fully to idle.`);
     _clearTimers(gameState);
-    
+
     const config = gameState.config; // Preserve config
     // Get a fresh structure
     const newState = await _getOrCreateGameState(gameState.channelName);
     newState.config = config; // Restore config
     newState.state = 'idle';
-    
+
     // Explicitly clear game-specific data
     newState.topic = null;
     newState.currentQuestion = null;
@@ -195,7 +236,7 @@ async function _resetGameToIdle(gameState) {
     newState.answers = [];
     newState.winner = null;
     newState.initiatorUsername = null;
-    
+
     // Reset multi-round fields
     newState.totalRounds = 1;
     newState.currentRound = 1;
@@ -214,7 +255,7 @@ async function _resetGameToIdle(gameState) {
  */
 function _calculatePoints(gameState, timeElapsedMs) {
     let points = gameState.config.pointsBase;
-    
+
     // Apply difficulty multiplier if enabled
     if (gameState.config.pointsDifficultyMultiplier && gameState.currentQuestion?.difficulty) {
         switch (gameState.currentQuestion.difficulty.toLowerCase()) {
@@ -229,7 +270,7 @@ function _calculatePoints(gameState, timeElapsedMs) {
                 break;
         }
     }
-    
+
     // Apply time bonus if enabled
     if (gameState.config.pointsTimeBonus) {
         const totalTimeMs = gameState.config.questionTimeSeconds * 1000;
@@ -237,7 +278,7 @@ function _calculatePoints(gameState, timeElapsedMs) {
         const timeBonus = Math.floor(points * 0.5 * timeRemainingRatio); // Up to 50% bonus for speed
         points += timeBonus;
     }
-    
+
     // Apply streak bonus if applicable
     const username = gameState.winner?.username;
     if (username) {
@@ -248,7 +289,7 @@ function _calculatePoints(gameState, timeElapsedMs) {
             points = Math.floor(points * streakMultiplier);
         }
     }
-    
+
     return Math.floor(points);
 }
 
@@ -261,19 +302,19 @@ function _calculatePoints(gameState, timeElapsedMs) {
  */
 async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = null) {
     _clearTimers(gameState);
-    
+
     // If already ending/idle, do nothing further
     if (gameState.state === 'ending' || gameState.state === 'idle') {
         logger.warn(`[TriviaGame][${gameState.channelName}] Game state is already '${gameState.state}'. Ignoring transition request.`);
         return;
     }
-    
+
     gameState.state = 'ending';
     logger.info(`[TriviaGame][${gameState.channelName}] Round ${gameState.currentRound}/${gameState.totalRounds} ending. Reason: ${reason}`);
-    
+
     const isMultiRound = gameState.totalRounds > 1;
     const isLastRound = gameState.currentRound === gameState.totalRounds;
-    
+
     // --- Add current question to session exclusion set (if valid) ---
     if (gameState.currentQuestion?.question) {
         gameState.gameSessionExcludedQuestions.add(gameState.currentQuestion.question);
@@ -293,14 +334,14 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     if (reason === "guessed" && gameState.winner?.username) {
         const winnerUsername = gameState.winner.username;
         const winnerDisplayName = gameState.winner.displayName;
-        
+
         // Calculate points
         points = _calculatePoints(gameState, timeTakenMs || 0);
-        
+
         // Update streak for the winner
         const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
         gameState.streakMap.set(winnerUsername, currentStreak + 1);
-        
+
         // a) Update session score
         if (isMultiRound) {
             const currentSessionScore = gameState.gameSessionScores.get(winnerUsername)?.score || 0;
@@ -310,7 +351,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             });
             logger.debug(`[TriviaGame][${gameState.channelName}] Updated session score for ${winnerUsername}: ${currentSessionScore + points}`);
         }
-        
+
         // b) Update persistent score
         if (gameState.config.scoreTracking) {
             try {
@@ -324,7 +365,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         // Reset all streaks on timeout/stop
         gameState.streakMap.clear();
     }
-    
+
     // --- 2. Send End Round Message ---
     let endMessage = "";
     if (!gameState.currentQuestion?.question) {
@@ -333,14 +374,14 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     } else {
         try {
             const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
-            
+
             if (reason === "guessed" && gameState.winner) {
                 const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
                 const timeString = seconds !== null ? ` in ${seconds}s` : '';
-                const streakInfo = gameState.streakMap.get(gameState.winner.username) > 1 ? 
+                const streakInfo = gameState.streakMap.get(gameState.winner.username) > 1 ?
                     ` 🔥x${gameState.streakMap.get(gameState.winner.username)}` : '';
                 const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
-                
+
                 endMessage = formatCorrectAnswerMessage(
                     roundPrefix,
                     gameState.winner.displayName,
@@ -364,7 +405,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             } else {
                 endMessage = `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
             }
-            
+
             // Ensure message doesn't exceed max length
             if (endMessage.length > MAX_IRC_MESSAGE_LENGTH) {
                 endMessage = endMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + "...";
@@ -374,9 +415,9 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             endMessage = `${reason === "guessed" ? `@${gameState.winner.displayName} got it right!` : ''} The answer was: ${gameState.currentQuestion?.answer || "N/A"}`;
         }
     }
-    
+
     enqueueMessage(`#${gameState.channelName}`, endMessage);
-    
+
     // --- 3. Record Game Result ---
     if (gameState.config.scoreTracking && gameState.currentQuestion?.question) {
         try {
@@ -399,52 +440,52 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 roundNumber: gameState.currentRound,
                 totalRounds: gameState.totalRounds,
             };
-            
+
             await recordGameResult(gameDetails);
             logger.debug(`[TriviaGame][${gameState.channelName}] Successfully recorded game result.`);
         } catch (storageError) {
             logger.error({ err: storageError }, `[TriviaGame][${gameState.channelName}] Error recording game result.`);
         }
     }
-    
+
     // --- 4. Determine Next Step ---
     if (reason === "stopped") {
         // Game manually stopped - end completely
         logger.info(`[TriviaGame][${gameState.channelName}] Game session ended by stop command.`);
-        
+
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final scores if multi-round
             const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
             enqueueMessage(`#${gameState.channelName}`, `🏁 Game stopped. Final Scores: ${sessionScoresMessage}`);
         }
-        
+
         // Reset after delay
         setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     } else if (isMultiRound && !isLastRound && reason !== "stopped" && reason !== "question_error" && reason !== "timer_error") {
         // Proceed to next round
         logger.info(`[TriviaGame][${gameState.channelName}] Proceeding to round ${gameState.currentRound + 1}.`);
         gameState.currentRound++;
-        
+
         // Reset round-specific state
         gameState.currentQuestion = null;
         gameState.startTime = null;
         gameState.answers = [];
         gameState.winner = null;
         gameState.guessCache.clear(); // Clear guess cache for next round
-        
+
         // Start next round after delay
         setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
     } else {
         // Game complete (last round or single round)
         logger.info(`[TriviaGame][${gameState.channelName}] Game session finished.`);
-        
+
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final session scores
             const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
             enqueueMessage(`#${gameState.channelName}`, `🏁 Final Scores: ${sessionScoresMessage}`);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
+
         // Show overall leaderboard
         if (gameState.config.scoreTracking) {
             try {
@@ -454,18 +495,18 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     const topPlayers = leaderboardData
                         .sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0))
                         .slice(0, 5);
-                    
+
                     leaderboardMessage += topPlayers
                         .map((p, i) => `${i + 1}. ${p.data?.displayName || p.id} (${p.data?.channelPoints || 0} pts)`)
                         .join(', ');
-                    
+
                     enqueueMessage(`#${gameState.channelName}`, leaderboardMessage);
                 }
             } catch (error) {
                 logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching leaderboard.`);
             }
         }
-        
+
         // Reset after delay
         setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     }
@@ -479,7 +520,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 async function _startNextRound(gameState) {
     logger.info(`[TriviaGame][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
     gameState.state = 'selecting';
-    
+
     // 1. Generate Question
     let questionGenerated = false;
     let retries = 0;
@@ -509,7 +550,7 @@ async function _startNextRound(gameState) {
             finalExcludedAnswersArray.push(t.toLowerCase());
         }
     }
-    
+
     while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
         try {
             // --- Pass excluded questions and answers to generateQuestion ---
@@ -532,9 +573,13 @@ async function _startNextRound(gameState) {
                 // Double-check if the generated question is somehow still excluded
                 const qSig = _buildQuestionSignature(question.question);
                 if (combinedExcludedQuestions.has(question.question) || gameState.questionSignatureSet.has(qSig)) {
-                     logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded question (attempt ${retries + 1}). Retrying.`);
-                     retries++;
-                     await new Promise(resolve => setTimeout(resolve, 500));
+                    logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated an excluded question (attempt ${retries + 1}). Retrying.`);
+                    retries++;
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } else if (_isAnswerTooSimilar(question.answer, finalExcludedAnswersArray)) {
+                    logger.warn(`[TriviaGame][${gameState.channelName}] LLM generated a question with a repeat answer "${question.answer}" (attempt ${retries + 1}). Retrying.`);
+                    retries++;
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 } else {
                     gameState.currentQuestion = question;
                     // No need to add to exclusion set here, it's added in _transitionToEnding
@@ -553,14 +598,14 @@ async function _startNextRound(gameState) {
             await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
-    
+
     if (!questionGenerated) {
         logger.error(`[TriviaGame][${gameState.channelName}] Failed to generate question after ${MAX_QUESTION_RETRIES} attempts.`);
         enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`);
         await _transitionToEnding(gameState, "question_error");
         return;
     }
-    
+
     // Final guard: if somehow invalid slipped through, end this round gracefully
     if (!gameState.currentQuestion?.question ||
         typeof gameState.currentQuestion.question !== 'string' ||
@@ -572,12 +617,12 @@ async function _startNextRound(gameState) {
         await _transitionToEnding(gameState, "question_error");
         return;
     }
-    
+
     // 2. Start Round
     gameState.startTime = Date.now();
     gameState.state = 'inProgress';
     gameState.guessCache.clear(); // Clear cache for the new round
-    
+
     // 3. Send Question
     const questionMessage = formatQuestionMessage(
         gameState.currentRound,
@@ -586,12 +631,12 @@ async function _startNextRound(gameState) {
         gameState.currentQuestion.difficulty,
         gameState.config.questionTimeSeconds
     );
-    
+
     enqueueMessage(`#${gameState.channelName}`, questionMessage);
-    
+
     // 4. Set Question Timer
     const timeoutMs = gameState.config.questionTimeSeconds * 1000;
-    
+
     gameState.questionEndTimer = setTimeout(async () => {
         try {
             if (gameState.state === 'inProgress') {
@@ -606,7 +651,7 @@ async function _startNextRound(gameState) {
             }
         }
     }, timeoutMs);
-    
+
     logger.info(`[TriviaGame][${gameState.channelName}] Round ${gameState.currentRound} started with ${timeoutMs}ms timer.`);
 }
 
@@ -712,23 +757,23 @@ async function _handleAnswer(channelName, username, displayName, message) {
  */
 async function startGame(channelName, topic = null, initiatorUsername = null, numberOfRounds = 1) {
     const gameState = await _getOrCreateGameState(channelName);
-    
+
     if (gameState.state !== 'idle') {
         logger.warn(`[TriviaGame][${channelName}] Attempted to start game while state is ${gameState.state}`);
-        
+
         if (gameState.initiatorUsername === initiatorUsername?.toLowerCase() && gameState.totalRounds > 1) {
             return {
                 success: false,
                 error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (round ${gameState.currentRound}). Use !trivia stop if needed.`
             };
         }
-        
+
         return {
             success: false,
             error: `A game is already active (${gameState.state}). Please wait or use !trivia stop.`
         };
     }
-    
+
     // Initialize game state (ensure new fields are reset)
     gameState.gameSessionId = crypto.randomUUID();
     gameState.initiatorUsername = initiatorUsername?.toLowerCase() || null;
@@ -746,9 +791,9 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.streakMap = new Map();
     gameState.guessCache = new Map();
     _clearTimers(gameState);
-    
+
     logger.info(`[TriviaGame][${channelName}] Starting new game. Topic: ${topic || 'General'}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
-    
+
     // Only send preamble if user specified rounds > 1 or a specific topic
     if (gameState.totalRounds > 1 || topic !== null) {
         const startMessage = formatStartMessage(
@@ -756,10 +801,10 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.config.questionTimeSeconds,
             gameState.totalRounds
         );
-        
+
         enqueueMessage(`#${channelName}`, startMessage);
     }
-    
+
     try {
         // Generate first question
         let retries = 0;
@@ -793,7 +838,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         }
         while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
             try {
-                 // --- Pass excluded questions and answers to generateQuestion ---
+                // --- Pass excluded questions and answers to generateQuestion ---
                 const question = await generateQuestion(
                     topic,
                     gameState.config.difficulty,
@@ -801,7 +846,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                     channelName,
                     finalExcludedAnswersArray // Pass excluded answers
                 );
-                 // --- End modification ---
+                // --- End modification ---
                 if (
                     question &&
                     question.question &&
@@ -810,12 +855,16 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                     question.answer &&
                     String(question.answer).trim().length > 0
                 ) {
-                     // Double-check if the generated question is somehow still excluded
+                    // Double-check if the generated question is somehow still excluded
                     const qSig = _buildQuestionSignature(question.question);
                     if (finalExcludedQuestionsArray.includes(question.question) || gameState.questionSignatureSet.has(qSig)) {
-                         logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded question for Round 1 (attempt ${retries + 1}). Retrying.`);
-                         retries++;
-                         await new Promise(resolve => setTimeout(resolve, 500));
+                        logger.warn(`[TriviaGame][${channelName}] LLM generated an excluded question for Round 1 (attempt ${retries + 1}). Retrying.`);
+                        retries++;
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } else if (_isAnswerTooSimilar(question.answer, finalExcludedAnswersArray)) {
+                        logger.warn(`[TriviaGame][${channelName}] LLM generated a question with a repeat answer "${question.answer}" for Round 1 (attempt ${retries + 1}). Retrying.`);
+                        retries++;
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     } else {
                         gameState.currentQuestion = question;
                         // Don't add to exclusion set here, done in _transitionToEnding
@@ -837,7 +886,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         if (!questionGenerated) {
             throw new Error(`Failed to generate a valid question after ${MAX_QUESTION_RETRIES} attempts.`);
         }
-        
+
         // Final guard: if somehow invalid slipped through, end gracefully
         if (!gameState.currentQuestion?.question ||
             typeof gameState.currentQuestion.question !== 'string' ||
@@ -847,11 +896,11 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             logger.error(`[TriviaGame][${channelName}] Generated first question failed final validation: ${JSON.stringify(gameState.currentQuestion)}`);
             throw new Error("Generated first question was invalid.");
         }
-        
+
         // Starting the round
         gameState.startTime = Date.now();
         gameState.state = 'inProgress';
-        
+
         // Send question
         const questionMessage = formatQuestionMessage(
             1,
@@ -860,12 +909,12 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.currentQuestion.difficulty,
             gameState.config.questionTimeSeconds
         );
-        
+
         enqueueMessage(`#${channelName}`, questionMessage);
-        
+
         // Set question timer
         const timeoutMs = gameState.config.questionTimeSeconds * 1000;
-        
+
         gameState.questionEndTimer = setTimeout(async () => {
             try {
                 if (gameState.state === 'inProgress') {
@@ -880,14 +929,14 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
                 }
             }
         }, timeoutMs);
-        
+
         logger.info(`[TriviaGame][${channelName}] Game started successfully. Round 1/${gameState.totalRounds}.`);
         return { success: true };
-        
+
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Critical error starting game.`);
         await _resetGameToIdle(gameState);
-        
+
         return {
             success: false,
             error: `Error starting game: ${error.message || 'Unknown error'}`
@@ -902,17 +951,17 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
  */
 function stopGame(channelName) {
     const gameState = activeGames.get(channelName);
-    
+
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         logger.debug(`[TriviaGame][${channelName}] Stop command received, but no active game found.`);
         return { message: "No active Trivia game to stop." };
     }
-    
+
     logger.info(`[TriviaGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}.`);
-    
+
     // Transition to ending with "stopped" reason
     _transitionToEnding(gameState, "stopped");
-    
+
     return { message: "Trivia game stopped successfully." };
 }
 
@@ -925,7 +974,7 @@ function stopGame(channelName) {
  */
 function processPotentialAnswer(channelName, username, displayName, message) {
     const gameState = activeGames.get(channelName);
-    
+
     if (gameState && gameState.state === 'inProgress' && !message.startsWith('!')) {
         _handleAnswer(channelName, username, displayName, message).catch(err => {
             logger.error({ err, channel: channelName, user: username }, `[TriviaGame][${channelName}] Unhandled error processing answer.`);
@@ -942,10 +991,10 @@ function processPotentialAnswer(channelName, username, displayName, message) {
 async function configureGame(channelName, options) {
     const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[TriviaGame][${channelName}] Configure command received with options: ${JSON.stringify(options)}`);
-    
+
     let changesMade = [];
     let configChanged = false;
-    
+
     // Update difficulty
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty)) {
         if (gameState.config.difficulty !== options.difficulty) {
@@ -954,7 +1003,7 @@ async function configureGame(channelName, options) {
             configChanged = true;
         }
     }
-    
+
     // Update question time
     if (options.questionTimeSeconds) {
         const time = parseInt(options.questionTimeSeconds, 10);
@@ -968,7 +1017,7 @@ async function configureGame(channelName, options) {
             changesMade.push(`Invalid question time "${options.questionTimeSeconds}". Must be between 10 and 120 seconds.`);
         }
     }
-    
+
     // Update round duration
     if (options.roundDurationMinutes) {
         const duration = parseInt(options.roundDurationMinutes, 10);
@@ -982,7 +1031,7 @@ async function configureGame(channelName, options) {
             changesMade.push(`Invalid round duration "${options.roundDurationMinutes}". Must be between 1 and 10 minutes.`);
         }
     }
-    
+
     // Toggle score tracking
     if (options.scoreTracking !== undefined) {
         const enableScoring = options.scoreTracking === 'true' || options.scoreTracking === true;
@@ -992,18 +1041,18 @@ async function configureGame(channelName, options) {
             configChanged = true;
         }
     }
-    
+
     // Update topic preferences
     if (options.topicPreferences) {
-        const topics = Array.isArray(options.topicPreferences) ? 
-            options.topicPreferences : 
+        const topics = Array.isArray(options.topicPreferences) ?
+            options.topicPreferences :
             String(options.topicPreferences).split(',').map(s => s.trim()).filter(Boolean);
-        
+
         gameState.config.topicPreferences = topics;
         changesMade.push(`Topic preferences updated to: ${topics.join(', ') || 'None'}`);
         configChanged = true;
     }
-    
+
     // Update points base
     if (options.pointsBase) {
         const points = parseInt(options.pointsBase, 10);
@@ -1017,7 +1066,7 @@ async function configureGame(channelName, options) {
             changesMade.push(`Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
         }
     }
-    
+
     // Toggle time bonus
     if (options.pointsTimeBonus !== undefined) {
         const enableTimeBonus = options.pointsTimeBonus === 'true' || options.pointsTimeBonus === true;
@@ -1027,7 +1076,7 @@ async function configureGame(channelName, options) {
             configChanged = true;
         }
     }
-    
+
     // Toggle difficulty multiplier
     if (options.pointsDifficultyMultiplier !== undefined) {
         const enableMultiplier = options.pointsDifficultyMultiplier === 'true' || options.pointsDifficultyMultiplier === true;
@@ -1037,7 +1086,7 @@ async function configureGame(channelName, options) {
             configChanged = true;
         }
     }
-    
+
     if (configChanged) {
         try {
             await saveChannelConfig(channelName, gameState.config);
@@ -1062,7 +1111,7 @@ async function configureGame(channelName, options) {
 async function resetChannelConfig(channelName) {
     const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[TriviaGame][${channelName}] Resetting configuration to defaults.`);
-    
+
     try {
         const newConfig = { ...DEFAULT_CONFIG };
         gameState.config = newConfig;
@@ -1095,7 +1144,7 @@ function getCurrentGameInitiator(channelName) {
  */
 async function clearLeaderboard(channelName) {
     logger.info(`[TriviaGame][${channelName}] Received request to clear leaderboard data.`);
-    
+
     try {
         const result = await clearChannelLeaderboardData(channelName.toLowerCase());
         logger.info(`[TriviaGame][${channelName}] Leaderboard clear result: ${result.message}`);
@@ -1141,7 +1190,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         // Ensure these are set BEFORE pendingTriviaReports.set
         global.debug_lastSetTriviaPendingMap = pendingTriviaReports;
         global.debug_lastSetTriviaReportKey = reportKey;
-        logger.debug({key: global.debug_lastSetTriviaReportKey}, "[TriviaGameManager] Set global.debug_lastSetTriviaReportKey");
+        logger.debug({ key: global.debug_lastSetTriviaReportKey }, "[TriviaGameManager] Set global.debug_lastSetTriviaReportKey");
         logger.debug({
             channel: channelName,
             user: reportedByUsername,
@@ -1226,7 +1275,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
         logger.info(`[TriviaGameManager][${channelName}] Attempt to finalize an expired trivia report by ${username}.`);
         return { success: true, message: `@${username}, your report session timed out. Please use !trivia report again.` };
     }
-    
+
     const roundNum = parseInt(roundNumberStr, 10);
     const itemToReport = pendingData.itemsInSession.find(item => item.roundNumber === roundNum);
 
@@ -1243,7 +1292,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 
     try {
         await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
-        pendingTriviaReports.delete(reportKey); 
+        pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Successfully finalized report for trivia round ${roundNum}, doc ID ${itemToReport.docId}, Question: "${itemToReport.itemData.question.substring(0, 30)}..."`);
         return { success: true, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
     } catch (error) {
@@ -1272,4 +1321,4 @@ function getTriviaGameManager() {
     };
 }
 
-export { initializeTriviaGameManager, getTriviaGameManager, activeGames };
+export { initializeTriviaGameManager, getTriviaGameManager, activeGames, _isAnswerTooSimilar };

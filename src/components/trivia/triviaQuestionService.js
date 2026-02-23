@@ -58,7 +58,7 @@ function getGameFromContext(channelName) {
 }
 
 // --- Helper: String similarity (Levenshtein) ---
-function calculateStringSimilarity(str1, str2) {
+export function calculateStringSimilarity(str1, str2) {
     const s1 = (str1 || "").toLowerCase();
     const s2 = (str2 || "").toLowerCase();
     const len1 = s1.length;
