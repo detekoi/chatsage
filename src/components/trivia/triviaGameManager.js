@@ -181,7 +181,9 @@ async function _getOrCreateGameState(channelName) {
             streakMap: new Map(),
             guessCache: new Map(), // Cache for incorrect guesses this round
             questionSignatureSet: new Set(), // Track normalized signatures to avoid paraphrased duplicates
-            prefetchedQuestion: null // Prefetched next question for faster round transitions
+            prefetchedQuestion: null, // Prefetched next question for faster round transitions
+            processingQueue: [], // Queue for incoming answers to ensure fair processing order
+            userLastAnswers: new Map() // Track last answer content for rate limiting
         });
     } else {
         // Ensure new fields exist on potentially older state objects
@@ -200,6 +202,12 @@ async function _getOrCreateGameState(channelName) {
         }
         if (!state.questionSignatureSet) {
             state.questionSignatureSet = new Set();
+        }
+        if (!state.processingQueue) {
+            state.processingQueue = [];
+        }
+        if (!state.userLastAnswers) {
+            state.userLastAnswers = new Map();
         }
     }
     return activeGames.get(channelName);
@@ -248,6 +256,8 @@ async function _resetGameToIdle(gameState) {
     newState.guessCache = new Map();
     newState.prefetchedQuestion = null;
     newState.userLastMessageTimestamps = new Map();
+    newState.userLastAnswers = new Map();
+    newState.processingQueue = [];
 }
 
 /**
@@ -473,6 +483,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.currentQuestion = null;
         gameState.startTime = null;
         gameState.answers = [];
+        gameState.processingQueue = [];
         gameState.winner = null;
         gameState.guessCache.clear(); // Clear guess cache for next round
 
@@ -538,6 +549,7 @@ async function _startNextRound(gameState) {
             gameState.startTime = Date.now();
             gameState.state = 'inProgress';
             gameState.guessCache.clear();
+            gameState.processingQueue = []; // Ensure queue is clear for new round
 
             const questionMessage = formatQuestionMessage(
                 gameState.currentRound,
@@ -677,6 +689,7 @@ async function _startNextRound(gameState) {
     gameState.startTime = Date.now();
     gameState.state = 'inProgress';
     gameState.guessCache.clear(); // Clear cache for the new round
+    gameState.processingQueue = []; // Ensure queue is clear for new round
 
     // 3. Send Question
     const questionMessage = formatQuestionMessage(
@@ -790,6 +803,105 @@ async function _prefetchNextQuestion(gameState) {
 }
 
 /**
+ * Resolves the winner from the processing queue.
+ * @param {Object} gameState - Game state object.
+ */
+async function _resolveGameWinner(gameState) {
+    if (gameState.state !== 'inProgress') return; // Already ended
+
+    // Iterate strictly in order of arrival
+    for (const attempt of gameState.processingQueue) {
+        if (attempt.status === 'pending') {
+            // Must wait for earliest pending attempt to resolve to ensure fairness
+            return;
+        }
+
+        if (attempt.status === 'correct') {
+            // WINNER FOUND - This is the earliest correct answer
+            logger.info(`[TriviaGame][${gameState.channelName}] Correct answer "${attempt.answer}" by ${attempt.username}.`);
+            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            gameState.state = 'guessed';
+            const timeTakenMs = attempt.timestamp - gameState.startTime;
+            _transitionToEnding(gameState, "guessed", timeTakenMs);
+            return;
+        }
+
+        // If 'incorrect' or 'error', continue to next attempt in queue
+    }
+}
+
+/**
+ * Processes a single answer attempt.
+ * @param {Object} gameState
+ * @param {Object} attempt
+ */
+async function _processAnswerAttempt(gameState, attempt) {
+    const channelName = gameState.channelName;
+    try {
+        const normalizedUserAnswer = attempt.answer.toLowerCase().trim();
+
+        // 1. Check Cache
+        if (gameState.guessCache.has(normalizedUserAnswer)) {
+            logger.debug(`[TriviaGame][${channelName}] Answer "${attempt.answer}" found in incorrect guess cache.`);
+            attempt.status = 'incorrect';
+            attempt.result = gameState.guessCache.get(normalizedUserAnswer).result;
+            _resolveGameWinner(gameState);
+            return;
+        }
+
+        // 2. Translation
+        const contextManager = getContextManager();
+        const botLanguage = contextManager.getBotLanguage(channelName);
+
+        if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+            logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${attempt.answer}" to English for verification.`);
+            try {
+                const translatedUserAnswer = await translateText(attempt.answer, 'English');
+                if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
+                    attempt.answerToVerify = translatedUserAnswer.trim();
+                    logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${attempt.answer}" -> "${attempt.answerToVerify}"`);
+                } else {
+                    logger.warn(`[TriviaGame][${channelName}] Translation of answer "${attempt.answer}" to English resulted in empty string. Using original for verification.`);
+                }
+            } catch (translateError) {
+                logger.error({ err: translateError, channelName, userAnswer: attempt.answer, botLanguage }, `[TriviaGame][${channelName}] Failed to translate user answer to English for verification. Using original.`);
+            }
+        }
+
+        // 3. Verification
+        const verificationResult = await verifyAnswer(
+            gameState.currentQuestion.answer,
+            attempt.answerToVerify, // Use the potentially translated answer
+            gameState.currentQuestion.alternateAnswers || [],
+            gameState.currentQuestion.question,
+            gameState.topic || 'general'
+        );
+
+        attempt.result = verificationResult;
+
+        if (verificationResult && verificationResult.is_correct) {
+            attempt.status = 'correct';
+        } else {
+            attempt.status = 'incorrect';
+            // Cache the incorrect answer
+            gameState.guessCache.set(normalizedUserAnswer, {
+                result: verificationResult,
+                timestamp: Date.now()
+            });
+            logger.debug(`[TriviaGame][${channelName}] Caching incorrect guess: "${attempt.answer}"`);
+        }
+
+        // 4. Resolve
+        _resolveGameWinner(gameState);
+
+    } catch (error) {
+        logger.error({ err: error, channel: channelName }, `[TriviaGame] Error in _processAnswerAttempt for ${attempt.username}`);
+        attempt.status = 'error'; // Treat as incorrect/done
+        _resolveGameWinner(gameState);
+    }
+}
+
+/**
  * Processes a potential answer from a user.
  * @param {string} channelName - Channel name without #.
  * @param {string} username - User's lowercase username.
@@ -806,80 +918,55 @@ async function _handleAnswer(channelName, username, displayName, message) {
     }
 
     const now = Date.now();
-    // Per-user rate limit (prevents same user spamming, but doesn't block other users)
+
+    // Initialize rate limit maps if missing
     if (!gameState.userLastMessageTimestamps) gameState.userLastMessageTimestamps = new Map();
-    const userLastTs = gameState.userLastMessageTimestamps.get(username) || 0;
-    if (now - userLastTs < 500) {
-        logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer from ${username} (${now - userLastTs}ms since their last)`);
+    if (!gameState.userLastAnswers) gameState.userLastAnswers = new Map();
+
+    const lastTs = gameState.userLastMessageTimestamps.get(username) || 0;
+    const lastAnswer = gameState.userLastAnswers.get(username) || "";
+    const currentAnswer = message.trim();
+
+    if (!currentAnswer) return;
+
+    // Rate Limit Logic:
+    // - Duplicate answer: 2000ms limit
+    // - Different answer: 0ms limit (process immediately)
+    let timeLimit = 0;
+    if (currentAnswer === lastAnswer) {
+        timeLimit = 2000;
+    } else {
+        timeLimit = 0;
+    }
+
+    if (now - lastTs < timeLimit) {
+        logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer "${currentAnswer}" from ${username} (${now - lastTs}ms < ${timeLimit}ms)`);
         return;
     }
+
+    // Update Access
     gameState.userLastMessageTimestamps.set(username, now);
+    gameState.userLastAnswers.set(username, currentAnswer);
+    gameState.answers.push({ username, displayName, answer: currentAnswer, timestamp: new Date(now) });
 
-    const userAnswer = message.trim();
-    if (!userAnswer) return;
+    // Create Queue Item
+    const attempt = {
+        id: crypto.randomUUID(),
+        username,
+        displayName,
+        answer: currentAnswer,
+        timestamp: now,
+        status: 'pending',
+        answerToVerify: currentAnswer, // Default to raw, translated later if needed
+        result: null
+    };
 
-    // Check the cache for this normalized answer first
-    const normalizedUserAnswer = userAnswer.toLowerCase().trim();
-    if (gameState.guessCache.has(normalizedUserAnswer)) {
-        logger.debug(`[TriviaGame][${channelName}] Answer "${userAnswer}" found in incorrect guess cache. Skipping LLM verification.`);
-        return; // It's a known wrong answer for this round, do nothing.
-    }
+    gameState.processingQueue.push(attempt);
 
-    logger.debug(`[TriviaGame][${channelName}] Processing answer: "${userAnswer}" from ${username}`);
-    gameState.answers.push({ username, displayName, answer: userAnswer, timestamp: new Date() });
-
-    // Added: Translate user's answer if botlang is set
-    const contextManager = getContextManager();
-    const botLanguage = contextManager.getBotLanguage(channelName);
-    let answerToVerify = userAnswer;
-
-    if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
-        logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${userAnswer}" to English for verification.`);
-        try {
-            const translatedUserAnswer = await translateText(userAnswer, 'English');
-            if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
-                answerToVerify = translatedUserAnswer.trim();
-                logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${userAnswer}" -> "${answerToVerify}"`);
-            } else {
-                logger.warn(`[TriviaGame][${channelName}] Translation of answer "${userAnswer}" to English resulted in empty string. Using original for verification.`);
-            }
-        } catch (translateError) {
-            logger.error({ err: translateError, channelName, userAnswer, botLanguage }, `[TriviaGame][${channelName}] Failed to translate user answer to English for verification. Using original.`);
-        }
-    }
-    // End of added translation logic
-
-    try {
-        const verificationResult = await verifyAnswer(
-            gameState.currentQuestion.answer,
-            answerToVerify, // Use the potentially translated answer
-            gameState.currentQuestion.alternateAnswers || [],
-            gameState.currentQuestion.question,
-            gameState.topic || 'general'
-        );
-
-        if (gameState.state !== 'inProgress') {
-            logger.debug(`[TriviaGame][${channelName}] Game state changed to ${gameState.state} while verifying answer.`);
-            return;
-        }
-
-        if (verificationResult && verificationResult.is_correct) {
-            logger.info(`[TriviaGame][${channelName}] Correct answer "${userAnswer}" (verified as "${answerToVerify}") by ${username}. Confidence: ${verificationResult.confidence || 'N/A'}`);
-            gameState.winner = { username, displayName };
-            gameState.state = 'guessed';
-            const timeTakenMs = Date.now() - gameState.startTime;
-            _transitionToEnding(gameState, "guessed", timeTakenMs);
-        } else {
-            // Cache the incorrect answer to prevent re-verification
-            gameState.guessCache.set(normalizedUserAnswer, {
-                result: verificationResult,
-                timestamp: Date.now()
-            });
-            logger.debug(`[TriviaGame][${channelName}] Caching incorrect guess: "${userAnswer}"`);
-        }
-    } catch (error) {
-        logger.error({ err: error }, `[TriviaGame][${channelName}] Error validating answer "${userAnswer}" (verified as "${answerToVerify}") from ${username}.`);
-    }
+    // Fire and forget background processing
+    _processAnswerAttempt(gameState, attempt).catch(err => {
+        logger.error({ err, channel: channelName }, `[TriviaGame] Error processing answer attempt ${attempt.id}`);
+    });
 }
 
 // --- Game Start/Stop Functions ---
@@ -919,6 +1006,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.currentQuestion = null;
     gameState.startTime = null;
     gameState.answers = [];
+    gameState.processingQueue = [];
     gameState.winner = null;
     gameState.totalRounds = Math.max(1, numberOfRounds);
     gameState.currentRound = 1;
