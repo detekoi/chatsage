@@ -483,6 +483,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.currentQuestion = null;
         gameState.startTime = null;
         gameState.answers = [];
+        gameState.processingQueue = [];
         gameState.winner = null;
         gameState.guessCache.clear(); // Clear guess cache for next round
 
@@ -548,6 +549,7 @@ async function _startNextRound(gameState) {
             gameState.startTime = Date.now();
             gameState.state = 'inProgress';
             gameState.guessCache.clear();
+            gameState.processingQueue = []; // Ensure queue is clear for new round
 
             const questionMessage = formatQuestionMessage(
                 gameState.currentRound,
@@ -687,6 +689,7 @@ async function _startNextRound(gameState) {
     gameState.startTime = Date.now();
     gameState.state = 'inProgress';
     gameState.guessCache.clear(); // Clear cache for the new round
+    gameState.processingQueue = []; // Ensure queue is clear for new round
 
     // 3. Send Question
     const questionMessage = formatQuestionMessage(
@@ -1003,6 +1006,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
     gameState.currentQuestion = null;
     gameState.startTime = null;
     gameState.answers = [];
+    gameState.processingQueue = [];
     gameState.winner = null;
     gameState.totalRounds = Math.max(1, numberOfRounds);
     gameState.currentRound = 1;
