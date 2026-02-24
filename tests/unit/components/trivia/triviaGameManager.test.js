@@ -186,29 +186,35 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         expect(logger.warn).toHaveBeenCalled();
     });
 
-    // Test to ensure basic answer processing and throttling
-    test('Throttling: subsequent answers from same user are throttled', async () => {
+    test('Throttling: duplicate answers are throttled, different answers process immediately', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
-        const userAnswer = "Some Answer";
+        const userAnswer1 = "First Answer";
+        const userAnswer2 = "Second Answer";
 
         // First answer
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
         await new Promise(process.nextTick);
-        expect(verifyAnswer).toHaveBeenCalledTimes(1);
+        expect(verifyAnswer).toHaveBeenCalledTimes(1); // Processed
 
-        // Immediate second answer from same user — should be throttled
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer + " again");
+        // Immediate duplicate answer from same user — should be throttled (2000ms limit)
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
         await new Promise(process.nextTick);
-        expect(verifyAnswer).toHaveBeenCalledTimes(1); // Should be throttled
+        expect(verifyAnswer).toHaveBeenCalledTimes(1); // No new call to verifyAnswer
 
-        // Simulate time passing by resetting per-user timestamp
+        // Immediate DIFFERENT answer from same user — should process immediately (0ms limit)
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
+        await new Promise(process.nextTick);
+        expect(verifyAnswer).toHaveBeenCalledTimes(2); // New call to verifyAnswer
+
+        // Simulate time passing by resetting per-user timestamp beyond 2000ms
         if (mockGameState.userLastMessageTimestamps) {
-            mockGameState.userLastMessageTimestamps.set('userTriviaSpam', Date.now() - 1000);
+            mockGameState.userLastMessageTimestamps.set('userTriviaSpam', Date.now() - 3000);
         }
 
-        // Third answer after cooldown
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer + " yet again");
+        // Duplicate answer again after cooldown — no longer rate limited, but hits guessCache
+        // Since verifyAnswer returns false in the mock, userAnswer2 is in guessCache
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
         await new Promise(process.nextTick);
-        expect(verifyAnswer).toHaveBeenCalledTimes(2);
+        expect(verifyAnswer).toHaveBeenCalledTimes(2); // Hit cache instead of verifyAnswer
     });
 });
