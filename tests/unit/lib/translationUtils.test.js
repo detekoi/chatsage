@@ -64,7 +64,7 @@ describe('translationUtils', () => {
         it('should handle basic translation request', async () => {
             const mockResponse = {
                 candidates: [{
-                    content: { parts: [{ text: 'Hola mundo' }] },
+                    content: { parts: [{ text: JSON.stringify({ translated_text: 'Hola mundo', same_language: false }) }] },
                     finishReason: 'STOP'
                 }]
             };
@@ -80,7 +80,7 @@ describe('translationUtils', () => {
         it('should handle translation with metadata', async () => {
             const mockResponse = {
                 candidates: [{
-                    content: { parts: [{ text: 'Bonjour le monde' }] },
+                    content: { parts: [{ text: JSON.stringify({ translated_text: 'Bonjour le monde', same_language: false }) }] },
                     finishReason: 'STOP'
                 }]
             };
@@ -144,25 +144,29 @@ describe('translationUtils', () => {
             );
         });
 
-        it('should clean quotation marks from translation', async () => {
+        it('should clean quotation marks from translation (fallback attempt)', async () => {
+            // First attempt fails, second attempt returns quoted text
+            mockModel.generateContent
+                .mockRejectedValueOnce(new Error('API Error'));
+
             const mockResponse = {
                 candidates: [{
                     content: { parts: [{ text: '"Hola mundo"' }] },
                     finishReason: 'STOP'
                 }]
             };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+            mockModel.generateContent
+                .mockResolvedValueOnce(mockResponse);
 
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBe('Hola mundo');
         });
 
-        it('should return null when text is already in target language (SAME_LANGUAGE sentinel)', async () => {
+        it('should return null when text is already in target language (structured output)', async () => {
             const mockResponse = {
                 candidates: [{
-                    content: { parts: [{ text: '[SAME_LANGUAGE]' }] },
+                    content: { parts: [{ text: JSON.stringify({ translated_text: null, same_language: true }) }] },
                     finishReason: 'STOP'
                 }]
             };
@@ -173,6 +177,21 @@ describe('translationUtils', () => {
 
             expect(result).toBeNull();
             expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
+        });
+
+        it('should fallback to raw text when JSON parse fails', async () => {
+            const mockResponse = {
+                candidates: [{
+                    content: { parts: [{ text: 'Hola mundo' }] },
+                    finishReason: 'STOP'
+                }]
+            };
+
+            mockModel.generateContent.mockResolvedValue(mockResponse);
+
+            const result = await translateText('Hello world', 'Spanish');
+
+            expect(result).toBe('Hola mundo');
         });
 
         it('should retry with simplified prompt on failure', async () => {

@@ -231,28 +231,42 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     const translationPrompt = `You are a professional interpreter. Translate the following text from its original language into ${targetLanguage}.
 Rules:
-1. Output ONLY the translated text.
-2. Do not explain the translation.
-3. If the text is already in ${targetLanguage}, output exactly: [SAME_LANGUAGE]
-4. Do not wrap the output in quotes.
+1. If the text is already in ${targetLanguage}, set same_language to true and translated_text to null.
+2. Otherwise, set same_language to false and translated_text to ONLY the translated text (no explanations, no quotes).
 
 Text to translate:
-${textToTranslate}
+${textToTranslate}`;
 
-Translation:`;
+    // Schema for structured translation response
+    const TranslationResponseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            translated_text: {
+                type: Type.STRING,
+                nullable: true,
+                description: 'The translated text, or null if the text is already in the target language'
+            },
+            same_language: {
+                type: Type.BOOLEAN,
+                description: 'True if the text is already in the target language'
+            }
+        },
+        required: ['same_language']
+    };
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
 
     let translatedText = null;
 
-    // Attempt 1: Standard translation with higher token limit
+    // Attempt 1: Structured output for reliable same-language detection
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
             generationConfig: {
-                maxOutputTokens: 2048, // Increased from 1024 to match recent fixes
+                maxOutputTokens: 2048,
                 temperature: 0.3,
-                responseMimeType: 'text/plain'
+                responseMimeType: 'application/json',
+                responseSchema: TranslationResponseSchema
             }
         });
         const response = result;
@@ -271,13 +285,27 @@ Translation:`;
                 hasText: !!text,
                 textPreview: text?.substring(0, 50)
             }, 'Translation attempt1 result');
-            translatedText = text && text.length > 0 ? text : null;
+
+            if (text) {
+                try {
+                    const parsed = JSON.parse(text);
+                    if (parsed.same_language === true) {
+                        logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
+                        return null;
+                    }
+                    translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
+                } catch (parseErr) {
+                    // If JSON parsing fails, treat the raw text as the translation
+                    logger.debug({ parseErr }, 'Could not parse structured response, using raw text');
+                    translatedText = text.length > 0 ? text : null;
+                }
+            }
         }
     } catch (e) {
         logger.warn({ err: e }, 'Translation attempt1 failed.');
     }
 
-    // Attempt 2: Simplified prompt if first attempt failed
+    // Attempt 2: Simplified plain-text prompt if first attempt failed
     if (!translatedText) {
         try {
             const simplePrompt = `Translate to ${targetLanguage}: ${textToTranslate}`;
@@ -308,12 +336,6 @@ Translation:`;
 
     if (!translatedText) {
         logger.warn('Translation response missing extractable text.');
-        return null;
-    }
-
-    // Check for same-language sentinel — message was already in target language
-    if (translatedText.trim() === '[SAME_LANGUAGE]') {
-        logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
         return null;
     }
 
