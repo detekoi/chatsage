@@ -1,6 +1,5 @@
 import { Type } from "@google/genai";
 import logger from './logger.js';
-import { getGeminiClient } from '../components/llm/geminiClient.js';
 import { getGenAIInstance } from '../components/llm/gemini/core.js';
 
 // Translation cache with LRU-style eviction and time-based expiration
@@ -206,7 +205,8 @@ function extractTextFromResponse(response, candidate) {
 }
 
 /**
- * Robust translation function with retry logic similar to lurk command fixes
+ * Translates text using a single gemini-2.5-flash-lite call.
+ * Uses structured JSON output for both same-language detection and translation in one round-trip.
  * @param {string} textToTranslate - The text to translate
  * @param {string} targetLanguage - The target language
  * @returns {Promise<string|Symbol|null>} The translated text, SAME_LANGUAGE if already in target language, or null on failure
@@ -231,107 +231,84 @@ export async function translateText(textToTranslate, targetLanguage) {
         return cachedEntry.translation;
     }
 
-    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
+    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via flash-lite');
 
-    // --- Stage 1: Language detection via flash-lite (cheap & fast) ---
-    try {
-        const ai = getGenAIInstance();
-        const detectResult = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-lite',
-            contents: [{ role: 'user', parts: [{ text: `Is the following text written in ${targetLanguage}? Text: ${textToTranslate}` }] }],
-            config: {
-                temperature: 0,
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        same_language: {
-                            type: Type.BOOLEAN,
-                            description: `True if the text is already in ${targetLanguage}`
-                        }
-                    },
-                    required: ['same_language']
-                }
-            }
-        });
-
-        const detectText = detectResult.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (detectText) {
-            const detectParsed = JSON.parse(detectText);
-            if (detectParsed.same_language === true) {
-                logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
-                return SAME_LANGUAGE;
-            }
-        }
-    } catch (detectErr) {
-        // Detection failure is non-fatal — proceed with translation anyway
-        logger.debug({ err: detectErr }, 'Language detection failed, proceeding with translation.');
-    }
-
-    // --- Stage 2: Translation via default bot model ---
-    const model = getGeminiClient();
+    const ai = getGenAIInstance();
     let translatedText = null;
 
-    // Attempt 1: Standard translation
+    // Structured output schema for combined detection + translation
+    const TranslationResponseSchema = {
+        type: Type.OBJECT,
+        properties: {
+            same_language: {
+                type: Type.BOOLEAN,
+                description: `True if the text is already written in ${targetLanguage}`
+            },
+            translated_text: {
+                type: Type.STRING,
+                description: `The text translated into ${targetLanguage}. Empty string if same_language is true.`
+            }
+        },
+        required: ['same_language', 'translated_text']
+    };
+
+    // Attempt 1: Structured JSON output for reliable detection + translation
     try {
-        const translationPrompt = `You are a professional interpreter. Translate the following text into ${targetLanguage}.
+        const translationPrompt = `You are a professional interpreter. Analyze the following text and translate it into ${targetLanguage}.
 Rules:
-1. Output ONLY the translated text.
-2. Do not explain the translation.
-3. Do not wrap the output in quotes.
+1. If the text is already in ${targetLanguage}, set same_language to true and leave translated_text empty.
+2. Otherwise, set same_language to false and provide the translation in translated_text.
+3. Output ONLY the translated text — no explanations, no wrapping in quotes.
 
-Text to translate:
-${textToTranslate}
+Text:
+${textToTranslate}`;
 
-Translation:`;
-
-        const result = await model.generateContent({
+        const result = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-lite',
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
-            generationConfig: {
+            config: {
                 maxOutputTokens: 2048,
                 temperature: 0.3,
-                responseMimeType: 'text/plain'
+                responseMimeType: 'application/json',
+                responseSchema: TranslationResponseSchema
             }
         });
-        const response = result;
-        const candidate = response?.candidates?.[0];
 
-        if (response.promptFeedback?.blockReason) {
-            logger.warn({ blockReason: response.promptFeedback.blockReason }, 'Translation prompt blocked by Gemini safety settings.');
-            return null;
-        }
-
-        if (candidate && candidate.finishReason !== 'SAFETY') {
-            const text = extractTextFromResponse(response, candidate);
-            logger.debug({
-                phase: 'attempt1',
-                finishReason: candidate?.finishReason,
-                hasText: !!text,
-                textPreview: text?.substring(0, 50)
-            }, 'Translation attempt1 result');
-            translatedText = text && text.length > 0 ? text : null;
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (responseText) {
+            try {
+                const parsed = JSON.parse(responseText);
+                if (parsed.same_language === true) {
+                    logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
+                    return SAME_LANGUAGE;
+                }
+                translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
+            } catch (parseErr) {
+                // JSON parse failed — treat raw text as translation
+                logger.debug({ err: parseErr }, 'Failed to parse structured response, using raw text.');
+                translatedText = responseText.trim() || null;
+            }
         }
     } catch (e) {
-        logger.warn({ err: e }, 'Translation attempt1 failed.');
+        logger.warn({ err: e }, 'Translation attempt1 (structured) failed.');
     }
 
     // Attempt 2: Simplified plain-text prompt if first attempt failed
     if (!translatedText) {
         try {
             const simplePrompt = `Translate to ${targetLanguage}: ${textToTranslate}`;
-            const result2 = await model.generateContent({
+            const result2 = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-lite',
                 contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],
-                generationConfig: {
+                config: {
                     maxOutputTokens: 1536,
                     temperature: 0.2,
                     responseMimeType: 'text/plain'
                 }
             });
-            const response2 = result2;
-            const candidate2 = response2?.candidates?.[0];
-
+            const candidate2 = result2?.candidates?.[0];
             if (candidate2 && candidate2.finishReason !== 'SAFETY') {
-                const text2 = extractTextFromResponse(response2, candidate2);
+                const text2 = extractTextFromResponse(result2, candidate2);
                 logger.debug({
                     phase: 'attempt2',
                     finishReason: candidate2?.finishReason,
@@ -340,7 +317,7 @@ Translation:`;
                 translatedText = text2 && text2.length > 0 ? text2 : null;
             }
         } catch (e2) {
-            logger.warn({ err: e2 }, 'Translation attempt2 failed.');
+            logger.warn({ err: e2 }, 'Translation attempt2 (plain text) failed.');
         }
     }
 
@@ -368,6 +345,6 @@ Translation:`;
         logger.debug(`[TranslationCache] Cached translation for: "${textToTranslate.substring(0, 30)}..." (cache size: ${translationCache.size})`);
     }
 
-    logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from Gemini.');
+    logger.info({ targetLanguage, originalLength: textToTranslate.length, translatedLength: cleanedText.length }, 'Successfully generated translation from flash-lite.');
     return cleanedText;
 }
