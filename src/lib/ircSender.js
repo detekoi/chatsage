@@ -1,6 +1,6 @@
 import logger from './logger.js';
 import { getIrcClient } from '../components/twitch/ircClient.js';
-import { translateText } from './translationUtils.js';
+import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/geminiClient.js';
 
@@ -192,21 +192,23 @@ function initializeIrcSender() {
 async function _translateIfNeeded(channelName, text) {
     const contextManager = getContextManager();
     const botLanguage = contextManager.getBotLanguage(channelName);
-    
+
     if (!botLanguage) {
         // No translation needed
         return text;
     }
-    
+
     try {
         logger.debug(`Translating bot message to ${botLanguage} for channel ${channelName}`);
         const translatedText = await translateText(text, botLanguage);
-        
-        if (!translatedText || translatedText.trim().length === 0) {
-            logger.warn(`Translation to ${botLanguage} failed, using original text`);
+
+        if (!translatedText || translatedText === SAME_LANGUAGE || (typeof translatedText === 'string' && translatedText.trim().length === 0)) {
+            if (translatedText !== SAME_LANGUAGE) {
+                logger.warn(`Translation to ${botLanguage} failed, using original text`);
+            }
             return text;
         }
-        
+
         logger.debug(`Successfully translated message to ${botLanguage}`);
         return translatedText;
     } catch (error) {
@@ -228,7 +230,7 @@ async function _translateIfNeeded(channelName, text) {
  */
 async function enqueueMessage(channel, text, options = {}) {
     if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
-        logger.warn({channel, text}, 'Attempted to queue invalid message.');
+        logger.warn({ channel, text }, 'Attempted to queue invalid message.');
         return;
     }
 
@@ -244,9 +246,9 @@ async function enqueueMessage(channel, text, options = {}) {
         skipTranslation = !!options.skipTranslation;
         skipLengthProcessing = !!options.skipLengthProcessing;
     }
-    
+
     let finalText = text;
-    
+
     // Translate if needed (unless explicitly skipped)
     if (!skipTranslation) {
         const channelName = channel.substring(1); // Remove # prefix

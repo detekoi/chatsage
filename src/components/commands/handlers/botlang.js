@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { translateText } from '../../../lib/translationUtils.js';
+import { translateText, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 
 // Helper function removed - permission checking now handled by command system
 
@@ -18,9 +18,9 @@ const botLangHandler = {
         const channelName = channel.substring(1);
         const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
-        
+
         // Permission checking is now handled by the command system
-        
+
         // Handle different command variations
         if (args.length === 0) {
             // Show current status and usage info
@@ -32,9 +32,9 @@ const botLangHandler = {
             }
             return;
         }
-        
+
         const action = args[0].toLowerCase();
-        
+
         // Handle status check
         if (action === 'status') {
             const currentLanguage = contextManager.getBotLanguage(channelName);
@@ -45,30 +45,30 @@ const botLangHandler = {
             }
             return;
         }
-        
+
         // Handle turning off translation
         if (action === 'off' || action === 'default' || action === 'english') {
             contextManager.setBotLanguage(channelName, null);
             enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
             return;
         }
-        
+
         // Handle setting a new language
         const targetLanguage = args.join(' ');
-        
+
         try {
             // Test the translation to make sure the language is supported
             const testMessage = `This is a test message to verify that "${targetLanguage}" is a supported language.`;
             const translatedTest = await translateText(testMessage, targetLanguage);
-            
-            if (!translatedTest || translatedTest.trim().length === 0) {
+
+            if (!translatedTest || translatedTest === SAME_LANGUAGE || (typeof translatedTest === 'string' && translatedTest.trim().length === 0)) {
                 enqueueMessage(channel, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
                 return;
             }
-            
+
             // Set the bot language
             contextManager.setBotLanguage(channelName, targetLanguage);
-            
+
             // Confirm in both languages
             const baseConfirm = `Bot language has been set to ${targetLanguage}. All bot responses will now be in ${targetLanguage}. Use "!botlang off" to reset.`;
 
@@ -79,7 +79,7 @@ const botLangHandler = {
             // If translation fails, just skip it - English confirmation is already sent
             try {
                 const translatedConfirm = await translateText(baseConfirm, targetLanguage);
-                if (translatedConfirm && translatedConfirm.trim().length > 0) {
+                if (translatedConfirm && translatedConfirm !== SAME_LANGUAGE && typeof translatedConfirm === 'string' && translatedConfirm.trim().length > 0) {
                     await enqueueMessage(channel, translatedConfirm, { replyToId, skipTranslation: true });
                 }
             } catch (confirmError) {

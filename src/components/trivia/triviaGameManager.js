@@ -857,7 +857,7 @@ async function _processAnswerAttempt(gameState, attempt) {
             logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${attempt.answer}" to English for verification.`);
             try {
                 const translatedUserAnswer = await translateText(attempt.answer, 'English');
-                if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
+                if (translatedUserAnswer && typeof translatedUserAnswer === 'string' && translatedUserAnswer.trim().length > 0) {
                     attempt.answerToVerify = translatedUserAnswer.trim();
                     logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${attempt.answer}" -> "${attempt.answerToVerify}"`);
                 } else {

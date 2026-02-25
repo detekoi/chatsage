@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { translateText, parseTranslateCommand } from '../../../lib/translationUtils.js';
+import { translateText, parseTranslateCommand, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 import { buildContextPrompt } from '../../llm/geminiClient.js';
 
 // Helper function to check mod/broadcaster status
@@ -104,7 +104,7 @@ const translateHandler = {
                 const translatedConfirmation = await translateText(baseConfirmation, language);
 
                 let finalConfirmation = baseConfirmation;
-                if (translatedConfirmation?.trim() && translatedConfirmation.toLowerCase() !== baseConfirmation.toLowerCase()) {
+                if (translatedConfirmation && translatedConfirmation !== SAME_LANGUAGE && typeof translatedConfirmation === 'string' && translatedConfirmation.trim() && translatedConfirmation.toLowerCase() !== baseConfirmation.toLowerCase()) {
                     finalConfirmation += ` / ${translatedConfirmation}`;
                 }
 

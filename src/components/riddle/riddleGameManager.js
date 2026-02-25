@@ -590,7 +590,7 @@ async function _handleAnswer(channelName, username, displayName, message) {
         logger.debug(`[RiddleGameManager][${channelName}] Bot language is ${botLanguage}. Translating user answer "${userAnswer}" to English for verification.`);
         try {
             const translatedUserAnswer = await translateText(userAnswer, 'English');
-            if (translatedUserAnswer && translatedUserAnswer.trim().length > 0) {
+            if (translatedUserAnswer && typeof translatedUserAnswer === 'string' && translatedUserAnswer.trim().length > 0) {
                 answerToVerify = translatedUserAnswer.trim();
                 logger.info(`[RiddleGameManager][${channelName}] Translated user answer for verification: "${userAnswer}" -> "${answerToVerify}"`);
             } else {

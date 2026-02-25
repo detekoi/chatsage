@@ -809,7 +809,7 @@ async function _handleGuess(channelName, username, displayName, guess) {
         logger.debug(`[GeoGame][${channelName}] Bot language is ${botLanguage}. Translating user guess "${trimmedGuess}" to English for verification.`);
         try {
             const translatedUserGuess = await translateText(trimmedGuess, 'English');
-            if (translatedUserGuess && translatedUserGuess.trim().length > 0) {
+            if (translatedUserGuess && typeof translatedUserGuess === 'string' && translatedUserGuess.trim().length > 0) {
                 guessToVerify = translatedUserGuess.trim();
                 logger.info(`[GeoGame][${channelName}] Translated user guess for verification: "${trimmedGuess}" -> "${guessToVerify}"`);
             } else {
