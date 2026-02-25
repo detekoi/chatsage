@@ -233,7 +233,7 @@ export async function translateText(textToTranslate, targetLanguage) {
 Rules:
 1. Output ONLY the translated text.
 2. Do not explain the translation.
-3. If the text is already in ${targetLanguage}, correct any grammar errors if clearly present, otherwise keep it as is.
+3. If the text is already in ${targetLanguage}, output exactly: [SAME_LANGUAGE]
 4. Do not wrap the output in quotes.
 
 Text to translate:
@@ -308,6 +308,12 @@ Translation:`;
 
     if (!translatedText) {
         logger.warn('Translation response missing extractable text.');
+        return null;
+    }
+
+    // Check for same-language sentinel — message was already in target language
+    if (translatedText.trim() === '[SAME_LANGUAGE]') {
+        logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
         return null;
     }
 

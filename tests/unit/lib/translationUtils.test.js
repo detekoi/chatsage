@@ -159,6 +159,22 @@ describe('translationUtils', () => {
             expect(result).toBe('Hola mundo');
         });
 
+        it('should return null when text is already in target language (SAME_LANGUAGE sentinel)', async () => {
+            const mockResponse = {
+                candidates: [{
+                    content: { parts: [{ text: '[SAME_LANGUAGE]' }] },
+                    finishReason: 'STOP'
+                }]
+            };
+
+            mockModel.generateContent.mockResolvedValue(mockResponse);
+
+            const result = await translateText('Hello world', 'English');
+
+            expect(result).toBeNull();
+            expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
+        });
+
         it('should retry with simplified prompt on failure', async () => {
             // First attempt fails
             mockModel.generateContent
