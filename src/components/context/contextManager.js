@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
+import { saveUserTranslation, removeUserTranslation, loadAllUserTranslations } from './translationStorage.js';
 import { getEmoteContextString } from '../../lib/geminiEmoteDescriber.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
@@ -92,6 +93,25 @@ async function initializeContextManager(configuredChannels = []) {
         });
     } catch (error) {
         logger.error({ err: error }, 'Failed to load stored language settings');
+    }
+
+    // Load user translation states from Firestore
+    try {
+        const translations = await loadAllUserTranslations();
+        for (const { channelName, username, targetLanguage } of translations) {
+            // Only restore if the channel is configured
+            if (channelStates.has(channelName)) {
+                const userState = _getOrCreateUserState(channelName, username);
+                userState.isTranslating = true;
+                userState.targetLanguage = targetLanguage;
+                logger.debug(`Restored translation for ${username} in ${channelName}: ${targetLanguage}`);
+            }
+        }
+        if (translations.length > 0) {
+            logger.info(`Restored ${translations.length} user translation(s) from Firestore`);
+        }
+    } catch (error) {
+        logger.error({ err: error }, 'Failed to load stored user translations');
     }
 }
 
@@ -548,6 +568,10 @@ function enableUserTranslation(channelName, username, language) {
     userState.isTranslating = true;
     userState.targetLanguage = language;
     logger.info(`[${channelName}] Enabled translation to ${language} for user ${username}`);
+    // Persist to Firestore (fire-and-forget)
+    saveUserTranslation(channelName, username, language).catch(err =>
+        logger.error({ err }, `[${channelName}] Failed to persist translation for ${username}`)
+    );
 }
 
 /**
@@ -561,6 +585,10 @@ function disableUserTranslation(channelName, username) {
         userState.isTranslating = false;
         userState.targetLanguage = null;
         logger.info(`[${channelName}] Disabled translation for user ${username}`);
+        // Remove from Firestore (fire-and-forget)
+        removeUserTranslation(channelName, username).catch(err =>
+            logger.error({ err }, `[${channelName}] Failed to remove translation for ${username}`)
+        );
         return true; // Indicate that translation was disabled
     }
     return false; // Indicate translation was already off
@@ -641,6 +669,10 @@ function disableAllTranslationsInChannel(channelName) {
             userState.targetLanguage = null;
             disabledCount++;
             logger.debug(`[${channelName}] Disabled translation for user ${userState.username} via global stop.`);
+            // Remove from Firestore (fire-and-forget)
+            removeUserTranslation(channelName, userState.username).catch(err =>
+                logger.error({ err }, `[${channelName}] Failed to remove translation for ${userState.username}`)
+            );
         }
     }
 
