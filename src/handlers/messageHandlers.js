@@ -1,7 +1,7 @@
 import logger from '../lib/logger.js';
 import config from '../config/index.js';
 import { enqueueMessage } from '../lib/ircSender.js';
-import { translateText } from '../lib/translationUtils.js';
+import { translateText, SAME_LANGUAGE } from '../lib/translationUtils.js';
 import { handleStandardLlmQuery } from '../components/llm/llmUtils.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/botConstants.js';
 import { getContextManager } from '../components/context/contextManager.js';
@@ -187,11 +187,14 @@ export async function handleAutoTranslation({
     logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
     try {
         const translatedText = await translateText(message, userState.targetLanguage);
-        if (translatedText) {
+        if (translatedText && translatedText !== SAME_LANGUAGE) {
             const reply = `🌐💬 ${translatedText}`;
             const replyToId = tags?.id || tags?.['message-id'] || null;
             enqueueMessage(channel, reply, { replyToId });
             return true;
+        } else if (translatedText === SAME_LANGUAGE) {
+            logger.debug(`[${cleanChannel}] Message from ${lowerUsername} already in ${userState.targetLanguage}, skipping translation`);
+            return false;
         } else {
             logger.warn(`[${cleanChannel}] Failed to translate message for ${lowerUsername}`);
             return false;

@@ -7,7 +7,7 @@ import * as translationUtils from '../../../src/lib/translationUtils.js';
 import logger from '../../../src/lib/logger.js';
 import { getGeminiClient } from '../../../src/components/llm/geminiClient.js';
 
-const { translateText, cleanupTranslationUtils } = translationUtils;
+const { translateText, cleanupTranslationUtils, SAME_LANGUAGE } = translationUtils;
 
 describe('translationUtils', () => {
     let mockModel;
@@ -175,7 +175,7 @@ describe('translationUtils', () => {
 
             const result = await translateText('Hello world', 'English');
 
-            expect(result).toBeNull();
+            expect(result).toBe(SAME_LANGUAGE);
             expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
         });
 

@@ -32,6 +32,9 @@ export function cleanupTranslationUtils() {
     translationCache.clear();
 }
 
+// Sentinel value returned when the message is already in the target language
+export const SAME_LANGUAGE = Symbol('SAME_LANGUAGE');
+
 // Common languages for heuristic detection
 export const COMMON_LANGUAGES = [
     'english', 'spanish', 'french', 'german', 'japanese',
@@ -291,7 +294,7 @@ ${textToTranslate}`;
                     const parsed = JSON.parse(text);
                     if (parsed.same_language === true) {
                         logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
-                        return null;
+                        return SAME_LANGUAGE;
                     }
                     translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
                 } catch (parseErr) {

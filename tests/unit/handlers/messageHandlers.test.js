@@ -2,7 +2,13 @@
 
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/lib/ircSender.js');
-jest.mock('../../../src/lib/translationUtils.js');
+jest.mock('../../../src/lib/translationUtils.js', () => {
+    const actual = jest.requireActual('../../../src/lib/translationUtils.js');
+    return {
+        ...actual,
+        translateText: jest.fn(),
+    };
+});
 jest.mock('../../../src/components/llm/llmUtils.js');
 jest.mock('../../../src/config/index.js');
 jest.mock('../../../src/constants/botConstants.js');
@@ -21,7 +27,7 @@ import {
     processGameGuesses
 } from '../../../src/handlers/messageHandlers.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
-import { translateText } from '../../../src/lib/translationUtils.js';
+import { translateText, SAME_LANGUAGE } from '../../../src/lib/translationUtils.js';
 import { handleStandardLlmQuery } from '../../../src/components/llm/llmUtils.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../../../src/constants/botConstants.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
@@ -490,6 +496,15 @@ describe('Message Handlers', () => {
 
         test('should handle translation errors gracefully', async () => {
             translateText.mockRejectedValue(new Error('Translation error'));
+
+            const result = await handleAutoTranslation(createBaseParams());
+
+            expect(result).toBe(false);
+            expect(enqueueMessage).not.toHaveBeenCalled();
+        });
+
+        test('should return false without warning when message is already in target language', async () => {
+            translateText.mockResolvedValue(SAME_LANGUAGE);
 
             const result = await handleAutoTranslation(createBaseParams());
 
