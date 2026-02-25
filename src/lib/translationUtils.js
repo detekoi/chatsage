@@ -209,7 +209,7 @@ function extractTextFromResponse(response, candidate) {
  * Robust translation function with retry logic similar to lurk command fixes
  * @param {string} textToTranslate - The text to translate
  * @param {string} targetLanguage - The target language
- * @returns {Promise<string|null>} The translated text, or null on failure
+ * @returns {Promise<string|Symbol|null>} The translated text, SAME_LANGUAGE if already in target language, or null on failure
  */
 export async function translateText(textToTranslate, targetLanguage) {
     if (!textToTranslate || !targetLanguage) {
@@ -230,46 +230,67 @@ export async function translateText(textToTranslate, targetLanguage) {
         logger.debug(`[TranslationCache] Cache hit for: "${textToTranslate.substring(0, 30)}..."`);
         return cachedEntry.translation;
     }
-    const model = getGeminiClient();
-
-    const translationPrompt = `You are a professional interpreter. Translate the following text from its original language into ${targetLanguage}.
-Rules:
-1. If the text is already in ${targetLanguage}, set same_language to true and translated_text to null.
-2. Otherwise, set same_language to false and translated_text to ONLY the translated text (no explanations, no quotes).
-
-Text to translate:
-${textToTranslate}`;
-
-    // Schema for structured translation response
-    const TranslationResponseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            translated_text: {
-                type: Type.STRING,
-                nullable: true,
-                description: 'The translated text, or null if the text is already in the target language'
-            },
-            same_language: {
-                type: Type.BOOLEAN,
-                description: 'True if the text is already in the target language'
-            }
-        },
-        required: ['same_language']
-    };
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation Gemini API call');
 
+    // --- Stage 1: Language detection via flash-lite (cheap & fast) ---
+    try {
+        const ai = getGenAIInstance();
+        const detectResult = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-lite',
+            contents: [{ role: 'user', parts: [{ text: `Is the following text written in ${targetLanguage}? Text: ${textToTranslate}` }] }],
+            config: {
+                temperature: 0,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        same_language: {
+                            type: Type.BOOLEAN,
+                            description: `True if the text is already in ${targetLanguage}`
+                        }
+                    },
+                    required: ['same_language']
+                }
+            }
+        });
+
+        const detectText = detectResult.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (detectText) {
+            const detectParsed = JSON.parse(detectText);
+            if (detectParsed.same_language === true) {
+                logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
+                return SAME_LANGUAGE;
+            }
+        }
+    } catch (detectErr) {
+        // Detection failure is non-fatal — proceed with translation anyway
+        logger.debug({ err: detectErr }, 'Language detection failed, proceeding with translation.');
+    }
+
+    // --- Stage 2: Translation via default bot model ---
+    const model = getGeminiClient();
     let translatedText = null;
 
-    // Attempt 1: Structured output for reliable same-language detection
+    // Attempt 1: Standard translation
     try {
+        const translationPrompt = `You are a professional interpreter. Translate the following text into ${targetLanguage}.
+Rules:
+1. Output ONLY the translated text.
+2. Do not explain the translation.
+3. Do not wrap the output in quotes.
+
+Text to translate:
+${textToTranslate}
+
+Translation:`;
+
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
             generationConfig: {
                 maxOutputTokens: 2048,
                 temperature: 0.3,
-                responseMimeType: 'application/json',
-                responseSchema: TranslationResponseSchema
+                responseMimeType: 'text/plain'
             }
         });
         const response = result;
@@ -288,21 +309,7 @@ ${textToTranslate}`;
                 hasText: !!text,
                 textPreview: text?.substring(0, 50)
             }, 'Translation attempt1 result');
-
-            if (text) {
-                try {
-                    const parsed = JSON.parse(text);
-                    if (parsed.same_language === true) {
-                        logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
-                        return SAME_LANGUAGE;
-                    }
-                    translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
-                } catch (parseErr) {
-                    // If JSON parsing fails, treat the raw text as the translation
-                    logger.debug({ parseErr }, 'Could not parse structured response, using raw text');
-                    translatedText = text.length > 0 ? text : null;
-                }
-            }
+            translatedText = text && text.length > 0 ? text : null;
         }
     } catch (e) {
         logger.warn({ err: e }, 'Translation attempt1 failed.');

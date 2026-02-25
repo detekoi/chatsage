@@ -2,15 +2,34 @@
 
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/components/llm/geminiClient.js');
+jest.mock('../../../src/components/llm/gemini/core.js');
 
 import * as translationUtils from '../../../src/lib/translationUtils.js';
 import logger from '../../../src/lib/logger.js';
 import { getGeminiClient } from '../../../src/components/llm/geminiClient.js';
+import { getGenAIInstance } from '../../../src/components/llm/gemini/core.js';
 
 const { translateText, cleanupTranslationUtils, SAME_LANGUAGE } = translationUtils;
 
 describe('translationUtils', () => {
     let mockModel;
+    let mockAI;
+
+    // Helper: create a flash-lite detection response
+    const createDetectResponse = (sameLanguage) => ({
+        candidates: [{
+            content: { parts: [{ text: JSON.stringify({ same_language: sameLanguage }) }] },
+            finishReason: 'STOP'
+        }]
+    });
+
+    // Helper: create a translation response
+    const createTranslateResponse = (text) => ({
+        candidates: [{
+            content: { parts: [{ text }] },
+            finishReason: 'STOP'
+        }]
+    });
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -18,14 +37,19 @@ describe('translationUtils', () => {
         // Clear translation cache before each test
         cleanupTranslationUtils();
 
-        // Setup Gemini client mocks
-        // The real code calls getGeminiClient() which returns a model directly
-        // that has a generateContent method on it
+        // Setup translation model mock (getGeminiClient -> model.generateContent)
         mockModel = {
             generateContent: jest.fn()
         };
-
         getGeminiClient.mockReturnValue(mockModel);
+
+        // Setup detection model mock (getGenAIInstance -> ai.models.generateContent)
+        mockAI = {
+            models: {
+                generateContent: jest.fn().mockResolvedValue(createDetectResponse(false))
+            }
+        };
+        getGenAIInstance.mockReturnValue(mockAI);
 
         // Mock process.env for tests
         process.env.NODE_ENV = 'test';
@@ -62,30 +86,19 @@ describe('translationUtils', () => {
         });
 
         it('should handle basic translation request', async () => {
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: JSON.stringify({ translated_text: 'Hola mundo', same_language: false }) }] },
-                    finishReason: 'STOP'
-                }]
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
+            mockModel.generateContent.mockResolvedValue(createTranslateResponse('Hola mundo'));
 
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBe('Hola mundo');
+            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
             expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
         });
 
         it('should handle translation with metadata', async () => {
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: JSON.stringify({ translated_text: 'Bonjour le monde', same_language: false }) }] },
-                    finishReason: 'STOP'
-                }]
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
+            mockModel.generateContent.mockResolvedValue(createTranslateResponse('Bonjour le monde'));
 
             const result = await translateText('Hello world', 'French');
 
@@ -98,7 +111,31 @@ describe('translationUtils', () => {
             );
         });
 
-        it('should return null when API call fails', async () => {
+        it('should return SAME_LANGUAGE when text is already in target language', async () => {
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(true));
+
+            const result = await translateText('Hello world', 'English');
+
+            expect(result).toBe(SAME_LANGUAGE);
+            // Should NOT call the translation model
+            expect(mockModel.generateContent).not.toHaveBeenCalled();
+        });
+
+        it('should proceed with translation when detection fails', async () => {
+            mockAI.models.generateContent.mockRejectedValue(new Error('Detection failed'));
+            mockModel.generateContent.mockResolvedValue(createTranslateResponse('Hola mundo'));
+
+            const result = await translateText('Hello world', 'Spanish');
+
+            expect(result).toBe('Hola mundo');
+            expect(logger.debug).toHaveBeenCalledWith(
+                expect.objectContaining({ err: expect.any(Error) }),
+                'Language detection failed, proceeding with translation.'
+            );
+        });
+
+        it('should return null when translation API call fails', async () => {
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
             mockModel.generateContent.mockRejectedValue(new Error('API Error'));
 
             const result = await translateText('Hello world', 'Spanish');
@@ -111,11 +148,8 @@ describe('translationUtils', () => {
         });
 
         it('should return null when response has no text', async () => {
-            const mockResponse = {
-                candidates: [{}]
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
+            mockModel.generateContent.mockResolvedValue({ candidates: [{}] });
 
             const result = await translateText('Hello world', 'Spanish');
 
@@ -124,16 +158,11 @@ describe('translationUtils', () => {
         });
 
         it('should return null when prompt is blocked', async () => {
-            const mockResponse = {
-                candidates: [{
-                    finishReason: 'SAFETY'
-                }],
-                promptFeedback: {
-                    blockReason: 'HARM_CATEGORY_HARASSMENT'
-                }
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
+            mockModel.generateContent.mockResolvedValue({
+                candidates: [{ finishReason: 'SAFETY' }],
+                promptFeedback: { blockReason: 'HARM_CATEGORY_HARASSMENT' }
+            });
 
             const result = await translateText('Hello world', 'Spanish');
 
@@ -144,50 +173,9 @@ describe('translationUtils', () => {
             );
         });
 
-        it('should clean quotation marks from translation (fallback attempt)', async () => {
-            // First attempt fails, second attempt returns quoted text
-            mockModel.generateContent
-                .mockRejectedValueOnce(new Error('API Error'));
-
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: '"Hola mundo"' }] },
-                    finishReason: 'STOP'
-                }]
-            };
-            mockModel.generateContent
-                .mockResolvedValueOnce(mockResponse);
-
-            const result = await translateText('Hello world', 'Spanish');
-
-            expect(result).toBe('Hola mundo');
-        });
-
-        it('should return null when text is already in target language (structured output)', async () => {
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: JSON.stringify({ translated_text: null, same_language: true }) }] },
-                    finishReason: 'STOP'
-                }]
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
-
-            const result = await translateText('Hello world', 'English');
-
-            expect(result).toBe(SAME_LANGUAGE);
-            expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
-        });
-
-        it('should fallback to raw text when JSON parse fails', async () => {
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: 'Hola mundo' }] },
-                    finishReason: 'STOP'
-                }]
-            };
-
-            mockModel.generateContent.mockResolvedValue(mockResponse);
+        it('should clean quotation marks from translation', async () => {
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
+            mockModel.generateContent.mockResolvedValue(createTranslateResponse('"Hola mundo"'));
 
             const result = await translateText('Hello world', 'Spanish');
 
@@ -195,20 +183,13 @@ describe('translationUtils', () => {
         });
 
         it('should retry with simplified prompt on failure', async () => {
+            mockAI.models.generateContent.mockResolvedValue(createDetectResponse(false));
             // First attempt fails
             mockModel.generateContent
                 .mockRejectedValueOnce(new Error('API Error'));
-
             // Second attempt succeeds
-            const mockResponse = {
-                candidates: [{
-                    content: { parts: [{ text: 'Hola mundo' }] },
-                    finishReason: 'STOP'
-                }]
-            };
-
             mockModel.generateContent
-                .mockResolvedValueOnce(mockResponse);
+                .mockResolvedValueOnce(createTranslateResponse('Hola mundo'));
 
             const result = await translateText('Hello world', 'Spanish');
 
