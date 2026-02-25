@@ -28,7 +28,7 @@ const DEFAULT_CONFIG = {
 
 const MAX_IRC_MESSAGE_LENGTH = 450; // Should match ircSender.js
 const MULTI_ROUND_DELAY_MS = 12000; // Delay between rounds (reading time for answer/explanation)
-const MAX_QUESTION_RETRIES = 3; // Maximum number of retries for question generation
+const MAX_QUESTION_RETRIES = 5; // Maximum number of retries for question generation
 const RECENT_QUESTION_FETCH_LIMIT = 100; // How many recent questions to fetch for exclusion
 
 // --- In-Memory Storage for Active Games ---

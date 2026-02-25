@@ -173,7 +173,7 @@ Only use Google Search if the question requires very recent or obscure facts tha
         const leakMatches = [];
         const checkLeak = (ans) => {
             const a = normalize(ans);
-            if (!a || a.length < 3) return false;
+            if (!a || a.length < 4) return false;
             const re = new RegExp(`(^| )${a}( |$)`);
             return re.test(qNorm);
         };
