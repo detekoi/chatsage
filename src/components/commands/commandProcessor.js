@@ -13,6 +13,7 @@ import { parseVariables } from '../customCommands/variableParser.js';
 import { getChannelFollower, getUsersByLogin } from '../twitch/helixClient.js';
 import { getBroadcasterAccessToken } from '../twitch/broadcasterTokenHelper.js';
 import { formatFollowAge } from '../customCommands/variableParser.js';
+import { resolvePrompt } from '../customCommands/promptResolver.js';
 import config from '../../config/index.js';
 
 
@@ -327,7 +328,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
 
         // Parse variables in the response
         const displayName = tags['display-name'] || tags.username;
-        const resolvedResponse = await parseVariables(customCmd.response, {
+        const resolvedText = await parseVariables(customCmd.response, {
             user: displayName,
             channel: channelName,
             args,
@@ -336,9 +337,16 @@ async function _tryCustomCommand(channelName, tags, command, args) {
             getFollowage: _createFollowageResolver(channelName),
         });
 
+        // Determine final output string based on command type
+        let finalOutput = resolvedText;
+        if (customCmd.type === 'prompt') {
+            logger.debug({ command, channel: channelName }, 'Passing resolved prompt to Gemini');
+            finalOutput = await resolvePrompt(resolvedText);
+        }
+
         // Send the response
         const ircClient = getIrcClient();
-        await ircClient.say(`#${channelName}`, resolvedResponse);
+        await ircClient.say(`#${channelName}`, finalOutput);
 
         logger.info(`Executed custom command !${command} for ${tags.username} in #${channelName}`);
         return true;

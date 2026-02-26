@@ -111,9 +111,10 @@ export async function getAllCustomCommands(channelName) {
  * @param {string} commandName - The command name (lowercase, without !).
  * @param {string} response - The command response template.
  * @param {string} createdBy - Username of the creator.
+ * @param {string} [type='text'] - The type of command ('text' or 'prompt').
  * @returns {Promise<boolean>} True if created, false if command already exists.
  */
-export async function addCustomCommand(channelName, commandName, response, createdBy) {
+export async function addCustomCommand(channelName, commandName, response, createdBy, type = 'text') {
     const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerCommand = commandName.toLowerCase();
@@ -133,6 +134,7 @@ export async function addCustomCommand(channelName, commandName, response, creat
 
         await docRef.set({
             response,
+            type,
             permission: 'everyone',
             cooldownMs: 0,
             useCount: 0,
@@ -199,6 +201,7 @@ export async function updateCustomCommand(channelName, commandName, response) {
  * @param {object} options - Options to update.
  * @param {string} [options.permission] - Permission level.
  * @param {number} [options.cooldownMs] - Cooldown in milliseconds.
+ * @param {string} [options.type] - Command type ('text' or 'prompt').
  * @returns {Promise<boolean>} True if updated, false if command doesn't exist.
  */
 export async function updateCustomCommandOptions(channelName, commandName, options) {
@@ -223,6 +226,9 @@ export async function updateCustomCommandOptions(channelName, commandName, optio
         }
         if (options.cooldownMs !== undefined) {
             updateData.cooldownMs = options.cooldownMs;
+        }
+        if (options.type !== undefined) {
+            updateData.type = options.type;
         }
 
         await docRef.update(updateData);

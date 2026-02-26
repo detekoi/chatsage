@@ -80,7 +80,7 @@ describe('command handler (!command)', () => {
         test('adds a command successfully', async () => {
             addCustomCommand.mockResolvedValue(true);
             await execute(makeContext('add greet Hello $(user)!'));
-            expect(addCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'Hello $(user)!', 'moduser');
+            expect(addCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'Hello $(user)!', 'moduser', 'text');
             expect(mockIrcClient.say).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('has been added'),
@@ -115,7 +115,7 @@ describe('command handler (!command)', () => {
         test('strips ! from command name', async () => {
             addCustomCommand.mockResolvedValue(true);
             await execute(makeContext('add !greet Hello!'));
-            expect(addCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'Hello!', 'moduser');
+            expect(addCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'Hello!', 'moduser', 'text');
         });
 
         test('handles storage error gracefully', async () => {
@@ -216,7 +216,19 @@ describe('command handler (!command)', () => {
             await execute(makeContext('show viponly'));
             const msg = mockIrcClient.say.mock.calls[0][1];
             expect(msg).toContain('[vip]');
-            expect(msg).toContain('30s cooldown');
+            expect(msg).toContain('30s cd');
+        });
+
+        test('shows AI tag for prompt type commands', async () => {
+            getCustomCommand.mockResolvedValue({
+                response: 'AI response',
+                type: 'prompt',
+                permission: 'everyone',
+                cooldownMs: 0,
+            });
+            await execute(makeContext('show aicmd'));
+            const msg = mockIrcClient.say.mock.calls[0][1];
+            expect(msg).toContain('[AI]');
         });
 
         test('reports when command not found', async () => {
@@ -259,6 +271,23 @@ describe('command handler (!command)', () => {
             expect(updateCustomCommandOptions).toHaveBeenCalledWith(
                 'testchannel', 'greet', { cooldownMs: 10000 },
             );
+        });
+
+        test('sets type successfully', async () => {
+            updateCustomCommandOptions.mockResolvedValue(true);
+            await execute(makeContext('options greet type=prompt'));
+            expect(updateCustomCommandOptions).toHaveBeenCalledWith(
+                'testchannel', 'greet', { type: 'prompt' },
+            );
+        });
+
+        test('rejects invalid type', async () => {
+            await execute(makeContext('options greet type=magic'));
+            expect(mockIrcClient.say).toHaveBeenCalledWith(
+                '#testchannel',
+                expect.stringContaining('Invalid type'),
+            );
+            expect(updateCustomCommandOptions).not.toHaveBeenCalled();
         });
 
         test('rejects invalid permission value', async () => {
@@ -304,3 +333,4 @@ describe('command handler (!command)', () => {
         });
     });
 });
+

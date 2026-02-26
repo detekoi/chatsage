@@ -13,10 +13,11 @@ import {
  *
  * Usage:
  *   !command add <name> <response>       → Add a new custom command
+ *   !command addai <name> <prompt>       → Add a new LLM-powered custom command
  *   !command edit <name> <response>      → Edit an existing command's response
  *   !command remove <name>               → Remove a custom command
  *   !command show <name>                 → Show the raw response template
- *   !command options <name> <key>=<val>  → Change command options (permission, cooldown)
+ *   !command options <name> <key>=<val>  → Change command options (permission, cooldown, type)
  */
 async function execute(context) {
     const { channel, user, args, ircClient, logger } = context;
@@ -25,7 +26,7 @@ async function execute(context) {
 
     if (args.length === 0) {
         await ircClient.say(channel,
-            `Usage: !command add/edit/remove/show/options <name> [response/options]`);
+            `Usage: !command add/addai/edit/remove/show/options <name> [response/options]`);
         return;
     }
 
@@ -34,7 +35,10 @@ async function execute(context) {
 
     switch (subCommand) {
         case 'add':
-            await _handleAdd(channel, channelName, commandName, args.slice(2), username, ircClient, logger);
+            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'text', ircClient, logger);
+            break;
+        case 'addai':
+            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'prompt', ircClient, logger);
             break;
         case 'edit':
             await _handleEdit(channel, channelName, commandName, args.slice(2), ircClient, logger);
@@ -51,27 +55,27 @@ async function execute(context) {
             break;
         default:
             await ircClient.say(channel,
-                `Unknown subcommand "${subCommand}". Use add, edit, remove, show, or options.`);
+                `Unknown subcommand "${subCommand}". Use add, addai, edit, remove, show, or options.`);
     }
 }
 
-async function _handleAdd(channel, channelName, commandName, responseArgs, username, ircClient, logger) {
+async function _handleAdd(channel, channelName, commandName, responseArgs, username, type, ircClient, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Please specify a command name. Usage: !command add <name> <response>`);
+        await ircClient.say(channel, `Please specify a command name. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} <name> <response>`);
         return;
     }
     if (responseArgs.length === 0) {
-        await ircClient.say(channel, `Please specify a response. Usage: !command add ${commandName} <response>`);
+        await ircClient.say(channel, `Please specify a response. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} ${commandName} <response>`);
         return;
     }
 
     const response = responseArgs.join(' ');
 
     try {
-        const created = await addCustomCommand(channelName, commandName, response, username);
+        const created = await addCustomCommand(channelName, commandName, response, username, type);
         if (created) {
-            await ircClient.say(channel, `Command !${commandName} has been added.`);
-            logger.info(`[CommandHandler] ${username} added !${commandName} in ${channelName}`);
+            await ircClient.say(channel, `Command !${commandName} has been added ${type === 'prompt' ? '(AI Mode)' : ''}.`);
+            logger.info(`[CommandHandler] ${username} added !${commandName} (type: ${type}) in ${channelName}`);
         } else {
             await ircClient.say(channel, `Command !${commandName} already exists. Use "!command edit" to update it.`);
         }
@@ -140,9 +144,10 @@ async function _handleShow(channel, channelName, commandName, ircClient, logger)
         const cmd = await getCustomCommand(channelName, commandName);
         if (cmd) {
             const permInfo = cmd.permission !== 'everyone' ? ` [${cmd.permission}]` : '';
-            const cooldownInfo = cmd.cooldownMs > 0 ? ` [${cmd.cooldownMs / 1000}s cooldown]` : '';
+            const cooldownInfo = cmd.cooldownMs > 0 ? ` [${cmd.cooldownMs / 1000}s cd]` : '';
+            const typeInfo = cmd.type === 'prompt' ? ` [AI]` : '';
             await ircClient.say(channel,
-                `!${commandName}${permInfo}${cooldownInfo}: ${cmd.response}`);
+                `!${commandName}${permInfo}${cooldownInfo}${typeInfo}: ${cmd.response}`);
         } else {
             await ircClient.say(channel, `Command !${commandName} not found.`);
         }
@@ -192,8 +197,16 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, irc
                 options.cooldownMs = seconds * 1000;
                 break;
             }
+            case 'type':
+                if (value.toLowerCase() === 'prompt' || value.toLowerCase() === 'text') {
+                    options.type = value.toLowerCase();
+                } else {
+                    await ircClient.say(channel, `Invalid type. Valid options: text, prompt`);
+                    return;
+                }
+                break;
             default:
-                await ircClient.say(channel, `Unknown option "${key}". Available: permission, cooldown`);
+                await ircClient.say(channel, `Unknown option "${key}". Available: permission, cooldown, type`);
                 return;
         }
     }
