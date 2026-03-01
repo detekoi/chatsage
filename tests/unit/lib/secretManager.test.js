@@ -166,7 +166,7 @@ describe('secretManager', () => {
             expect(mockClient.accessSecretVersion).toHaveBeenCalledWith({
                 name: 'projects/test/secrets/test-secret/versions/latest'
             });
-            expect(logger.info).toHaveBeenCalledWith('Successfully retrieved secret: test-secret');
+            expect(logger.info).toHaveBeenCalledWith('Successfully retrieved secret: test-secret (length: 17)');
         });
 
         it('should cache secret value after first retrieval', async () => {
@@ -295,7 +295,7 @@ describe('secretManager', () => {
                     data: Buffer.from('new-secret-value', 'utf8')
                 }
             });
-            expect(logger.info).toHaveBeenCalledWith('Successfully added new version to secret: test-secret (version: 2)');
+            expect(logger.info).toHaveBeenCalledWith('Successfully added new version to secret: test-secret (version: ***)');
         });
 
         it('should handle errors when adding secret version', async () => {

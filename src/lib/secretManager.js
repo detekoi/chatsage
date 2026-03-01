@@ -1,6 +1,7 @@
 // src/lib/secretManager.js
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import logger from './logger.js';
+import { redact } from './redact.js';
 
 let client = null;
 
@@ -143,7 +144,7 @@ async function getSecretValue(secretResourceName) {
 
             // Decode the secret value (it's base64 encoded by default)
             const secretValue = version.payload.data.toString('utf8');
-            logger.info(`Successfully retrieved secret: ${sanitizeSecretName(secretResourceName)}`);
+            logger.info(`Successfully retrieved secret: ${sanitizeSecretName(secretResourceName)} (length: ${secretValue.length})`);
 
             // Cache the value
             secretCache.set(secretResourceName, secretValue);
@@ -196,7 +197,7 @@ async function setSecretValue(secretResourceName, secretValue) {
             },
         });
 
-        logger.info(`Successfully added new version to secret: ${sanitizeSecretName(secretResourceName)} (version: ${version.name.split('/').pop()})`);
+        logger.info(`Successfully added new version to secret: ${sanitizeSecretName(secretResourceName)} (version: ${redact(version.name.split('/').pop())})`);
 
         // Update cache with the new value
         // Construct the 'latest' version path for this secret
@@ -207,7 +208,7 @@ async function setSecretValue(secretResourceName, secretValue) {
     } catch (error) {
         logger.error(
             { err: { message: error.message, code: error.code }, secretName: sanitizeSecretName(secretResourceName) },
-            `Failed to add version to secret ${sanitizeSecretName(secretResourceName)}. Check permissions and secret existence.`
+            `Failed to add version to secret: ${sanitizeSecretName(secretResourceName)}. Check permissions and secret existence.`
         );
         // Handle common errors specifically
         if (error.code === 5) { // 5 = NOT_FOUND

@@ -6,6 +6,7 @@ import dns from 'dns';
 import { promisify } from 'util';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
+import { redact } from '../../lib/redact.js';
 import { getSecretValue, setSecretValue } from '../../lib/secretManager.js'; // Import setSecretValue
 
 const dnsResolve = promisify(dns.resolve4);
@@ -73,7 +74,7 @@ async function refreshIrcToken() {
                         throw new Error(`Secret Manager returned empty value for ${refreshTokenSecretName}`);
                     }
                 } catch (error) {
-                    logger.fatal({ err: { message: error.message, code: error.code } }, 'CRITICAL: Failed to retrieve refresh token from Secret Manager.');
+                    logger.fatal({ err: { message: redact(error.message, 20), code: error.code } }, 'CRITICAL: Failed to retrieve refresh token from Secret Manager.');
                     return null;
                 }
             }
