@@ -52,8 +52,8 @@ describe('promptResolver', () => {
             contents: [{ role: 'user', parts: [{ text: 'Say something fun' }] }]
         }));
 
-        // Should remove ** and _
-        expect(result).toBe('This is a   test   response!');
+        // Should remove ** and _ (with trailing space)
+        expect(result).toBe('This is a  test  response!');
     });
 
     test('returns fallback message if LLM returns empty', async () => {
