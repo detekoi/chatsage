@@ -74,7 +74,7 @@ async function refreshIrcToken() {
                         throw new Error(`Secret Manager returned empty value for ${refreshTokenSecretName}`);
                     }
                 } catch (error) {
-                    logger.fatal({ err: { message: redact(error.message, 20), code: error.code } }, 'CRITICAL: Failed to retrieve refresh token from Secret Manager.');
+                    logger.fatal({ errCode: error.code }, 'CRITICAL: Failed to retrieve refresh token from Secret Manager.');
                     return null;
                 }
             }

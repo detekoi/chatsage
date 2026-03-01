@@ -121,7 +121,6 @@ async function getSecretValue(secretResourceName) {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            logger.debug(`Accessing secret: ${sanitizeSecretName(secretResourceName)} (Attempt ${attempt}/${MAX_RETRIES})`);
 
             // Create a timeout promise that rejects after TIMEOUT_MS
             const timeoutPromise = new Promise((_, reject) => {
@@ -138,13 +137,11 @@ async function getSecretValue(secretResourceName) {
             const [version] = await Promise.race([accessPromise, timeoutPromise]);
 
             if (!version.payload?.data) {
-                logger.warn(`Secret payload data is missing for ${sanitizeSecretName(secretResourceName)}.`);
+                logger.warn({ secretName: sanitizeSecretName(secretResourceName) }, 'Secret payload data is missing.');
                 return null;
             }
 
-            // Decode the secret value (it's base64 encoded by default)
             const secretValue = version.payload.data.toString('utf8');
-            logger.info(`Successfully retrieved secret: ${sanitizeSecretName(secretResourceName)} (length: ${secretValue.length})`);
 
             // Cache the value
             secretCache.set(secretResourceName, secretValue);
@@ -154,8 +151,8 @@ async function getSecretValue(secretResourceName) {
             lastError = error;
             const isTimeout = error.message?.includes('timeout');
             logger.error(
-                { err: { message: error.message, code: error.code }, secretName: sanitizeSecretName(secretResourceName), attempt, isTimeout },
-                `Failed to access secret version on attempt ${attempt}`
+                { err: { code: error.code }, attempt, isTimeout },
+                'Failed to access secret version'
             );
 
             // Retry on DEADLINE_EXCEEDED (4), UNAVAILABLE (14), or timeout
@@ -169,7 +166,7 @@ async function getSecretValue(secretResourceName) {
         }
     }
 
-    logger.error({ err: lastError, secretName: sanitizeSecretName(secretResourceName) }, `Failed to access secret version after ${MAX_RETRIES} attempts.`);
+    logger.error({ err: lastError }, `Failed to access secret after ${MAX_RETRIES} attempts.`);
     return null;
 }
 
@@ -187,7 +184,6 @@ async function setSecretValue(secretResourceName, secretValue) {
     }
     const smClient = getSecretManagerClient();
     try {
-        logger.debug(`Adding new version to secret: ${sanitizeSecretName(secretResourceName)}`);
 
         // Add a new version to the existing secret
         const [version] = await smClient.addSecretVersion({
@@ -197,7 +193,7 @@ async function setSecretValue(secretResourceName, secretValue) {
             },
         });
 
-        logger.info(`Successfully added new version to secret: ${sanitizeSecretName(secretResourceName)} (version: ${redact(version.name.split('/').pop())})`);
+        logger.info('Successfully added new secret version.');
 
         // Update cache with the new value
         // Construct the 'latest' version path for this secret
@@ -207,14 +203,13 @@ async function setSecretValue(secretResourceName, secretValue) {
         return true;
     } catch (error) {
         logger.error(
-            { err: { message: error.message, code: error.code }, secretName: sanitizeSecretName(secretResourceName) },
-            `Failed to add version to secret: ${sanitizeSecretName(secretResourceName)}. Check permissions and secret existence.`
+            { err: { code: error.code } },
+            'Failed to add secret version. Check permissions and secret existence.'
         );
-        // Handle common errors specifically
-        if (error.code === 5) { // 5 = NOT_FOUND
-            logger.error(`Secret not found: ${sanitizeSecretName(secretResourceName)}`);
-        } else if (error.code === 7) { // 7 = PERMISSION_DENIED
-            logger.error(`Permission denied adding version to secret: ${sanitizeSecretName(secretResourceName)}. Check IAM roles.`);
+        if (error.code === 5) {
+            logger.error('Secret not found.');
+        } else if (error.code === 7) {
+            logger.error('Permission denied adding secret version. Check IAM roles.');
         }
         return false;
     }

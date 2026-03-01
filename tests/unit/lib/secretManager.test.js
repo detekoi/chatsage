@@ -166,7 +166,6 @@ describe('secretManager', () => {
             expect(mockClient.accessSecretVersion).toHaveBeenCalledWith({
                 name: 'projects/test/secrets/test-secret/versions/latest'
             });
-            expect(logger.info).toHaveBeenCalledWith('Successfully retrieved secret: test-secret (length: 17)');
         });
 
         it('should cache secret value after first retrieval', async () => {
@@ -199,7 +198,7 @@ describe('secretManager', () => {
             const result = await getSecretValue('projects/test/secrets/test-secret/versions/latest');
 
             expect(result).toBeNull();
-            expect(logger.warn).toHaveBeenCalledWith('Secret payload data is missing for test-secret.');
+            expect(logger.warn).toHaveBeenCalledWith({ secretName: 'test-secret' }, 'Secret payload data is missing.');
         });
 
         it('should retry on retryable errors', async () => {
@@ -236,10 +235,8 @@ describe('secretManager', () => {
             expect(logger.error).toHaveBeenCalledWith(
                 expect.objectContaining({
                     err: expect.objectContaining({
-                        code: 5,
-                        message: 'Not found'
-                    }),
-                    secretName: 'test-secret'
+                        code: 5
+                    })
                 }),
                 expect.any(String)
             );
@@ -295,7 +292,7 @@ describe('secretManager', () => {
                     data: Buffer.from('new-secret-value', 'utf8')
                 }
             });
-            expect(logger.info).toHaveBeenCalledWith('Successfully added new version to secret: test-secret (version: ***)');
+            expect(logger.info).toHaveBeenCalledWith('Successfully added new secret version.');
         });
 
         it('should handle errors when adding secret version', async () => {
@@ -309,10 +306,9 @@ describe('secretManager', () => {
             expect(result).toBe(false);
             expect(logger.error).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    err: { message: error.message, code: error.code },
-                    secretName: 'test-secret'
+                    err: { code: error.code }
                 }),
-                expect.stringContaining('Failed to add version to secret')
+                expect.stringContaining('Failed to add secret version')
             );
         });
 
@@ -324,7 +320,7 @@ describe('secretManager', () => {
 
             await setSecretValue('projects/test/secrets/test-secret', 'new-secret-value');
 
-            expect(logger.error).toHaveBeenCalledWith('Secret not found: test-secret');
+            expect(logger.error).toHaveBeenCalledWith('Secret not found.');
         });
     });
 });

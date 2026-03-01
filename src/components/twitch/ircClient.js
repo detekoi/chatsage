@@ -27,17 +27,16 @@ async function createIrcClient(twitchConfig) {
         throw new Error('Missing required Twitch configuration (username, channels) for IRC client.');
     }
 
-    logger.info({ username }, 'Attempting to create IRC client...');
+    logger.info('Attempting to create IRC client...');
 
     let ircPassword = null;
     try {
         logger.info('Fetching initial IRC token via Auth Helper...');
         ircPassword = await getValidIrcToken();
         if (!ircPassword) {
-            logger.fatal('CRITICAL: Failed to obtain initial valid IRC token. Check logs for errors from ircAuthHelper (secret access, refresh token validity, Twitch API client_id/secret). Bot cannot connect.');
+            logger.fatal('CRITICAL: Failed to obtain initial valid IRC token. Bot cannot connect.');
             process.exit(1);
         }
-        logger.info({ tokenLength: ircPassword.length }, 'Successfully obtained initial IRC token.');
     } catch (error) {
         logger.fatal({ err: error }, 'Fatal error during getValidIrcToken call in client creation.');
         throw error;
