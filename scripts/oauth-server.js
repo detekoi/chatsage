@@ -5,6 +5,7 @@ import axios from 'axios';
 import { setSecretValue } from '../src/lib/secretManager.js';
 import config from '../src/config/index.js';
 import dotenv from 'dotenv';
+import escape from 'escape-html';
 
 dotenv.config();
 
@@ -187,8 +188,8 @@ async function startServer() {
                 <body>
                     <h1>❌ Authentication Failed</h1>
                     <div class="error">
-                        <p><strong>Error:</strong> ${error}</p>
-                        <p>${errorDescription || 'Unknown error'}</p>
+                        <p><strong>Error:</strong> ${escape(String(error))}</p>
+                        <p>${escape(errorDescription || 'Unknown error')}</p>
                     </div>
                     <p><a href="/">Try again</a></p>
                 </body>

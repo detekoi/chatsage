@@ -38,7 +38,8 @@
         "open": "^10.1.2",
         "pino": "^9.3.2",
         "pino-pretty": "^11.2.1",
-        "tmi.js": "^1.8.5"
+        "tmi.js": "^1.8.5",
+        "escape-html": "^1.0.3"
     },
     "devDependencies": {
         "@babel/core": "^7.29.0",
