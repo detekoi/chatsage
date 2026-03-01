@@ -93,7 +93,7 @@ async function exchangeCodeForTokens(authCode) {
     // Fix: If the config includes '/versions/latest' (or any version), strip it.
     // addSecretVersion expects the parent secret name, not a specific version.
     if (refreshTokenSecretName.includes('/versions/')) {
-        console.log(`Note: Stripping version suffix from secret name: ${refreshTokenSecretName}`);
+        console.log('Note: Stripping version suffix from secret name for addSecretVersion call.');
         refreshTokenSecretName = refreshTokenSecretName.split('/versions/')[0];
     }
 

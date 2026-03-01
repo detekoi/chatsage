@@ -7,6 +7,21 @@ let client = null;
 // Helper for async sleep
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * Extracts a display-safe name from a secret resource path.
+ * e.g. 'projects/123/secrets/my-secret/versions/latest' -> 'my-secret'
+ * @param {string} resourceName
+ * @returns {string}
+ */
+function sanitizeSecretName(resourceName) {
+    if (!resourceName) return '[unknown]';
+    const parts = resourceName.split('/secrets/');
+    if (parts.length > 1) {
+        return parts[1].split('/')[0];
+    }
+    return '[redacted]';
+}
+
 const secretCache = new Map();
 
 /**
@@ -105,7 +120,7 @@ async function getSecretValue(secretResourceName) {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            logger.debug(`Accessing secret: ${secretResourceName} (Attempt ${attempt}/${MAX_RETRIES})`);
+            logger.debug(`Accessing secret: ${sanitizeSecretName(secretResourceName)} (Attempt ${attempt}/${MAX_RETRIES})`);
 
             // Create a timeout promise that rejects after TIMEOUT_MS
             const timeoutPromise = new Promise((_, reject) => {
@@ -122,13 +137,13 @@ async function getSecretValue(secretResourceName) {
             const [version] = await Promise.race([accessPromise, timeoutPromise]);
 
             if (!version.payload?.data) {
-                logger.warn(`Secret payload data is missing for ${secretResourceName}.`);
+                logger.warn(`Secret payload data is missing for ${sanitizeSecretName(secretResourceName)}.`);
                 return null;
             }
 
             // Decode the secret value (it's base64 encoded by default)
             const secretValue = version.payload.data.toString('utf8');
-            logger.info(`Successfully retrieved secret: ${secretResourceName.split('/secrets/')[1].split('/')[0]}`);
+            logger.info(`Successfully retrieved secret: ${sanitizeSecretName(secretResourceName)}`);
 
             // Cache the value
             secretCache.set(secretResourceName, secretValue);
@@ -138,7 +153,7 @@ async function getSecretValue(secretResourceName) {
             lastError = error;
             const isTimeout = error.message?.includes('timeout');
             logger.error(
-                { err: { message: error.message, code: error.code }, secretName: secretResourceName, attempt, isTimeout },
+                { err: { message: error.message, code: error.code }, secretName: sanitizeSecretName(secretResourceName), attempt, isTimeout },
                 `Failed to access secret version on attempt ${attempt}`
             );
 
@@ -153,7 +168,7 @@ async function getSecretValue(secretResourceName) {
         }
     }
 
-    logger.error({ err: lastError, secretName: secretResourceName }, `Failed to access secret version after ${MAX_RETRIES} attempts.`);
+    logger.error({ err: lastError, secretName: sanitizeSecretName(secretResourceName) }, `Failed to access secret version after ${MAX_RETRIES} attempts.`);
     return null;
 }
 
@@ -171,7 +186,7 @@ async function setSecretValue(secretResourceName, secretValue) {
     }
     const smClient = getSecretManagerClient();
     try {
-        logger.debug(`Adding new version to secret: ${secretResourceName}`);
+        logger.debug(`Adding new version to secret: ${sanitizeSecretName(secretResourceName)}`);
 
         // Add a new version to the existing secret
         const [version] = await smClient.addSecretVersion({
@@ -181,7 +196,7 @@ async function setSecretValue(secretResourceName, secretValue) {
             },
         });
 
-        logger.info(`Successfully added new version to secret: ${secretResourceName.split('/secrets/')[1]} (version: ${version.name.split('/').pop()})`);
+        logger.info(`Successfully added new version to secret: ${sanitizeSecretName(secretResourceName)} (version: ${version.name.split('/').pop()})`);
 
         // Update cache with the new value
         // Construct the 'latest' version path for this secret
@@ -191,14 +206,14 @@ async function setSecretValue(secretResourceName, secretValue) {
         return true;
     } catch (error) {
         logger.error(
-            { err: { message: error.message, code: error.code }, secretName: secretResourceName },
-            `Failed to add version to secret ${secretResourceName}. Check permissions and secret existence.`
+            { err: { message: error.message, code: error.code }, secretName: sanitizeSecretName(secretResourceName) },
+            `Failed to add version to secret ${sanitizeSecretName(secretResourceName)}. Check permissions and secret existence.`
         );
         // Handle common errors specifically
         if (error.code === 5) { // 5 = NOT_FOUND
-            logger.error(`Secret not found: ${secretResourceName}`);
+            logger.error(`Secret not found: ${sanitizeSecretName(secretResourceName)}`);
         } else if (error.code === 7) { // 7 = PERMISSION_DENIED
-            logger.error(`Permission denied adding version to secret: ${secretResourceName}. Check IAM roles.`);
+            logger.error(`Permission denied adding version to secret: ${sanitizeSecretName(secretResourceName)}. Check IAM roles.`);
         }
         return false;
     }

@@ -22,13 +22,13 @@ import dotenv from 'dotenv';
 
 // Load .env from project root if present (no-op if absent)
 try {
-  const projectRoot = process.cwd();
-  const envPath = path.resolve(projectRoot, '.env');
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
+    const projectRoot = process.cwd();
+    const envPath = path.resolve(projectRoot, '.env');
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+    }
 } catch {
-  // Ignore dotenv load errors - we'll rely on process.env
+    // Ignore dotenv load errors - we'll rely on process.env
 }
 
 // Your bot's deployment URL
@@ -45,30 +45,30 @@ const isOffline = args.includes('--offline');
 
 // Resolve EventSub secret from (in order): --secret, --secret-file, env var (value or file path)
 function resolveEventSubSecret() {
-  if (secretArg && secretArg.trim()) {
-    return secretArg.trim();
-  }
-  if (secretFileArg && fs.existsSync(secretFileArg)) {
-    return fs.readFileSync(secretFileArg, 'utf8').trim();
-  }
-  const envValue = process.env.TWITCH_EVENTSUB_SECRET;
-  if (!envValue) return 'your_secret_here';
-  if (fs.existsSync(envValue)) {
-    return fs.readFileSync(envValue, 'utf8').trim();
-  }
-  return envValue;
+    if (secretArg && secretArg.trim()) {
+        return secretArg.trim();
+    }
+    if (secretFileArg && fs.existsSync(secretFileArg)) {
+        return fs.readFileSync(secretFileArg, 'utf8').trim();
+    }
+    const envValue = process.env.TWITCH_EVENTSUB_SECRET;
+    if (!envValue) return 'your_secret_here';
+    if (fs.existsSync(envValue)) {
+        return fs.readFileSync(envValue, 'utf8').trim();
+    }
+    return envValue;
 }
 
 const EVENTSUB_SECRET = resolveEventSubSecret();
 
 if (EVENTSUB_SECRET === 'your_secret_here') {
-  console.error('❌ Please set TWITCH_EVENTSUB_SECRET or pass --secret/--secret-file');
-  console.error('   Examples:');
-  console.error('     TWITCH_EVENTSUB_SECRET=your_secret node scripts/trigger-stream-online.js pedromarvarez');
-  console.error('     node scripts/trigger-stream-online.js pedromarvarez --secret=your_secret');
-  console.error('     node scripts/trigger-stream-online.js pedromarvarez --offline --secret=your_secret');
-  console.error('     node scripts/trigger-stream-online.js --secret-file=/path/to/secret --dry-run');
-  process.exit(1);
+    console.error('❌ Please set TWITCH_EVENTSUB_SECRET or pass --secret/--secret-file');
+    console.error('   Examples:');
+    console.error('     TWITCH_EVENTSUB_SECRET=your_secret node scripts/trigger-stream-online.js pedromarvarez');
+    console.error('     node scripts/trigger-stream-online.js pedromarvarez --secret=your_secret');
+    console.error('     node scripts/trigger-stream-online.js pedromarvarez --offline --secret=your_secret');
+    console.error('     node scripts/trigger-stream-online.js --secret-file=/path/to/secret --dry-run');
+    process.exit(1);
 }
 
 /**
@@ -77,7 +77,7 @@ if (EVENTSUB_SECRET === 'your_secret_here') {
 function createStreamOnlineEvent(broadcasterUserName = 'testbroadcaster') {
     const messageId = crypto.randomUUID();
     const timestamp = new Date().toISOString();
-    
+
     const event = {
         subscription: {
             id: crypto.randomUUID(),
@@ -102,7 +102,7 @@ function createStreamOnlineEvent(broadcasterUserName = 'testbroadcaster') {
             started_at: timestamp
         }
     };
-    
+
     return { event, messageId, timestamp };
 }
 
@@ -112,7 +112,7 @@ function createStreamOnlineEvent(broadcasterUserName = 'testbroadcaster') {
 function createStreamOfflineEvent(broadcasterUserName = 'testbroadcaster') {
     const messageId = crypto.randomUUID();
     const timestamp = new Date().toISOString();
-    
+
     const event = {
         subscription: {
             id: crypto.randomUUID(),
@@ -134,7 +134,7 @@ function createStreamOfflineEvent(broadcasterUserName = 'testbroadcaster') {
             broadcaster_user_name: broadcasterUserName
         }
     };
-    
+
     return { event, messageId, timestamp };
 }
 
@@ -154,13 +154,13 @@ async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOff
     const eventType = isOffline ? 'stream.offline' : 'stream.online';
     const emoji = isOffline ? '🔌' : '🚀';
     console.log(`${emoji} Triggering ${eventType} event for ${broadcasterUserName}...`);
-    
-    const { event, messageId, timestamp } = isOffline 
+
+    const { event, messageId, timestamp } = isOffline
         ? createStreamOfflineEvent(broadcasterUserName)
         : createStreamOnlineEvent(broadcasterUserName);
     const body = JSON.stringify(event);
     const signature = createEventSubSignature(messageId, timestamp, body, EVENTSUB_SECRET);
-    
+
     const headers = {
         'Content-Type': 'application/json',
         'Twitch-Eventsub-Message-Id': messageId,
@@ -170,7 +170,7 @@ async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOff
         'Twitch-Eventsub-Subscription-Type': eventType,
         'Twitch-Eventsub-Subscription-Version': '1'
     };
-    
+
     try {
         console.log(`📡 Sending POST request to: ${WEBHOOK_ENDPOINT}`);
         console.log(`📋 Event details:`);
@@ -178,26 +178,26 @@ async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOff
         console.log(`   - Event Type: ${eventType}`);
         console.log(`   - Message ID: ${messageId}`);
         console.log(`   - Timestamp: ${timestamp}`);
-        console.log(`   - Secret length: ${EVENTSUB_SECRET.length} chars`);
+        console.log(`   - Secret: [configured]`);
 
         if (isDryRun) {
             console.log('🔎 Dry run enabled: not sending request.');
             return;
         }
-        
-        const response = await axios.post(WEBHOOK_ENDPOINT, body, { 
+
+        const response = await axios.post(WEBHOOK_ENDPOINT, body, {
             headers,
             timeout: 30000 // 30 second timeout
         });
-        
+
         console.log(`✅ Successfully triggered ${eventType} event!`);
         console.log(`   - Response status: ${response.status}`);
         console.log(`   - Response headers:`, response.headers);
-        
+
         if (response.data) {
             console.log(`   - Response data:`, response.data);
         }
-        
+
         console.log('');
         if (isOffline) {
             console.log('🔌 The bot should now be processing the stream.offline event!');
@@ -206,10 +206,10 @@ async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOff
             console.log('🎉 The bot should now be starting up on Google Cloud!');
             console.log('   You can check the logs in Google Cloud Console to verify.');
         }
-        
+
     } catch (error) {
         console.error(`❌ Failed to trigger ${eventType} event:`);
-        
+
         if (error.response) {
             console.error(`   - Status: ${error.response.status}`);
             console.error(`   - Status Text: ${error.response.statusText}`);
@@ -220,7 +220,7 @@ async function triggerStreamEvent(broadcasterUserName = 'testbroadcaster', isOff
         } else {
             console.error(`   - Error: ${error.message}`);
         }
-        
+
         console.log('');
         console.log('💡 Even if this shows an error, the bot might still be processing the event.');
         console.log('   Check Google Cloud Run logs to see if the bot received the event.');

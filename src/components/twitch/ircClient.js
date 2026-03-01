@@ -21,11 +21,12 @@ async function createIrcClient(twitchConfig) {
         logger.warn('IRC client instance already exists.');
         return client; // Return existing instance
     }
-    if (!twitchConfig || !twitchConfig.username || !twitchConfig.channels) {
+    const { username, channels } = twitchConfig;
+    if (!twitchConfig || !username || !channels) {
         throw new Error('Missing required Twitch configuration (username, channels) for IRC client.');
     }
 
-    logger.info(`Attempting to create IRC client for ${twitchConfig.username}...`);
+    logger.info(`Attempting to create IRC client for ${username}...`);
 
     let ircPassword = null;
     try {
@@ -66,7 +67,7 @@ async function createIrcClient(twitchConfig) {
             error: (message) => logger.error(`[tmi.js] ${message}`),
         },
     };
-    logger.info({tmiConnectionOptions: clientOptions.connection}, "TMI.js client connection options");
+    logger.info({ tmiConnectionOptions: clientOptions.connection }, "TMI.js client connection options");
 
 
     client = new tmi.Client(clientOptions);
@@ -118,11 +119,11 @@ async function createIrcClient(twitchConfig) {
 
         // Attempt to reconnect, always trying to refresh the token first if the reason suggests auth issues
         // or even for general network issues, as the token might have expired during the downtime.
-        if (reason && (reason.toLowerCase().includes('login authentication failed') || 
-                       reason.toLowerCase().includes('authentication failed') || 
-                       reason.toLowerCase().includes('ping timeout') ||
-                       reason.toLowerCase().includes('unable to connect') // General failure
-                      )) {
+        if (reason && (reason.toLowerCase().includes('login authentication failed') ||
+            reason.toLowerCase().includes('authentication failed') ||
+            reason.toLowerCase().includes('ping timeout') ||
+            reason.toLowerCase().includes('unable to connect') // General failure
+        )) {
             logger.warn(`Disconnect reason ("${reason}") suggests a need for token refresh or connection issue. Triggering full authentication failure handling.`);
             await handleAuthenticationFailure(); // This will try to refresh token and then connect
         } else if (reason) {
@@ -206,9 +207,9 @@ async function handleAuthenticationFailure() {
 
     try {
         await refreshAndConnectPromise; // Wait for this specific refresh & connect sequence to complete or fail.
-    } catch(err) {
+    } catch (err) {
         // Errors from within refreshAndConnectPromise are logged there, this is a fallback.
-        logger.error({err}, "Awaited refreshAndConnectPromise in handleAuthenticationFailure was rejected or threw an error itself.")
+        logger.error({ err }, "Awaited refreshAndConnectPromise in handleAuthenticationFailure was rejected or threw an error itself.")
     } finally {
         isHandlingAuthFailure = false; // Release the specific lock for this handler
         logger.info('handleAuthenticationFailure: Process completed.');
