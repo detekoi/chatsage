@@ -12,6 +12,7 @@ import http from 'http';
 import open from 'open';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import escapeHtml from 'escape-html';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,7 +58,7 @@ const server = http.createServer(async (req, res) => {
 
     if (error) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<h1>Error: ${error}</h1><p>${url.searchParams.get('error_description')}</p>`);
+        res.end(`<h1>Error: ${escapeHtml(error)}</h1><p>${escapeHtml(url.searchParams.get('error_description') || '')}</p>`);
         server.close();
         process.exit(1);
     }
