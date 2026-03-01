@@ -64,17 +64,13 @@ async function refreshIrcToken() {
                 refreshToken = localRefreshToken;
             } else {
                 // Secret Manager access with built-in retries (handled by getSecretValue)
-                try {
-                    const startTime = Date.now();
-                    refreshToken = await getSecretValue(refreshTokenSecretName);
-                    const elapsed = Date.now() - startTime;
-                    logger.info(`Retrieved refresh token from Secret Manager in ${elapsed}ms`);
+                const startTime = Date.now();
+                refreshToken = await getSecretValue(refreshTokenSecretName);
+                const elapsed = Date.now() - startTime;
+                logger.info({ elapsedMs: elapsed }, 'Secret Manager access completed.');
 
-                    if (!refreshToken) {
-                        throw new Error(`Secret Manager returned empty value for ${refreshTokenSecretName}`);
-                    }
-                } catch (error) {
-                    logger.fatal({ errCode: error.code }, 'CRITICAL: Failed to retrieve refresh token from Secret Manager.');
+                if (!refreshToken) {
+                    logger.fatal('CRITICAL: Secret Manager returned empty refresh token.');
                     return null;
                 }
             }

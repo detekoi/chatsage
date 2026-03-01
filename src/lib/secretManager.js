@@ -26,6 +26,19 @@ function sanitizeSecretName(resourceName) {
 const secretCache = new Map();
 
 /**
+ * Decodes the secret payload from a Secret Manager version response.
+ * Extracted to isolate secret data from log statements in the caller.
+ * @param {object} version - The version object from accessSecretVersion
+ * @returns {string|null} The decoded secret value, or null if payload is missing
+ */
+function decodeSecretPayload(version) {
+    if (!version.payload?.data) {
+        return null;
+    }
+    return version.payload.data.toString('utf8');
+}
+
+/**
  * Initializes the Secret Manager client.
  */
 function initializeSecretManager() {
@@ -135,13 +148,12 @@ async function getSecretValue(secretResourceName) {
             });
 
             const [version] = await Promise.race([accessPromise, timeoutPromise]);
+            const secretValue = decodeSecretPayload(version);
 
-            if (!version.payload?.data) {
-                logger.warn({ secretName: sanitizeSecretName(secretResourceName) }, 'Secret payload data is missing.');
+            if (!secretValue) {
+                logger.warn('Secret payload data is missing.');
                 return null;
             }
-
-            const secretValue = version.payload.data.toString('utf8');
 
             // Cache the value
             secretCache.set(secretResourceName, secretValue);

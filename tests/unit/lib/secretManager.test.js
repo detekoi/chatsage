@@ -198,7 +198,7 @@ describe('secretManager', () => {
             const result = await getSecretValue('projects/test/secrets/test-secret/versions/latest');
 
             expect(result).toBeNull();
-            expect(logger.warn).toHaveBeenCalledWith({ secretName: 'test-secret' }, 'Secret payload data is missing.');
+            expect(logger.warn).toHaveBeenCalledWith('Secret payload data is missing.');
         });
 
         it('should retry on retryable errors', async () => {
