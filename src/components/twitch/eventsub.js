@@ -142,8 +142,9 @@ export async function eventSubHandler(req, res, rawBody) {
                 const login = String(broadcaster_user_name).toLowerCase();
                 logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
 
-                // Enforce allow-list
-                const allowed = await isChannelAllowed(login);
+                // Enforce allow-list (prefer broadcaster ID for immutability)
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || login);
                 if (!allowed) {
                     logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
                     return;
@@ -204,7 +205,8 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.warn({ event }, '[EventSub] channel.follow missing broadcaster name');
                     return;
                 }
-                const allowed = await isChannelAllowed(channelName);
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || channelName);
                 if (!allowed) return;
                 await notifyFollow(channelName.toLowerCase());
             } catch (error) {
@@ -219,7 +221,8 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster name');
                     return;
                 }
-                const allowed = await isChannelAllowed(channelName);
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || channelName);
                 if (!allowed) return;
                 await notifySubscription(channelName.toLowerCase());
             } catch (error) {
@@ -236,7 +239,8 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_name');
                     return;
                 }
-                const allowed = await isChannelAllowed(toName);
+                const toBroadcasterId = event?.to_broadcaster_user_id;
+                const allowed = await isChannelAllowed(toBroadcasterId || toName);
                 if (!allowed) return;
                 await notifyRaid(toName.toLowerCase(), fromName, viewers);
             } catch (error) {
@@ -251,7 +255,8 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster name');
                     return;
                 }
-                const allowed = await isChannelAllowed(channelName);
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || channelName);
                 if (!allowed) return;
 
                 const isAutomatic = event?.is_automatic === true;

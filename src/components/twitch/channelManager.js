@@ -2,6 +2,7 @@
 import { Firestore } from '@google-cloud/firestore';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
+import { updateAllowedChannels, addAllowedChannel, removeAllowedChannel, isChannelAllowed as _isAllowed } from '../../lib/allowList.js';
 // --- Firestore Client Initialization ---
 let db = null; // Firestore database instance
 
@@ -28,25 +29,25 @@ export async function initializeChannelManager() {
     try {
         // Create a new client
         db = new Firestore();
-        
+
         logger.debug("[ChannelManager] Firestore client created, testing connection...");
-        
+
         // Test connection by fetching a document
         const testQuery = db.collection(MANAGED_CHANNELS_COLLECTION).limit(1);
         logger.debug("[ChannelManager] Executing test query...");
         const result = await testQuery.get();
-        
+
         logger.debug(`[ChannelManager] Test query successful. Found ${result.size} documents.`);
         logger.info("[ChannelManager] Google Cloud Firestore client initialized and connected.");
     } catch (error) {
-        logger.fatal({ 
-            err: error, 
+        logger.fatal({
+            err: error,
             message: error.message,
             code: error.code,
             stack: error.stack,
             projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
         }, "[ChannelManager] CRITICAL: Failed to initialize Google Cloud Firestore for channel management.");
-        
+
         // Log credential path if set
         const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
         if (credPath) {
@@ -54,7 +55,7 @@ export async function initializeChannelManager() {
         } else {
             logger.fatal("[ChannelManager] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
         }
-        
+
         // Application cannot proceed without storage
         throw error;
     }
@@ -81,26 +82,33 @@ function _getDb() {
 export async function getActiveManagedChannels() {
     const dbInstance = _getDb();
     logger.info("[ChannelManager] Fetching active managed channels from Firestore...");
-    
+
     try {
         const snapshot = await dbInstance.collection(MANAGED_CHANNELS_COLLECTION)
             .where('isActive', '==', true)
             .get();
-        
+
         const channels = [];
         snapshot.forEach(doc => {
             const data = doc.data();
             if (data && typeof data.channelName === 'string') {
-                channels.push(data.channelName.toLowerCase());
+                channels.push({
+                    name: data.channelName.toLowerCase(),
+                    twitchUserId: data.twitchUserId || null
+                });
             } else {
                 logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName'. Skipping.`);
             }
         });
-        
-        logger.info(`[ChannelManager] Successfully fetched ${channels.length} active managed channels.`);
-        logger.debug(`[ChannelManager] Active channels: ${channels.join(', ')}`);
-        
-        return channels;
+
+        // Populate the allow-list cache from Firestore (the single source of truth)
+        updateAllowedChannels(channels);
+
+        const channelNames = channels.map(ch => ch.name);
+        logger.info(`[ChannelManager] Successfully fetched ${channelNames.length} active managed channels.`);
+        logger.debug(`[ChannelManager] Active channels: ${channelNames.join(', ')}`);
+
+        return channelNames;
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error fetching active managed channels.");
         throw new ChannelManagerError("Failed to fetch active managed channels.", error);
@@ -108,59 +116,14 @@ export async function getActiveManagedChannels() {
 }
 
 /**
- * Checks whether a given channel is allowed (active) according to managedChannels in Firestore.
- * @param {string} channelName - The Twitch channel name (with or without leading '#').
- * @returns {Promise<boolean>} True if channel exists in allow-list and is active; false otherwise (or on error).
+ * Checks whether a given channel is allowed (active) according to the in-memory
+ * cache populated from Firestore managedChannels.
+ * Accepts either a Twitch User ID or a channel login name.
+ * @param {string} identifier - The Twitch User ID or channel name.
+ * @returns {Promise<boolean>} True if channel is allowed; false otherwise.
  */
-export async function isChannelAllowed(channelName) {
-    const db = _getDb();
-    const cleanChannelName = (channelName || '').toLowerCase().replace(/^#/, '');
-    if (!cleanChannelName) {
-        return false;
-    }
-    // Environment allow-list acts as an additional filter: if configured, channel must be in it.
-    // It does NOT bypass Firestore; Firestore is the source of truth for active status.
-    try {
-        let hasEnvAllowlistConfigured = Array.isArray(config.app.allowedChannels) && config.app.allowedChannels.length > 0;
-        let isInEnvAllowlist = hasEnvAllowlistConfigured && config.app.allowedChannels.includes(cleanChannelName);
-        // If not configured via env and a secret name is provided, attempt to load list from Secret Manager
-        if (!hasEnvAllowlistConfigured && config.secrets.allowedChannelsSecretName) {
-            try {
-                const { getSecretValue } = await import('../../lib/secretManager.js');
-                const secret = await getSecretValue(config.secrets.allowedChannelsSecretName);
-                if (secret) {
-                    const secretList = secret.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-                    hasEnvAllowlistConfigured = secretList.length > 0;
-                    isInEnvAllowlist = secretList.includes(cleanChannelName);
-                }
-            } catch (secretErr) {
-                logger.error({ err: secretErr }, '[ChannelManager] Error loading allowed channels from Secret Manager');
-            }
-        }
-        if (hasEnvAllowlistConfigured && !isInEnvAllowlist) {
-            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Channel not present in ALLOWED_CHANNELS; access denied.');
-            return false;
-        }
-    } catch (envErr) {
-        logger.error({ err: envErr }, '[ChannelManager] Error checking environment allow-list');
-        // On env allow-list check failure, continue to Firestore check but stay conservative if needed
-    }
-    try {
-        const snapshot = await db
-            .collection(MANAGED_CHANNELS_COLLECTION)
-            .where('channelName', '==', cleanChannelName)
-            .where('isActive', '==', true)
-            .limit(1)
-            .get();
-        const allowed = !snapshot.empty;
-        if (!allowed) {
-            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Channel not found in allow-list or not active.');
-        }
-        return allowed;
-    } catch (error) {
-        logger.error({ err: error, channel: cleanChannelName }, '[ChannelManager] Error checking channel allow-list status.');
-        return false;
-    }
+export async function isChannelAllowed(identifier) {
+    return _isAllowed(identifier);
 }
 
 /**
@@ -234,29 +197,29 @@ export async function syncManagedChannelsWithIrc(ircClient) {
     try {
         const db = _getDb();
         const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION).get();
-        
+
         const currentChannels = ircClient.getChannels().map(ch => ch.toLowerCase().replace(/^#/, ''));
         logger.debug(`[ChannelManager] Currently joined channels: ${currentChannels.join(', ')}`);
-        
+
         const joinedChannels = [];
         const partedChannels = [];
-        
+
         const promises = [];
-        
+
         snapshot.forEach(doc => {
             const channelData = doc.data();
             if (channelData && typeof channelData.channelName === 'string') {
                 const channelName = channelData.channelName.toLowerCase();
                 const isActive = !!channelData.isActive;
                 const isCurrentlyJoined = currentChannels.includes(channelName);
-                
+
                 if (isActive && !isCurrentlyJoined) {
                     // Need to join
                     promises.push(
                         syncChannelWithIrc(ircClient, channelName, true)
                             .then(() => joinedChannels.push(channelName))
                             .catch(err => {
-                                logger.error({ err, channel: channelName }, 
+                                logger.error({ err, channel: channelName },
                                     `[ChannelManager] Error joining channel ${channelName}`);
                             })
                     );
@@ -266,7 +229,7 @@ export async function syncManagedChannelsWithIrc(ircClient) {
                         syncChannelWithIrc(ircClient, channelName, false)
                             .then(() => partedChannels.push(channelName))
                             .catch(err => {
-                                logger.error({ err, channel: channelName }, 
+                                logger.error({ err, channel: channelName },
                                     `[ChannelManager] Error leaving channel ${channelName}`);
                             })
                     );
@@ -276,13 +239,13 @@ export async function syncManagedChannelsWithIrc(ircClient) {
                 logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName' during sync. Skipping.`);
             }
         });
-        
+
         await Promise.all(promises);
-        
+
         logger.info(
             `[ChannelManager] Channel sync complete. Joined: ${joinedChannels.length}, Parted: ${partedChannels.length}`
         );
-        
+
         return { joined: joinedChannels, parted: partedChannels };
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error syncing managed channels with IRC.");
@@ -299,32 +262,39 @@ export async function syncManagedChannelsWithIrc(ircClient) {
  */
 export function listenForChannelChanges(ircClient) {
     const db = _getDb();
-    
+
     logger.info("[ChannelManager] Setting up listener for channel management changes...");
-    
+
     const unsubscribe = db.collection(MANAGED_CHANNELS_COLLECTION)
         .onSnapshot(snapshot => {
             const changes = [];
-            
+
             snapshot.docChanges().forEach(change => {
                 const channelData = change.doc.data();
                 // Defensive check for channelName
                 if (channelData && typeof channelData.channelName === 'string') {
+                    // Update allow-list cache in real-time
+                    if (channelData.isActive && channelData.twitchUserId) {
+                        addAllowedChannel(channelData.channelName, channelData.twitchUserId);
+                    } else if (!channelData.isActive) {
+                        removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
+                    }
+
                     changes.push({
                         type: change.type,
-                        channelName: channelData.channelName, // Now safe
+                        channelName: channelData.channelName,
                         isActive: !!channelData.isActive,
-                        docId: change.doc.id, // For logging
-                        channelData: channelData // Pass the whole data object
+                        docId: change.doc.id,
+                        channelData: channelData
                     });
                 } else {
                     logger.warn({ docId: change.doc.id }, `[ChannelManager] Firestore listener detected change in document missing valid 'channelName'. Skipping processing for this change.`);
                 }
             });
-            
+
             if (changes.length > 0) {
                 logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);
-                
+
                 // Process the VALID changes
                 changes.forEach(async (change) => {
                     if (change.type === 'added' || change.type === 'modified') {
@@ -370,9 +340,9 @@ export function listenForChannelChanges(ircClient) {
         }, error => {
             logger.error({ err: error }, "[ChannelManager] Error in channel changes listener.");
         });
-    
+
     logger.info("[ChannelManager] Channel management listener set up successfully.");
-    
+
     return unsubscribe;
 }
 
@@ -382,10 +352,10 @@ export function listenForChannelChanges(ircClient) {
  */
 export async function getAllManagedChannels() {
     const db = _getDb();
-    
+
     try {
         const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION).get();
-        
+
         const channels = [];
         snapshot.forEach(doc => {
             const data = doc.data();
@@ -398,7 +368,7 @@ export async function getAllManagedChannels() {
                 lastStatusChange: data.lastStatusChange ? data.lastStatusChange.toDate() : null
             });
         });
-        
+
         logger.debug(`[ChannelManager] Retrieved ${channels.length} managed channels.`);
         return channels;
     } catch (error) {
@@ -415,16 +385,16 @@ export async function getAllManagedChannels() {
 export async function getChannelInfo(channelName) {
     const db = _getDb();
     const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
-    
+
     try {
         const docRef = db.collection(MANAGED_CHANNELS_COLLECTION).doc(cleanChannelName);
         const doc = await docRef.get();
-        
+
         if (!doc.exists) {
             logger.debug(`[ChannelManager] Channel ${cleanChannelName} not found in managedChannels.`);
             return null;
         }
-        
+
         const data = doc.data();
         return {
             channelName: data.channelName?.toLowerCase() || cleanChannelName,
