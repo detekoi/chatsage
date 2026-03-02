@@ -219,10 +219,10 @@ describe('Config Loader', () => {
             expect(config.twitch.channels).toEqual([]);
         });
 
-        test('should parse ALLOWED_CHANNELS and convert to lowercase', async () => {
-            process.env.ALLOWED_CHANNELS = 'Channel1,Channel2,Channel3';
+        test('should parse ALLOWED_CHANNELS into allowedBroadcasterIds', async () => {
+            process.env.ALLOWED_CHANNELS = 'Id1,Id2,Id3';
             const config = await loadConfig();
-            expect(config.app.allowedChannels).toEqual(['channel1', 'channel2', 'channel3']);
+            expect(config.app.allowedBroadcasterIds).toEqual(['Id1', 'Id2', 'Id3']);
         });
     });
 
@@ -358,17 +358,15 @@ describe('Config Loader', () => {
             expect(config.app).toHaveProperty('logLevel');
             expect(config.app).toHaveProperty('prettyLog');
             expect(config.app).toHaveProperty('nodeEnv');
-            expect(config.app).toHaveProperty('allowedChannels');
+            expect(config.app).toHaveProperty('allowedBroadcasterIds');
         });
 
         test('should have correct secrets configuration structure', async () => {
             process.env.TWITCH_CHANNELS_SECRET_NAME = 'channels-secret';
-            process.env.ALLOWED_CHANNELS_SECRET_NAME = 'allowed-secret';
             const config = await loadConfig();
 
             expect(config.secrets).toHaveProperty('twitchBotRefreshTokenName', 'test-secret-name');
             expect(config.secrets).toHaveProperty('twitchChannelsSecretName', 'channels-secret');
-            expect(config.secrets).toHaveProperty('allowedChannelsSecretName', 'allowed-secret');
         });
 
         test('should have correct webui configuration structure', async () => {
