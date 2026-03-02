@@ -23,10 +23,16 @@ const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 const PORT = 3456;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 
-// Scopes the bot needs for IRC + chat
+// Scopes the bot needs for EventSub chat + Helix API
 const SCOPES = [
+    // EventSub chat message subscriptions
+    'user:bot',
+    'user:read:chat',
+    'user:write:chat',
+    // Legacy IRC (kept for phased migration, can remove later)
     'chat:read',
     'chat:edit',
+    // Moderation & followers
     'channel:moderate',
     'moderator:read:followers',
 ].join(' ');
@@ -134,11 +140,7 @@ server.listen(PORT, () => {
     authUrl.searchParams.set('scope', SCOPES);
     authUrl.searchParams.set('force_verify', 'true');
 
-    console.log('🌐 Opening browser for Twitch authorization...');
-    console.log(`   URL: ${authUrl.toString()}\n`);
-    console.log('Log in with the BOT account (WildcatSage), not your broadcaster account.\n');
-
-    open(authUrl.toString()).catch(() => {
-        console.log('Could not open browser automatically. Please open the URL above manually.');
-    });
+    console.log('🌐 Copy and paste this URL into a browser where you are logged in as the BOT account (WildcatSage):\n');
+    console.log(authUrl.toString());
+    console.log('\n⏳ Waiting for callback...\n');
 });
