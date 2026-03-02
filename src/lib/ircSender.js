@@ -1,5 +1,5 @@
 import logger from './logger.js';
-import { getIrcClient } from '../components/twitch/ircClient.js';
+import { sendMessage as helixSendMessage } from '../components/twitch/chatClient.js';
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/geminiClient.js';
@@ -10,7 +10,7 @@ let isSending = false;
 let queueIntervalId = null;
 
 // Minimum delay between sending messages (in milliseconds)
-const IRC_SEND_INTERVAL_MS = 1100;
+const SEND_INTERVAL_MS = 300; // Helix API has higher rate limits than IRC
 // Twitch IRC message limit is 500 characters
 const MAX_IRC_MESSAGE_LENGTH = 500;
 // Target length for summaries (should be less than MAX_IRC_MESSAGE_LENGTH)
@@ -126,43 +126,30 @@ async function _processMessageQueue() {
 
     isSending = true;
     logger.debug(`_processMessageQueue: starting processing, queueLength=${messageQueue.length}`);
-    logger.debug(`Starting IRC sender queue processing (length: ${messageQueue.length})`);
-
-    let ircClient = null;
-    try {
-        ircClient = getIrcClient(); // Get client instance
-    } catch (err) {
-        logger.error({ err }, "Failed to get IRC client in _processMessageQueue. Aborting queue processing.");
-        isSending = false;
-        messageQueue.length = 0; // Clear queue as we can't send
-        return;
-    }
+    logger.debug(`Starting chat sender queue processing (length: ${messageQueue.length})`);
 
     while (messageQueue.length > 0) {
         const { channel, text, replyToId } = messageQueue.shift(); // Get FIFO message
         logger.debug(`_processMessageQueue: processing message - channel=${channel}, textLength=${text.length}`);
         logger.debug(`Sending queued message to ${channel}: "${text.substring(0, 30)}..." (replyTo: ${replyToId || 'none'})`);
         try {
-            if (replyToId && typeof ircClient.raw === 'function') {
-                const chan = channel.startsWith('#') ? channel : `#${channel}`;
-                const line = `@reply-parent-msg-id=${replyToId} PRIVMSG ${chan} :${text}`;
-                await ircClient.raw(line);
+            const options = replyToId ? { replyToId } : {};
+            const success = await helixSendMessage(channel, text, options);
+            if (success) {
+                logger.debug(`_processMessageQueue: message sent successfully via Helix`);
             } else {
-                await ircClient.say(channel, text);
+                logger.warn({ channel, text: `"${text.substring(0, 30)}..."` }, 'Helix sendMessage returned false');
             }
-            logger.debug(`_processMessageQueue: message sent successfully`);
-            // Don't wait between messages in tests to avoid timeouts
-            await sleep(IRC_SEND_INTERVAL_MS);
+            await sleep(SEND_INTERVAL_MS);
         } catch (error) {
             logger.debug(`_processMessageQueue: error sending message - ${error.message}`);
-            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null }, 'Failed to send queued message.');
-            // Optionally re-queue with retry logic or just log and drop
-            await sleep(IRC_SEND_INTERVAL_MS);
+            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null }, 'Failed to send queued message via Helix.');
+            await sleep(SEND_INTERVAL_MS);
         }
     }
 
     logger.debug(`_processMessageQueue: queue processing completed, setting isSending=false`);
-    logger.debug('IRC sender queue processed.');
+    logger.debug('Chat sender queue processed.');
     isSending = false; // Always reset the flag when queue is empty
 }
 
@@ -173,11 +160,11 @@ async function _processMessageQueue() {
  * Initializes the IRC Sender and starts the processing interval.
  */
 function initializeIrcSender() {
-    logger.info('Initializing IRC Sender...');
+    logger.info('Initializing Chat Sender (Helix API)...');
     if (queueIntervalId) return;
 
     // Start the queue processor, but allow the process to exit if this is the only handle.
-    queueIntervalId = setInterval(_processMessageQueue, IRC_SEND_INTERVAL_MS);
+    queueIntervalId = setInterval(_processMessageQueue, SEND_INTERVAL_MS);
     if (queueIntervalId.unref) {
         queueIntervalId.unref();
     }
@@ -309,7 +296,7 @@ async function enqueueMessage(channel, text, options = {}) {
  * Clears the message queue (e.g., on shutdown).
  */
 function clearMessageQueue() {
-    logger.info(`Clearing IRC message queue (${messageQueue.length} messages) and stopping processor.`);
+    logger.info(`Clearing chat message queue (${messageQueue.length} messages) and stopping processor.`);
     if (queueIntervalId) {
         clearInterval(queueIntervalId);
         queueIntervalId = null;

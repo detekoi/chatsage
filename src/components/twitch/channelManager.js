@@ -127,143 +127,67 @@ export async function isChannelAllowed(identifier) {
 }
 
 /**
- * Joins or leaves a channel based on its current status in Firestore.
- * @param {Object} ircClient - The TMI.js client instance
- * @param {String} channelName - Channel name to join or part
+ * Subscribes or unsubscribes EventSub for a channel based on its active status.
+ * @param {String} channelName - Channel name
  * @param {Boolean} isActive - Whether the channel is active
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>} Whether any change was made
  */
-export async function syncChannelWithIrc(ircClient, channelName, isActive) {
+export async function syncChannelWithEventSub(channelName, isActive) {
     const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
-    const channelWithHash = `#${cleanChannelName}`;
 
     try {
-        // Check if IRC is connected
-        const ircState = ircClient?.readyState?.() || 'CLOSED';
-        if (ircState !== 'OPEN') {
-            logger.debug({
-                channel: cleanChannelName,
-                ircState,
-                isActive
-            }, '[ChannelManager] IRC not connected - skipping channel sync');
+        const { getUsersByLogin } = await import('./helixClient.js');
+        const users = await getUsersByLogin([cleanChannelName]);
+        if (!users || users.length === 0) {
+            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Could not find user ID for channel');
             return false;
         }
+        const userId = users[0].id;
 
-        // Check if we're already in the channel
-        const currentChannels = ircClient.getChannels().map(ch => ch.toLowerCase());
-        const isCurrentlyJoined = currentChannels.includes(channelWithHash.toLowerCase());
-
-        if (isActive && !isCurrentlyJoined) {
-            // Join channel if it's active but we're not in it
-            logger.info(`[ChannelManager] Joining channel: ${cleanChannelName}`);
-            await ircClient.join(channelWithHash);
-            logger.info(`[ChannelManager] Successfully joined channel: ${cleanChannelName}`);
+        if (isActive) {
+            // Subscribe to EventSub events for this channel
+            logger.info(`[ChannelManager] Subscribing EventSub for channel: ${cleanChannelName}`);
+            const { subscribeChannelChatMessage, subscribeStreamOnline, subscribeStreamOffline } = await import('./twitchSubs.js');
+            await subscribeChannelChatMessage(userId);
+            await subscribeStreamOnline(userId);
+            await subscribeStreamOffline(userId);
+            logger.info(`[ChannelManager] Successfully subscribed EventSub for channel: ${cleanChannelName}`);
             return true;
-        } else if (!isActive && isCurrentlyJoined) {
-            // Leave channel if it's not active but we're in it
-            logger.info(`[ChannelManager] Leaving channel: ${cleanChannelName}`);
-            await ircClient.part(channelWithHash);
-            logger.info(`[ChannelManager] Successfully left channel: ${cleanChannelName}`);
+        } else {
+            // Unsubscribe/delete EventSub subscriptions for this channel
+            logger.info(`[ChannelManager] Removing EventSub subscriptions for channel: ${cleanChannelName}`);
+            const { getEventSubSubscriptions, deleteEventSubSubscription } = await import('./twitchSubs.js');
+            const result = await getEventSubSubscriptions('Channel deactivation cleanup', false);
+            if (result.success && result.data?.data) {
+                const channelSubs = result.data.data.filter(sub =>
+                    sub.condition?.broadcaster_user_id === userId ||
+                    sub.condition?.to_broadcaster_user_id === userId
+                );
+                for (const sub of channelSubs) {
+                    await deleteEventSubSubscription(sub.id);
+                }
+                logger.info({ channel: cleanChannelName, count: channelSubs.length }, '[ChannelManager] Removed EventSub subscriptions');
+            }
             return true;
         }
-
-        // No action needed
-        return false;
     } catch (error) {
         logger.error({ err: error, channel: cleanChannelName },
-            `[ChannelManager] Error ${isActive ? 'joining' : 'leaving'} channel.`);
-        throw new ChannelManagerError(
-            `Failed to ${isActive ? 'join' : 'leave'} channel ${cleanChannelName}.`,
-            error
-        );
+            `[ChannelManager] Error ${isActive ? 'subscribing' : 'unsubscribing'} EventSub for channel.`);
+        return false;
     }
 }
 
 let isSyncing = false;
 
 /**
- * Synchronizes the IRC client's joined channels with the active managed channels.
- * @param {Object} ircClient - The TMI.js client instance
- * @returns {Promise<{joined: string[], parted: string[]}>} Channels joined and parted
- */
-export async function syncManagedChannelsWithIrc(ircClient) {
-    if (isSyncing) {
-        logger.warn('[ChannelManager] Sync already in progress. Skipping.');
-        return;
-    }
-
-    isSyncing = true;
-
-    try {
-        const db = _getDb();
-        const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION).get();
-
-        const currentChannels = ircClient.getChannels().map(ch => ch.toLowerCase().replace(/^#/, ''));
-        logger.debug(`[ChannelManager] Currently joined channels: ${currentChannels.join(', ')}`);
-
-        const joinedChannels = [];
-        const partedChannels = [];
-
-        const promises = [];
-
-        snapshot.forEach(doc => {
-            const channelData = doc.data();
-            if (channelData && typeof channelData.channelName === 'string') {
-                const channelName = channelData.channelName.toLowerCase();
-                const isActive = !!channelData.isActive;
-                const isCurrentlyJoined = currentChannels.includes(channelName);
-
-                if (isActive && !isCurrentlyJoined) {
-                    // Need to join
-                    promises.push(
-                        syncChannelWithIrc(ircClient, channelName, true)
-                            .then(() => joinedChannels.push(channelName))
-                            .catch(err => {
-                                logger.error({ err, channel: channelName },
-                                    `[ChannelManager] Error joining channel ${channelName}`);
-                            })
-                    );
-                } else if (!isActive && isCurrentlyJoined) {
-                    // Need to leave
-                    promises.push(
-                        syncChannelWithIrc(ircClient, channelName, false)
-                            .then(() => partedChannels.push(channelName))
-                            .catch(err => {
-                                logger.error({ err, channel: channelName },
-                                    `[ChannelManager] Error leaving channel ${channelName}`);
-                            })
-                    );
-                }
-
-            } else {
-                logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName' during sync. Skipping.`);
-            }
-        });
-
-        await Promise.all(promises);
-
-        logger.info(
-            `[ChannelManager] Channel sync complete. Joined: ${joinedChannels.length}, Parted: ${partedChannels.length}`
-        );
-
-        return { joined: joinedChannels, parted: partedChannels };
-    } catch (error) {
-        logger.error({ err: error }, "[ChannelManager] Error syncing managed channels with IRC.");
-        throw new ChannelManagerError("Failed to sync managed channels with IRC.", error);
-    } finally {
-        isSyncing = false;
-    }
-}
-
-/**
  * Sets up a listener for changes to the managedChannels collection.
- * @param {Object} ircClient - The TMI.js client instance 
+ * When channels are added/modified, subscribes/unsubscribes EventSub accordingly.
  * @returns {Function} Unsubscribe function to stop listening for changes
  */
-export function listenForChannelChanges(ircClient) {
+export function listenForChannelChanges() {
     const db = _getDb();
 
-    logger.info("[ChannelManager] Setting up listener for channel management changes...");
+    logger.info("[ChannelManager] Setting up listener for channel management changes (EventSub)...");
 
     const unsubscribe = db.collection(MANAGED_CHANNELS_COLLECTION)
         .onSnapshot(snapshot => {
@@ -298,41 +222,12 @@ export function listenForChannelChanges(ircClient) {
                 // Process the VALID changes
                 changes.forEach(async (change) => {
                     if (change.type === 'added' || change.type === 'modified') {
-                        // Sync channel with IRC (join if active, part if inactive)
-                        syncChannelWithIrc(ircClient, change.channelName, change.isActive)
+                        // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
+                        syncChannelWithEventSub(change.channelName, change.isActive)
                             .catch(err => {
                                 logger.error({ err, channel: change.channelName, docId: change.docId },
                                     `[ChannelManager] Error processing channel change via listener`);
                             });
-
-                        // If channel was just added and is active, check if it's already live
-                        if (change.type === 'added' && change.isActive) {
-                            try {
-                                const { getContextManager } = await import('../context/contextManager.js');
-                                const contextManager = getContextManager();
-                                const context = contextManager.getContextForLLM(change.channelName, 'system', 'channel-added-check');
-
-                                // Check if stream is live (has game data and not N/A)
-                                const isLive = context && context.streamGame && context.streamGame !== 'N/A' && context.streamGame !== null;
-
-                                if (isLive) {
-                                    logger.info({ channel: change.channelName, game: context.streamGame },
-                                        '[ChannelManager] Newly added channel is already live - ensuring IRC connection');
-
-                                    // Check if in LAZY_CONNECT mode and IRC not connected yet
-                                    const isLazyConnect = process.env.LAZY_CONNECT === '1' || process.env.LAZY_CONNECT === 'true';
-                                    const ircState = ircClient?.readyState?.() || 'CLOSED';
-
-                                    if (isLazyConnect && ircState !== 'OPEN' && ircState !== 'CONNECTING') {
-                                        logger.info('[ChannelManager] LAZY_CONNECT mode detected - triggering IRC connection for live channel');
-                                        const { connectIrcClient } = await import('./ircClient.js');
-                                        await connectIrcClient();
-                                    }
-                                }
-                            } catch (err) {
-                                logger.error({ err, channel: change.channelName }, '[ChannelManager] Error checking if newly added channel is live');
-                            }
-                        }
                     }
                     // Optionally handle 'removed' type if needed
                 });

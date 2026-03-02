@@ -1,8 +1,8 @@
 import logger from '../../lib/logger.js';
 // Import command handlers (assuming handlers/index.js exports an object/Map)
 import commandHandlers from './handlers/index.js';
-// We might need access to the IRC client to send command responses
-import { getIrcClient } from '../twitch/ircClient.js';
+// We might need access to the chat sender to send command responses
+import { enqueueMessage } from '../../lib/ircSender.js';
 // We might need context for some commands
 import { getContextManager } from '../context/contextManager.js';
 // Import command state manager for checking if commands are disabled
@@ -265,7 +265,7 @@ async function processMessage(channelName, tags, message) {
             user: tags,
             args: args,
             message: message,
-            ircClient: getIrcClient(),       // Provide access to send messages
+            ircClient: null,                 // Legacy: no longer used, handlers use enqueueMessage
             contextManager: getContextManager(), // Provide access to state if needed
             logger: logger                   // Provide logger instance
         };
@@ -278,8 +278,7 @@ async function processMessage(channelName, tags, message) {
             `Error executing command !${command}`);
         // Optional: Send an error message back to the chat?
         try {
-            const ircClient = getIrcClient();
-            await ircClient.say(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
+            enqueueMessage(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
         } catch (sayError) {
             logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
         }
@@ -345,8 +344,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         }
 
         // Send the response
-        const ircClient = getIrcClient();
-        await ircClient.say(`#${channelName}`, finalOutput);
+        await enqueueMessage(`#${channelName}`, finalOutput);
 
         logger.info(`Executed custom command !${command} for ${tags.username} in #${channelName}`);
         return true;

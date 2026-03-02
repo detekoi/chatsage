@@ -3,7 +3,6 @@ import { getContextManager } from '../../../src/components/context/contextManage
 import { startStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
 import { startAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
 import { startAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
-import { getIrcClient, connectIrcClient } from '../../../src/components/twitch/ircClient.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');
@@ -11,7 +10,6 @@ jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/twitch/streamInfoPoller.js');
 jest.mock('../../../src/components/autoChat/autoChatManager.js');
 jest.mock('../../../src/components/twitch/adSchedulePoller.js');
-jest.mock('../../../src/components/twitch/ircClient.js');
 jest.mock('../../../src/components/twitch/channelManager.js');
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/config/index.js', () => ({
@@ -21,7 +19,6 @@ jest.mock('../../../src/config/index.js', () => ({
 
 describe('LifecycleManager', () => {
     let lifecycleManager;
-    let mockIrcClient;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -29,17 +26,10 @@ describe('LifecycleManager', () => {
         LifecycleManager._instance = null;
         lifecycleManager = LifecycleManager.getInstance();
 
-        mockIrcClient = {
-            readyState: jest.fn(),
-            connect: jest.fn(),
-            disconnect: jest.fn(),
-            join: jest.fn(),
-            getChannels: jest.fn().mockReturnValue([])
-        };
-        getIrcClient.mockReturnValue(mockIrcClient);
         getContextManager.mockReturnValue({
             getAllChannelStates: jest.fn().mockReturnValue(new Map()),
-            getContextForLLM: jest.fn()
+            getContextForLLM: jest.fn(),
+            getStreamContextSnapshot: jest.fn().mockReturnValue(null)
         });
     });
 
@@ -87,42 +77,26 @@ describe('LifecycleManager', () => {
     });
 
     describe('reassessConnectionState', () => {
-        test('should connect IRC if streams are active and disconnected', async () => {
+        // With EventSub migration, reassessConnectionState is now a no-op.
+        // These tests verify it completes without errors regardless of state.
+
+        test('should complete without error when streams are active', async () => {
             lifecycleManager.activeStreams.add('testchannel');
-            mockIrcClient.readyState.mockReturnValue('CLOSED');
-
-            await lifecycleManager.reassessConnectionState();
-
-            expect(connectIrcClient).toHaveBeenCalled();
+            await expect(lifecycleManager.reassessConnectionState()).resolves.not.toThrow();
         });
 
-        test('should NOT connect IRC if no streams are active and LAZY_CONNECT is true', async () => {
-            process.env.LAZY_CONNECT = 'true';
-            mockIrcClient.readyState.mockReturnValue('CLOSED');
-
-            await lifecycleManager.reassessConnectionState();
-
-            expect(connectIrcClient).not.toHaveBeenCalled();
-            delete process.env.LAZY_CONNECT;
+        test('should complete without error when no streams are active', async () => {
+            await expect(lifecycleManager.reassessConnectionState()).resolves.not.toThrow();
         });
+    });
 
-        test('should disconnect IRC if no streams active and LAZY_CONNECT is true', async () => {
-            process.env.LAZY_CONNECT = 'true';
-            mockIrcClient.readyState.mockReturnValue('OPEN');
-
-            await lifecycleManager.reassessConnectionState();
-
-            expect(mockIrcClient.disconnect).toHaveBeenCalled();
-        });
-
-        test('should ensure joined to active streams if already connected', async () => {
-            lifecycleManager.activeStreams.add('testchannel');
-            mockIrcClient.readyState.mockReturnValue('OPEN');
-            mockIrcClient.getChannels.mockReturnValue([]); // Not joined yet
-
-            await lifecycleManager.reassessConnectionState();
-
-            expect(mockIrcClient.join).toHaveBeenCalledWith('#testchannel');
+    describe('getActiveStreams', () => {
+        test('should return array of active stream names', () => {
+            lifecycleManager.activeStreams.add('channel1');
+            lifecycleManager.activeStreams.add('channel2');
+            const active = lifecycleManager.getActiveStreams();
+            expect(active).toEqual(expect.arrayContaining(['channel1', 'channel2']));
+            expect(active.length).toBe(2);
         });
     });
 });

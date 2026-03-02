@@ -8,6 +8,8 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
 import * as sharedChatManager from './sharedChatManager.js';
 import LifecycleManager from '../../services/LifecycleManager.js';
+import { convertEventSubToTags } from './eventSubToTags.js';
+import { handleChatMessage } from '../../handlers/chatMessageHandler.js';
 
 // Idempotency and replay protection (in-memory window)
 const processedEventIds = new Map(); // messageId -> timestamp(ms)
@@ -183,17 +185,51 @@ export async function eventSubHandler(req, res, rawBody) {
                     } catch (e) {
                         logger.debug({ err: e }, 'Farewell send skipped or failed');
                     }
-                    // Note: LifecycleManager handles disconnection/parting if needed,
-                    // but we might want to send a farewell message first.
-                    // The LifecycleManager's reassessConnectionState might disconnect the client,
-                    // so we should ensure the message is queued/sent before that happens.
-                    // However, reassessConnectionState is async and we just called it via onStreamStatusChange.
-                    // Ideally, LifecycleManager should wait for queues to drain or we accept that farewells might be lost on quick disconnect.
                 } catch (error) {
                     logger.error({ err: error, channel: login }, 'Error trying to send farewell via EventSub offline notification.');
                 }
             } catch (error) {
                 logger.error({ err: error, event }, '[EventSub] Error handling stream.offline');
+            }
+        }
+
+        // --- Chat Message Handler (EventSub replacing IRC) ---
+        if (subscription.type === 'channel.chat.message') {
+            try {
+                const channelLogin = event?.broadcaster_user_login?.toLowerCase();
+                if (!channelLogin) {
+                    logger.warn({ event }, '[EventSub] channel.chat.message missing broadcaster_user_login');
+                    return;
+                }
+
+                // Enforce allow-list
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || channelLogin);
+                if (!allowed) {
+                    logger.debug({ channelLogin }, '[EventSub] Chat message from non-allowed channel, ignoring');
+                    return;
+                }
+
+                // Extract message text from EventSub format
+                // EventSub message.text contains the full message text
+                const messageText = event?.message?.text || '';
+
+                // Convert EventSub event to IRC-style tags
+                const tags = convertEventSubToTags(event);
+
+                // Format channel with # prefix as expected by the handler
+                const channel = `#${channelLogin}`;
+
+                logger.debug({
+                    channel: channelLogin,
+                    user: tags.username,
+                    message: messageText.substring(0, 50)
+                }, '[EventSub] Processing channel.chat.message');
+
+                // Dispatch to the shared chat message handler
+                await handleChatMessage(channel, tags, messageText);
+            } catch (error) {
+                logger.error({ err: error, event }, '[EventSub] Error handling channel.chat.message');
             }
         }
 

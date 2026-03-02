@@ -153,13 +153,13 @@ export async function deleteAllEventSubSubscriptions() {
         logger.error('Could not fetch subscriptions to delete.');
         return;
     }
-    
+
     const subscriptions = result.data.data;
     if (subscriptions.length === 0) {
         console.log('No subscriptions to delete.');
         return;
     }
-    
+
     for (const sub of subscriptions) {
         await deleteEventSubSubscription(sub.id);
     }
@@ -234,6 +234,91 @@ export async function subscribeChannelAdBreakBegin(broadcasterUserId, userAccess
     return result;
 }
 
+export async function subscribeChannelChatMessage(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+
+    // Get the bot's user ID (required for channel.chat.message condition)
+    const { getBotUserId } = await import('./chatClient.js');
+    const botUserId = await getBotUserId();
+    if (!botUserId) {
+        logger.error('Could not determine bot user ID for channel.chat.message subscription');
+        return { success: false, error: 'Could not determine bot user ID' };
+    }
+
+    const body = {
+        type: 'channel.chat.message',
+        version: '1',
+        condition: {
+            broadcaster_user_id: broadcasterUserId,
+            user_id: botUserId // The bot's user ID (must have granted user:read:chat + user:bot scopes)
+        },
+        transport: {
+            method: 'webhook',
+            callback: `${publicUrl}/twitch/event`,
+            secret: eventSubSecret
+        }
+    };
+
+    const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
+    if (result.success) {
+        logger.info({ broadcasterUserId, botUserId, type: 'channel.chat.message' }, 'Successfully subscribed to channel.chat.message');
+        clearEventSubSubscriptionsCache();
+    } else {
+        // CRITICAL: channel.chat.message is essential for receiving chat
+        logger.error({
+            broadcasterUserId,
+            error: result.error,
+            type: 'channel.chat.message'
+        }, 'CRITICAL: Failed to subscribe to channel.chat.message - channel will not receive chat messages!');
+    }
+    return result;
+}
+
+// --- Shared Chat EventSub Subscriptions ---
+
+export async function subscribeSharedChatBegin(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) return { success: false, error: 'Missing configuration' };
+
+    const body = {
+        type: 'channel.shared_chat.begin',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
+export async function subscribeSharedChatUpdate(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) return { success: false, error: 'Missing configuration' };
+
+    const body = {
+        type: 'channel.shared_chat.update',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
+export async function subscribeSharedChatEnd(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) return { success: false, error: 'Missing configuration' };
+
+    const body = {
+        type: 'channel.shared_chat.end',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
 export async function subscribeAllManagedChannels() {
     try {
         const { getActiveManagedChannels } = await import('./channelManager.js');
@@ -251,18 +336,24 @@ export async function subscribeAllManagedChannels() {
                 const userResponse = userResponseArray[0];
 
                 if (!userResponse || !userResponse.id) {
-                     logger.warn({ channelName, userResponse }, 'User object found but missing ID.');
-                     results.failed.push({ channel: channelName, error: 'User object missing ID' });
-                     continue;
+                    logger.warn({ channelName, userResponse }, 'User object found but missing ID.');
+                    results.failed.push({ channel: channelName, error: 'User object missing ID' });
+                    continue;
                 }
 
                 const onlineSubResult = await subscribeStreamOnline(userResponse.id);
                 const offlineSubResult = await subscribeStreamOffline(userResponse.id);
+                const chatSubResult = await subscribeChannelChatMessage(userResponse.id);
 
-                if (onlineSubResult.success && offlineSubResult.success) {
+                const allSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success;
+                if (allSuccess) {
                     results.successful.push({ channel: channelName, userId: userResponse.id });
                 } else {
-                    results.failed.push({ channel: channelName, error: 'Failed to create one or more subscriptions' });
+                    const failures = [];
+                    if (!onlineSubResult.success) failures.push('stream.online');
+                    if (!offlineSubResult.success) failures.push('stream.offline');
+                    if (!chatSubResult.success) failures.push('channel.chat.message');
+                    results.failed.push({ channel: channelName, error: `Failed: ${failures.join(', ')}` });
                 }
             } catch (error) {
                 logger.error({ err: error, channelName }, 'Error subscribing channel to EventSub');
