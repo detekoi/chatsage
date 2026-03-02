@@ -387,14 +387,18 @@ export async function getChannelInfo(channelName) {
     const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
 
     try {
-        const docRef = db.collection(MANAGED_CHANNELS_COLLECTION).doc(cleanChannelName);
-        const doc = await docRef.get();
+        // Query by channelName field since docs are keyed by broadcaster ID
+        const snapshot = await db.collection(MANAGED_CHANNELS_COLLECTION)
+            .where('channelName', '==', cleanChannelName)
+            .limit(1)
+            .get();
 
-        if (!doc.exists) {
+        if (snapshot.empty) {
             logger.debug(`[ChannelManager] Channel ${cleanChannelName} not found in managedChannels.`);
             return null;
         }
 
+        const doc = snapshot.docs[0];
         const data = doc.data();
         return {
             channelName: data.channelName?.toLowerCase() || cleanChannelName,
