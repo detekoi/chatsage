@@ -3,32 +3,27 @@
 jest.mock('../../../../../src/components/context/commandStateManager.js');
 jest.mock('../../../../../src/components/commands/handlers/index.js');
 jest.mock('../../../../../src/lib/logger.js');
+jest.mock('../../../../../src/lib/ircSender.js');
 
 import enableHandler from '../../../../../src/components/commands/handlers/enable.js';
 import { enableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../../../../src/components/context/commandStateManager.js';
 import commandHandlers from '../../../../../src/components/commands/handlers/index.js';
+import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import logger from '../../../../../src/lib/logger.js';
 
 describe('Enable Command Handler', () => {
-    let mockIrcClient;
-
     const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
         channel,
         user,
         args,
         message: `!enable ${args.join(' ')}`,
-        ircClient: mockIrcClient,
         contextManager: {},
         logger
     });
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
-        mockIrcClient = {
-            say: jest.fn().mockResolvedValue()
-        };
-
+        enqueueMessage.mockResolvedValue();
         isValidCommand.mockReturnValue(true);
         getAllAvailableCommands.mockReturnValue(['trivia', 'geo', 'riddle', 'ask']);
         enableCommandForChannel.mockResolvedValue({ success: true, message: 'Command enabled successfully' });
@@ -46,7 +41,7 @@ describe('Enable Command Handler', () => {
             const context = createMockContext([]);
             await enableHandler.execute(context);
 
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Usage: !enable <commandName>. Example: !enable trivia'
             );
@@ -59,7 +54,7 @@ describe('Enable Command Handler', () => {
 
             expect(isValidCommand).toHaveBeenCalledWith('trivia', commandHandlers);
             expect(enableCommandForChannel).toHaveBeenCalledWith('testchannel', 'trivia');
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Command enabled successfully'
             );
@@ -81,7 +76,7 @@ describe('Enable Command Handler', () => {
 
             await enableHandler.execute(context);
 
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Unknown command \'unknowncommand\'. Available commands: trivia, geo, riddle, ask'
             );
@@ -97,7 +92,7 @@ describe('Enable Command Handler', () => {
 
             await enableHandler.execute(context);
 
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Command was already enabled'
             );
@@ -117,7 +112,7 @@ describe('Enable Command Handler', () => {
                 { err: error, channel: 'testchannel', user: 'testuser', command: 'trivia' },
                 '[EnableCommand] Error enabling command \'trivia\' in channel testchannel'
             );
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, there was an error enabling the command. Please try again later.'
             );
@@ -131,4 +126,3 @@ describe('Enable Command Handler', () => {
         });
     });
 });
-

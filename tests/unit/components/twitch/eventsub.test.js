@@ -12,7 +12,6 @@ jest.mock('../../../../src/components/twitch/helixClient.js');
 jest.mock('../../../../src/lib/taskHelpers.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
-jest.mock('../../../../src/components/twitch/ircClient.js');
 jest.mock('../../../../src/services/LifecycleManager.js');
 
 describe('EventSub Legacy Keep-Alive Endpoint', () => {

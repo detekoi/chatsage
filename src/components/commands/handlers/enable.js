@@ -1,6 +1,7 @@
 // src/components/commands/handlers/enable.js
 import { enableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 
 /**
  * Handler for the !enable command.
@@ -10,22 +11,22 @@ import commandHandlers from './index.js';
  * Example: !enable trivia
  */
 async function execute(context) {
-    const { channel, user, args, ircClient, logger } = context;
+    const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove the '#' prefix
     const username = user.username;
 
     // Check if command name was provided
     if (args.length === 0) {
-        await ircClient.say(channel, `Usage: !enable <commandName>. Example: !enable trivia`);
+        await enqueueMessage(channel, `Usage: !enable <commandName>. Example: !enable trivia`);
         return;
     }
 
     const commandToEnable = args[0].toLowerCase();
-    
+
     // Validate that the command exists
     if (!isValidCommand(commandToEnable, commandHandlers)) {
         const availableCommands = getAllAvailableCommands(commandHandlers);
-        await ircClient.say(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`);
+        await enqueueMessage(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`);
         return;
     }
 
@@ -33,12 +34,12 @@ async function execute(context) {
 
     try {
         const result = await enableCommandForChannel(channelName, commandToEnable);
-        
+
         if (result.success) {
-            await ircClient.say(channel, `${result.message}`);
+            await enqueueMessage(channel, `${result.message}`);
             logger.info(`[EnableCommand] Successfully enabled command '${commandToEnable}' in channel ${channelName} by ${username}`);
         } else {
-            await ircClient.say(channel, `${result.message}`);
+            await enqueueMessage(channel, `${result.message}`);
             logger.warn(`[EnableCommand] Failed to enable command '${commandToEnable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {
@@ -48,8 +49,8 @@ async function execute(context) {
             user: username,
             command: commandToEnable
         }, `[EnableCommand] Error enabling command '${commandToEnable}' in channel ${channelName}`);
-        
-        await ircClient.say(channel, `Sorry, there was an error enabling the command. Please try again later.`);
+
+        await enqueueMessage(channel, `Sorry, there was an error enabling the command. Please try again later.`);
     }
 }
 

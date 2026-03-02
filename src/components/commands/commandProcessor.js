@@ -265,7 +265,7 @@ async function processMessage(channelName, tags, message) {
             user: tags,
             args: args,
             message: message,
-            ircClient: null,                 // Legacy: no longer used, handlers use enqueueMessage
+            // ircClient removed - handlers now use enqueueMessage directly
             contextManager: getContextManager(), // Provide access to state if needed
             logger: logger                   // Provide logger instance
         };

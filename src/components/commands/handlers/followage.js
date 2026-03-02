@@ -3,6 +3,7 @@ import { getChannelFollower, getUsersByLogin } from '../../twitch/helixClient.js
 import { getBroadcasterAccessToken } from '../../twitch/broadcasterTokenHelper.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { formatFollowAge } from '../../customCommands/variableParser.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 import config from '../../../config/index.js';
 
 /**
@@ -13,7 +14,7 @@ import config from '../../../config/index.js';
  *        !followage <username> → Check another user's follow age
  */
 async function execute(context) {
-    const { channel, user, args, ircClient, logger } = context;
+    const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove '#'
     const displayName = user['display-name'] || user.username;
 
@@ -29,7 +30,7 @@ async function execute(context) {
         // Get the broadcaster's access token
         const broadcasterToken = await getBroadcasterAccessToken(channelName);
         if (!broadcasterToken) {
-            await ircClient.say(channel,
+            await enqueueMessage(channel,
                 `Sorry, followage data is currently unavailable. The broadcaster may need to re-authenticate.`);
             return;
         }
@@ -38,14 +39,14 @@ async function execute(context) {
         const contextManager = getContextManager();
         const broadcasterId = await contextManager.getBroadcasterId(channelName);
         if (!broadcasterId) {
-            await ircClient.say(channel, `Sorry, couldn't determine the broadcaster ID.`);
+            await enqueueMessage(channel, `Sorry, couldn't determine the broadcaster ID.`);
             return;
         }
 
         // Get the target user's user ID
         const users = await getUsersByLogin([targetUsername]);
         if (!users || users.length === 0) {
-            await ircClient.say(channel, `User "${targetUsername}" not found.`);
+            await enqueueMessage(channel, `User "${targetUsername}" not found.`);
             return;
         }
         const targetUserId = users[0].id;
@@ -62,18 +63,18 @@ async function execute(context) {
         if (followData) {
             const duration = formatFollowAge(followData.followed_at);
             if (targetUsername === user.username) {
-                await ircClient.say(channel,
+                await enqueueMessage(channel,
                     `${displayName}, you have been following ${channelName} for ${duration}!`);
             } else {
-                await ircClient.say(channel,
+                await enqueueMessage(channel,
                     `${targetDisplayName} has been following ${channelName} for ${duration}!`);
             }
         } else {
             if (targetUsername === user.username) {
-                await ircClient.say(channel,
+                await enqueueMessage(channel,
                     `${displayName}, you are not following ${channelName}.`);
             } else {
-                await ircClient.say(channel,
+                await enqueueMessage(channel,
                     `${targetDisplayName} is not following ${channelName}.`);
             }
         }
@@ -83,7 +84,7 @@ async function execute(context) {
             channel: channelName,
             user: targetUsername,
         }, '[FollowageCommand] Error checking followage');
-        await ircClient.say(channel,
+        await enqueueMessage(channel,
             `Sorry, there was an error checking followage. Please try again later.`);
     }
 }

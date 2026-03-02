@@ -23,6 +23,9 @@ jest.mock('../../../src/lib/logger.js', () => ({
     },
 }));
 
+// Mock ircSender (enqueueMessage)
+jest.mock('../../../src/lib/ircSender.js');
+
 import {
     addCustomCommand,
     updateCustomCommand,
@@ -31,24 +34,20 @@ import {
     updateCustomCommandOptions,
 } from '../../../src/components/customCommands/customCommandsStorage.js';
 
+import { enqueueMessage } from '../../../src/lib/ircSender.js';
 import logger from '../../../src/lib/logger.js';
 
 describe('command handler (!command)', () => {
-    let mockIrcClient;
-
     const makeContext = (argsString) => ({
         channel: '#testchannel',
         user: { username: 'moduser', 'display-name': 'ModUser' },
         args: argsString ? argsString.split(' ') : [],
-        ircClient: mockIrcClient,
         logger: logger,
     });
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockIrcClient = {
-            say: jest.fn().mockResolvedValue(),
-        };
+        enqueueMessage.mockResolvedValue();
     });
 
     // =========================================================================
@@ -56,7 +55,7 @@ describe('command handler (!command)', () => {
     // =========================================================================
     test('shows usage when called with no args', async () => {
         await execute(makeContext(''));
-        expect(mockIrcClient.say).toHaveBeenCalledWith(
+        expect(enqueueMessage).toHaveBeenCalledWith(
             '#testchannel',
             expect.stringContaining('Usage'),
         );
@@ -67,7 +66,7 @@ describe('command handler (!command)', () => {
     // =========================================================================
     test('shows error for unknown subcommand', async () => {
         await execute(makeContext('foo'));
-        expect(mockIrcClient.say).toHaveBeenCalledWith(
+        expect(enqueueMessage).toHaveBeenCalledWith(
             '#testchannel',
             expect.stringContaining('Unknown subcommand'),
         );
@@ -81,7 +80,7 @@ describe('command handler (!command)', () => {
             addCustomCommand.mockResolvedValue(true);
             await execute(makeContext('add greet Hello $(user)!'));
             expect(addCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'Hello $(user)!', 'moduser', 'text');
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('has been added'),
             );
@@ -90,7 +89,7 @@ describe('command handler (!command)', () => {
         test('reports when command already exists', async () => {
             addCustomCommand.mockResolvedValue(false);
             await execute(makeContext('add greet Hello!'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('already exists'),
             );
@@ -98,7 +97,7 @@ describe('command handler (!command)', () => {
 
         test('shows usage when no command name given', async () => {
             await execute(makeContext('add'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('specify a command name'),
             );
@@ -106,7 +105,7 @@ describe('command handler (!command)', () => {
 
         test('shows usage when no response given', async () => {
             await execute(makeContext('add greet'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('specify a response'),
             );
@@ -121,7 +120,7 @@ describe('command handler (!command)', () => {
         test('handles storage error gracefully', async () => {
             addCustomCommand.mockRejectedValue(new Error('Firestore error'));
             await execute(makeContext('add greet Hello!'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Error adding command'),
             );
@@ -136,7 +135,7 @@ describe('command handler (!command)', () => {
             updateCustomCommand.mockResolvedValue(true);
             await execute(makeContext('edit greet New response!'));
             expect(updateCustomCommand).toHaveBeenCalledWith('testchannel', 'greet', 'New response!');
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('updated'),
             );
@@ -145,7 +144,7 @@ describe('command handler (!command)', () => {
         test('reports when command not found', async () => {
             updateCustomCommand.mockResolvedValue(false);
             await execute(makeContext('edit greet New response!'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('not found'),
             );
@@ -160,7 +159,7 @@ describe('command handler (!command)', () => {
             removeCustomCommand.mockResolvedValue(true);
             await execute(makeContext('remove greet'));
             expect(removeCustomCommand).toHaveBeenCalledWith('testchannel', 'greet');
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('has been removed'),
             );
@@ -169,7 +168,7 @@ describe('command handler (!command)', () => {
         test('reports when command not found', async () => {
             removeCustomCommand.mockResolvedValue(false);
             await execute(makeContext('remove greet'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('not found'),
             );
@@ -183,7 +182,7 @@ describe('command handler (!command)', () => {
 
         test('shows usage when no command name given', async () => {
             await execute(makeContext('remove'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('specify a command name'),
             );
@@ -201,7 +200,7 @@ describe('command handler (!command)', () => {
                 cooldownMs: 0,
             });
             await execute(makeContext('show greet'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Hello $(user)!'),
             );
@@ -214,7 +213,7 @@ describe('command handler (!command)', () => {
                 cooldownMs: 30000,
             });
             await execute(makeContext('show viponly'));
-            const msg = mockIrcClient.say.mock.calls[0][1];
+            const msg = enqueueMessage.mock.calls[0][1];
             expect(msg).toContain('[vip]');
             expect(msg).toContain('30s cd');
         });
@@ -227,14 +226,14 @@ describe('command handler (!command)', () => {
                 cooldownMs: 0,
             });
             await execute(makeContext('show aicmd'));
-            const msg = mockIrcClient.say.mock.calls[0][1];
+            const msg = enqueueMessage.mock.calls[0][1];
             expect(msg).toContain('[AI]');
         });
 
         test('reports when command not found', async () => {
             getCustomCommand.mockResolvedValue(null);
             await execute(makeContext('show nonexistent'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('not found'),
             );
@@ -251,7 +250,7 @@ describe('command handler (!command)', () => {
             expect(updateCustomCommandOptions).toHaveBeenCalledWith(
                 'testchannel', 'greet', { permission: 'moderator' },
             );
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('updated'),
             );
@@ -283,7 +282,7 @@ describe('command handler (!command)', () => {
 
         test('rejects invalid type', async () => {
             await execute(makeContext('options greet type=magic'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Invalid type'),
             );
@@ -292,7 +291,7 @@ describe('command handler (!command)', () => {
 
         test('rejects invalid permission value', async () => {
             await execute(makeContext('options greet permission=admin'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Invalid permission'),
             );
@@ -301,7 +300,7 @@ describe('command handler (!command)', () => {
 
         test('rejects negative cooldown', async () => {
             await execute(makeContext('options greet cooldown=-5'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('non-negative'),
             );
@@ -309,7 +308,7 @@ describe('command handler (!command)', () => {
 
         test('rejects unknown option key', async () => {
             await execute(makeContext('options greet volume=100'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Unknown option'),
             );
@@ -317,7 +316,7 @@ describe('command handler (!command)', () => {
 
         test('shows usage when no options given', async () => {
             await execute(makeContext('options greet'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('Usage'),
             );
@@ -326,11 +325,10 @@ describe('command handler (!command)', () => {
         test('reports when command not found', async () => {
             updateCustomCommandOptions.mockResolvedValue(false);
             await execute(makeContext('options nonexistent permission=moderator'));
-            expect(mockIrcClient.say).toHaveBeenCalledWith(
+            expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.stringContaining('not found'),
             );
         });
     });
 });
-

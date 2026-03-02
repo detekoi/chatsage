@@ -6,6 +6,7 @@ import {
     getCustomCommand,
     updateCustomCommandOptions,
 } from '../../customCommands/customCommandsStorage.js';
+import { enqueueMessage } from '../../../lib/ircSender.js';
 
 /**
  * Handler for the !command meta-command.
@@ -20,12 +21,12 @@ import {
  *   !command options <name> <key>=<val>  → Change command options (permission, cooldown, type)
  */
 async function execute(context) {
-    const { channel, user, args, ircClient, logger } = context;
+    const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove '#'
     const username = user.username;
 
     if (args.length === 0) {
-        await ircClient.say(channel,
+        await enqueueMessage(channel,
             `Usage: !command add/addai/edit/remove/show/options <name> [response/options]`);
         return;
     }
@@ -35,37 +36,37 @@ async function execute(context) {
 
     switch (subCommand) {
         case 'add':
-            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'text', ircClient, logger);
+            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'text', logger);
             break;
         case 'addai':
-            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'prompt', ircClient, logger);
+            await _handleAdd(channel, channelName, commandName, args.slice(2), username, 'prompt', logger);
             break;
         case 'edit':
-            await _handleEdit(channel, channelName, commandName, args.slice(2), ircClient, logger);
+            await _handleEdit(channel, channelName, commandName, args.slice(2), logger);
             break;
         case 'remove':
         case 'delete':
-            await _handleRemove(channel, channelName, commandName, ircClient, logger);
+            await _handleRemove(channel, channelName, commandName, logger);
             break;
         case 'show':
-            await _handleShow(channel, channelName, commandName, ircClient, logger);
+            await _handleShow(channel, channelName, commandName, logger);
             break;
         case 'options':
-            await _handleOptions(channel, channelName, commandName, args.slice(2), ircClient, logger);
+            await _handleOptions(channel, channelName, commandName, args.slice(2), logger);
             break;
         default:
-            await ircClient.say(channel,
+            await enqueueMessage(channel,
                 `Unknown subcommand "${subCommand}". Use add, addai, edit, remove, show, or options.`);
     }
 }
 
-async function _handleAdd(channel, channelName, commandName, responseArgs, username, type, ircClient, logger) {
+async function _handleAdd(channel, channelName, commandName, responseArgs, username, type, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Please specify a command name. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} <name> <response>`);
+        await enqueueMessage(channel, `Please specify a command name. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} <name> <response>`);
         return;
     }
     if (responseArgs.length === 0) {
-        await ircClient.say(channel, `Please specify a response. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} ${commandName} <response>`);
+        await enqueueMessage(channel, `Please specify a response. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} ${commandName} <response>`);
         return;
     }
 
@@ -74,25 +75,25 @@ async function _handleAdd(channel, channelName, commandName, responseArgs, usern
     try {
         const created = await addCustomCommand(channelName, commandName, response, username, type);
         if (created) {
-            await ircClient.say(channel, `Command !${commandName} has been added ${type === 'prompt' ? '(AI Mode)' : ''}.`);
+            await enqueueMessage(channel, `Command !${commandName} has been added ${type === 'prompt' ? '(AI Mode)' : ''}.`);
             logger.info(`[CommandHandler] ${username} added !${commandName} (type: ${type}) in ${channelName}`);
         } else {
-            await ircClient.say(channel, `Command !${commandName} already exists. Use "!command edit" to update it.`);
+            await enqueueMessage(channel, `Command !${commandName} already exists. Use "!command edit" to update it.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error adding command');
-        await ircClient.say(channel, `Error adding command. Please try again later.`);
+        await enqueueMessage(channel, `Error adding command. Please try again later.`);
     }
 }
 
-async function _handleEdit(channel, channelName, commandName, responseArgs, ircClient, logger) {
+async function _handleEdit(channel, channelName, commandName, responseArgs, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Please specify a command name. Usage: !command edit <name> <response>`);
+        await enqueueMessage(channel, `Please specify a command name. Usage: !command edit <name> <response>`);
         return;
     }
     if (responseArgs.length === 0) {
-        await ircClient.say(channel, `Please specify a new response. Usage: !command edit ${commandName} <response>`);
+        await enqueueMessage(channel, `Please specify a new response. Usage: !command edit ${commandName} <response>`);
         return;
     }
 
@@ -101,42 +102,42 @@ async function _handleEdit(channel, channelName, commandName, responseArgs, ircC
     try {
         const updated = await updateCustomCommand(channelName, commandName, response);
         if (updated) {
-            await ircClient.say(channel, `Command !${commandName} has been updated.`);
+            await enqueueMessage(channel, `Command !${commandName} has been updated.`);
             logger.info(`[CommandHandler] Updated !${commandName} in ${channelName}`);
         } else {
-            await ircClient.say(channel, `Command !${commandName} not found. Use "!command add" to create it.`);
+            await enqueueMessage(channel, `Command !${commandName} not found. Use "!command add" to create it.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error editing command');
-        await ircClient.say(channel, `Error editing command. Please try again later.`);
+        await enqueueMessage(channel, `Error editing command. Please try again later.`);
     }
 }
 
-async function _handleRemove(channel, channelName, commandName, ircClient, logger) {
+async function _handleRemove(channel, channelName, commandName, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Please specify a command name. Usage: !command remove <name>`);
+        await enqueueMessage(channel, `Please specify a command name. Usage: !command remove <name>`);
         return;
     }
 
     try {
         const removed = await removeCustomCommand(channelName, commandName);
         if (removed) {
-            await ircClient.say(channel, `Command !${commandName} has been removed.`);
+            await enqueueMessage(channel, `Command !${commandName} has been removed.`);
             logger.info(`[CommandHandler] Removed !${commandName} from ${channelName}`);
         } else {
-            await ircClient.say(channel, `Command !${commandName} not found.`);
+            await enqueueMessage(channel, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error removing command');
-        await ircClient.say(channel, `Error removing command. Please try again later.`);
+        await enqueueMessage(channel, `Error removing command. Please try again later.`);
     }
 }
 
-async function _handleShow(channel, channelName, commandName, ircClient, logger) {
+async function _handleShow(channel, channelName, commandName, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Please specify a command name. Usage: !command show <name>`);
+        await enqueueMessage(channel, `Please specify a command name. Usage: !command show <name>`);
         return;
     }
 
@@ -146,25 +147,25 @@ async function _handleShow(channel, channelName, commandName, ircClient, logger)
             const permInfo = cmd.permission !== 'everyone' ? ` [${cmd.permission}]` : '';
             const cooldownInfo = cmd.cooldownMs > 0 ? ` [${cmd.cooldownMs / 1000}s cd]` : '';
             const typeInfo = cmd.type === 'prompt' ? ` [AI]` : '';
-            await ircClient.say(channel,
+            await enqueueMessage(channel,
                 `!${commandName}${permInfo}${cooldownInfo}${typeInfo}: ${cmd.response}`);
         } else {
-            await ircClient.say(channel, `Command !${commandName} not found.`);
+            await enqueueMessage(channel, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error showing command');
-        await ircClient.say(channel, `Error fetching command. Please try again later.`);
+        await enqueueMessage(channel, `Error fetching command. Please try again later.`);
     }
 }
 
-async function _handleOptions(channel, channelName, commandName, optionArgs, ircClient, logger) {
+async function _handleOptions(channel, channelName, commandName, optionArgs, logger) {
     if (!commandName) {
-        await ircClient.say(channel, `Usage: !command options <name> <key>=<value>`);
+        await enqueueMessage(channel, `Usage: !command options <name> <key>=<value>`);
         return;
     }
     if (optionArgs.length === 0) {
-        await ircClient.say(channel,
+        await enqueueMessage(channel,
             `Usage: !command options ${commandName} permission=moderator or cooldown=30`);
         return;
     }
@@ -182,7 +183,7 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, irc
                 if (validPermissions.includes(value.toLowerCase())) {
                     options.permission = value.toLowerCase();
                 } else {
-                    await ircClient.say(channel,
+                    await enqueueMessage(channel,
                         `Invalid permission. Valid options: ${validPermissions.join(', ')}`);
                     return;
                 }
@@ -191,7 +192,7 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, irc
             case 'cd': {
                 const seconds = parseInt(value, 10);
                 if (isNaN(seconds) || seconds < 0) {
-                    await ircClient.say(channel, `Cooldown must be a non-negative number (in seconds).`);
+                    await enqueueMessage(channel, `Cooldown must be a non-negative number (in seconds).`);
                     return;
                 }
                 options.cooldownMs = seconds * 1000;
@@ -201,18 +202,18 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, irc
                 if (value.toLowerCase() === 'prompt' || value.toLowerCase() === 'text') {
                     options.type = value.toLowerCase();
                 } else {
-                    await ircClient.say(channel, `Invalid type. Valid options: text, prompt`);
+                    await enqueueMessage(channel, `Invalid type. Valid options: text, prompt`);
                     return;
                 }
                 break;
             default:
-                await ircClient.say(channel, `Unknown option "${key}". Available: permission, cooldown, type`);
+                await enqueueMessage(channel, `Unknown option "${key}". Available: permission, cooldown, type`);
                 return;
         }
     }
 
     if (Object.keys(options).length === 0) {
-        await ircClient.say(channel, `No valid options provided.`);
+        await enqueueMessage(channel, `No valid options provided.`);
         return;
     }
 
@@ -222,15 +223,15 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, irc
             const changes = Object.entries(options)
                 .map(([k, v]) => `${k}=${k === 'cooldownMs' ? `${v / 1000}s` : v}`)
                 .join(', ');
-            await ircClient.say(channel, `Options for !${commandName} updated: ${changes}`);
+            await enqueueMessage(channel, `Options for !${commandName} updated: ${changes}`);
             logger.info(`[CommandHandler] Updated options for !${commandName} in ${channelName}: ${changes}`);
         } else {
-            await ircClient.say(channel, `Command !${commandName} not found.`);
+            await enqueueMessage(channel, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error updating options');
-        await ircClient.say(channel, `Error updating options. Please try again later.`);
+        await enqueueMessage(channel, `Error updating options. Please try again later.`);
     }
 }
 
