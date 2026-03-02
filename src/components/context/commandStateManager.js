@@ -1,8 +1,8 @@
 // src/components/context/commandStateManager.js
 import logger from '../../lib/logger.js';
-import { 
-    initializeChannelCommandsStorage, 
-    loadAllChannelCommandSettings, 
+import {
+    initializeChannelCommandsStorage,
+    loadAllChannelCommandSettings,
     listenForCommandSettingsChanges,
     disableCommand,
     enableCommand
@@ -25,7 +25,7 @@ const COMMAND_ALIASES = {
 /**
  * Core management commands that cannot be disabled to prevent lockout
  */
-const PROTECTED_COMMANDS = new Set(['enable', 'disable', 'help']);
+const PROTECTED_COMMANDS = new Set(['enable', 'disable']);
 
 /**
  * Initializes the command state manager.
@@ -33,21 +33,21 @@ const PROTECTED_COMMANDS = new Set(['enable', 'disable', 'help']);
  */
 export async function initializeCommandStateManager() {
     logger.info("[CommandStateManager] Initializing command state manager...");
-    
+
     try {
         // Initialize the storage layer
         await initializeChannelCommandsStorage();
-        
+
         // Load all existing channel command settings
         channelCommandStates = await loadAllChannelCommandSettings();
         logger.info(`[CommandStateManager] Loaded command states for ${channelCommandStates.size} channels`);
-        
+
         // Set up real-time listener for changes
         firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet) => {
             logger.debug(`[CommandStateManager] Updating cached command state for channel ${channelName}`);
             channelCommandStates.set(channelName, disabledCommandsSet);
         });
-        
+
         logger.info("[CommandStateManager] Command state manager initialized successfully");
     } catch (error) {
         logger.error({ err: error }, "[CommandStateManager] Failed to initialize command state manager");
@@ -86,14 +86,14 @@ function normalizeCommandName(commandName) {
 export function isCommandDisabled(channelName, commandName) {
     const normalizedChannel = channelName.toLowerCase();
     const normalizedCommand = normalizeCommandName(commandName);
-    
+
     const disabledCommands = channelCommandStates.get(normalizedChannel);
     if (!disabledCommands) {
         // No settings for this channel means all commands are enabled
         logger.debug(`[CommandStateManager] No command settings for channel ${normalizedChannel}, command ${normalizedCommand} is enabled`);
         return false;
     }
-    
+
     const isDisabled = disabledCommands.has(normalizedCommand);
     logger.debug(`[CommandStateManager] Command ${normalizedCommand} in channel ${normalizedChannel} is ${isDisabled ? 'disabled' : 'enabled'}`);
     return isDisabled;
@@ -108,7 +108,7 @@ export function isCommandDisabled(channelName, commandName) {
 export async function disableCommandForChannel(channelName, commandName) {
     const normalizedChannel = channelName.toLowerCase();
     const normalizedCommand = normalizeCommandName(commandName);
-    
+
     // Check if it's a protected command
     if (PROTECTED_COMMANDS.has(normalizedCommand)) {
         return {
@@ -117,25 +117,25 @@ export async function disableCommandForChannel(channelName, commandName) {
             wasAlreadyDisabled: false
         };
     }
-    
+
     try {
         const wasNewlyDisabled = await disableCommand(normalizedChannel, normalizedCommand);
-        
+
         // Update local cache immediately
         if (!channelCommandStates.has(normalizedChannel)) {
             channelCommandStates.set(normalizedChannel, new Set());
         }
         channelCommandStates.get(normalizedChannel).add(normalizedCommand);
-        
+
         return {
             success: true,
-            message: wasNewlyDisabled 
+            message: wasNewlyDisabled
                 ? `✅ Command '!${commandName}' has been disabled.`
                 : `Command '!${commandName}' was already disabled.`,
             wasAlreadyDisabled: !wasNewlyDisabled
         };
     } catch (error) {
-        logger.error({ err: error, channel: normalizedChannel, command: normalizedCommand }, 
+        logger.error({ err: error, channel: normalizedChannel, command: normalizedCommand },
             `[CommandStateManager] Error disabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
@@ -154,25 +154,25 @@ export async function disableCommandForChannel(channelName, commandName) {
 export async function enableCommandForChannel(channelName, commandName) {
     const normalizedChannel = channelName.toLowerCase();
     const normalizedCommand = normalizeCommandName(commandName);
-    
+
     try {
         const wasNewlyEnabled = await enableCommand(normalizedChannel, normalizedCommand);
-        
+
         // Update local cache immediately
         const disabledCommands = channelCommandStates.get(normalizedChannel);
         if (disabledCommands) {
             disabledCommands.delete(normalizedCommand);
         }
-        
+
         return {
             success: true,
-            message: wasNewlyEnabled 
+            message: wasNewlyEnabled
                 ? `✅ Command '!${commandName}' has been enabled.`
                 : `Command '!${commandName}' was already enabled.`,
             wasAlreadyEnabled: !wasNewlyEnabled
         };
     } catch (error) {
-        logger.error({ err: error, channel: normalizedChannel, command: normalizedCommand }, 
+        logger.error({ err: error, channel: normalizedChannel, command: normalizedCommand },
             `[CommandStateManager] Error enabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
@@ -211,6 +211,6 @@ export function getAllAvailableCommands(commandHandlers) {
  */
 export function isValidCommand(commandName, commandHandlers) {
     const normalizedCommand = normalizeCommandName(commandName);
-    return Object.prototype.hasOwnProperty.call(commandHandlers, normalizedCommand) || 
-           Object.keys(commandHandlers).includes(commandName.toLowerCase());
+    return Object.prototype.hasOwnProperty.call(commandHandlers, normalizedCommand) ||
+        Object.keys(commandHandlers).includes(commandName.toLowerCase());
 }

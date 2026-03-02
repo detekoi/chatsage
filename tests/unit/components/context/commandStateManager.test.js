@@ -159,15 +159,15 @@ describe('commandStateManager', () => {
             });
         });
 
-        it('should prevent disabling protected commands', async () => {
+        it('should allow disabling the help command', async () => {
             const result = await disableCommandForChannel('testchannel', 'help');
 
             expect(result).toEqual({
-                success: false,
-                message: "The command 'help' is always available and cannot be disabled.",
+                success: true,
+                message: "✅ Command '!help' has been disabled.",
                 wasAlreadyDisabled: false
             });
-            expect(channelCommandsStorage.disableCommand).not.toHaveBeenCalled();
+            expect(channelCommandsStorage.disableCommand).toHaveBeenCalledWith('testchannel', 'help');
         });
 
         it('should handle storage errors', async () => {
