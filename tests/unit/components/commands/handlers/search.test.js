@@ -11,14 +11,13 @@ import { getContextManager } from '../../../../../src/components/context/context
 import {
     buildContextPrompt,
     summarizeText,
-    getOrCreateChatSession
+    generateSearchResponse
 } from '../../../../../src/components/llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 
 describe('Search Command Handler', () => {
     let mockContextManager;
-    let mockChatSession;
 
     const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
         channel,
@@ -33,7 +32,7 @@ describe('Search Command Handler', () => {
         // Clear mocks (except logger which is mocked at module level)
         getContextManager.mockClear();
         buildContextPrompt.mockClear();
-        getOrCreateChatSession.mockClear();
+        generateSearchResponse.mockClear();
         summarizeText.mockClear();
         removeMarkdownAsterisks.mockClear();
         enqueueMessage.mockClear();
@@ -43,14 +42,10 @@ describe('Search Command Handler', () => {
             getContextForLLM: jest.fn()
         };
 
-        mockChatSession = {
-            sendMessage: jest.fn()
-        };
-
         // Mock the imported functions
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
-        getOrCreateChatSession.mockReturnValue(mockChatSession);
+        generateSearchResponse.mockResolvedValue('mock search result');
         summarizeText.mockResolvedValue('summarized text');
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         enqueueMessage.mockResolvedValue();
@@ -60,12 +55,6 @@ describe('Search Command Handler', () => {
             channel: 'testchannel',
             currentGame: 'Test Game',
             chatHistory: []
-        });
-
-        // Setup chat session default response
-        mockChatSession.sendMessage.mockResolvedValue({
-            text: () => 'mock search result',
-            candidates: [{ content: { parts: [{ text: 'mock search result' }] } }]
         });
     });
 
@@ -78,12 +67,36 @@ describe('Search Command Handler', () => {
         });
     });
 
+    describe('Uses generateSearchResponse (one-shot with Google Search grounding)', () => {
+        test('should call generateSearchResponse with context and query', async () => {
+            const context = createMockContext(['switch', '2', 'specs']);
+            await searchHandler.execute(context);
+
+            expect(generateSearchResponse).toHaveBeenCalledWith(
+                'mock context prompt',
+                expect.stringContaining('switch 2 specs')
+            );
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'mock search result',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should include username in the search query', async () => {
+            const context = createMockContext(['test', 'query']);
+            await searchHandler.execute(context);
+
+            expect(generateSearchResponse).toHaveBeenCalledWith(
+                'mock context prompt',
+                expect.stringContaining('TestUser')
+            );
+        });
+    });
+
     describe('Markdown Removal', () => {
         test('should remove asterisk markdown from search responses', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'The movie **Ladyhawke** was released in 1985',
-                candidates: [{ content: { parts: [{ text: 'The movie **Ladyhawke** was released in 1985' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('The movie **Ladyhawke** was released in 1985');
 
             const context = createMockContext(['ladyhawke', 'movie']);
             await searchHandler.execute(context);
@@ -97,10 +110,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should remove italic asterisk markdown', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'Check out *The Matrix* for sci-fi',
-                candidates: [{ content: { parts: [{ text: 'Check out *The Matrix* for sci-fi' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('Check out *The Matrix* for sci-fi');
 
             const context = createMockContext(['sci-fi', 'movies']);
             await searchHandler.execute(context);
@@ -114,10 +124,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should handle responses without markdown', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'This is plain text result',
-                candidates: [{ content: { parts: [{ text: 'This is plain text result' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('This is plain text result');
 
             const context = createMockContext(['plain', 'query']);
             await searchHandler.execute(context);
@@ -131,10 +138,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should remove markdown from multiple occurrences', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'Try **Dark Souls**, *Elden Ring*, or **Bloodborne**',
-                candidates: [{ content: { parts: [{ text: 'Try **Dark Souls**, *Elden Ring*, or **Bloodborne**' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('Try **Dark Souls**, *Elden Ring*, or **Bloodborne**');
 
             const context = createMockContext(['souls-like', 'games']);
             await searchHandler.execute(context);
@@ -158,17 +162,14 @@ describe('Search Command Handler', () => {
                 'Please provide something to search for. Usage: !search <your query>',
                 { replyToId: '123' }
             );
-            expect(mockChatSession.sendMessage).not.toHaveBeenCalled();
+            expect(generateSearchResponse).not.toHaveBeenCalled();
         });
     });
 
     describe('Summarization', () => {
         test('should summarize long responses', async () => {
             const longResponse = 'a'.repeat(500); // Longer than 450 char limit
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => longResponse,
-                candidates: [{ content: { parts: [{ text: longResponse }] } }]
-            });
+            generateSearchResponse.mockResolvedValue(longResponse);
             summarizeText.mockResolvedValue('summarized version');
 
             const context = createMockContext(['long', 'query']);
@@ -184,10 +185,7 @@ describe('Search Command Handler', () => {
 
         test('should truncate if summarization fails', async () => {
             const longResponse = 'a'.repeat(500);
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => longResponse,
-                candidates: [{ content: { parts: [{ text: longResponse }] } }]
-            });
+            generateSearchResponse.mockResolvedValue(longResponse);
             summarizeText.mockResolvedValue(''); // Failed summarization
 
             const context = createMockContext(['long', 'query']);
@@ -203,11 +201,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should not summarize short responses', async () => {
-            const shortResponse = 'Short answer';
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => shortResponse,
-                candidates: [{ content: { parts: [{ text: shortResponse }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('Short answer');
 
             const context = createMockContext(['short', 'query']);
             await searchHandler.execute(context);
@@ -236,7 +230,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should handle search errors gracefully', async () => {
-            mockChatSession.sendMessage.mockRejectedValue(new Error('Search error'));
+            generateSearchResponse.mockRejectedValue(new Error('Search error'));
 
             const context = createMockContext(['test', 'query']);
             await searchHandler.execute(context);
@@ -249,10 +243,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should handle empty search result', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '',
-                candidates: [{ content: { parts: [{ text: '' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('');
 
             const context = createMockContext(['test', 'query']);
             await searchHandler.execute(context);
@@ -265,10 +256,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should handle null search result', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => null,
-                candidates: []
-            });
+            generateSearchResponse.mockResolvedValue(null);
 
             const context = createMockContext(['test', 'query']);
             await searchHandler.execute(context);
@@ -283,10 +271,7 @@ describe('Search Command Handler', () => {
 
     describe('User Prefix Stripping', () => {
         test('should strip username prefix from response', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => '@testuser The answer is 42',
-                candidates: [{ content: { parts: [{ text: '@testuser The answer is 42' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('@testuser The answer is 42');
             removeMarkdownAsterisks.mockImplementation((text) => text);
 
             const context = createMockContext(['what', 'is', 'the', 'answer']);
@@ -300,10 +285,7 @@ describe('Search Command Handler', () => {
         });
 
         test('should handle case-insensitive username stripping', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'TestUser: The answer is 42',
-                candidates: [{ content: { parts: [{ text: 'TestUser: The answer is 42' }] } }]
-            });
+            generateSearchResponse.mockResolvedValue('TestUser: The answer is 42');
             removeMarkdownAsterisks.mockImplementation((text) => text);
 
             const context = createMockContext(['query'], '#testchannel', {
@@ -316,50 +298,6 @@ describe('Search Command Handler', () => {
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'The answer is 42',
-                { replyToId: '123' }
-            );
-        });
-    });
-
-    describe('Grounding Metadata', () => {
-        test('should handle responses with grounding metadata', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'Search result with grounding',
-                candidates: [{
-                    content: { parts: [{ text: 'Search result with grounding' }] },
-                    groundingMetadata: {
-                        webSearchQueries: ['test query'],
-                        groundingChunks: [
-                            { web: { uri: 'https://example.com' } }
-                        ]
-                    }
-                }]
-            });
-
-            const context = createMockContext(['test', 'query']);
-            await searchHandler.execute(context);
-
-            expect(enqueueMessage).toHaveBeenCalledWith(
-                '#testchannel',
-                'Search result with grounding',
-                { replyToId: '123' }
-            );
-        });
-
-        test('should handle responses without grounding metadata', async () => {
-            mockChatSession.sendMessage.mockResolvedValue({
-                text: () => 'Search result without grounding',
-                candidates: [{
-                    content: { parts: [{ text: 'Search result without grounding' }] }
-                }]
-            });
-
-            const context = createMockContext(['test', 'query']);
-            await searchHandler.execute(context);
-
-            expect(enqueueMessage).toHaveBeenCalledWith(
-                '#testchannel',
-                'Search result without grounding',
                 { replyToId: '123' }
             );
         });
@@ -411,4 +349,3 @@ describe('Search Command Handler', () => {
         });
     });
 });
-

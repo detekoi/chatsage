@@ -149,7 +149,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nIMPORTANT: Search the web. Response ≤ 420 chars.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nYou MUST use the Google Search tool to answer this query with current, real-time information from the web. Do NOT rely on your training data alone. Response ≤ 420 chars.`;
 
     try {
         const result = await model.generateContent({
@@ -160,11 +160,18 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
         });
 
         const candidate = result.candidates?.[0];
-        // Logging for grounding (simplified)
-        if (candidate?.groundingMetadata) {
-            logger.info({ queries: candidate.groundingMetadata.webSearchQueries }, 'Search grounded.');
+        const groundingMetadata = candidate?.groundingMetadata || null;
+        // Logging for grounding
+        if (groundingMetadata) {
+            const sources = Array.isArray(groundingMetadata.groundingChunks)
+                ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
+                : undefined;
+            logger.info({ usedGoogleSearch: true, webSearchQueries: groundingMetadata.webSearchQueries, sources }, '[SearchResponse] Search grounded.');
+        } else {
+            logger.info({ usedGoogleSearch: false }, '[SearchResponse] No search grounding metadata present.');
         }
-        return extractTextFromResponse(result, candidate, 'search')?.trim() || null;
+        const text = extractTextFromResponse(result, candidate, 'search')?.trim() || null;
+        return text;
     } catch (error) {
         logger.error({ err: error }, 'Error during search-grounded generateContent call');
         return null;

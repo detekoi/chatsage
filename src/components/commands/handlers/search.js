@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
-import { buildContextPrompt, summarizeText, getOrCreateChatSession } from '../../llm/geminiClient.js';
+import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 
@@ -12,7 +12,8 @@ const SUMMARY_TARGET_LENGTH = 400;
 
 /**
  * Handler for the !search command.
- * Fetches context, then asks Gemini to search Google and returns the result.
+ * Uses a one-shot generateSearchResponse call with Google Search grounding
+ * to always fetch real-time web results.
  */
 const searchHandler = {
     name: 'search',
@@ -44,43 +45,9 @@ const searchHandler = {
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
 
-            // Get raw chat history from context manager for initializing session history (guard for older mocks)
-            let rawChatHistory = [];
-            try {
-                if (contextManager && typeof contextManager.getAllChannelStates === 'function') {
-                    const channelStates = contextManager.getAllChannelStates();
-                    const channelState = channelStates?.get ? channelStates.get(channelName) : null;
-                    rawChatHistory = channelState?.chatHistory || [];
-                }
-            } catch (_) {
-                rawChatHistory = [];
-            }
-
-            // 2. Use the persistent chat session with googleSearch tool enabled
-            // Pass context and chat history so bot has stream context and recent chat history when first created
-            const chatSession = getOrCreateChatSession(channelName, contextPrompt, rawChatHistory);
-            const fullPrompt = `${contextPrompt}\n\nUSER: ${userName} is explicitly asking to search for: "${userQuery}"\nReference chat history by username when relevant.`;
-            const result = await chatSession.sendMessage({ message: fullPrompt });
-            const initialResponseText = typeof result?.text === 'function' ? result.text() : (typeof result?.text === 'string' ? result.text : '');
-
-            // Log Google Search grounding metadata and citations if present
-            try {
-                const candidate = result?.candidates?.[0];
-                const groundingMetadata = candidate?.groundingMetadata || result?.candidates?.[0]?.groundingMetadata;
-                if (groundingMetadata) {
-                    const sources = Array.isArray(groundingMetadata.groundingChunks)
-                        ? groundingMetadata.groundingChunks.slice(0, 3).map(c => c?.web?.uri).filter(Boolean)
-                        : undefined;
-                    logger.info({ usedGoogleSearch: true, webSearchQueries: groundingMetadata.webSearchQueries, sources }, '[SearchCmd] Search grounding metadata.');
-                } else {
-                    logger.info({ usedGoogleSearch: false }, '[SearchCmd] No search grounding metadata present.');
-                }
-                if (candidate?.citationMetadata?.citationSources?.length > 0) {
-                    logger.info({ citations: candidate.citationMetadata.citationSources }, '[SearchCmd] Response included citations.');
-                }
-            } catch (logErr) {
-                logger.debug({ err: logErr }, '[SearchCmd] Skipped grounding/citation logging due to unexpected response shape.');
-            }
+            // 2. Use one-shot generateSearchResponse with Google Search grounding
+            const searchQuery = `${userName} is asking: "${userQuery}"`;
+            const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery);
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
@@ -106,14 +73,14 @@ const searchHandler = {
                 } else {
                     logger.warn(`Summarization failed for query: "${userQuery}". Falling back to intelligent truncation.`);
                     const availableLength = MAX_IRC_MESSAGE_LENGTH - 3;
-                    
+
                     if (availableLength > 0) {
                         let truncated = initialResponseText.substring(0, availableLength);
-                        
+
                         // Try to find sentence endings first
                         const sentenceEndRegex = /[.!?][^.!?]*$/;
                         const sentenceMatch = truncated.match(sentenceEndRegex);
-                        
+
                         if (sentenceMatch) {
                             const endIndex = availableLength - sentenceMatch[0].length + 1;
                             truncated = initialResponseText.substring(0, endIndex > 0 ? endIndex : 0);
@@ -121,7 +88,7 @@ const searchHandler = {
                             // Try to find a comma or other natural break
                             const commaBreakRegex = /,[^,]*$/;
                             const commaMatch = truncated.match(commaBreakRegex);
-                            
+
                             if (commaMatch) {
                                 const endIndex = availableLength - commaMatch[0].length + 1;
                                 truncated = initialResponseText.substring(0, endIndex > 0 ? endIndex : 0);
@@ -134,7 +101,7 @@ const searchHandler = {
                                 // If no good break point, keep the substring truncation
                             }
                         }
-                        
+
                         finalReplyText = truncated + '...';
                     } else {
                         finalReplyText = '...';
