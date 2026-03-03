@@ -15,7 +15,7 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 **[ChatSageをあなたのTwitchチャンネルに追加 →](https://streamsage-bot.web.app)**
 
-[![ライセンス](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
+[![ライセンス](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE.md)
 
 ## 目次 {#table-of-contents}
 
@@ -31,9 +31,9 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 
 ## 主な機能（コア機能） {#features-core-capabilities}
 
-*   指定されたTwitchチャンネルにIRC経由で接続します。
+*   Twitch EventSubウェブフック経由でチャットメッセージを受信し、Twitch Helix API経由で返信を送信します。
 *   Twitch Helix APIを使用して、リアルタイムの配信コンテキスト（ゲーム、タイトル、タグ、サムネイル画像）を取得します。
-*   自然言語理解と応答生成のために、GoogleのGemini 2.0 Flash LLMを利用します。
+*   自然言語理解と応答生成のために、GoogleのGemini 3 Flash LLMを利用します（`!lurk`や`!translate`などの軽量コマンドは、速度とコスト効率のためにGemini 2.5 Flash Liteを使用します）。
 *   チャンネルごとに会話のコンテキスト（履歴と要約）を維持します。
 *   権限レベル付きのカスタムチャットコマンドをサポートします。
 *   多言語チャンネルをサポートするための、設定可能なボット言語設定。
@@ -135,7 +135,7 @@ ChatSageは主に環境変数を通じて設定されます。必須およびオ
 
 ChatSageは、Twitchとの認証を維持するために安全なトークン更新メカニズムを使用します。
 
-### ボットIRC認証 {#bot-irc-authentication}
+### ボット認証 {#bot-authentication}
 
 1.  **トークン生成の前提条件**：
     *   **Twitchアプリケーション**：[Twitch開発者コンソール](https://dev.twitch.tv/console/)でアプリケーションを登録していることを確認してください。**クライアントID**をメモし、**クライアントシークレット**を生成します。
@@ -148,9 +148,9 @@ ChatSageは、Twitchとの認証を維持するために安全なトークン更
     *   プロンプトが表示されたら、Twitchアプリケーションの**クライアントID**と**クライアントシークレット**を入力します。
 
 3.  **Twitch CLIを使用したユーザーアクセストークンと更新トークンの生成**：
-    *   ターミナルで次のコマンドを実行します。`<your_scopes>`を、ボットに必要なスコープのスペース区切りリストに置き換えます。ChatSageの場合、少なくとも`chat:read`と`chat:edit`が必要です。
+    *   ターミナルで次のコマンドを実行します。`<your_scopes>`を、ボットに必要なスコープのスペース区切りリストに置き換えます。ChatSageの場合、少なくとも`user:read:chat`と`user:write:chat`が必要です。
         ```bash
-        twitch token -u -s 'chat:read chat:edit'
+        twitch token -u -s 'user:read:chat user:write:chat'
         ```
         *（ボットのカスタムコマンドで他のスコープが必要な場合は追加できます。例：`channel:manage:polls channel:read:subscriptions`）*
     *   CLIはURLを出力します。このURLをコピーしてウェブブラウザに貼り付けます。
@@ -172,9 +172,9 @@ ChatSageは、Twitchとの認証を維持するために安全なトークン更
     *   ChatSageアプリケーションを実行しているサービスアカウント（ローカルのADC経由またはCloud Run内）が、このシークレットに対する「Secret Managerのシークレットアクセサー」IAMロールを持っていることを確認します。
 
 6.  **ChatSageでの認証フロー**：
-    *   起動時、ChatSage（具体的には`ircAuthHelper.js`）は`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`を使用して、Google Secret Managerから保存されている更新トークンを取得します。
+    *   起動時、ChatSage（具体的には`auth.js`）は`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`を使用して、Google Secret Managerから保存されている更新トークンを取得します。
     *   次に、この更新トークンをアプリケーションの`TWITCH_CLIENT_ID`および`TWITCH_CLIENT_SECRET`とともに使用して、Twitchから新しい短命のOAuthアクセストークンを取得します。
-    *   このアクセストークンはTwitch IRCへの接続に使用されます。
+    *   このアクセストークンは、メッセージの送信とEventSubウェブフックの購読のためにTwitch Helix APIへの認証に使用されます。
     *   アクセストークンが期限切れになったり無効になったりした場合、ボットは更新トークンを使用して自動的に新しいトークンを取得します。
     *   更新トークン自体が無効になった場合（例：Twitchによる取り消し、ユーザーパスワードの変更）、アプリケーションは重大なエラーをログに記録し、新しい更新トークンを取得するためにトークン生成プロセス（手順3〜4）を繰り返す必要があります。
 

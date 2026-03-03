@@ -15,7 +15,7 @@ ChatSage es un chatbot impulsado por IA diseñado para entornos de chat de Twitc
 
 **[Agrega ChatSage a tu canal de Twitch →](https://streamsage-bot.web.app)**
 
-[![Licencia](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md) 
+[![Licencia](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE.md)
 
 ## Tabla de Contenidos
 
@@ -31,9 +31,9 @@ ChatSage es un chatbot impulsado por IA diseñado para entornos de chat de Twitc
 
 ## Características (Capacidades Principales)
 
-* Se conecta a los canales de Twitch especificados a través de IRC.
+* Recibe mensajes de chat a través de webhooks de Twitch EventSub y envía respuestas mediante la API Helix de Twitch.
 * Obtiene el contexto del stream en tiempo real (juego, título, etiquetas, imágenes en miniatura) utilizando la API Helix de Twitch.
-* Utiliza el LLM Google Gemini 2.0 Flash para la comprensión del lenguaje natural y la generación de respuestas.
+* Utiliza el LLM Google Gemini 3 Flash para la comprensión del lenguaje natural y la generación de respuestas (los comandos ligeros como `!lurk` y `!translate` usan Gemini 2.5 Flash Lite para mayor velocidad y eficiencia de costos).
 * Mantiene el contexto de la conversación (historial y resúmenes) por canal.
 * Admite comandos de chat personalizados con niveles de permiso.
 * Configuraciones de idioma del bot ajustables para soporte de canales multilingües.
@@ -135,7 +135,7 @@ Asegúrate de que todas las variables requeridas estén configuradas en tu entor
 
 ChatSage utiliza un mecanismo seguro de actualización de tokens para mantener la autenticación con Twitch:
 
-### Autenticación IRC del Bot
+### Autenticación del Bot
 
 1.  **Prerrequisitos para la Generación de Tokens**:
     *   **Aplicación de Twitch**: Asegúrate de haber registrado una aplicación en la [Consola de Desarrolladores de Twitch](https://dev.twitch.tv/console/). Anota tu **ID de Cliente** y genera un **Secreto de Cliente**.
@@ -148,9 +148,9 @@ ChatSage utiliza un mecanismo seguro de actualización de tokens para mantener l
     *   Cuando se te solicite, ingresa el **ID de Cliente** y el **Secreto de Cliente** de tu aplicación de Twitch.
 
 3.  **Generar Token de Acceso de Usuario y Token de Actualización usando la CLI de Twitch**:
-    *   Ejecuta el siguiente comando en tu terminal. Reemplaza `<tus_scopes>` con una lista de ámbitos requeridos para tu bot, separados por espacios. Para ChatSage, necesitas al menos `chat:read` y `chat:edit`.
+    *   Ejecuta el siguiente comando en tu terminal. Reemplaza `<tus_scopes>` con una lista de ámbitos requeridos para tu bot, separados por espacios. Para ChatSage, necesitas al menos `user:read:chat` y `user:write:chat`.
         ```bash
-        twitch token -u -s 'chat:read chat:edit'
+        twitch token -u -s 'user:read:chat user:write:chat'
         ```
         *(Puedes agregar otros ámbitos si los comandos personalizados de tu bot los necesitan, por ejemplo, `channel:manage:polls channel:read:subscriptions`)*
     *   La CLI mostrará una URL. Copia esta URL y pégala en tu navegador web.
@@ -172,9 +172,9 @@ ChatSage utiliza un mecanismo seguro de actualización de tokens para mantener l
     *   Asegúrate de que la cuenta de servicio que ejecuta tu aplicación ChatSage (ya sea localmente a través de ADC o en Cloud Run) tenga el rol de IAM "Accesor de Secretos de Secret Manager" para este secreto.
 
 6.  **Flujo de Autenticación en ChatSage**:
-    *   Al iniciar, ChatSage (específicamente `ircAuthHelper.js`) usará `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` para obtener el token de actualización almacenado de Google Secret Manager.
+    *   Al iniciar, ChatSage (específicamente `auth.js`) usará `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` para obtener el token de actualización almacenado de Google Secret Manager.
     *   Luego usará este token de actualización, junto con el `TWITCH_CLIENT_ID` y el `TWITCH_CLIENT_SECRET` de tu aplicación, para obtener un Token de Acceso OAuth nuevo y de corta duración de Twitch.
-    *   Este token de acceso se utiliza para conectarse al IRC de Twitch.
+    *   Este token de acceso se utiliza para autenticarse con la API Helix de Twitch para enviar mensajes y suscribirse a webhooks de EventSub.
     *   Si el token de acceso expira o se vuelve inválido, el bot usará el token de actualización para obtener uno nuevo automáticamente.
     *   Si el propio token de actualización se vuelve inválido (por ejemplo, revocado por Twitch, cambio de contraseña del usuario), la aplicación registrará un error crítico y deberás repetir el proceso de generación de tokens (Pasos 3-4) para obtener un nuevo token de actualización.
 

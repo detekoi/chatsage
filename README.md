@@ -13,7 +13,7 @@
 ChatSage is an AI-powered chatbot designed for Twitch chat environments in any language. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
 
 
-[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](LICENSE.md) 
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE.md)
 
 > Important: Access to the cloud version of ChatSage is currently invite-only via an allow-list. The self-serve web dashboard is disabled for unapproved channels. If you'd like to try the bot, please contact me here: [Contact form](https://detekoi.github.io/#contact-me).
 
@@ -31,9 +31,9 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 
 ## Features (Core Capabilities)
 
-* Connects to specified Twitch channels via IRC.
+* Receives chat messages via Twitch EventSub webhooks and sends replies via the Twitch Helix API.
 * Fetches real-time stream context (game, title, tags, thumbnail images) using the Twitch Helix API.
-* Utilizes Google's Gemini 2.5 Flash LLM for natural language understanding and response generation.
+* Utilizes Google's Gemini 3 Flash LLM for natural language understanding and response generation (lightweight commands like `!lurk` and `!translate` use Gemini 2.5 Flash Lite for speed and cost efficiency).
 * Maintains conversation context (history and summaries) per channel.
 * Supports custom chat commands with permission levels.
 * Configurable bot language settings for multilingual channel support.
@@ -146,7 +146,7 @@ Ensure all required variables are set in your environment or `.env` file before 
 
 ChatSage uses a secure token refresh mechanism to maintain authentication with Twitch:
 
-### Bot IRC Authentication
+### Bot Authentication
 
 1.  **Prerequisites for Token Generation**:
     * **Twitch Application**: Ensure you have registered an application on the [Twitch Developer Console](https://dev.twitch.tv/console/). Note your **Client ID** and generate a **Client Secret**.
@@ -159,9 +159,9 @@ ChatSage uses a secure token refresh mechanism to maintain authentication with T
     * When prompted, enter the **Client ID** and **Client Secret** from your Twitch Application.
 
 3.  **Generate User Access Token and Refresh Token using Twitch CLI**:
-    * Run the following command in your terminal. Replace `<your_scopes>` with a space-separated list of scopes required for your bot. For ChatSage, you need at least `chat:read` and `chat:edit`.
+    * Run the following command in your terminal. Replace `<your_scopes>` with a space-separated list of scopes required for your bot. For ChatSage, you need at least `user:read:chat` and `user:write:chat`.
         ```bash
-        twitch token -u -s 'chat:read chat:edit'
+        twitch token -u -s 'user:read:chat user:write:chat'
         ```
         *(You can add other scopes if your bot's custom commands need them, e.g., `channel:manage:polls channel:read:subscriptions`)*
     * The CLI will output a URL. Copy this URL and paste it into your web browser.
@@ -183,9 +183,9 @@ ChatSage uses a secure token refresh mechanism to maintain authentication with T
     * Ensure the service account running your ChatSage application (whether locally via ADC or in Cloud Run) has the "Secret Manager Secret Accessor" IAM role for this secret.
 
 6.  **Authentication Flow in ChatSage**:
-    * On startup, ChatSage (specifically `ircAuthHelper.js`) will use the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` to fetch the stored refresh token from Google Secret Manager.
+    * On startup, ChatSage (specifically `auth.js`) will use the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` to fetch the stored refresh token from Google Secret Manager.
     * It will then use this refresh token, along with your application's `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`, to obtain a fresh, short-lived OAuth Access Token from Twitch.
-    * This access token is used to connect to Twitch IRC.
+    * This access token is used to authenticate with the Twitch Helix API for sending chat messages and subscribing to EventSub webhooks.
     * If the access token expires or becomes invalid, the bot will use the refresh token to automatically obtain a new one.
     * If the refresh token itself becomes invalid (e.g., revoked by Twitch, user password change), the application will log a critical error, and you will need to repeat the token generation process (Steps 3-4) to get a new refresh token.
 

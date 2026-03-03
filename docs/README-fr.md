@@ -16,7 +16,7 @@ ChatSage est un chatbot alimenté par l'IA, conçu pour les environnements de ch
 
 **[Ajoutez ChatSage à votre chaîne Twitch →](https://streamsage-bot.web.app)**
 
-[![License](https://img.shields.io/badge/License-BSD%202--Clause-blue.svg)](../LICENSE.md)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE.md)
 
 ## Table des Matières
 
@@ -32,9 +32,9 @@ ChatSage est un chatbot alimenté par l'IA, conçu pour les environnements de ch
 
 ## Fonctionnalités (Capacités de Base)
 
-* Se connecte aux chaînes Twitch spécifiées via IRC.
+* Reçoit les messages de chat via les webhooks Twitch EventSub et envoie des réponses via l'API Twitch Helix.
 * Récupère le contexte du stream en temps réel (jeu, titre, tags, images miniatures) en utilisant l'API Twitch Helix.
-* Utilise le LLM Google Gemini 2.0 Flash pour la compréhension du langage naturel et la génération de réponses.
+* Utilise le LLM Google Gemini 3 Flash pour la compréhension du langage naturel et la génération de réponses (les commandes légères comme `!lurk` et `!translate` utilisent Gemini 2.5 Flash Lite pour la vitesse et l'efficacité des coûts).
 * Maintient le contexte de la conversation (historique et résumés) par chaîne.
 * Prend en charge les commandes de chat personnalisées avec des niveaux de permission.
 * Paramètres de langue du bot configurables pour un support multilingue des chaînes.
@@ -136,7 +136,7 @@ Assurez-vous que toutes les variables requises sont définies dans votre environ
 
 ChatSage utilise un mécanisme sécurisé de renouvellement de jeton pour maintenir l'authentification avec Twitch :
 
-### Authentification IRC du Bot
+### Authentification du Bot
 
 1.  **Prérequis pour la Génération de Jeton** :
     *   **Application Twitch** : Assurez-vous d'avoir enregistré une application sur la [Console Développeur Twitch](https://dev.twitch.tv/console/). Notez votre **ID Client** et générez un **Secret Client**.
@@ -149,9 +149,9 @@ ChatSage utilise un mécanisme sécurisé de renouvellement de jeton pour mainte
     *   Lorsque vous y êtes invité, entrez l'**ID Client** et le **Secret Client** de votre application Twitch.
 
 3.  **Générer un Jeton d'Accès Utilisateur et un Jeton de Rafraîchissement à l'aide de la CLI Twitch** :
-    *   Exécutez la commande suivante dans votre terminal. Remplacez `<vos_scopes>` par une liste d'autorisations requises pour votre bot, séparées par des espaces. Pour ChatSage, vous avez besoin au minimum de `chat:read` et `chat:edit`.
+    *   Exécutez la commande suivante dans votre terminal. Remplacez `<vos_scopes>` par une liste d'autorisations requises pour votre bot, séparées par des espaces. Pour ChatSage, vous avez besoin au minimum de `user:read:chat` et `user:write:chat`.
         ```bash
-        twitch token -u -s 'chat:read chat:edit'
+        twitch token -u -s 'user:read:chat user:write:chat'
         ```
         *(Vous pouvez ajouter d'autres autorisations si les commandes personnalisées de votre bot en ont besoin, par exemple, `channel:manage:polls channel:read:subscriptions`)*
     *   La CLI affichera une URL. Copiez cette URL et collez-la dans votre navigateur web.
@@ -173,9 +173,9 @@ ChatSage utilise un mécanisme sécurisé de renouvellement de jeton pour mainte
     *   Assurez-vous que le compte de service exécutant votre application ChatSage (que ce soit localement via ADC ou dans Cloud Run) dispose du rôle IAM "Accesseur de secrets du Secret Manager" pour ce secret.
 
 6.  **Flux d'Authentification dans ChatSage** :
-    *   Au démarrage, ChatSage (plus précisément `ircAuthHelper.js`) utilisera `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` pour récupérer le jeton de rafraîchissement stocké depuis Google Secret Manager.
+    *   Au démarrage, ChatSage (plus précisément `auth.js`) utilisera `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` pour récupérer le jeton de rafraîchissement stocké depuis Google Secret Manager.
     *   Il utilisera ensuite ce jeton de rafraîchissement, ainsi que l'`TWITCH_CLIENT_ID` et le `TWITCH_CLIENT_SECRET` de votre application, pour obtenir un nouveau Jeton d'Accès OAuth de courte durée auprès de Twitch.
-    *   Ce jeton d'accès est utilisé pour se connecter à l'IRC Twitch.
+    *   Ce jeton d'accès est utilisé pour s'authentifier auprès de l'API Twitch Helix pour l'envoi de messages et l'abonnement aux webhooks EventSub.
     *   Si le jeton d'accès expire ou devient invalide, le bot utilisera le jeton de rafraîchissement pour en obtenir automatiquement un nouveau.
     *   Si le jeton de rafraîchissement lui-même devient invalide (par exemple, révoqué par Twitch, changement de mot de passe utilisateur), l'application enregistrera une erreur critique, et vous devrez répéter le processus de génération de jeton (Étapes 3-4) pour obtenir un nouveau jeton de rafraîchissement.
 
