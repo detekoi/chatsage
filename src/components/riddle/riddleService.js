@@ -57,6 +57,19 @@ const RiddleSchema = {
     required: ["riddle_question", "riddle_answer", "keywords", "difficulty_generated", "explanation", "search_used"]
 };
 
+// Localized schema adds riddle_answer_english for answer verification when generating in non-English
+const LocalizedRiddleSchema = {
+    type: GenAIType.OBJECT,
+    properties: {
+        ...RiddleSchema.properties,
+        riddle_answer_english: {
+            type: GenAIType.STRING,
+            description: "The riddle answer translated to English. Used for answer verification. Must be concise (1-2 words)."
+        }
+    },
+    required: [...RiddleSchema.required, "riddle_answer_english"]
+};
+
 
 // Helper: prune excluded keyword sets to keep prompt small
 function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
@@ -112,7 +125,7 @@ function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
 /**
  * Generates a riddle using Structured Output and Search Grounding.
  */
-export async function generateRiddle(topic, difficulty, excludedKeywordSets = [], channelName, excludedAnswers = []) {
+export async function generateRiddle(topic, difficulty, excludedKeywordSets = [], channelName, excludedAnswers = [], language = null) {
     const model = getGeminiClient();
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
@@ -166,6 +179,11 @@ These have been used recently or are banned. Pick something COMPLETELY DIFFERENT
 
 
 
+    // Add language directive if generating in a non-English language
+    const languageDirective = language
+        ? `\nLANGUAGE: Generate the riddle_question, riddle_answer, and explanation entirely in ${language}. Also provide riddle_answer_english with the English translation of the answer for verification purposes.`
+        : '';
+
     const prompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
 ${promptDetails}
 ${fullExclusionInstructions}
@@ -185,11 +203,16 @@ RULES FOR QUESTION:
 EXPLANATION STYLE:
 - Fun, conversational (Max 1-2 sentences). No academic tone.
 
-Return JSON matching the schema.`;
+Return JSON matching the schema.${languageDirective}`;
+
+    // Select schema based on whether we need the English answer field
+    const activeSchema = language ? LocalizedRiddleSchema : RiddleSchema;
 
     try {
         // Always provide Google Search tool — Gemini auto-decides whether to use it
         const tools = [{ googleSearch: {} }];
+
+        logger.debug({ topic: actualTopic, language }, `[RiddleService] Generating riddle via Structured Output.`);
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -197,7 +220,7 @@ Return JSON matching the schema.`;
             generationConfig: {
                 temperature: 0.75,
                 responseMimeType: "application/json",
-                responseSchema: RiddleSchema
+                responseSchema: activeSchema
             }
         });
 
@@ -234,9 +257,9 @@ Return JSON matching the schema.`;
         // Derive searchUsed from actual response grounding metadata
         const actuallySearched = args.search_used || !!(result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
 
-        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" (search=${actuallySearched}). Q: "${args.riddle_question}", A: "${args.riddle_answer}"`);
+        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" (search=${actuallySearched}, lang=${language || 'en'}). Q: "${args.riddle_question}", A: "${args.riddle_answer}"`);
 
-        return {
+        const riddleObject = {
             question: args.riddle_question,
             answer: args.riddle_answer,
             keywords: args.keywords,
@@ -244,8 +267,17 @@ Return JSON matching the schema.`;
             explanation: args.explanation || "No explanation provided.",
             searchUsed: actuallySearched,
             topic: actualTopic,
-            requestedTopic: topic
+            requestedTopic: topic,
+            language: language || null
         };
+
+        // When generating in a non-English language, store English answer for verification
+        if (language && args.riddle_answer_english) {
+            riddleObject.answerEnglish = args.riddle_answer_english;
+            logger.debug(`[RiddleService] Localized answer: "${args.riddle_answer}" (English: "${args.riddle_answer_english}")`);
+        }
+
+        return riddleObject;
 
     } catch (error) {
         logger.error({ err: error, topic: actualTopic }, '[RiddleService] Error generating riddle');

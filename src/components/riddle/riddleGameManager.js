@@ -386,7 +386,8 @@ async function _startNextRound(gameState) {
                 gameState.currentRiddle.difficulty,
                 config.questionTimeSeconds
             );
-            enqueueMessage(`#${channelName}`, questionMsg);
+            // Skip translation if riddle was generated natively in the target language
+            enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
 
             const timeoutMs = (config.questionTimeSeconds || DEFAULT_RIDDLE_CONFIG.questionTimeSeconds) * 1000;
             gameState.riddleTimeoutTimer = setTimeout(async () => {
@@ -441,7 +442,7 @@ async function _startNextRound(gameState) {
 
     while (!generatedRiddle && retries < (config.maxRiddleGenerationRetries || DEFAULT_RIDDLE_CONFIG.maxRiddleGenerationRetries)) {
         try {
-            generatedRiddle = await generateRiddle(topic, config.difficulty, combinedExcludedKeywordSets, channelName, excludedAnswers);
+            generatedRiddle = await generateRiddle(topic, config.difficulty, combinedExcludedKeywordSets, channelName, excludedAnswers, gameState.botLanguage || null);
             if (generatedRiddle && generatedRiddle.question && generatedRiddle.answer && generatedRiddle.keywords) {
                 // Post-generation answer similarity check
                 if (_isAnswerTooSimilar(generatedRiddle.answer, excludedAnswers)) {
@@ -482,7 +483,8 @@ async function _startNextRound(gameState) {
         gameState.currentRiddle.difficulty,
         config.questionTimeSeconds
     );
-    enqueueMessage(`#${channelName}`, questionMsg);
+    // Skip translation if riddle was generated natively in the target language
+    enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
 
     const timeoutMs = (config.questionTimeSeconds || DEFAULT_RIDDLE_CONFIG.questionTimeSeconds) * 1000;
     gameState.riddleTimeoutTimer = setTimeout(async () => {
@@ -528,7 +530,8 @@ async function _prefetchNextRiddle(gameState) {
             config.difficulty,
             excludedKeywordSets,
             channelName,
-            excludedAnswers
+            excludedAnswers,
+            gameState.botLanguage || null // Native language generation
         );
 
         if (riddle && riddle.question && riddle.answer && riddle.keywords) {
@@ -581,7 +584,14 @@ async function _handleAnswer(channelName, username, displayName, message) {
 
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
 
-    // Added: Translate user's answer if botlang is set
+    // Determine verification answer: use answerEnglish if available (native generation path)
+    let verifyAgainstAnswer = gameState.currentRiddle.answer;
+    if (gameState.currentRiddle.answerEnglish) {
+        verifyAgainstAnswer = gameState.currentRiddle.answerEnglish;
+        logger.debug(`[RiddleGameManager][${channelName}] Using English answer for verification: "${verifyAgainstAnswer}"`);
+    }
+
+    // Translate user's answer if botlang is set
     const contextManager = getContextManager();
     const botLanguage = contextManager.getBotLanguage(channelName);
     let answerToVerify = userAnswer;
@@ -600,12 +610,11 @@ async function _handleAnswer(channelName, username, displayName, message) {
             logger.error({ err: translateError, channelName, userAnswer, botLanguage }, `[RiddleGameManager][${channelName}] Failed to translate user answer to English for verification. Using original.`);
         }
     }
-    // End of added translation logic
 
     try {
         const originalRequestedTopic = gameState.topic;
         const verification = await verifyRiddleAnswer(
-            gameState.currentRiddle.answer,
+            verifyAgainstAnswer,
             answerToVerify, // Use the potentially translated answer
             gameState.currentRiddle.question,
             originalRequestedTopic
@@ -666,6 +675,14 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     gameState.startTime = null;
     gameState.winner = null;
     _clearTimers(gameState);
+
+    // Look up botLanguage for native generation
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    gameState.botLanguage = botLanguage || null;
+    if (botLanguage) {
+        logger.info(`[RiddleGameManager][${channelName}] Bot language is ${botLanguage}. Riddles will be generated natively in ${botLanguage}.`);
+    }
 
     gameState.state = 'selecting'; // Mark as selecting before async operations
 

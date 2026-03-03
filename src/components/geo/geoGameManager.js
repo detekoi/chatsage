@@ -269,7 +269,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         roundEndMessage = "An error occurred, and the round's location couldn't be revealed.";
     } else {
         try {
-            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason);
+            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason, gameState.botLanguage || null);
             let baseMessageContent = "";
             const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
             if (reason === "guessed" && gameState.winner) {
@@ -469,7 +469,7 @@ async function _startNextRound(gameState) {
     // 2. Generate Initial Clue
     // Pass the correct scope (game title for game mode, null for real mode as region is handled by selection)
     const clueScope = gameState.mode === 'game' ? gameState.gameTitleScope : null;
-    const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, gameState.mode, clueScope);
+    const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null);
     if (!firstClue) {
         logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
         enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`);
@@ -502,7 +502,8 @@ async function _startNextRound(gameState) {
     }
 
     const clueMessage = formatClueMessage(1, firstClue); // Clue #1 for Round 1
-    enqueueMessage(`#${gameState.channelName}`, clueMessage);
+    // Skip translation if clue was generated natively in the target language
+    enqueueMessage(`#${gameState.channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
     // Transition to 'inProgress' for the new round
     gameState.state = 'inProgress';
@@ -574,7 +575,8 @@ async function _scheduleNextClue(gameState) {
                 gameState.mode,
                 gameState.gameTitleScope,
                 gameState.currentClueIndex + 2, // Clue number within the round
-                gameState.incorrectGuessReasons // Reasons from the *current round*
+                gameState.incorrectGuessReasons, // Reasons from the *current round*
+                gameState.botLanguage || null // Native language generation
             );
             if (nextClue) {
                 // Check state again *after* await
@@ -586,7 +588,8 @@ async function _scheduleNextClue(gameState) {
                 gameState.currentClueIndex++;
                 // Use currentClueIndex + 1 for the user-facing clue number
                 const clueMessage = formatClueMessage(gameState.currentClueIndex + 1, nextClue);
-                enqueueMessage(`#${gameState.channelName}`, clueMessage);
+                // Skip translation if clue was generated natively in the target language
+                enqueueMessage(`#${gameState.channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
                 // Only schedule the next clue if still in progress
                 if (gameState.state === 'inProgress') {
@@ -644,6 +647,14 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     gameState.guessCache = new Map();
     gameState.gameSessionExcludedLocations = new Set(); // Reset for the new game session
     _clearTimers(gameState); // Ensure no stray timers
+
+    // Look up botLanguage for native generation
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    gameState.botLanguage = botLanguage || null;
+    if (botLanguage) {
+        logger.info(`[GeoGame][${channelName}] Bot language is ${botLanguage}. Clues will be generated natively in ${botLanguage}.`);
+    }
 
     const scopeLog = scope ? (mode === 'game' ? `Game Scope: ${scope}` : `Region Scope: ${scope}`) : 'Scope: N/A';
     logger.info(`[GeoGame][${channelName}] Starting new game process. Mode: ${mode}, ${scopeLog}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
@@ -703,7 +714,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         // 2. Generate Initial Clue (Round 1)
         // Pass game title only if game mode
         const clueScope = mode === 'game' ? gameState.gameTitleScope : null;
-        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, clueScope);
+        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, clueScope, gameState.botLanguage || null);
         if (!firstClue) {
             throw new Error("Failed to generate the initial clue for Round 1.");
         }
@@ -726,7 +737,8 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         }
 
         const clueMessage = formatClueMessage(1, firstClue); // Clue #1 for Round 1
-        enqueueMessage(`#${channelName}`, clueMessage);
+        // Skip translation if clue was generated natively in the target language
+        enqueueMessage(`#${channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
         // Transition to 'inProgress'
         gameState.state = 'inProgress';

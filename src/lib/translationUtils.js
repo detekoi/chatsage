@@ -259,6 +259,7 @@ Rules:
 1. If the text is already in ${targetLanguage}, set same_language to true and leave translated_text empty.
 2. Otherwise, set same_language to false and provide the translation in translated_text.
 3. Output ONLY the translated text — no explanations, no wrapping in quotes.
+4. Do NOT add any markdown formatting (no ** bold **, no * italics *, no other markup). Preserve the exact formatting of the original text.
 
 Text:
 ${textToTranslate}`;
@@ -327,7 +328,9 @@ ${textToTranslate}`;
     }
 
     // Only remove quotation marks if they surround the entire message
-    const cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
+    let cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
+    // Safety: strip markdown bold/italic injected by translation LLM
+    cleanedText = cleanedText.replace(/\*\*/g, '').trim();
 
     // Cache the successful translation
     if (cleanedText && cleanedText.length > 0) {
