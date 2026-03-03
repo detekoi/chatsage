@@ -558,7 +558,8 @@ async function _startNextRound(gameState) {
                 gameState.currentQuestion.difficulty,
                 gameState.config.questionTimeSeconds
             );
-            enqueueMessage(`#${gameState.channelName}`, questionMessage);
+            // Skip translation if question was generated natively in the target language
+            enqueueMessage(`#${gameState.channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
 
             const timeoutMs = gameState.config.questionTimeSeconds * 1000;
             gameState.questionEndTimer = setTimeout(async () => {
@@ -620,13 +621,13 @@ async function _startNextRound(gameState) {
 
     while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
         try {
-            // --- Pass excluded questions and answers to generateQuestion ---
             const question = await generateQuestion(
                 gameState.topic,
                 gameState.config.difficulty,
                 finalExcludedQuestionsArray, // Pass the combined list
                 gameState.channelName,
-                finalExcludedAnswersArray // Pass excluded answers
+                finalExcludedAnswersArray, // Pass excluded answers
+                gameState.botLanguage || null // Native language generation
             );
             // --- End modification ---
             if (
@@ -700,7 +701,8 @@ async function _startNextRound(gameState) {
         gameState.config.questionTimeSeconds
     );
 
-    enqueueMessage(`#${gameState.channelName}`, questionMessage);
+    // Skip translation if question was generated natively in the target language
+    enqueueMessage(`#${gameState.channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
 
     // 4. Set Question Timer
     const timeoutMs = gameState.config.questionTimeSeconds * 1000;
@@ -766,7 +768,8 @@ async function _prefetchNextQuestion(gameState) {
             gameState.config.difficulty,
             excludedQuestions,
             channelName,
-            excludedAnswers
+            excludedAnswers,
+            gameState.botLanguage || null // Native language generation
         );
 
         // Validate before storing
@@ -849,30 +852,57 @@ async function _processAnswerAttempt(gameState, attempt) {
             return;
         }
 
-        // 2. Translation
-        const contextManager = getContextManager();
-        const botLanguage = contextManager.getBotLanguage(channelName);
+        // 2. Translation / English answer resolution
+        // If we have answerEnglish from native generation, use it directly for verification
+        // Otherwise, fall back to translating user answer to English
+        let verifyAgainstAnswer = gameState.currentQuestion.answer;
+        let verifyAgainstAlternates = gameState.currentQuestion.alternateAnswers || [];
 
-        if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
-            logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${attempt.answer}" to English for verification.`);
-            try {
-                const translatedUserAnswer = await translateText(attempt.answer, 'English');
-                if (translatedUserAnswer && typeof translatedUserAnswer === 'string' && translatedUserAnswer.trim().length > 0) {
-                    attempt.answerToVerify = translatedUserAnswer.trim();
-                    logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${attempt.answer}" -> "${attempt.answerToVerify}"`);
-                } else {
-                    logger.warn(`[TriviaGame][${channelName}] Translation of answer "${attempt.answer}" to English resulted in empty string. Using original for verification.`);
+        if (gameState.currentQuestion.answerEnglish) {
+            // Native generation path: verify against English answers, translate user answer to English
+            verifyAgainstAnswer = gameState.currentQuestion.answerEnglish;
+            verifyAgainstAlternates = gameState.currentQuestion.alternateAnswersEnglish || gameState.currentQuestion.alternateAnswers || [];
+            logger.debug(`[TriviaGame][${channelName}] Using English answers for verification: "${verifyAgainstAnswer}"`);
+
+            // Still translate user answer to English for consistent comparison
+            const contextManager = getContextManager();
+            const botLanguage = contextManager.getBotLanguage(channelName);
+            if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+                try {
+                    const translatedUserAnswer = await translateText(attempt.answer, 'English');
+                    if (translatedUserAnswer && typeof translatedUserAnswer === 'string' && translatedUserAnswer.trim().length > 0) {
+                        attempt.answerToVerify = translatedUserAnswer.trim();
+                        logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${attempt.answer}" -> "${attempt.answerToVerify}"`);
+                    }
+                } catch (translateError) {
+                    logger.error({ err: translateError, channelName, userAnswer: attempt.answer }, `[TriviaGame][${channelName}] Failed to translate user answer to English. Using original.`);
                 }
-            } catch (translateError) {
-                logger.error({ err: translateError, channelName, userAnswer: attempt.answer, botLanguage }, `[TriviaGame][${channelName}] Failed to translate user answer to English for verification. Using original.`);
+            }
+        } else {
+            // Legacy path: translate user answer to English when botlang is set
+            const contextManager = getContextManager();
+            const botLanguage = contextManager.getBotLanguage(channelName);
+            if (botLanguage && botLanguage.toLowerCase() !== 'english' && botLanguage.toLowerCase() !== 'en') {
+                logger.debug(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Translating user answer "${attempt.answer}" to English for verification.`);
+                try {
+                    const translatedUserAnswer = await translateText(attempt.answer, 'English');
+                    if (translatedUserAnswer && typeof translatedUserAnswer === 'string' && translatedUserAnswer.trim().length > 0) {
+                        attempt.answerToVerify = translatedUserAnswer.trim();
+                        logger.info(`[TriviaGame][${channelName}] Translated user answer for verification: "${attempt.answer}" -> "${attempt.answerToVerify}"`);
+                    } else {
+                        logger.warn(`[TriviaGame][${channelName}] Translation of answer "${attempt.answer}" to English resulted in empty string. Using original for verification.`);
+                    }
+                } catch (translateError) {
+                    logger.error({ err: translateError, channelName, userAnswer: attempt.answer, botLanguage }, `[TriviaGame][${channelName}] Failed to translate user answer to English for verification. Using original.`);
+                }
             }
         }
 
         // 3. Verification
         const verificationResult = await verifyAnswer(
-            gameState.currentQuestion.answer,
+            verifyAgainstAnswer,
             attempt.answerToVerify, // Use the potentially translated answer
-            gameState.currentQuestion.alternateAnswers || [],
+            verifyAgainstAlternates,
             gameState.currentQuestion.question,
             gameState.topic || 'general'
         );
@@ -1019,6 +1049,14 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
 
     logger.info(`[TriviaGame][${channelName}] Starting new game. Topic: ${topic || 'General'}, Rounds: ${gameState.totalRounds}, Initiator: ${gameState.initiatorUsername}`);
 
+    // Look up botLanguage for native generation
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    gameState.botLanguage = botLanguage || null;
+    if (botLanguage) {
+        logger.info(`[TriviaGame][${channelName}] Bot language is ${botLanguage}. Questions will be generated natively in ${botLanguage}.`);
+    }
+
     // Only send preamble if user specified rounds > 1 or a specific topic
     if (gameState.totalRounds > 1 || topic !== null) {
         const startMessage = formatStartMessage(
@@ -1063,13 +1101,13 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         }
         while (!questionGenerated && retries < MAX_QUESTION_RETRIES) {
             try {
-                // --- Pass excluded questions and answers to generateQuestion ---
                 const question = await generateQuestion(
                     topic,
                     gameState.config.difficulty,
                     finalExcludedQuestionsArray, // Pass current exclusion set
                     channelName,
-                    finalExcludedAnswersArray // Pass excluded answers
+                    finalExcludedAnswersArray, // Pass excluded answers
+                    gameState.botLanguage || null // Native language generation
                 );
                 // --- End modification ---
                 if (
@@ -1135,7 +1173,8 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.config.questionTimeSeconds
         );
 
-        enqueueMessage(`#${channelName}`, questionMessage);
+        // Skip translation if question was generated natively in the target language
+        enqueueMessage(`#${channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
 
         // Set question timer
         const timeoutMs = gameState.config.questionTimeSeconds * 1000;

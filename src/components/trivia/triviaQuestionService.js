@@ -43,6 +43,24 @@ const TriviaQuestionSchema = {
     required: ["question", "correct_answer", "explanation", "difficulty", "search_used", "category"]
 };
 
+// Localized schema adds correct_answer_english for answer verification when generating in non-English
+const LocalizedTriviaQuestionSchema = {
+    type: GenAIType.OBJECT,
+    properties: {
+        ...TriviaQuestionSchema.properties,
+        correct_answer_english: {
+            type: GenAIType.STRING,
+            description: "The correct answer translated to English. Used for answer verification. Must be concise (1-3 words)."
+        },
+        alternate_answers_english: {
+            type: GenAIType.ARRAY,
+            description: "The alternate answers translated to English for verification.",
+            items: { type: GenAIType.STRING }
+        }
+    },
+    required: [...TriviaQuestionSchema.required, "correct_answer_english"]
+};
+
 // --- Helper: Extract current game from context ---
 function getGameFromContext(channelName) {
     if (!channelName) return "video games";
@@ -91,9 +109,10 @@ export function calculateStringSimilarity(str1, str2) {
  * @param {string[]} excludedQuestions - Array of question texts to avoid regenerating.
  * @param {string|null} channelName
  * @param {string[]} excludedAnswers - Array of answer strings to avoid regenerating.
+ * @param {string|null} [language=null] - Optional target language for native generation.
  * @returns {Promise<object|null>}
  */
-export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = []) {
+export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = [], language = null) {
     const model = getGeminiClient();
 
     let specificTopic = topic;
@@ -125,6 +144,11 @@ export async function generateQuestion(topic, difficulty, excludedQuestions = []
         ? `Topic: "${specificTopic}".`
         : `Topic: General Knowledge.`;
 
+    // Add language directive if generating in a non-English language
+    const languageDirective = language
+        ? `\nLANGUAGE: Generate the question, correct_answer, alternate_answers, and explanation entirely in ${language}. Also provide correct_answer_english and alternate_answers_english with the English translations of the answers for verification purposes.`
+        : '';
+
     const prompt = `Generate an engaging trivia question.
 ${contextPrompt}
 Difficulty: ${difficulty}.
@@ -132,10 +156,13 @@ ${exclusionInstructionText}
 Be precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.
 Keep 'correct_answer' concise (1-3 words).
 Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).
-Only use Google Search if the question requires very recent or obscure facts that may be beyond general knowledge.`;
+Only use Google Search if the question requires very recent or obscure facts that may be beyond general knowledge.${languageDirective}`;
+
+    // Select schema based on whether we need the English answer fields
+    const activeSchema = language ? LocalizedTriviaQuestionSchema : TriviaQuestionSchema;
 
     try {
-        logger.debug({ topic: specificTopic }, `[TriviaService] Generating question via Structured Output.`);
+        logger.debug({ topic: specificTopic, language }, `[TriviaService] Generating question via Structured Output.`);
 
         // Always provide Google Search tool — Gemini auto-decides whether to use it
         const tools = [{ googleSearch: {} }];
@@ -146,7 +173,7 @@ Only use Google Search if the question requires very recent or obscure facts tha
             generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",
-                responseSchema: TriviaQuestionSchema
+                responseSchema: activeSchema
             }
         });
 
@@ -208,10 +235,18 @@ Only use Google Search if the question requires very recent or obscure facts tha
             searchUsed: actuallySearched,
             verified: true, // Structured output = implicitly verified
             topic: isGeneralTopic ? 'general' : specificTopic,
-            category: category || ""
+            category: category || "",
+            language: language || null
         };
 
-        logger.info(`[TriviaService] Successfully generated question (search=${actuallySearched}). Q: "${question}", A: "${correct_answer}"`);
+        // When generating in a non-English language, store English answers for verification
+        if (language && parsed.correct_answer_english) {
+            questionObject.answerEnglish = parsed.correct_answer_english;
+            questionObject.alternateAnswersEnglish = parsed.alternate_answers_english || [];
+            logger.debug(`[TriviaService] Localized answer: "${correct_answer}" (English: "${parsed.correct_answer_english}")`);
+        }
+
+        logger.info(`[TriviaService] Successfully generated question (search=${actuallySearched}, lang=${language || 'en'}). Q: "${question}", A: "${correct_answer}"`);
         return questionObject;
 
     } catch (error) {
