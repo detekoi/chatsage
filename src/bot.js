@@ -95,6 +95,10 @@ async function main() {
         // --- Initialize All Components ---
         await initializeAllComponents();
 
+        // Signal to EventSub handler that all components are ready
+        const { markEventSubReady } = await import('./components/twitch/eventsub.js');
+        markEventSubReady();
+
         // --- Initialize Gemini Emote Describer ---
         initEmoteDescriber(config.gemini?.apiKey || process.env.GEMINI_API_KEY);
 

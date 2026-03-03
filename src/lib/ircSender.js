@@ -177,7 +177,14 @@ function initializeIrcSender() {
  * @returns {Promise<string>} Translated text if needed, or original text
  */
 async function _translateIfNeeded(channelName, text) {
-    const contextManager = getContextManager();
+    let contextManager;
+    try {
+        contextManager = getContextManager();
+    } catch (e) {
+        // Context manager not initialized yet (cold start) — skip translation
+        return text;
+    }
+    if (!contextManager) return text;
     const botLanguage = contextManager.getBotLanguage(channelName);
 
     if (!botLanguage) {
