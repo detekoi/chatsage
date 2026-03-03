@@ -11,6 +11,36 @@ import LifecycleManager from '../../services/LifecycleManager.js';
 import { convertEventSubToTags } from './eventSubToTags.js';
 import { handleChatMessage } from '../../handlers/chatMessageHandler.js';
 
+// --- Initialization Gate ---
+// During cold start, EventSub webhooks can arrive before components are initialized.
+// This gate ensures we wait for initialization before processing notifications.
+let _initResolve;
+let _initPromise = new Promise(resolve => { _initResolve = resolve; });
+let _isInitialized = false;
+
+/**
+ * Signal that all components are initialized and EventSub can process notifications.
+ * Called from bot.js after initializeAllComponents() completes.
+ */
+export function markEventSubReady() {
+    if (!_isInitialized) {
+        _isInitialized = true;
+        _initResolve();
+        logger.info('[EventSub] Components initialized — ready to process notifications');
+    }
+}
+
+/**
+ * Wait for initialization with a timeout.
+ * Returns true if initialized, false if timed out.
+ */
+async function waitForInit(timeoutMs = 15000) {
+    if (_isInitialized) return true;
+    const timeout = new Promise(resolve => setTimeout(() => resolve(false), timeoutMs));
+    const ready = _initPromise.then(() => true);
+    return Promise.race([ready, timeout]);
+}
+
 // Idempotency and replay protection (in-memory window)
 const processedEventIds = new Map(); // messageId -> timestamp(ms)
 const TEN_MINUTES_MS = 10 * 60 * 1000;
@@ -135,6 +165,14 @@ export async function eventSubHandler(req, res, rawBody) {
         if (!shouldProcessEvent(req)) {
             return; // Already responded 200 above; just ignore processing
         }
+
+        // Wait for components to be initialized during cold start
+        const ready = await waitForInit();
+        if (!ready) {
+            logger.error('[EventSub] Timed out waiting for initialization — dropping notification');
+            return;
+        }
+
         const { subscription, event } = notification;
         const lifecycle = LifecycleManager.get();
 

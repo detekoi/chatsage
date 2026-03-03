@@ -86,4 +86,30 @@ describe('promptResolver', () => {
         expect(smartTruncate).toHaveBeenCalledWith(longResponse, 450);
         expect(result).toBe('a'.repeat(450));
     });
+
+    test('includes language directive in system instruction when language is set', async () => {
+        mockGenerateContent.mockResolvedValue({
+            candidates: [{
+                content: { parts: [{ text: 'Hola amigo!' }] }
+            }]
+        });
+
+        await resolvePrompt('Say hello', 'spanish');
+
+        const callArgs = mockGenerateContent.mock.calls[0][0];
+        expect(callArgs.systemInstruction.parts[0].text).toContain('You MUST respond entirely in spanish.');
+    });
+
+    test('does not include language directive when language is null', async () => {
+        mockGenerateContent.mockResolvedValue({
+            candidates: [{
+                content: { parts: [{ text: 'Hello friend!' }] }
+            }]
+        });
+
+        await resolvePrompt('Say hello');
+
+        const callArgs = mockGenerateContent.mock.calls[0][0];
+        expect(callArgs.systemInstruction.parts[0].text).not.toContain('You MUST respond entirely in');
+    });
 });

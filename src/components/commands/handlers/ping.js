@@ -17,11 +17,11 @@ const pingHandler = {
         const response = 'Pong!';
 
         logger.info({ channel, user: user.username }, `[PingCommand] PRE-ENQUEUE: Preparing ping response for ${user.username}`);
-        
+
         try {
-            enqueueMessage(channel, response, { replyToId });
+            await enqueueMessage(channel, response, { replyToId });
             logger.info({ channel, user: user.username }, `[PingCommand] POST-ENQUEUE: Successfully called enqueueMessage`);
-            
+
             logger.info(`Executed !ping command in ${channel} for ${user.username}`);
         } catch (error) {
             logger.error(

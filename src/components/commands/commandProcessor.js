@@ -338,13 +338,24 @@ async function _tryCustomCommand(channelName, tags, command, args) {
 
         // Determine final output string based on command type
         let finalOutput = resolvedText;
+        let skipTranslation = false;
         if (customCmd.type === 'prompt') {
-            logger.debug({ command, channel: channelName }, 'Passing resolved prompt to Gemini');
-            finalOutput = await resolvePrompt(resolvedText);
+            // For AI commands, generate directly in the target language if botlang is set
+            const botLanguage = contextManager.getBotLanguage(channelName);
+            if (botLanguage) {
+                logger.debug({ command, channel: channelName, botLanguage }, 'Passing resolved prompt to Gemini with native language generation');
+            } else {
+                logger.debug({ command, channel: channelName }, 'Passing resolved prompt to Gemini');
+            }
+            finalOutput = await resolvePrompt(resolvedText, botLanguage || null);
+            // Skip redundant translation if the LLM already generated in the target language
+            if (botLanguage) {
+                skipTranslation = true;
+            }
         }
 
         // Send the response
-        await enqueueMessage(`#${channelName}`, finalOutput);
+        await enqueueMessage(`#${channelName}`, finalOutput, { skipTranslation });
 
         logger.info(`Executed custom command !${command} for ${tags.username} in #${channelName}`);
         return true;

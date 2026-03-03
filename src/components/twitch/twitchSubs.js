@@ -48,6 +48,11 @@ async function makeHelixRequest(method, endpoint, body = null, userAccessToken =
         const response = await helixClient(axiosConfig);
         return { success: true, data: response.data };
     } catch (error) {
+        // 409 Conflict = subscription already exists, treat as success
+        if (error.response?.status === 409 && endpoint === '/eventsub/subscriptions') {
+            logger.debug({ method, endpoint }, 'EventSub subscription already exists (409) - treating as success');
+            return { success: true, alreadyExists: true };
+        }
         logger.error({
             err: error.response ? error.response.data : error.message,
             method,
