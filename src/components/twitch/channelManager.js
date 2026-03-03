@@ -186,6 +186,7 @@ let isSyncing = false;
  */
 export function listenForChannelChanges() {
     const db = _getDb();
+    let isInitialSnapshot = true;
 
     logger.info("[ChannelManager] Setting up listener for channel management changes (EventSub)...");
 
@@ -215,6 +216,14 @@ export function listenForChannelChanges() {
                     logger.warn({ docId: change.doc.id }, `[ChannelManager] Firestore listener detected change in document missing valid 'channelName'. Skipping processing for this change.`);
                 }
             });
+
+            // Skip EventSub sync on initial snapshot — subscribeAllManagedChannels()
+            // already handled these during startup. Allow-list updates above still run.
+            if (isInitialSnapshot) {
+                isInitialSnapshot = false;
+                logger.info(`[ChannelManager] Initial snapshot: ${changes.length} channels loaded (skipping EventSub sync)`);
+                return;
+            }
 
             if (changes.length > 0) {
                 logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);

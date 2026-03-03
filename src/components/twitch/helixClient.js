@@ -128,8 +128,13 @@ async function initializeHelixClient() {
             if (error.response) {
                 // The request was made and the server responded with a status code
                 // that falls out of the range of 2xx
+                // 409 on EventSub = subscription already exists, not a real error
+                const isEventSub409 = error.response.status === 409 &&
+                    error.config?.url?.includes('/eventsub/subscriptions');
+
                 const rateLimitRemaining = error.response.headers['ratelimit-remaining'];
-                logger.error({
+                const logLevel = isEventSub409 ? 'debug' : 'error';
+                logger[logLevel]({
                     ...commonLogData,
                     status: error.response.status,
                     responseBody: error.response.data, // Log response body for debugging

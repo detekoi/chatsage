@@ -57,12 +57,10 @@ class LifecycleManager {
             logger.info('LifecycleManager: Starting Ad Schedule Poller...');
             await startAdSchedulePoller();
 
-            // 4. Setup Firestore Listener (if prod)
-            if (config.app.nodeEnv !== 'development') {
-                logger.info('LifecycleManager: Setting up Firestore channel listener...');
-                // listenForChannelChanges now manages EventSub subscriptions, no IRC client needed
-                this.channelChangeListener = listenForChannelChanges();
-            }
+            // 4. Setup Firestore Listener for channel changes
+            logger.info('LifecycleManager: Setting up Firestore channel listener...');
+            // listenForChannelChanges now manages EventSub subscriptions, no IRC client needed
+            this.channelChangeListener = listenForChannelChanges();
 
             this.isMonitoring = true;
             logger.info('LifecycleManager: Monitoring layer started successfully.');

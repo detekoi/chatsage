@@ -22,9 +22,6 @@ setInterval(() => {
     logger.debug('Secret Manager Status Check:', getSecretManagerStatus());
 }, SECRET_MANAGER_STATUS_LOG_INTERVAL_MS);
 
-// Application state
-let channelChangeListener = null;
-
 /**
  * Gracefully shuts down the application.
  */
@@ -35,17 +32,6 @@ async function gracefulShutdown(signal) {
     // Close health check server if it exists
     if (global.healthServer) {
         shutdownTasks.push(closeHealthServer(global.healthServer));
-    }
-
-    // Clean up channel change listener if active
-    if (channelChangeListener) {
-        try {
-            logger.info('Cleaning up channel change listener during shutdown...');
-            channelChangeListener();
-            channelChangeListener = null;
-        } catch (error) {
-            logger.error({ err: error }, 'Error cleaning up channel change listener during shutdown.');
-        }
     }
 
     // Clean up command state manager
@@ -126,13 +112,8 @@ async function main() {
             logger.error({ err: error }, 'Error setting up EventSub subscriptions (non-fatal, will retry on channel changes)');
         }
 
-        // --- Set up Firestore channel change listener ---
-        // When channels are added/removed from Firestore, subscribe/unsubscribe EventSub
-        logger.info('Setting up channel change listener for EventSub management...');
-        const { listenForChannelChanges } = await import('./components/twitch/channelManager.js');
-        channelChangeListener = listenForChannelChanges();
-
         // --- Start Lifecycle Manager ---
+        // LifecycleManager.startMonitoring() sets up the Firestore channel change listener internally
         logger.info('Initializing Lifecycle Manager...');
         const lifecycle = LifecycleManager.get();
         await lifecycle.startMonitoring();
