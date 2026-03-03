@@ -7,6 +7,7 @@
     "scripts": {
         "start": "node src/bot.js",
         "dev": "node --watch src/bot.js",
+        "dev:tunnel": "bash scripts/dev-tunnel.sh",
         "lint": "eslint .",
         "test": "jest --testTimeout=10000",
         "test:fast": "jest --testTimeout=5000",
