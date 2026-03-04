@@ -64,7 +64,7 @@ function _normalizeStringOrNull(value) {
 /**
  * Initializes the Context Manager by creating initial state entries
  * for all configured channels.
- * @param {string[]} configuredChannels - Array of channel names (without '#').
+ * @param {Array<string|{name: string, twitchUserId?: string}>} configuredChannels - Array of channel names or objects with optional twitchUserId.
  */
 async function initializeContextManager(configuredChannels = []) {
     if (channelStates.size > 0) {
@@ -76,10 +76,20 @@ async function initializeContextManager(configuredChannels = []) {
             logger.warn('No configured channels provided to Context Manager on initialization.');
         }
         // Pre-populate state for each configured channel
-        for (const channelName of configuredChannels) {
-            _getOrCreateChannelState(channelName); // This populates the map
+        const channelNames = [];
+        for (const channel of configuredChannels) {
+            // Support both plain strings and { name, twitchUserId } objects
+            const channelName = typeof channel === 'string' ? channel : channel.name;
+            const twitchUserId = typeof channel === 'object' ? channel.twitchUserId : null;
+            const state = _getOrCreateChannelState(channelName);
+            // Pre-seed broadcaster ID from Firestore to avoid Helix login-name lookups
+            if (twitchUserId && !state.broadcasterId) {
+                state.broadcasterId = String(twitchUserId);
+                logger.debug(`[${channelName}] Pre-seeded broadcaster ID from Firestore: ${state.broadcasterId}`);
+            }
+            channelNames.push(channelName);
         }
-        logger.info(`Context Manager initialized for channels: ${configuredChannels.join(', ')}`);
+        logger.info(`Context Manager initialized for channels: ${channelNames.join(', ')}`);
     }
     // Load language settings from Firestore
     try {

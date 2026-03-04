@@ -63,7 +63,9 @@ export async function initializeChannels() {
         logger.info('Cloud environment detected or not development. Loading channels from Firestore.');
         const managedChannels = await getActiveManagedChannels();
         if (managedChannels && managedChannels.length > 0) {
-            config.twitch.channels = managedChannels.map(ch => ch.toLowerCase());
+            config.twitch.channels = managedChannels.map(ch => ch.name.toLowerCase());
+            // Preserve { name, twitchUserId } for pre-seeding broadcaster IDs
+            config.twitch.channelsWithIds = managedChannels;
             logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
         } else {
             logger.fatal('No active channels found in Firestore managedChannels collection. Cannot proceed.');
@@ -126,7 +128,8 @@ export async function initializeClients() {
  */
 export async function initializeContextAndCommands() {
     logger.info('Initializing Context Manager...');
-    await initializeContextManager(config.twitch.channels);
+    // Pass enriched channel objects (with twitchUserId) when available, fall back to plain names
+    await initializeContextManager(config.twitch.channelsWithIds || config.twitch.channels);
 
     logger.info('Cleaning up any orphaned keep-alive tasks...');
     await cleanupKeepAliveTasks();

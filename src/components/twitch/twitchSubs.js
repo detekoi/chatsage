@@ -330,29 +330,35 @@ export async function subscribeAllManagedChannels() {
         const activeChannels = await getActiveManagedChannels();
         const results = { successful: [], failed: [], total: activeChannels.length };
 
-        for (const channelName of activeChannels) {
+        for (const channel of activeChannels) {
+            const channelName = channel.name;
             try {
-                const userResponseArray = await getUsersByLogin([channelName]);
-                if (!userResponseArray || userResponseArray.length === 0) {
-                    logger.warn({ channelName }, 'Could not find user ID for channel');
-                    results.failed.push({ channel: channelName, error: 'User not found' });
-                    continue;
-                }
-                const userResponse = userResponseArray[0];
+                let userId = channel.twitchUserId ? String(channel.twitchUserId) : null;
 
-                if (!userResponse || !userResponse.id) {
-                    logger.warn({ channelName, userResponse }, 'User object found but missing ID.');
-                    results.failed.push({ channel: channelName, error: 'User object missing ID' });
-                    continue;
+                // Only fall back to login-name lookup if no ID was stored in Firestore
+                if (!userId) {
+                    const userResponseArray = await getUsersByLogin([channelName]);
+                    if (!userResponseArray || userResponseArray.length === 0) {
+                        logger.warn({ channelName }, 'Could not find user ID for channel');
+                        results.failed.push({ channel: channelName, error: 'User not found' });
+                        continue;
+                    }
+                    const userResponse = userResponseArray[0];
+                    if (!userResponse || !userResponse.id) {
+                        logger.warn({ channelName, userResponse }, 'User object found but missing ID.');
+                        results.failed.push({ channel: channelName, error: 'User object missing ID' });
+                        continue;
+                    }
+                    userId = userResponse.id;
                 }
 
-                const onlineSubResult = await subscribeStreamOnline(userResponse.id);
-                const offlineSubResult = await subscribeStreamOffline(userResponse.id);
-                const chatSubResult = await subscribeChannelChatMessage(userResponse.id);
+                const onlineSubResult = await subscribeStreamOnline(userId);
+                const offlineSubResult = await subscribeStreamOffline(userId);
+                const chatSubResult = await subscribeChannelChatMessage(userId);
 
                 const allSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success;
                 if (allSuccess) {
-                    results.successful.push({ channel: channelName, userId: userResponse.id });
+                    results.successful.push({ channel: channelName, userId });
                 } else {
                     const failures = [];
                     if (!onlineSubResult.success) failures.push('stream.online');

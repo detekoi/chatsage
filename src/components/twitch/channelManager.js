@@ -77,7 +77,7 @@ function _getDb() {
 
 /**
  * Retrieves all active managed channels from Firestore.
- * @returns {Promise<string[]>} Array of channel names.
+ * @returns {Promise<Array<{name: string, twitchUserId: string|null}>>} Array of channel objects.
  */
 export async function getActiveManagedChannels() {
     const dbInstance = _getDb();
@@ -108,7 +108,7 @@ export async function getActiveManagedChannels() {
         logger.info(`[ChannelManager] Successfully fetched ${channelNames.length} active managed channels.`);
         logger.debug(`[ChannelManager] Active channels: ${channelNames.join(', ')}`);
 
-        return channelNames;
+        return channels;
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error fetching active managed channels.");
         throw new ChannelManagerError("Failed to fetch active managed channels.", error);
@@ -130,19 +130,25 @@ export async function isChannelAllowed(identifier) {
  * Subscribes or unsubscribes EventSub for a channel based on its active status.
  * @param {String} channelName - Channel name
  * @param {Boolean} isActive - Whether the channel is active
+ * @param {String} [twitchUserId] - Optional Twitch User ID (skips Helix lookup if provided)
  * @returns {Promise<boolean>} Whether any change was made
  */
-export async function syncChannelWithEventSub(channelName, isActive) {
+export async function syncChannelWithEventSub(channelName, isActive, twitchUserId = null) {
     const cleanChannelName = channelName.toLowerCase().replace(/^#/, '');
 
     try {
-        const { getUsersByLogin } = await import('./helixClient.js');
-        const users = await getUsersByLogin([cleanChannelName]);
-        if (!users || users.length === 0) {
-            logger.warn({ channel: cleanChannelName }, '[ChannelManager] Could not find user ID for channel');
-            return false;
+        let userId = twitchUserId ? String(twitchUserId) : null;
+
+        // Only fall back to login-name lookup if no ID was provided
+        if (!userId) {
+            const { getUsersByLogin } = await import('./helixClient.js');
+            const users = await getUsersByLogin([cleanChannelName]);
+            if (!users || users.length === 0) {
+                logger.warn({ channel: cleanChannelName }, '[ChannelManager] Could not find user ID for channel');
+                return false;
+            }
+            userId = users[0].id;
         }
-        const userId = users[0].id;
 
         if (isActive) {
             // Subscribe to EventSub events for this channel
@@ -232,7 +238,8 @@ export function listenForChannelChanges() {
                 changes.forEach(async (change) => {
                     if (change.type === 'added' || change.type === 'modified') {
                         // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
-                        syncChannelWithEventSub(change.channelName, change.isActive)
+                        // Pass stored twitchUserId to avoid login-name lookups that break on renames
+                        syncChannelWithEventSub(change.channelName, change.isActive, change.channelData?.twitchUserId)
                             .catch(err => {
                                 logger.error({ err, channel: change.channelName, docId: change.docId },
                                     `[ChannelManager] Error processing channel change via listener`);

@@ -60,10 +60,10 @@ describe('Component Initialization', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        
+
         // Save original environment
         originalEnv = { ...process.env };
-        
+
         // Mock process.exit to prevent actual exit
         originalExit = process.exit;
         process.exit = jest.fn();
@@ -74,7 +74,7 @@ describe('Component Initialization', () => {
 
         // Setup default mocks to succeed
         validateSecretManager.mockReturnValue(true);
-        getActiveManagedChannels.mockResolvedValue(['channel1', 'channel2']);
+        getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }, { name: 'channel2', twitchUserId: '222' }]);
 
         // Setup logger mock with all methods
         logger.fatal = jest.fn();
@@ -148,7 +148,7 @@ describe('Component Initialization', () => {
         test('should load channels from Firestore in Cloud Run environment', async () => {
             process.env.K_SERVICE = 'test-service';
             config.app.nodeEnv = 'production';
-            getActiveManagedChannels.mockResolvedValue(['cloudchannel1', 'cloudchannel2']);
+            getActiveManagedChannels.mockResolvedValue([{ name: 'cloudchannel1', twitchUserId: '111' }, { name: 'cloudchannel2', twitchUserId: '222' }]);
 
             await initializeChannels();
 
@@ -187,7 +187,7 @@ describe('Component Initialization', () => {
 
         test('should convert channel names to lowercase from Firestore', async () => {
             process.env.K_SERVICE = 'test-service';
-            getActiveManagedChannels.mockResolvedValue(['Channel1', 'CHANNEL2', 'channel3']);
+            getActiveManagedChannels.mockResolvedValue([{ name: 'Channel1', twitchUserId: '111' }, { name: 'CHANNEL2', twitchUserId: '222' }, { name: 'channel3', twitchUserId: '333' }]);
 
             await initializeChannels();
 
@@ -196,7 +196,7 @@ describe('Component Initialization', () => {
 
         test('should detect Cloud Run via K_REVISION', async () => {
             process.env.K_REVISION = 'test-revision';
-            getActiveManagedChannels.mockResolvedValue(['channel1']);
+            getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
 
             await initializeChannels();
 
@@ -206,7 +206,7 @@ describe('Component Initialization', () => {
 
         test('should detect Cloud Run via K_CONFIGURATION', async () => {
             process.env.K_CONFIGURATION = 'test-config';
-            getActiveManagedChannels.mockResolvedValue(['channel1']);
+            getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
 
             await initializeChannels();
 
@@ -259,12 +259,13 @@ describe('Component Initialization', () => {
     describe('initializeContextAndCommands', () => {
         beforeEach(() => {
             config.twitch.channels = ['channel1', 'channel2'];
+            config.twitch.channelsWithIds = [{ name: 'channel1', twitchUserId: '111' }, { name: 'channel2', twitchUserId: '222' }];
         });
 
         test('should initialize context manager and command processor', async () => {
             await initializeContextAndCommands();
 
-            expect(initializeContextManager).toHaveBeenCalledWith(['channel1', 'channel2']);
+            expect(initializeContextManager).toHaveBeenCalledWith(config.twitch.channelsWithIds);
             expect(cleanupKeepAliveTasks).toHaveBeenCalledTimes(1);
             expect(initializeCommandProcessor).toHaveBeenCalledTimes(1);
             expect(initializeIrcSender).toHaveBeenCalledTimes(1);
@@ -325,7 +326,7 @@ describe('Component Initialization', () => {
             // Reset all mocks to ensure clean state
             jest.clearAllMocks();
             validateSecretManager.mockReturnValue(true);
-            getActiveManagedChannels.mockResolvedValue(['channel1']);
+            getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
             initializeStorage.mockResolvedValue();
             initializeTriviaStorage.mockResolvedValue();
             initializeRiddleStorage.mockResolvedValue();
