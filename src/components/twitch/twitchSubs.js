@@ -80,7 +80,11 @@ export async function subscribeStreamOnline(broadcasterUserId) {
 
     const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
     if (result.success) {
-        logger.info({ subscriptionId: result.data.data[0].id, broadcasterUserId, status: result.data.data[0].status }, 'EventSub stream.online subscription created successfully');
+        if (result.alreadyExists) {
+            logger.info({ broadcasterUserId }, 'EventSub stream.online subscription already exists');
+        } else {
+            logger.info({ subscriptionId: result.data.data[0].id, broadcasterUserId, status: result.data.data[0].status }, 'EventSub stream.online subscription created successfully');
+        }
         clearEventSubSubscriptionsCache(); // Clear cache after creating subscription
     }
     return result;
