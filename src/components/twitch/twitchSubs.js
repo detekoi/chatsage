@@ -287,6 +287,31 @@ export async function subscribeChannelChatMessage(broadcasterUserId) {
     return result;
 }
 
+// --- Channel Points EventSub Subscriptions ---
+
+export async function subscribeChannelPointsRedemptionAdd(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+
+    const body = {
+        type: 'channel.channel_points_custom_reward_redemption.add',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+
+    const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
+    if (result.success) {
+        logger.info({ broadcasterUserId, type: 'channel.channel_points_custom_reward_redemption.add' },
+            'Successfully subscribed to channel points redemption.add');
+        clearEventSubSubscriptionsCache();
+    }
+    return result;
+}
+
 // --- Shared Chat EventSub Subscriptions ---
 
 export async function subscribeSharedChatBegin(broadcasterUserId) {
@@ -359,8 +384,9 @@ export async function subscribeAllManagedChannels() {
                 const onlineSubResult = await subscribeStreamOnline(userId);
                 const offlineSubResult = await subscribeStreamOffline(userId);
                 const chatSubResult = await subscribeChannelChatMessage(userId);
+                const redemptionSubResult = await subscribeChannelPointsRedemptionAdd(userId);
 
-                const allSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success;
+                const allSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success && redemptionSubResult.success;
                 if (allSuccess) {
                     results.successful.push({ channel: channelName, userId });
                 } else {
@@ -368,6 +394,7 @@ export async function subscribeAllManagedChannels() {
                     if (!onlineSubResult.success) failures.push('stream.online');
                     if (!offlineSubResult.success) failures.push('stream.offline');
                     if (!chatSubResult.success) failures.push('channel.chat.message');
+                    if (!redemptionSubResult.success) failures.push('channel.channel_points_custom_reward_redemption.add');
                     results.failed.push({ channel: channelName, error: `Failed: ${failures.join(', ')}` });
                 }
             } catch (error) {

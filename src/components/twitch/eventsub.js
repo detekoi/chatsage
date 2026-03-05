@@ -10,6 +10,7 @@ import * as sharedChatManager from './sharedChatManager.js';
 import LifecycleManager from '../../services/LifecycleManager.js';
 import { convertEventSubToTags } from './eventSubToTags.js';
 import { handleChatMessage } from '../../handlers/chatMessageHandler.js';
+import { handleCheckinRedemption } from '../../handlers/checkinHandler.js';
 
 // --- Initialization Gate ---
 // During cold start, EventSub webhooks can arrive before components are initialized.
@@ -268,6 +269,28 @@ export async function eventSubHandler(req, res, rawBody) {
                 await handleChatMessage(channel, tags, messageText);
             } catch (error) {
                 logger.error({ err: error, event }, '[EventSub] Error handling channel.chat.message');
+            }
+        }
+
+        // --- Channel Points Redemption Handler (Daily Check-In) ---
+        if (subscription.type === 'channel.channel_points_custom_reward_redemption.add') {
+            try {
+                const channelLogin = event?.broadcaster_user_login?.toLowerCase();
+                const broadcasterId = event?.broadcaster_user_id;
+                if (!channelLogin || !broadcasterId) {
+                    logger.warn({ event }, '[EventSub] channel_points redemption missing required fields');
+                    return;
+                }
+
+                const allowed = await isChannelAllowed(broadcasterId || channelLogin);
+                if (!allowed) {
+                    logger.debug({ channelLogin }, '[EventSub] Channel Points event for non-allowed channel');
+                    return;
+                }
+
+                await handleCheckinRedemption(event);
+            } catch (error) {
+                logger.error({ err: error, event }, '[EventSub] Error handling Channel Points redemption');
             }
         }
 

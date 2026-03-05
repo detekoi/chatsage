@@ -11,6 +11,7 @@ import logger from '../../lib/logger.js';
  *   $(args)          - All arguments as a single string
  *   $(1), $(2), ...  - Individual arguments by position
  *   $(count)         - Command use count (auto-incremented)
+ *   $(checkin_count) - Per-user check-in count (for counter commands)
  *   $(random X-Y)    - Random integer between X and Y (inclusive)
  *   $(uptime)        - Stream uptime (if live)
  *   $(game)          - Current game title
@@ -22,6 +23,7 @@ import logger from '../../lib/logger.js';
  * @param {string} context.channel - Channel name (without #).
  * @param {string[]} context.args - Command arguments.
  * @param {number} [context.useCount] - Current use count of the command.
+ * @param {number} [context.checkinCount] - Per-user check-in count (counter commands).
  * @param {object} [context.streamContext] - Stream context from contextManager.
  * @param {Function} [context.getFollowage] - Async function to get followage info.
  * @returns {Promise<string>} The resolved response string.
@@ -31,7 +33,7 @@ export async function parseVariables(template, context) {
         return '';
     }
 
-    const { user = '', channel = '', args = [], useCount = 0, streamContext = null, getFollowage = null } = context;
+    const { user = '', channel = '', args = [], useCount = 0, checkinCount = null, streamContext = null, getFollowage = null } = context;
 
     // Match all $(variableName) patterns, including those with spaces and arguments
     const variablePattern = /\$\(([^)]+)\)/g;
@@ -87,7 +89,7 @@ export async function parseVariables(template, context) {
  * @returns {Promise<string>} Resolved value.
  */
 async function _resolveVariable(variableContent, context) {
-    const { user, channel, args, useCount, streamContext, getFollowage } = context;
+    const { user, channel, args, useCount, checkinCount, streamContext, getFollowage } = context;
     const lowerContent = variableContent.toLowerCase();
 
     // $(user)
@@ -115,6 +117,11 @@ async function _resolveVariable(variableContent, context) {
     // $(count)
     if (lowerContent === 'count') {
         return String(useCount || 0);
+    }
+
+    // $(checkin_count)
+    if (lowerContent === 'checkin_count') {
+        return checkinCount !== null ? String(checkinCount) : '0';
     }
 
     // $(random X-Y)

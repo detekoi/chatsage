@@ -46,7 +46,7 @@ export async function initializeCustomCommandsStorage() {
  * Gets the Firestore database instance.
  * @returns {Firestore} Firestore DB instance.
  */
-function _getDb() {
+export function _getDb() {
     if (!db) {
         throw new Error('[CustomCommandsStorage] Storage not initialized. Call initializeCustomCommandsStorage first.');
     }
