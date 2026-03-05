@@ -5,7 +5,8 @@ on:
       - 'README.md'
       - 'README-*.md'
       - 'docs/**'
-      - 'docs/**'
+      - 'scripts/**'
+      - 'tests/**'
 
 env:
   GCP_PROJECT_ID: 'streamsage-bot'
