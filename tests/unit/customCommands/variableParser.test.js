@@ -186,6 +186,30 @@ describe('variableParser', () => {
             expect(result).toBe('followage unavailable');
         });
 
+        // --- $(checkin_count) ---
+        test('resolves $(checkin_count) to check-in count', async () => {
+            const ctx = { ...baseContext, checkinCount: 14 };
+            const result = await parseVariables('Check-in #$(checkin_count)', ctx);
+            expect(result).toBe('Check-in #14');
+        });
+
+        test('resolves $(checkin_count) to "0" when not provided', async () => {
+            const result = await parseVariables('$(checkin_count)', baseContext);
+            expect(result).toBe('0');
+        });
+
+        test('resolves $(checkin_count) to "0" when explicitly null', async () => {
+            const ctx = { ...baseContext, checkinCount: null };
+            const result = await parseVariables('$(checkin_count)', ctx);
+            expect(result).toBe('0');
+        });
+
+        test('resolves $(checkin_count) to "1" for first check-in', async () => {
+            const ctx = { ...baseContext, checkinCount: 1 };
+            const result = await parseVariables('$(checkin_count)', ctx);
+            expect(result).toBe('1');
+        });
+
         // --- Unknown variables ---
         test('returns unknown variables as-is', async () => {
             const result = await parseVariables('$(foo)', baseContext);
