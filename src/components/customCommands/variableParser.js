@@ -67,6 +67,7 @@ export async function parseVariables(template, context) {
                 channel,
                 args,
                 useCount,
+                checkinCount,
                 streamContext,
                 getFollowage,
             });
