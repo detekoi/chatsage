@@ -41,8 +41,9 @@ export async function resolvePrompt(prompt, language = null) {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             systemInstruction: { parts: [{ text: systemInstruction }] },
             generationConfig: {
-                // Use none thinking to keep responses as fast as possible for chat
-                thinkingConfig: { thinkingLevel: 'none' }
+                // 'minimal' is the lowest thinking level for Gemini 3 Flash —
+                // matches no-thinking behavior for simple prompts like chat messages
+                thinkingConfig: { thinkingLevel: 'minimal' }
             }
         });
 
