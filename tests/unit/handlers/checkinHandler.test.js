@@ -103,7 +103,7 @@ describe('checkinHandler', () => {
 
             await handleCheckinRedemption(baseEvent);
 
-            expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', '@TestViewer Daily check-in #7! 🎉');
+            expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', '@TestViewer Daily check-in #7! HeyGuys');
         });
 
         test('uses broadcaster_user_name as fallback for channel', async () => {
@@ -148,7 +148,7 @@ describe('checkinHandler', () => {
 
         test('sends AI-generated response when successful', async () => {
             parseVariables.mockResolvedValue('Write a fun check-in message for TestViewer, check-in #14');
-            resolvePrompt.mockResolvedValue('TestViewer, 14 days strong! You absolute legend! 🎉');
+            resolvePrompt.mockResolvedValue('TestViewer, 14 days strong! You absolute legend! HeyGuys');
 
             await handleCheckinRedemption(baseEvent);
 
@@ -163,7 +163,7 @@ describe('checkinHandler', () => {
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'TestViewer, 14 days strong! You absolute legend! 🎉'
+                'TestViewer, 14 days strong! You absolute legend! HeyGuys'
             );
         });
 
@@ -203,7 +203,7 @@ describe('checkinHandler', () => {
 
             await handleCheckinRedemption(baseEvent);
 
-            expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', '@TestViewer Daily check-in #5! 🎉');
+            expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', '@TestViewer Daily check-in #5! HeyGuys');
         });
 
         test('skips AI when useAi is true but aiPrompt is empty', async () => {

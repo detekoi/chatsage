@@ -288,9 +288,11 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
 
-                await handleCheckinRedemption(event);
+                handleCheckinRedemption(event).catch(error => {
+                    logger.error({ err: error, event }, '[EventSub] Error handling Channel Points redemption');
+                });
             } catch (error) {
-                logger.error({ err: error, event }, '[EventSub] Error handling Channel Points redemption');
+                logger.error({ err: error, event }, '[EventSub] Error setting up Channel Points redemption handler');
             }
         }
 

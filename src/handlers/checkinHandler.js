@@ -60,34 +60,41 @@ export async function handleCheckinRedemption(event) {
         checkinCount: count,
     };
 
+    // Helper: build the static fallback message
+    const buildStaticMessage = async () =>
+        config.responseTemplate
+            ? await parseVariables(config.responseTemplate, context)
+            : `@${userName} Daily check-in #${count}! HeyGuys`;
+
     let responseMessage;
 
     if (config.useAi && config.aiPrompt) {
         // AI mode: resolve the prompt template, then feed to LLM
+        const startTime = Date.now();
         try {
             const resolvedPrompt = await parseVariables(config.aiPrompt, context);
             const aiResponse = await resolvePrompt(resolvedPrompt, channelLogin, userName);
 
+            const elapsed = Date.now() - startTime;
+
             if (aiResponse) {
                 responseMessage = aiResponse;
+                logger.debug({ channel: channelLogin, user: userName, elapsed },
+                    '[CheckinHandler] AI response received');
             } else {
-                // AI fallback: use the static template
-                responseMessage = config.responseTemplate
-                    ? await parseVariables(config.responseTemplate, context)
-                    : `@${userName} Daily check-in #${count}! 🎉`;
+                // AI returned empty — use static template
+                logger.warn({ channel: channelLogin, user: userName, elapsed },
+                    '[CheckinHandler] AI returned empty, using static template');
+                responseMessage = await buildStaticMessage();
             }
         } catch (error) {
             logger.error({ err: error, channel: channelLogin, user: userName },
                 '[CheckinHandler] AI resolution failed, using static template');
-            responseMessage = config.responseTemplate
-                ? await parseVariables(config.responseTemplate, context)
-                : `@${userName} Daily check-in #${count}! 🎉`;
+            responseMessage = await buildStaticMessage();
         }
     } else {
         // Static mode: resolve the response template
-        responseMessage = config.responseTemplate
-            ? await parseVariables(config.responseTemplate, context)
-            : `@${userName} Daily check-in #${count}! 🎉`;
+        responseMessage = await buildStaticMessage();
     }
 
     // Send the message

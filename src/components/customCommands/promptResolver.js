@@ -41,6 +41,7 @@ export async function resolvePrompt(prompt, language = null) {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             systemInstruction: { parts: [{ text: systemInstruction }] },
             generationConfig: {
+                maxOutputTokens: 150,
                 // Use none thinking to keep responses as fast as possible for chat
                 thinkingConfig: { thinkingLevel: 'none' }
             }
