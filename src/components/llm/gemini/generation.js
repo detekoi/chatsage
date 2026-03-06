@@ -210,7 +210,7 @@ const SummarySchema = {
 export async function summarizeText(textToSummarize, targetCharLength = 400, options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || !textToSummarize.trim()) return null;
     const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-2.5-flash-lite';
+    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-3.1-flash-lite-preview';
 
     const prompt = `Summarize the following text in under ${targetCharLength} characters.
 Text: ${textToSummarize}`;

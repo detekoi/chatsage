@@ -1,7 +1,9 @@
 // src/components/customCommands/promptResolver.js
 import logger from '../../lib/logger.js';
-import { getGeminiClient } from '../llm/geminiClient.js';
+import { getGenAIInstance } from '../llm/gemini/core.js';
 import { smartTruncate } from '../llm/llmUtils.js';
+
+const FLASH_LITE_MODEL = 'gemini-3.1-flash-lite-preview';
 
 const BASE_SYSTEM_INSTRUCTION = `You are a fun Twitch chat bot. Respond to the following prompt in a single short message suitable for Twitch chat. Do NOT use markdown formatting (like **bold** or *italics*), as Twitch IRC does not support it. Be concise, engaging, and directly address the prompt. Keep your response under 300 characters.`;
 
@@ -21,6 +23,7 @@ function buildSystemInstruction(language) {
 
 /**
  * Sends a resolved prompt template to the LLM to generate a unique response.
+ * Uses gemini-3.1-flash-lite-preview directly for minimal latency.
  * @param {string} prompt - The prompt with variables already resolved.
  * @param {string|null} [language=null] - Optional target language for the response.
  * @returns {Promise<string>} The generated response, or a fallback string on error.
@@ -31,19 +34,17 @@ export async function resolvePrompt(prompt, language = null) {
     }
 
     try {
-        const model = getGeminiClient();
+        const ai = getGenAIInstance();
 
         logger.debug({ prompt, language }, '[PromptResolver] Generating response for custom command prompt');
 
         const systemInstruction = buildSystemInstruction(language);
 
-        const result = await model.generateContent({
+        const result = await ai.models.generateContent({
+            model: FLASH_LITE_MODEL,
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            generationConfig: {
-                // 'minimal' is the lowest thinking level for Gemini 3 Flash —
-                // matches no-thinking behavior for simple prompts like chat messages
-                thinkingConfig: { thinkingLevel: 'minimal' }
+            config: {
+                systemInstruction: { parts: [{ text: systemInstruction }] },
             }
         });
 

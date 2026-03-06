@@ -4,7 +4,7 @@
 import { GoogleGenAI } from '@google/genai';
 import logger from './logger.js';
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const EMOTE_CDN_URL = 'https://static-cdn.jtvnw.net/emoticons/v2';
 const EMOTE_IMAGE_FORMAT = 'static/dark/3.0';
 const GEMINI_TIMEOUT_MS = 8000;

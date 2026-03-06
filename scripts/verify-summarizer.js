@@ -26,15 +26,14 @@ function buildSyntheticTranscript(totalMessages = 120) {
     for (let i = 0; i < totalMessages; i++) {
         const user = users[i % users.length];
         const topic = topics[i % topics.length];
-        const msg = `${topic} discussion #${i + 1}: ${
-            i % 7 === 0
+        const msg = `${topic} discussion #${i + 1}: ${i % 7 === 0
                 ? 'detailed thoughts about mechanics and timing, keeping it concise.'
                 : i % 5 === 0
-                ? 'short note about settings and preferences.'
-                : i % 3 === 0
-                ? 'quick reaction to a clutch play!'
-                : 'general chatter with some context about what just happened.'
-        }`;
+                    ? 'short note about settings and preferences.'
+                    : i % 3 === 0
+                        ? 'quick reaction to a clutch play!'
+                        : 'general chatter with some context about what just happened.'
+            }`;
         transcript.push({
             timestamp: new Date(),
             username: user,
@@ -48,7 +47,7 @@ function buildSyntheticTranscript(totalMessages = 120) {
 async function main() {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
-        const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash-lite';
+        const modelId = process.env.GEMINI_MODEL_ID || 'gemini-3.1-flash-lite-preview';
         if (!apiKey) {
             logger.fatal('GEMINI_API_KEY is missing in environment. Add it to your .env and retry.');
             process.exit(1);
