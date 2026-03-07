@@ -106,6 +106,18 @@ async function maybeSendGreeting(channelName) {
     if (state.greetedOnStart) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'stream-online');
     if (!context) return;
+
+    // Skip greeting if the stream has been live for more than 5 minutes
+    // (prevents re-greeting after bot restart / Cloud Run cold start)
+    const GREETING_WINDOW_MS = 5 * 60 * 1000;
+    if (context.streamStartedAt) {
+        const streamAgeMs = Date.now() - new Date(context.streamStartedAt).getTime();
+        if (streamAgeMs > GREETING_WINDOW_MS) {
+            state.greetedOnStart = true;
+            return;
+        }
+    }
+
     const contextPrompt = buildContextPrompt(context);
     const prompt = `The stream just went live. Write one warm, concise greeting for chat. ≤25 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
@@ -461,5 +473,5 @@ export async function notifyAdBreak(channelName, adEvent) {
 }
 
 // Exported for testing only
-export { refreshImageContext, buildImageContextLine };
+export { refreshImageContext, buildImageContextLine, maybeSendGreeting };
 export function _getRuntime() { return runtime; }
