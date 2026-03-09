@@ -599,7 +599,7 @@ async function _startNextRound(gameState) {
         [recentChannelQuestions, recentChannelAnswers] = await Promise.all([
             getRecentQuestions(gameState.channelName, gameState.topic, RECENT_QUESTION_FETCH_LIMIT)
                 .catch(err => { logger.error({ err }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel questions for exclusion.`); return []; }),
-            getRecentAnswers(gameState.channelName, gameState.topic, RECENT_QUESTION_FETCH_LIMIT)
+            getRecentAnswers(gameState.channelName, null, RECENT_QUESTION_FETCH_LIMIT)
                 .catch(err => { logger.error({ err }, `[TriviaGame][${gameState.channelName}] Error fetching recent channel answers for exclusion.`); return []; })
         ]);
         logger.debug(`[TriviaGame][${gameState.channelName}] Retrieved ${recentChannelQuestions.length} recent channel questions to potentially exclude.`);
@@ -1079,7 +1079,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             [recentChannelQuestions, recentChannelAnswers] = await Promise.all([
                 getRecentQuestions(channelName, topic, RECENT_QUESTION_FETCH_LIMIT)
                     .catch(err => { logger.error({ err }, `[TriviaGame][${channelName}] Error fetching recent questions for Round 1 exclusion.`); return []; }),
-                getRecentAnswers(channelName, topic, RECENT_QUESTION_FETCH_LIMIT)
+                getRecentAnswers(channelName, null, RECENT_QUESTION_FETCH_LIMIT)
                     .catch(err => { logger.error({ err }, `[TriviaGame][${channelName}] Error fetching recent answers for Round 1 exclusion.`); return []; })
             ]);
             gameState.gameSessionExcludedQuestions = new Set(recentChannelQuestions); // Initialize session set
