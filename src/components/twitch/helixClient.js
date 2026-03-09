@@ -246,7 +246,7 @@ async function getUsersByLogin(loginNames, context = null) {
     const params = new URLSearchParams();
     loginNames.forEach(name => params.append('login', name));
 
-    logger.debug({ loginNames }, 'Fetching user information by login from Helix...');
+    logger.debug({ loginCount: loginNames.length }, 'Fetching user information by login from Helix...');
 
     try {
         // Use retry logic for user lookups (critical for EventSub subscriptions)
@@ -263,7 +263,7 @@ async function getUsersByLogin(loginNames, context = null) {
         return response.data?.data || [];
     } catch (error) {
         // Errors are already logged by the response interceptor
-        logger.error({ err: { message: error.message, code: error.code }, loginNames }, `Failed to get user information for logins after retries: ${loginNames.join(',')}`);
+        logger.error({ err: { message: error.message, code: error.code }, loginCount: loginNames.length }, `Failed to get user information for ${loginNames.length} login(s) after retries`);
         // Return empty array for graceful degradation
         return [];
     }
