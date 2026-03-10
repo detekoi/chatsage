@@ -1,10 +1,10 @@
 // tests/unit/customCommands/promptResolver.test.js
 import { resolvePrompt } from '../../../src/components/customCommands/promptResolver.js';
-import { getGeminiClient } from '../../../src/components/llm/geminiClient.js';
+import { getGenAIInstance } from '../../../src/components/llm/gemini/core.js';
 import { smartTruncate } from '../../../src/components/llm/llmUtils.js';
 
-jest.mock('../../../src/components/llm/geminiClient.js', () => ({
-    getGeminiClient: jest.fn()
+jest.mock('../../../src/components/llm/gemini/core.js', () => ({
+    getGenAIInstance: jest.fn()
 }));
 
 jest.mock('../../../src/components/llm/llmUtils.js', () => ({
@@ -27,8 +27,10 @@ describe('promptResolver', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockGenerateContent = jest.fn();
-        getGeminiClient.mockReturnValue({
-            generateContent: mockGenerateContent
+        getGenAIInstance.mockReturnValue({
+            models: {
+                generateContent: mockGenerateContent
+            }
         });
     });
 
@@ -97,7 +99,7 @@ describe('promptResolver', () => {
         await resolvePrompt('Say hello', 'spanish');
 
         const callArgs = mockGenerateContent.mock.calls[0][0];
-        expect(callArgs.systemInstruction.parts[0].text).toContain('You MUST respond entirely in spanish.');
+        expect(callArgs.config.systemInstruction.parts[0].text).toContain('You MUST respond entirely in spanish.');
     });
 
     test('does not include language directive when language is null', async () => {
@@ -110,6 +112,6 @@ describe('promptResolver', () => {
         await resolvePrompt('Say hello');
 
         const callArgs = mockGenerateContent.mock.calls[0][0];
-        expect(callArgs.systemInstruction.parts[0].text).not.toContain('You MUST respond entirely in');
+        expect(callArgs.config.systemInstruction.parts[0].text).not.toContain('You MUST respond entirely in');
     });
 });
