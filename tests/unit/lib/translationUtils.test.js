@@ -180,6 +180,55 @@ describe('translationUtils', () => {
             // Still 1 call — cache was used
             expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
         });
+
+        it('should return SAME_LANGUAGE when translation is nearly identical to input (similarity safeguard)', async () => {
+            // LLM says same_language=false but the "translation" is basically the same text
+            mockAI.models.generateContent.mockResolvedValue(
+                createStructuredResponse(false, 'Denn, do you play Pokopia?')
+            );
+
+            const result = await translateText('Denn, do you play Pokopia?', 'English');
+
+            expect(result).toBe(SAME_LANGUAGE);
+            expect(logger.debug).toHaveBeenCalledWith(
+                expect.objectContaining({ targetLanguage: 'English' }),
+                'Translation too similar to original, treating as same language.'
+            );
+        });
+
+        it('should return SAME_LANGUAGE for username-like text that gets echoed back', async () => {
+            mockAI.models.generateContent.mockResolvedValue(
+                createStructuredResponse(false, 'Ditto_Kak')
+            );
+
+            const result = await translateText('Ditto_Kak', 'English');
+
+            expect(result).toBe(SAME_LANGUAGE);
+        });
+
+        it('should NOT trigger similarity safeguard for genuine translations', async () => {
+            mockAI.models.generateContent.mockResolvedValue(
+                createStructuredResponse(false, 'Hola, ¿juegas Pokopia?')
+            );
+
+            const result = await translateText('Denn, do you play Pokopia?', 'Spanish');
+
+            expect(result).toBe('Hola, ¿juegas Pokopia?');
+        });
+
+        it('should include Twitch chat context in the translation prompt', async () => {
+            mockAI.models.generateContent.mockResolvedValue(
+                createStructuredResponse(true, '')
+            );
+
+            await translateText('Hello world', 'English');
+
+            const call = mockAI.models.generateContent.mock.calls[0][0];
+            const prompt = call.contents[0].parts[0].text;
+            expect(prompt).toContain('Twitch');
+            expect(prompt).toContain('nicknames');
+            expect(prompt).toContain('game terms');
+        });
     });
 
     describe('cleanupTranslationUtils', () => {

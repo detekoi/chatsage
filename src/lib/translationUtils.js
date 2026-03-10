@@ -254,12 +254,12 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     // Attempt 1: Structured JSON output for reliable detection + translation
     try {
-        const translationPrompt = `You are a professional interpreter. Analyze the following text and translate it into ${targetLanguage}.
+        const translationPrompt = `You are a professional interpreter for Twitch live-stream chat. Analyze the following text and translate it into ${targetLanguage}.
 Rules:
 1. If the text is already in ${targetLanguage}, set same_language to true and leave translated_text empty.
 2. Otherwise, set same_language to false and provide the translation in translated_text.
-3. Output ONLY the translated text — no explanations, no wrapping in quotes.
-4. Do NOT add any markdown formatting (no ** bold **, no * italics *, no other markup). Preserve the exact formatting of the original text.
+3. Preserve the original formatting — no markdown, no quotes, no explanations.
+4. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
 
 Text:
 ${textToTranslate}`;
@@ -331,6 +331,25 @@ ${textToTranslate}`;
     let cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
     // Safety: strip markdown bold/italic injected by translation LLM
     cleanedText = cleanedText.replace(/\*\*/g, '').trim();
+
+    // Similarity safeguard: if the "translation" is nearly identical to the input,
+    // the LLM likely didn't actually translate — treat as same language.
+    const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normOriginal = normalize(textToTranslate);
+    const normTranslated = normalize(cleanedText);
+    if (normOriginal.length > 0 && normTranslated.length > 0) {
+        const maxLen = Math.max(normOriginal.length, normTranslated.length);
+        let matches = 0;
+        for (let i = 0; i < Math.min(normOriginal.length, normTranslated.length); i++) {
+            if (normOriginal[i] === normTranslated[i]) matches++;
+        }
+        const similarity = matches / maxLen;
+        if (similarity >= 0.85) {
+            logger.debug({ targetLanguage, similarity: similarity.toFixed(2) },
+                'Translation too similar to original, treating as same language.');
+            return SAME_LANGUAGE;
+        }
+    }
 
     // Cache the successful translation
     if (cleanedText && cleanedText.length > 0) {
