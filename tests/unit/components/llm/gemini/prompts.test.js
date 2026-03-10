@@ -15,7 +15,7 @@ describe('gemini/prompts.js', () => {
         it('should contain key persona traits', () => {
             expect(CHAT_SAGE_SYSTEM_INSTRUCTION).toContain('WildcatSage');
             expect(CHAT_SAGE_SYSTEM_INSTRUCTION).toContain('engaging');
-            expect(CHAT_SAGE_SYSTEM_INSTRUCTION).toContain('understated');
+            expect(CHAT_SAGE_SYSTEM_INSTRUCTION).toContain('warm');
         });
     });
 
