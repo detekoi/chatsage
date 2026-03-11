@@ -26,6 +26,7 @@ describe('checkinHandler', () => {
 
     const mockContextManager = {
         getContextForLLM: jest.fn(),
+        getBotLanguage: jest.fn(),
     };
 
     beforeEach(() => {
@@ -33,6 +34,7 @@ describe('checkinHandler', () => {
         parseVariables.mockImplementation(async (template) => template);
         getContextManager.mockReturnValue(mockContextManager);
         mockContextManager.getContextForLLM.mockReturnValue({ channelName: 'testchannel', streamGame: 'Just Chatting' });
+        mockContextManager.getBotLanguage.mockReturnValue(null);
         buildContextPrompt.mockReturnValue('Channel: testchannel\nGame: Just Chatting');
     });
 
@@ -188,6 +190,20 @@ describe('checkinHandler', () => {
             await handleCheckinRedemption(baseEvent);
 
             expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null);
+        });
+
+        test('passes bot language to resolvePrompt when configured', async () => {
+            mockContextManager.getBotLanguage.mockReturnValue('japanese');
+            parseVariables.mockResolvedValue('resolved prompt');
+            resolvePrompt.mockResolvedValue('AI response in japanese');
+
+            await handleCheckinRedemption(baseEvent);
+
+            expect(resolvePrompt).toHaveBeenCalledWith(
+                'resolved prompt',
+                'japanese',
+                'Channel: testchannel\nGame: Just Chatting'
+            );
         });
 
         test('falls back to static template when AI returns empty', async () => {

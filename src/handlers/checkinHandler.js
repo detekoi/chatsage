@@ -78,8 +78,10 @@ export async function handleCheckinRedemption(event) {
 
             // Gather stream context for richer AI responses
             let streamContextString = null;
+            let botLanguage = null;
             try {
                 const contextManager = getContextManager();
+                botLanguage = contextManager.getBotLanguage(channelLogin);
                 const llmContext = contextManager.getContextForLLM(channelLogin, userName, '');
                 if (llmContext) {
                     streamContextString = buildContextPrompt(llmContext);
@@ -89,7 +91,7 @@ export async function handleCheckinRedemption(event) {
                     '[CheckinHandler] Could not gather stream context, proceeding without it');
             }
 
-            const aiResponse = await resolvePrompt(resolvedPrompt, null, streamContextString);
+            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString);
 
             const elapsed = Date.now() - startTime;
 
