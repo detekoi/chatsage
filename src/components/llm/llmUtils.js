@@ -1,4 +1,5 @@
 import logger from '../../lib/logger.js';
+import { logBotResponse } from '../../lib/activityLogger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
@@ -129,7 +130,8 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         : { channel: cleanChannel, user: lowerUsername, trigger: triggerType };
     
     logger.info(logContext, sessionId ? `[SharedChat:${sessionId}] Handling LLM query in shared session` : `Handling standard LLM query.`);
-    
+    const llmStartTime = Date.now();
+    let wasSummarized = false;
     try {
         const contextManager = getContextManager();
         let llmContext;
@@ -210,6 +212,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
+            wasSummarized = true;
 
             const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH);
             if (summary?.trim()) {
@@ -227,6 +230,11 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
              finalReplyText = smartTruncate(finalReplyText, MAX_IRC_MESSAGE_LENGTH);
         }
         await sendBotResponse(channel, finalReplyText, { replyToId });
+        logBotResponse(cleanChannel, triggerType, {
+            latencyMs: Date.now() - llmStartTime,
+            responseLength: finalReplyText.length,
+            summarized: wasSummarized,
+        });
 
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);

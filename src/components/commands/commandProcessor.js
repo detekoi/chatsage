@@ -1,4 +1,5 @@
 import logger from '../../lib/logger.js';
+import { logCommand } from '../../lib/activityLogger.js';
 // Import command handlers (assuming handlers/index.js exports an object/Map)
 import commandHandlers from './handlers/index.js';
 // We might need access to the chat sender to send command responses
@@ -271,6 +272,7 @@ async function processMessage(channelName, tags, message) {
         };
         // Execute the command's handler function
         await handler.execute(context);
+        logCommand(channelName, command, 'builtin');
         return true; // Command was successfully executed
 
     } catch (error) {
@@ -357,7 +359,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         // Send the response
         await enqueueMessage(`#${channelName}`, finalOutput, { skipTranslation });
 
-        logger.info(`Executed custom command !${command} for ${tags.username} in #${channelName}`);
+        logCommand(channelName, command, 'custom');
         return true;
     } catch (error) {
         logger.error({ err: error, command, channel: channelName },

@@ -1,4 +1,5 @@
 import logger from '../lib/logger.js';
+import { logInteraction } from '../lib/activityLogger.js';
 import config from '../config/index.js';
 import { enqueueMessage } from '../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../lib/translationUtils.js';
@@ -247,6 +248,7 @@ export async function handleBotMention({
     const enrichedMessageContent = emoteContext ? `${emoteContext} ${userMessageContent}` : userMessageContent;
 
     const triggerType = isReplyToBot ? 'reply' : 'mention';
+    logInteraction(cleanChannel, triggerType);
     const replyToId = tags?.id || tags?.['message-id'] || null;
 
     // Check if channel is in a shared chat session
