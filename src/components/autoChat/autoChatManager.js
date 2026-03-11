@@ -374,18 +374,6 @@ export async function startAutoChatManager() {
                 const isLive = !!(ctx && ctx.streamGame && ctx.streamGame !== 'N/A');
                 if (!isLive) continue;
 
-                // Look-ahead: pre-warm thumbnail analysis when gap timer has
-                // expired (an auto-chat event could fire this tick).  Runs
-                // BEFORE the event handlers so the image context is ready with
-                // no inline inference delay.  IMAGE_REFRESH_MS throttle
-                // prevents redundant calls.
-                const channelState = getState(channelName);
-                const minGapMs = getAggressivenessMinGapMinutes(cfg.mode) * 60 * 1000;
-                const timeSinceLastAuto = now() - (channelState.lastAutoAtMs || 0);
-                if (timeSinceLastAuto >= minGapMs) {
-                    await refreshImageContext(channelName);
-                }
-
                 // Detect game change
                 const currentGame = state.streamContext?.game || null;
                 const prevGame = getState(channelName).lastGame;
