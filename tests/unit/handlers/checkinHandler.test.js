@@ -5,12 +5,16 @@ jest.mock('../../../src/lib/ircSender.js');
 jest.mock('../../../src/components/customCommands/checkinStorage.js');
 jest.mock('../../../src/components/customCommands/variableParser.js');
 jest.mock('../../../src/components/customCommands/promptResolver.js');
+jest.mock('../../../src/components/context/contextManager.js');
+jest.mock('../../../src/components/llm/gemini/prompts.js');
 
 import { handleCheckinRedemption } from '../../../src/handlers/checkinHandler.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
 import { getCheckinConfig, recordCheckin } from '../../../src/components/customCommands/checkinStorage.js';
 import { parseVariables } from '../../../src/components/customCommands/variableParser.js';
 import { resolvePrompt } from '../../../src/components/customCommands/promptResolver.js';
+import { getContextManager } from '../../../src/components/context/contextManager.js';
+import { buildContextPrompt } from '../../../src/components/llm/gemini/prompts.js';
 
 describe('checkinHandler', () => {
     const baseEvent = {
@@ -20,9 +24,16 @@ describe('checkinHandler', () => {
         user_name: 'TestViewer',
     };
 
+    const mockContextManager = {
+        getContextForLLM: jest.fn(),
+    };
+
     beforeEach(() => {
         jest.clearAllMocks();
         parseVariables.mockImplementation(async (template) => template);
+        getContextManager.mockReturnValue(mockContextManager);
+        mockContextManager.getContextForLLM.mockReturnValue({ channelName: 'testchannel', streamGame: 'Just Chatting' });
+        buildContextPrompt.mockReturnValue('Channel: testchannel\nGame: Just Chatting');
     });
 
     // ─── Guard clauses ──────────────────────────────────────────────────────
@@ -156,15 +167,27 @@ describe('checkinHandler', () => {
                 'Write a fun check-in message for $(user), check-in #$(checkin_count)',
                 expect.objectContaining({ checkinCount: 14 })
             );
+            expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith('testchannel', 'TestViewer', '');
+            expect(buildContextPrompt).toHaveBeenCalled();
             expect(resolvePrompt).toHaveBeenCalledWith(
                 'Write a fun check-in message for TestViewer, check-in #14',
-                'testchannel',
-                'TestViewer'
+                null,
+                'Channel: testchannel\nGame: Just Chatting'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'TestViewer, 14 days strong! You absolute legend! HeyGuys'
             );
+        });
+
+        test('passes null context when context manager returns null', async () => {
+            mockContextManager.getContextForLLM.mockReturnValue(null);
+            parseVariables.mockResolvedValue('resolved prompt');
+            resolvePrompt.mockResolvedValue('AI response');
+
+            await handleCheckinRedemption(baseEvent);
+
+            expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null);
         });
 
         test('falls back to static template when AI returns empty', async () => {

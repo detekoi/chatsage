@@ -26,9 +26,10 @@ function buildSystemInstruction(language) {
  * Uses gemini-3.1-flash-lite-preview directly for minimal latency.
  * @param {string} prompt - The prompt with variables already resolved.
  * @param {string|null} [language=null] - Optional target language for the response.
+ * @param {string|null} [streamContext=null] - Optional formatted stream context string.
  * @returns {Promise<string>} The generated response, or a fallback string on error.
  */
-export async function resolvePrompt(prompt, language = null) {
+export async function resolvePrompt(prompt, language = null, streamContext = null) {
     if (!prompt) {
         return '';
     }
@@ -36,13 +37,18 @@ export async function resolvePrompt(prompt, language = null) {
     try {
         const ai = getGenAIInstance();
 
-        logger.debug({ prompt, language }, '[PromptResolver] Generating response for custom command prompt');
+        // Append stream context to the prompt if available
+        const fullPrompt = streamContext
+            ? `${prompt}\n\n--- Stream Context ---\n${streamContext}`
+            : prompt;
+
+        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext }, '[PromptResolver] Generating response for custom command prompt');
 
         const systemInstruction = buildSystemInstruction(language);
 
         const result = await ai.models.generateContent({
             model: FLASH_LITE_MODEL,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             config: {
                 systemInstruction: { parts: [{ text: systemInstruction }] },
             }
@@ -51,7 +57,7 @@ export async function resolvePrompt(prompt, language = null) {
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!responseText) {
-            logger.warn({ prompt }, '[PromptResolver] LLM returned empty response');
+            logger.warn({ prompt: fullPrompt }, '[PromptResolver] LLM returned empty response');
             return "Sorry, I couldn't think of a good response right now.";
         }
 

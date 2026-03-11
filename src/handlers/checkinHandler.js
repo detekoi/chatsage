@@ -6,6 +6,8 @@ import { enqueueMessage } from '../lib/ircSender.js';
 import { getCheckinConfig, recordCheckin } from '../components/customCommands/checkinStorage.js';
 import { parseVariables } from '../components/customCommands/variableParser.js';
 import { resolvePrompt } from '../components/customCommands/promptResolver.js';
+import { getContextManager } from '../components/context/contextManager.js';
+import { buildContextPrompt } from '../components/llm/gemini/prompts.js';
 
 /**
  * Handle a Channel Points redemption event for the Daily Check-In feature.
@@ -73,7 +75,21 @@ export async function handleCheckinRedemption(event) {
         const startTime = Date.now();
         try {
             const resolvedPrompt = await parseVariables(config.aiPrompt, context);
-            const aiResponse = await resolvePrompt(resolvedPrompt, channelLogin, userName);
+
+            // Gather stream context for richer AI responses
+            let streamContextString = null;
+            try {
+                const contextManager = getContextManager();
+                const llmContext = contextManager.getContextForLLM(channelLogin, userName, '');
+                if (llmContext) {
+                    streamContextString = buildContextPrompt(llmContext);
+                }
+            } catch (ctxError) {
+                logger.debug({ err: ctxError, channel: channelLogin },
+                    '[CheckinHandler] Could not gather stream context, proceeding without it');
+            }
+
+            const aiResponse = await resolvePrompt(resolvedPrompt, null, streamContextString);
 
             const elapsed = Date.now() - startTime;
 

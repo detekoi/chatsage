@@ -114,4 +114,37 @@ describe('promptResolver', () => {
         const callArgs = mockGenerateContent.mock.calls[0][0];
         expect(callArgs.config.systemInstruction.parts[0].text).not.toContain('You MUST respond entirely in');
     });
+
+    // ─── Stream context ─────────────────────────────────────────────────
+
+    describe('stream context', () => {
+        test('appends stream context to prompt when provided', async () => {
+            mockGenerateContent.mockResolvedValue({
+                candidates: [{
+                    content: { parts: [{ text: 'Contextual response!' }] }
+                }]
+            });
+
+            await resolvePrompt('Check-in prompt', null, 'Channel: testchannel\nGame: Minecraft');
+
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.contents[0].parts[0].text).toContain('Check-in prompt');
+            expect(callArgs.contents[0].parts[0].text).toContain('--- Stream Context ---');
+            expect(callArgs.contents[0].parts[0].text).toContain('Channel: testchannel');
+        });
+
+        test('does not append context block when streamContext is null', async () => {
+            mockGenerateContent.mockResolvedValue({
+                candidates: [{
+                    content: { parts: [{ text: 'No context response!' }] }
+                }]
+            });
+
+            await resolvePrompt('Check-in prompt', null, null);
+
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.contents[0].parts[0].text).toBe('Check-in prompt');
+            expect(callArgs.contents[0].parts[0].text).not.toContain('--- Stream Context ---');
+        });
+    });
 });
