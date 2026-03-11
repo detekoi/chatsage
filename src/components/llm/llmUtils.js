@@ -1,5 +1,6 @@
 import logger from '../../lib/logger.js';
 import { logBotResponse } from '../../lib/activityLogger.js';
+import { logConversation } from './conversationStorage.js';
 import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
@@ -234,6 +235,14 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
             latencyMs: Date.now() - llmStartTime,
             responseLength: finalReplyText.length,
             summarized: wasSummarized,
+        });
+
+        // Fire-and-forget: store conversation pair for prompt engineering
+        logConversation(cleanChannel, userMessage, finalReplyText, {
+            trigger: triggerType,
+            responseLength: finalReplyText.length,
+            summarized: wasSummarized,
+            latencyMs: Date.now() - llmStartTime,
         });
 
     } catch (error) {
