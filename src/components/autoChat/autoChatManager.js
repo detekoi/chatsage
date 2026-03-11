@@ -139,6 +139,9 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     // Clear stale chat summary so old game themes don't contaminate new prompts
     getContextManager().clearThematicContext(channelName);
 
+    // JIT: only fetch/analyze thumbnail when we're actually going to compose a message
+    await refreshImageContext(channelName);
+
     const context = getContextManager().getContextForLLM(channelName, 'system', 'game-change');
     const contextPrompt = buildContextPrompt(context);
     const styles = [
@@ -182,6 +185,9 @@ async function maybeHandleLull(channelName) {
     const lastMessageAtMs = state.lastMessageAtMs || 0;
     if (now() - lastMessageAtMs < lullThresholdMin * 60 * 1000) return;
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
+
+    // JIT: only fetch/analyze thumbnail when we're actually going to compose a message
+    await refreshImageContext(channelName);
 
     const context = getContextManager().getContextForLLM(channelName, 'system', 'lull');
     if (!context) return;
@@ -228,6 +234,9 @@ async function maybeHandleTopicShift(channelName) {
 
     const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
+
+    // JIT: only fetch/analyze thumbnail when we're actually going to compose a message
+    await refreshImageContext(channelName);
 
     const contextPrompt = buildContextPrompt(context);
     const styles = [
@@ -365,8 +374,17 @@ export async function startAutoChatManager() {
                 const isLive = !!(ctx && ctx.streamGame && ctx.streamGame !== 'N/A');
                 if (!isLive) continue;
 
-                // Refresh thumbnail image context (throttled internally)
-                await refreshImageContext(channelName);
+                // Look-ahead: pre-warm thumbnail analysis when gap timer has
+                // expired (an auto-chat event could fire this tick).  Runs
+                // BEFORE the event handlers so the image context is ready with
+                // no inline inference delay.  IMAGE_REFRESH_MS throttle
+                // prevents redundant calls.
+                const channelState = getState(channelName);
+                const minGapMs = getAggressivenessMinGapMinutes(cfg.mode) * 60 * 1000;
+                const timeSinceLastAuto = now() - (channelState.lastAutoAtMs || 0);
+                if (timeSinceLastAuto >= minGapMs) {
+                    await refreshImageContext(channelName);
+                }
 
                 // Detect game change
                 const currentGame = state.streamContext?.game || null;
