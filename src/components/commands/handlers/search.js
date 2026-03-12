@@ -4,6 +4,7 @@ import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { logConversation } from '../../llm/conversationStorage.js';
 
 // Define IRC message length limit (be conservative)
 const MAX_IRC_MESSAGE_LENGTH = 450;
@@ -116,6 +117,7 @@ const searchHandler = {
                 finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
             enqueueMessage(channel, finalMessage, { replyToId });
+            logConversation(channelName, userQuery, finalMessage, { trigger: 'command' });
 
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);

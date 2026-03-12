@@ -14,6 +14,7 @@ import { analyzeImage } from '../../llm/geminiImageClient.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 // Import markdown removal and smart truncation utilities
 import { removeMarkdownAsterisks, smartTruncate } from '../../llm/llmUtils.js';
+import { logConversation } from '../../llm/conversationStorage.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 420; // Target length for summaries, leaving buffer for IRC limits
@@ -329,6 +330,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
             // Defensive: avoid sending meta thought/regurgitation if present
             const scrubbed = responseText.replace(/^(Thinking Process|Reasoning|Analysis)[:-].*$/i, '').trim();
             enqueueMessage(channel, scrubbed, { replyToId });
+            logConversation(channelName, `!game (${gameName})`, scrubbed, { trigger: 'command' });
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
             logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
@@ -422,6 +424,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         }
 
         enqueueMessage(channel, finalReplyText, { replyToId });
+        logConversation(channelName, `!game ${helpQuery}`, finalReplyText, { trigger: 'command' });
 
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: userName, helpQuery }, `Error processing game help request.`);

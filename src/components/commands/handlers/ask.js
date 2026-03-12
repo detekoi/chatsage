@@ -14,6 +14,7 @@ import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getEmoteContextString } from '../../../lib/geminiEmoteDescriber.js';
+import { logConversation } from '../../llm/conversationStorage.js';
 
 // Note: IRC message length limits are handled by ircSender.js
 // This handler focuses on response generation, not formatting
@@ -104,6 +105,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
     // Let ircSender.js handle all length processing (summarization/truncation)
     logger.info(`[!ask] Enqueueing message (${finalLength} chars) for ${userName}`);
     enqueueMessage(channel, finalReplyText, { replyToId });
+    logConversation(channel.substring(1), userQuery, finalReplyText, { trigger: 'command' });
 }
 
 /**
