@@ -91,7 +91,7 @@ export async function handleCheckinRedemption(event) {
                     '[CheckinHandler] Could not gather stream context, proceeding without it');
             }
 
-            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString);
+            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString, true /* isCheckin */);
 
             const elapsed = Date.now() - startTime;
 

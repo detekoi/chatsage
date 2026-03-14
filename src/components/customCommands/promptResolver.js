@@ -5,7 +5,11 @@ import { smartTruncate } from '../llm/llmUtils.js';
 
 const FLASH_LITE_MODEL = 'gemini-3.1-flash-lite-preview';
 
-const BASE_SYSTEM_INSTRUCTION = `You are a Twitch chat bot. Respond to the following prompt in a single short message suitable for Twitch chat. No markdown formatting. Be concise and match the tone requested in the prompt. Keep your response under 300 characters. If a check-in count or number is mentioned, it refers to the viewer's cumulative all-time total check-ins.`;
+const BASE_SYSTEM_INSTRUCTION = `You are a Twitch chat bot. Respond to the following prompt in a single short message suitable for Twitch chat. No markdown formatting. Be concise and match the tone requested in the prompt. Keep your response under 300 characters.`;
+
+// Extra context added only for check-in commands to prevent the LLM from
+// misinterpreting a user's personal check-in count as being first to stream.
+const CHECKIN_HINT = ` If a check-in count or number is mentioned, it refers to the viewer's cumulative all-time personal check-ins.`;
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 
@@ -14,11 +18,12 @@ const MAX_IRC_MESSAGE_LENGTH = 450;
  * @param {string|null} language - Target language, or null/undefined for English.
  * @returns {string} The full system instruction.
  */
-function buildSystemInstruction(language) {
+function buildSystemInstruction(language, isCheckin = false) {
+    const base = isCheckin ? BASE_SYSTEM_INSTRUCTION + CHECKIN_HINT : BASE_SYSTEM_INSTRUCTION;
     if (!language) {
-        return BASE_SYSTEM_INSTRUCTION;
+        return base;
     }
-    return `${BASE_SYSTEM_INSTRUCTION} You MUST respond entirely in ${language}.`;
+    return `${base} You MUST respond entirely in ${language}.`;
 }
 
 /**
@@ -29,7 +34,7 @@ function buildSystemInstruction(language) {
  * @param {string|null} [streamContext=null] - Optional formatted stream context string.
  * @returns {Promise<string>} The generated response, or a fallback string on error.
  */
-export async function resolvePrompt(prompt, language = null, streamContext = null) {
+export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false) {
     if (!prompt) {
         return '';
     }
@@ -44,7 +49,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
 
         logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext }, '[PromptResolver] Generating response for custom command prompt');
 
-        const systemInstruction = buildSystemInstruction(language);
+        const systemInstruction = buildSystemInstruction(language, isCheckin);
 
         const result = await ai.models.generateContent({
             model: FLASH_LITE_MODEL,
