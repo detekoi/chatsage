@@ -51,6 +51,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             config: {
                 systemInstruction: { parts: [{ text: systemInstruction }] },
+                temperature: 1.5,
             }
         });
 
