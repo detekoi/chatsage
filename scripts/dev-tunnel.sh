@@ -29,6 +29,33 @@ cleanup() {
         echo "   ✓ ngrok stopped"
     fi
 
+    # Delete EventSub subscriptions pointing to this ngrok tunnel
+    if [[ -n "${NGROK_URL:-}" ]]; then
+        echo "   🗑️  Cleaning up EventSub subscriptions for $NGROK_URL..."
+        node --input-type=module <<JSEOF 2>/dev/null && echo "   ✓ EventSub subscriptions cleaned up" || echo "   ⚠️  Could not clean up EventSub subscriptions (run scripts/cleanup-dev-subs.js manually)"
+import config from './src/config/index.js';
+import axios from 'axios';
+const ngrokUrl = '${NGROK_URL}';
+try {
+    const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+        params: { client_id: config.twitch.clientId, client_secret: config.twitch.clientSecret, grant_type: 'client_credentials' }
+    });
+    const token = tokenRes.data.access_token;
+    const headers = { 'Client-ID': config.twitch.clientId, 'Authorization': \`Bearer \${token}\` };
+    const res = await axios.get('https://api.twitch.tv/helix/eventsub/subscriptions?first=100', { headers });
+    const toDelete = (res.data.data || []).filter(s => s.transport?.callback?.startsWith(ngrokUrl));
+    for (const sub of toDelete) {
+        await axios.delete(\`https://api.twitch.tv/helix/eventsub/subscriptions?id=\${sub.id}\`, { headers });
+        process.stdout.write(\`      Deleted \${sub.type} for broadcaster \${sub.condition?.broadcaster_user_id}\\n\`);
+    }
+    if (toDelete.length === 0) process.stdout.write('      No subscriptions to clean up\\n');
+} catch (e) {
+    process.stdout.write(\`      Error: \${e.response?.data?.message || e.message}\\n\`);
+    process.exit(1);
+}
+JSEOF
+    fi
+
     # Restore .env
     if [[ -f "$ENV_BACKUP" ]]; then
         mv "$ENV_BACKUP" "$ENV_FILE"

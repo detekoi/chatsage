@@ -29,6 +29,7 @@ npm run dev:tunnel
 
 ## Notes
 
-- The ngrok URL changes every time you restart (free tier). EventSub subscriptions are re-registered on each bot startup, so this is fine.
+- The ngrok URL changes every time you restart (free tier). EventSub subscriptions are re-registered on each bot startup.
+- **On exit (Ctrl+C), the script automatically deletes all EventSub subscriptions pointing to the ngrok URL** to prevent stale subscriptions from firing production events.
 - If the bot crashes but ngrok is still running, just Ctrl+C and re-run.
 - The original `.env` is always restored on exit via the `.env.bak` backup.
