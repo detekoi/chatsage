@@ -24,7 +24,7 @@ export async function fetchIanaTimezoneForLocation(locationName) {
         return null;
     }
     const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-2.5-flash';
+    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-flash-latest';
 
     const prompt = `What is the IANA timezone for "${locationName}"?
 Examples: "New York" -> "America/New_York", "Tokyo" -> "Asia/Tokyo".
