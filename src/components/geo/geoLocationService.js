@@ -37,12 +37,12 @@ const checkGuessTool = {
  */
 export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = [], sessionRegionScope = null) {
     const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations, sessionRegionScope);
-    
+
     // Create a fresh AI instance without any system instruction to avoid token overhead
     const { getGenAIInstance } = await import('../llm/geminiClient.js');
     const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash';
-    
+    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-flash-latest';
+
     logger.debug({ mode, gameTitle, sessionRegionScope, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const generateOptions = {
@@ -60,30 +60,30 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         const result = await ai.models.generateContent(generateOptions);
         const response = result;
         const candidate = response?.candidates?.[0];
-        
+
         // Temporary detailed logging to tune token limits
         logger.debug({
             usageMetadata: result?.usageMetadata,
             finishReason: candidate?.finishReason
         }, '[GeoLocation] Token usage debug');
-        
+
         if (candidate?.finishReason !== 'STOP') {
             logger.warn({ finishReason: candidate?.finishReason }, '[GeoLocation] Non-STOP finish reason');
         }
-        
+
         if (!candidate) {
             logger.warn('[GeoLocation] No candidate found in location selection response');
             return null;
         }
-        
-        
+
+
         // Robust text extraction similar to geminiClient.js approach
         let text = null;
         const parts = candidate?.content?.parts;
         if (Array.isArray(parts) && parts.length > 0) {
             text = parts.map(part => part.text || '').join('').trim();
         }
-        
+
         // Fallback text extraction methods
         if (!text && candidate && typeof candidate.text === 'string') {
             text = candidate.text.trim();
@@ -95,11 +95,11 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         if (!text && response && typeof response.text === 'string') {
             text = response.text.trim();
         }
-        
+
         if (!text) {
             logger.warn('[GeoLocation] Could not extract text from Gemini response');
             // Debug: Log the actual response to see what's happening
-            logger.warn({ 
+            logger.warn({
                 finishReason: candidate.finishReason,
                 candidateContent: candidate.content,
                 hasContent: !!candidate.content,
@@ -171,7 +171,7 @@ export async function validateGuess(targetName, guess, alternateNames = []) {
     } catch (error) {
         logger.error({ err: error }, '[GeoLocation] Error validating guess via function call');
         if (error.message?.includes('[400 Bad Request]')) {
-             logger.error("Potential issue with function calling payload structure or API compatibility.");
+            logger.error("Potential issue with function calling payload structure or API compatibility.");
         }
         return { is_correct: false, reasoning: 'API error during guess validation.' };
     }

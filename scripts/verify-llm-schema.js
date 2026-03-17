@@ -4,14 +4,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 async function main() {
-  const [,, question, answer, guess] = process.argv;
+  const [, , question, answer, guess] = process.argv;
   if (!question || !answer || !guess) {
     console.error("Usage: node scripts/verify-llm-schema.js \"<question>\" \"<answer>\" \"<guess>\"");
     process.exit(1);
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  const modelId = process.env.GEMINI_MODEL_ID || "gemini-2.5-flash";
+  const modelId = process.env.GEMINI_MODEL_ID || "gemini-flash-latest";
   if (!apiKey) {
     console.error("GEMINI_API_KEY is not set in environment.");
     process.exit(2);

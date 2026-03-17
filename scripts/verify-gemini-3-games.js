@@ -16,7 +16,7 @@ async function runVerification() {
     try {
         initializeGeminiClient({
             apiKey: process.env.GEMINI_API_KEY,
-            modelId: process.env.GEMINI_MODEL_ID || 'gemini-2.5-flash'
+            modelId: process.env.GEMINI_MODEL_ID || 'gemini-flash-latest'
         });
     } catch (e) {
         logger.error({ err: e }, "Failed to initialize Gemini Client");
