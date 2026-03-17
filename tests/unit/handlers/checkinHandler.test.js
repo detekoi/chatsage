@@ -174,7 +174,8 @@ describe('checkinHandler', () => {
             expect(resolvePrompt).toHaveBeenCalledWith(
                 'Write a fun check-in message for TestViewer, check-in #14',
                 null,
-                'Channel: testchannel\nGame: Just Chatting'
+                'Channel: testchannel\nGame: Just Chatting',
+                true
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -189,7 +190,7 @@ describe('checkinHandler', () => {
 
             await handleCheckinRedemption(baseEvent);
 
-            expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null);
+            expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null, true);
         });
 
         test('passes bot language to resolvePrompt when configured', async () => {
@@ -202,7 +203,8 @@ describe('checkinHandler', () => {
             expect(resolvePrompt).toHaveBeenCalledWith(
                 'resolved prompt',
                 'japanese',
-                'Channel: testchannel\nGame: Just Chatting'
+                'Channel: testchannel\nGame: Just Chatting',
+                true
             );
         });
 
