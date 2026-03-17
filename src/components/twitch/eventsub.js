@@ -54,6 +54,11 @@ function pruneOldProcessedIds(nowTs) {
     }
 }
 
+// Per-channel farewell deduplication: guards against duplicate stream.offline
+// webhooks that arrive with different message IDs (e.g. from multiple active subscriptions).
+const lastFarewellSentAt = new Map(); // channel login -> timestamp(ms)
+const FAREWELL_COOLDOWN_MS = 30 * 1000; // 30 seconds
+
 function shouldProcessEvent(req) {
     const messageId = req.headers['twitch-eventsub-message-id'];
     const timestampHeader = req.headers['twitch-eventsub-message-timestamp'];
@@ -218,8 +223,17 @@ export async function eventSubHandler(req, res, rawBody) {
                     try {
                         const cfg = await getChannelAutoChatConfig(login);
                         if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
-                            const channel = `#${login}`;
-                            await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
+                            // Guard against duplicate stream.offline events (different message IDs
+                            // from multiple active subscriptions) sending the farewell twice.
+                            const lastSent = lastFarewellSentAt.get(login) || 0;
+                            const nowMs = Date.now();
+                            if (nowMs - lastSent < FAREWELL_COOLDOWN_MS) {
+                                logger.warn({ login, msSinceLast: nowMs - lastSent }, '[EventSub] Skipping duplicate farewell — sent too recently');
+                            } else {
+                                lastFarewellSentAt.set(login, nowMs);
+                                const channel = `#${login}`;
+                                await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
+                            }
                         }
                     } catch (e) {
                         logger.debug({ err: e }, 'Farewell send skipped or failed');
