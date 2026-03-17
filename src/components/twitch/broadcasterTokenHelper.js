@@ -3,7 +3,7 @@
 // Reads refresh tokens from Firestore and exchanges them via Twitch OAuth.
 
 import axios from 'axios';
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 import { getChannelInfo } from './channelManager.js';
@@ -17,16 +17,9 @@ const OAUTH_DOC_ID = 'oauth';
 const tokenCache = new Map();
 const TOKEN_EXPIRY_BUFFER_MS = 60 * 1000; // Treat tokens as expired 60s early
 
-/**
- * Gets the shared Firestore instance (same one used by channelManager).
- * Lazily initialized.
- */
-let db = null;
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        db = new Firestore();
-    }
-    return db;
+    return getFirestore();
 }
 
 /**
@@ -123,7 +116,7 @@ export async function getBroadcasterAccessToken(channelName) {
                     .doc(OAUTH_DOC_ID);
                 await oauthDocRef.set({
                     twitchRefreshToken: newRefreshToken,
-                    updatedAt: Firestore.FieldValue?.serverTimestamp?.() || new Date(),
+                    updatedAt: FieldValue.serverTimestamp(),
                     updateReason: 'bot-token-rotation',
                 }, { merge: true });
             } catch (storeError) {

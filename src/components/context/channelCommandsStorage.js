@@ -1,9 +1,6 @@
 // src/components/context/channelCommandsStorage.js
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-
-// --- Firestore Client Initialization ---
-let db = null; // Firestore database instance
 
 // Collection name for storing per-channel command settings
 const CHANNEL_COMMANDS_COLLECTION = 'channelCommands';
@@ -20,58 +17,15 @@ export class ChannelCommandsStorageError extends Error {
 }
 
 /**
- * Initializes the Google Cloud Firestore client for channel commands storage.
- * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeChannelCommandsStorage() {
-    logger.info("[ChannelCommandsStorage] Initializing Google Cloud Firestore client...");
-    try {
-        logger.debug("[ChannelCommandsStorage] Creating new Firestore client instance...");
-        
-        // Create a new client
-        db = new Firestore();
-        
-        logger.debug("[ChannelCommandsStorage] Firestore client created, testing connection...");
-        
-        // Test connection by fetching a document
-        const testQuery = db.collection(CHANNEL_COMMANDS_COLLECTION).limit(1);
-        logger.debug("[ChannelCommandsStorage] Executing test query...");
-        const result = await testQuery.get();
-        
-        logger.debug(`[ChannelCommandsStorage] Test query successful. Found ${result.size} documents.`);
-        logger.info("[ChannelCommandsStorage] Google Cloud Firestore client initialized and connected.");
-    } catch (error) {
-        logger.error({ 
-            err: error, 
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-            projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
-        }, "[ChannelCommandsStorage] CRITICAL: Failed to initialize Google Cloud Firestore. Check credentials (GOOGLE_APPLICATION_CREDENTIALS).");
-        
-        // Log credential path if set
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-            logger.error(`[ChannelCommandsStorage] GOOGLE_APPLICATION_CREDENTIALS is set to: ${credPath}`);
-        } else {
-            logger.error("[ChannelCommandsStorage] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
-        }
-        
-        // Rethrow error to let the caller handle it
-        throw error;
-    }
+    logger.debug('[ChannelCommandsStorage] Using shared Firestore client.');
 }
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- * @throws {Error} If storage is not initialized.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error("[ChannelCommandsStorage] Storage not initialized. Call initializeChannelCommandsStorage first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 /**

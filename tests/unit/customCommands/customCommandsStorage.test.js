@@ -109,8 +109,8 @@ const mockFirestore = {
     collection: jest.fn((colName) => mockCollectionRef(colName)),
 };
 
-jest.mock('@google-cloud/firestore', () => ({
-    Firestore: jest.fn(() => mockFirestore),
+jest.mock('../../../src/lib/firestore.js', () => ({
+    getFirestore: jest.fn(() => mockFirestore),
     FieldValue: {
         serverTimestamp: jest.fn(() => new Date().toISOString()),
         increment: jest.fn((val) => ({ _isIncrement: true, _incrementValue: val })),

@@ -1,9 +1,6 @@
 // src/components/context/languageStorage.js
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-
-// --- Firestore Client Initialization ---
-let db = null; // Firestore database instance
 
 // Collection name
 const LANGUAGE_COLLECTION = 'channelLanguages';
@@ -20,59 +17,15 @@ export class LanguageStorageError extends Error {
 }
 
 /**
- * Initializes the Google Cloud Firestore client for language storage.
- * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeLanguageStorage() {
-    logger.info("[LanguageStorage] Initializing Google Cloud Firestore client...");
-    try {
-        // Log before creating client - will help identify if constructor fails
-        logger.debug("[LanguageStorage] Creating new Firestore client instance...");
-        
-        // Create a new client
-        db = new Firestore();
-        
-        logger.debug("[LanguageStorage] Firestore client created, testing connection...");
-        
-        // Test connection by fetching a document
-        const testQuery = db.collection(LANGUAGE_COLLECTION).limit(1);
-        logger.debug("[LanguageStorage] Executing test query...");
-        const result = await testQuery.get();
-        
-        logger.debug(`[LanguageStorage] Test query successful. Found ${result.size} documents.`);
-        logger.info("[LanguageStorage] Google Cloud Firestore client initialized and connected.");
-    } catch (error) {
-        logger.error({ 
-            err: error, 
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-            projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
-        }, "[LanguageStorage] CRITICAL: Failed to initialize Google Cloud Firestore. Check credentials (GOOGLE_APPLICATION_CREDENTIALS).");
-        
-        // Log credential path if set
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-            logger.error(`[LanguageStorage] GOOGLE_APPLICATION_CREDENTIALS is set to: ${credPath}`);
-        } else {
-            logger.error("[LanguageStorage] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
-        }
-        
-        // Rethrow error to let the caller handle it
-        throw error;
-    }
+    logger.debug('[LanguageStorage] Using shared Firestore client.');
 }
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- * @throws {Error} If storage is not initialized.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error("[LanguageStorage] Storage not initialized. Call initializeLanguageStorage first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 /**

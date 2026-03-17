@@ -1,9 +1,6 @@
 // src/components/geo/geoStorage.js
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-
-// --- Firestore Client Initialization ---
-let db = null; // Firestore database instance
 
 // Collection names
 const CONFIG_COLLECTION = 'geoGameConfigs';
@@ -22,59 +19,16 @@ export class StorageError extends Error {
 }
 
 /**
- * Initializes the Google Cloud Firestore client.
- * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
+ * Kept for backward compatibility during startup sequence.
  */
 async function initializeStorage() {
-    logger.info("[GeoStorage-GCloud] Initializing Google Cloud Firestore client...");
-    try {
-        // Log before creating client - will help identify if constructor fails
-        logger.debug("[GeoStorage-GCloud] Creating new Firestore client instance...");
-        
-        // Create a new client
-        db = new Firestore();
-        
-        logger.debug("[GeoStorage-GCloud] Firestore client created, testing connection...");
-        
-        // Test connection by fetching a document
-        const testQuery = db.collection(CONFIG_COLLECTION).limit(1);
-        logger.debug("[GeoStorage-GCloud] Executing test query...");
-        const result = await testQuery.get();
-        
-        logger.debug(`[GeoStorage-GCloud] Test query successful. Found ${result.size} documents.`);
-        logger.info("[GeoStorage-GCloud] Google Cloud Firestore client initialized and connected.");
-    } catch (error) {
-        logger.fatal({ 
-            err: error, 
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-            projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
-        }, "[GeoStorage-GCloud] CRITICAL: Failed to initialize Google Cloud Firestore. Check credentials (GOOGLE_APPLICATION_CREDENTIALS).");
-        
-        // Log credential path if set
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-            logger.fatal(`[GeoStorage-GCloud] GOOGLE_APPLICATION_CREDENTIALS is set to: ${credPath}`);
-        } else {
-            logger.fatal("[GeoStorage-GCloud] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
-        }
-        
-        // Application cannot proceed without storage
-        throw error;
-    }
+    logger.debug('[GeoStorage] Using shared Firestore client.');
 }
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- * @throws {Error} If storage is not initialized.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error("[GeoStorage-GCloud] Storage not initialized. Call initializeStorage first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 // --- Public API ---

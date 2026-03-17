@@ -1,29 +1,19 @@
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 // Firestore collection for per-channel auto-chat configs
 const AUTO_CHAT_COLLECTION = 'autoChatConfigs';
 
-let db = null; // Firestore instance
-
+/**
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
+ */
 export async function initializeAutoChatStorage() {
-    logger.info('[AutoChatStorage] Initializing Firestore client...');
-    try {
-        db = new Firestore();
-        // Smoke test
-        await db.collection(AUTO_CHAT_COLLECTION).limit(1).get();
-        logger.info('[AutoChatStorage] Firestore client initialized.');
-    } catch (err) {
-        logger.error({ err }, '[AutoChatStorage] Failed to initialize Firestore');
-        throw err;
-    }
+    logger.debug('[AutoChatStorage] Using shared Firestore client.');
 }
 
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error('[AutoChatStorage] Storage not initialized. Call initializeAutoChatStorage first.');
-    }
-    return db;
+    return getFirestore();
 }
 
 // Default config when none stored

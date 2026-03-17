@@ -1,6 +1,6 @@
 // tests/unit/components/context/translationStorage.test.js
 
-jest.mock('@google-cloud/firestore', () => {
+jest.mock('../../../../src/lib/firestore.js', () => {
     const mockGet = jest.fn().mockResolvedValue({ size: 0, forEach: jest.fn() });
     const mockSet = jest.fn().mockResolvedValue();
     const mockDelete = jest.fn().mockResolvedValue();
@@ -16,10 +16,14 @@ jest.mock('@google-cloud/firestore', () => {
         get: mockGet,
     }));
 
+    const mockDbInstance = {
+        collection: mockCollection,
+    };
+
     return {
-        Firestore: jest.fn().mockImplementation(() => ({
-            collection: mockCollection,
-        })),
+        getFirestore: jest.fn(() => mockDbInstance),
+        FieldValue: {},
+        Timestamp: { fromDate: jest.fn((d) => d) },
     };
 });
 
@@ -30,7 +34,7 @@ jest.mock('../../../../src/lib/logger.js', () => ({
     debug: jest.fn(),
 }));
 
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore } from '../../../../src/lib/firestore.js';
 import {
     saveUserTranslation,
     removeUserTranslation,
@@ -44,7 +48,7 @@ describe('translationStorage', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockDbInstance = new Firestore();
+        mockDbInstance = getFirestore();
         mockCollectionRef = mockDbInstance.collection;
         mockDocRef = mockCollectionRef().doc;
     });

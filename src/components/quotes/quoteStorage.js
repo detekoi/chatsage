@@ -1,11 +1,9 @@
 // src/components/quotes/quoteStorage.js
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 const CHANNEL_QUOTES_COLLECTION = 'channelQuotes';
 const ITEMS_SUBCOLLECTION = 'items';
-
-let db = null;
 
 export class QuoteStorageError extends Error {
     constructor(message, cause) {
@@ -15,22 +13,16 @@ export class QuoteStorageError extends Error {
     }
 }
 
+/**
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
+ */
 export async function initializeQuotesStorage() {
-    logger.info("[QuoteStorage] Initializing Firestore client for quotes...");
-    try {
-        db = new Firestore();
-        // Test access
-        await db.collection(CHANNEL_QUOTES_COLLECTION).limit(1).get();
-        logger.info("[QuoteStorage] Firestore initialized for quotes.");
-    } catch (err) {
-        logger.fatal({ err }, "[QuoteStorage] Failed to initialize Firestore.");
-        throw err;
-    }
+    logger.debug('[QuoteStorage] Using shared Firestore client.');
 }
 
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) throw new Error("[QuoteStorage] Not initialized. Call initializeQuotesStorage first.");
-    return db;
+    return getFirestore();
 }
 
 function _channelKey(channelName) {

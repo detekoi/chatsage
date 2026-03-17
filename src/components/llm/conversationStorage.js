@@ -7,30 +7,17 @@
 //     --collection-group=conversations \
 //     --project=streamsage-bot
 
-import { Firestore, Timestamp } from '@google-cloud/firestore';
+import { getFirestore, Timestamp } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 const CONVERSATIONS_COLLECTION = 'conversations';
 const TTL_DAYS = 14;
 
-let db = null;
-
 /**
- * Initialize the Firestore client for conversation storage.
- * Called during app startup from initComponents.js.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeConversationStorage() {
-    logger.info('[ConversationStorage] Initializing Firestore client...');
-    try {
-        db = new Firestore();
-        // Quick connectivity test
-        await db.collection(CONVERSATIONS_COLLECTION).limit(1).get();
-        logger.info('[ConversationStorage] Firestore initialized.');
-    } catch (err) {
-        // Non-fatal: conversation logging is optional, don't prevent bot startup
-        logger.warn({ err }, '[ConversationStorage] Failed to initialize Firestore. Conversation logging disabled.');
-        db = null;
-    }
+    logger.debug('[ConversationStorage] Using shared Firestore client.');
 }
 
 /**
@@ -47,9 +34,8 @@ export async function initializeConversationStorage() {
  * @param {number} [metadata.latencyMs] - LLM round-trip time in ms.
  */
 export async function logConversation(channel, userMessage, botResponse, metadata = {}) {
-    if (!db) return; // Storage not initialized or init failed
-
     try {
+        const db = getFirestore();
         const now = new Date();
         const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
 

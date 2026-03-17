@@ -1,13 +1,10 @@
 import logger from '../lib/logger.js';
 import config from '../config/index.js';
+import { initializeFirestore } from '../lib/firestore.js';
 import { initializeSecretManager, validateSecretManager } from '../lib/secretManager.js';
 import { initializeChannelManager, getActiveManagedChannels } from '../components/twitch/channelManager.js';
-import { initializeStorage } from '../components/geo/geoStorage.js';
-import { initializeStorage as initializeTriviaStorage } from '../components/trivia/triviaStorage.js';
-import { initializeRiddleStorage } from '../components/riddle/riddleStorage.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
-import { initializeQuotesStorage } from '../components/quotes/quoteStorage.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../components/llm/conversationStorage.js';
@@ -86,23 +83,13 @@ export async function initializeChannels() {
  * @returns {Promise<void>}
  */
 export async function initializeStorageComponents() {
-    logger.info('Initializing Firebase Storage...');
-    await initializeStorage();
-
-    logger.info('Initializing Trivia Storage...');
-    await initializeTriviaStorage();
-
-    logger.info('Initializing Riddle Storage...');
-    await initializeRiddleStorage();
-
+    // Firestore is already initialized by initializeAllComponents() before this is called.
+    // The individual storage initializers below are now no-ops kept for logging clarity.
     logger.info('Initializing Language Storage...');
     await initializeLanguageStorage();
 
     logger.info('Initializing Auto-Chat Storage...');
     await initializeAutoChatStorage();
-
-    logger.info('Initializing Quotes Storage...');
-    await initializeQuotesStorage();
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();
@@ -179,6 +166,10 @@ export async function initializeAdSchedule() {
  */
 export async function initializeAllComponents() {
     await initializeSecrets();
+    // Firestore must be initialized before initializeChannels(), which calls
+    // getActiveManagedChannels() using the shared Firestore client.
+    logger.info('Initializing shared Firestore client...');
+    await initializeFirestore();
     await initializeChannels();
     await initializeStorageComponents();
     await initializeClients();

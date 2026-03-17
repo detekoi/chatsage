@@ -1,9 +1,6 @@
 // src/components/customCommands/customCommandsStorage.js
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-
-// --- Firestore Client Initialization ---
-let db = null;
 
 // Collection name for storing per-channel custom commands
 const CUSTOM_COMMANDS_COLLECTION = 'customCommands';
@@ -20,37 +17,15 @@ export class CustomCommandsStorageError extends Error {
 }
 
 /**
- * Initializes the Google Cloud Firestore client for custom commands storage.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeCustomCommandsStorage() {
-    logger.info('[CustomCommandsStorage] Initializing Google Cloud Firestore client...');
-    try {
-        db = new Firestore();
-
-        // Test connection
-        const testQuery = db.collection(CUSTOM_COMMANDS_COLLECTION).limit(1);
-        await testQuery.get();
-
-        logger.info('[CustomCommandsStorage] Firestore client initialized and connected.');
-    } catch (error) {
-        logger.error({
-            err: error,
-            message: error.message,
-            code: error.code,
-        }, '[CustomCommandsStorage] CRITICAL: Failed to initialize Firestore.');
-        throw error;
-    }
+    logger.debug('[CustomCommandsStorage] Using shared Firestore client.');
 }
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 export function _getDb() {
-    if (!db) {
-        throw new Error('[CustomCommandsStorage] Storage not initialized. Call initializeCustomCommandsStorage first.');
-    }
-    return db;
+    return getFirestore();
 }
 
 /**

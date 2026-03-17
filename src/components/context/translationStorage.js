@@ -1,22 +1,13 @@
 // src/components/context/translationStorage.js
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-
-// Reuse a single Firestore instance (SDK reuses gRPC channels internally)
-let db = null;
 
 // Collection name for user translation preferences
 const TRANSLATION_COLLECTION = 'userTranslations';
 
-/**
- * Gets or creates the Firestore database instance.
- * @returns {Firestore}
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        db = new Firestore();
-    }
-    return db;
+    return getFirestore();
 }
 
 /**

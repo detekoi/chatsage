@@ -3,14 +3,13 @@
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/lib/secretManager.js');
 jest.mock('../../../src/config/index.js');
+jest.mock('../../../src/lib/firestore.js');  // Centralized Firestore client
 jest.mock('../../../src/components/twitch/channelManager.js');
-jest.mock('../../../src/components/geo/geoStorage.js');
-jest.mock('../../../src/components/trivia/triviaStorage.js');
-jest.mock('../../../src/components/riddle/riddleStorage.js');
 jest.mock('../../../src/components/context/languageStorage.js');
 jest.mock('../../../src/components/context/autoChatStorage.js');
-jest.mock('../../../src/components/quotes/quoteStorage.js');
 jest.mock('../../../src/components/context/commandStateManager.js');
+jest.mock('../../../src/components/customCommands/customCommandsStorage.js');
+jest.mock('../../../src/components/llm/conversationStorage.js');
 jest.mock('../../../src/components/llm/geminiClient.js');
 jest.mock('../../../src/components/twitch/helixClient.js');
 jest.mock('../../../src/components/context/contextManager.js');
@@ -33,14 +32,13 @@ import {
     initializeAllComponents
 } from '../../../src/initialization/initComponents.js';
 import { initializeSecretManager, validateSecretManager } from '../../../src/lib/secretManager.js';
+import { initializeFirestore } from '../../../src/lib/firestore.js';
 import { initializeChannelManager, getActiveManagedChannels } from '../../../src/components/twitch/channelManager.js';
-import { initializeStorage } from '../../../src/components/geo/geoStorage.js';
-import { initializeStorage as initializeTriviaStorage } from '../../../src/components/trivia/triviaStorage.js';
-import { initializeRiddleStorage } from '../../../src/components/riddle/riddleStorage.js';
 import { initializeLanguageStorage } from '../../../src/components/context/languageStorage.js';
 import { initializeAutoChatStorage } from '../../../src/components/context/autoChatStorage.js';
-import { initializeQuotesStorage } from '../../../src/components/quotes/quoteStorage.js';
 import { initializeCommandStateManager } from '../../../src/components/context/commandStateManager.js';
+import { initializeCustomCommandsStorage } from '../../../src/components/customCommands/customCommandsStorage.js';
+import { initializeConversationStorage } from '../../../src/components/llm/conversationStorage.js';
 import { initializeGeminiClient } from '../../../src/components/llm/geminiClient.js';
 import { initializeHelixClient } from '../../../src/components/twitch/helixClient.js';
 import { initializeContextManager } from '../../../src/components/context/contextManager.js';
@@ -215,21 +213,27 @@ describe('Component Initialization', () => {
     });
 
     describe('initializeStorageComponents', () => {
+        beforeEach(() => {
+            initializeFirestore.mockResolvedValue();
+        });
+
         test('should initialize all storage components in sequence', async () => {
             await initializeStorageComponents();
 
-            expect(initializeStorage).toHaveBeenCalledTimes(1);
-            expect(initializeTriviaStorage).toHaveBeenCalledTimes(1);
-            expect(initializeRiddleStorage).toHaveBeenCalledTimes(1);
+            // The per-module inits are no-ops; Firestore is initialized centrally
             expect(initializeLanguageStorage).toHaveBeenCalledTimes(1);
             expect(initializeAutoChatStorage).toHaveBeenCalledTimes(1);
-            expect(initializeQuotesStorage).toHaveBeenCalledTimes(1);
             expect(initializeCommandStateManager).toHaveBeenCalledTimes(1);
+            expect(initializeCustomCommandsStorage).toHaveBeenCalledTimes(1);
+            expect(initializeConversationStorage).toHaveBeenCalledTimes(1);
         });
 
-        test('should propagate errors from storage initialization', async () => {
+        test('should propagate errors from Firestore initialization', async () => {
             const error = new Error('Storage init failed');
-            initializeStorage.mockRejectedValue(error);
+            // initializeStorageComponents no longer calls initializeFirestore directly;
+            // it relies on the caller (initializeAllComponents) to call it first.
+            // So we test error propagation from one of the no-op storage inits.
+            initializeLanguageStorage.mockRejectedValue(error);
 
             await expect(initializeStorageComponents()).rejects.toThrow('Storage init failed');
         });
@@ -327,13 +331,12 @@ describe('Component Initialization', () => {
             jest.clearAllMocks();
             validateSecretManager.mockReturnValue(true);
             getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
-            initializeStorage.mockResolvedValue();
-            initializeTriviaStorage.mockResolvedValue();
-            initializeRiddleStorage.mockResolvedValue();
+            initializeFirestore.mockResolvedValue();
             initializeLanguageStorage.mockResolvedValue();
             initializeAutoChatStorage.mockResolvedValue();
-            initializeQuotesStorage.mockResolvedValue();
             initializeCommandStateManager.mockResolvedValue();
+            initializeCustomCommandsStorage.mockResolvedValue();
+            initializeConversationStorage.mockResolvedValue();
             initializeGeminiClient.mockReturnValue();
             initializeHelixClient.mockResolvedValue();
             initializeContextManager.mockResolvedValue();
@@ -352,10 +355,10 @@ describe('Component Initialization', () => {
 
             await initializeAllComponents();
 
-            // Verify order: secrets -> channels -> storage -> clients -> context -> games -> ad schedule
+            // Verify order: secrets -> firestore -> channels -> storage -> clients -> context -> games -> ad schedule
             expect(initializeSecretManager).toHaveBeenCalled();
+            expect(initializeFirestore).toHaveBeenCalled();
             expect(initializeChannelManager).toHaveBeenCalled();
-            expect(initializeStorage).toHaveBeenCalled();
             expect(initializeGeminiClient).toHaveBeenCalled();
             expect(initializeHelixClient).toHaveBeenCalled();
             expect(initializeContextManager).toHaveBeenCalled();
@@ -365,7 +368,7 @@ describe('Component Initialization', () => {
 
         test('should propagate errors from any initialization phase', async () => {
             const error = new Error('Init failed');
-            initializeStorage.mockRejectedValue(error);
+            initializeFirestore.mockRejectedValue(error);
             process.env.K_SERVICE = 'test-service';
 
             await expect(initializeAllComponents()).rejects.toThrow('Init failed');

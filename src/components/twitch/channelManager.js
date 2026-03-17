@@ -1,10 +1,8 @@
 // src/components/twitch/channelManager.js
-import { Firestore } from '@google-cloud/firestore';
+import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 import config from '../../config/index.js';
 import { updateAllowedChannels, addAllowedChannel, removeAllowedChannel, isChannelAllowed as _isAllowed } from '../../lib/allowList.js';
-// --- Firestore Client Initialization ---
-let db = null; // Firestore database instance
 
 // Collection name (must match the name used in chatsage-web-ui)
 const MANAGED_CHANNELS_COLLECTION = 'managedChannels';
@@ -21,58 +19,17 @@ export class ChannelManagerError extends Error {
 }
 
 /**
- * Initializes the Google Cloud Firestore client.
- * Relies on Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS environment variable.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeChannelManager() {
-    logger.info("[ChannelManager] Initializing Google Cloud Firestore client for channel management...");
-    try {
-        // Create a new client
-        db = new Firestore();
-
-        logger.debug("[ChannelManager] Firestore client created, testing connection...");
-
-        // Test connection by fetching a document
-        const testQuery = db.collection(MANAGED_CHANNELS_COLLECTION).limit(1);
-        logger.debug("[ChannelManager] Executing test query...");
-        const result = await testQuery.get();
-
-        logger.debug(`[ChannelManager] Test query successful. Found ${result.size} documents.`);
-        logger.info("[ChannelManager] Google Cloud Firestore client initialized and connected.");
-    } catch (error) {
-        logger.fatal({
-            err: error,
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-            projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
-        }, "[ChannelManager] CRITICAL: Failed to initialize Google Cloud Firestore for channel management.");
-
-        // Log credential path if set
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-            logger.fatal(`[ChannelManager] GOOGLE_APPLICATION_CREDENTIALS is set to: ${credPath}`);
-        } else {
-            logger.fatal("[ChannelManager] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
-        }
-
-        // Application cannot proceed without storage
-        throw error;
-    }
+    logger.debug('[ChannelManager] Using shared Firestore client.');
 }
 
 // getChannelManager function removed - use getFirestoreDb() instead
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- * @throws {Error} If storage is not initialized.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error("[ChannelManager] Storage not initialized. Call initializeChannelManager first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 /**

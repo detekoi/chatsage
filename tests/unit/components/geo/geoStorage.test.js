@@ -1,17 +1,16 @@
-import { Firestore } from '@google-cloud/firestore';
+// tests/unit/components/geo/geoStorage.test.js
+import { getFirestore } from '../../../../src/lib/firestore.js';
 import { initializeStorage, recordGameResult, StorageError } from '../../../../src/components/geo/geoStorage.js';
 
 // --- Mocks ---
-// Mock the entire Firestore library
-jest.mock('@google-cloud/firestore', () => {
-    // Mock FieldValue separately as it's used directly
+// Mock the shared Firestore lib so no real GCP connection is made
+jest.mock('../../../../src/lib/firestore.js', () => {
     const mockFieldValue = {
-        serverTimestamp: jest.fn(() => 'mock-server-timestamp'), // Return a mock value
-        increment: jest.fn((n) => `mock-increment-${n}`), // Mock increment if needed elsewhere
-        delete: jest.fn(() => 'mock-delete'), // Mock delete if needed elsewhere
+        serverTimestamp: jest.fn(() => 'mock-server-timestamp'),
+        increment: jest.fn((n) => `mock-increment-${n}`),
+        delete: jest.fn(() => 'mock-delete'),
     };
 
-    // --- Revised Firestore mocks for proper query chaining ---
     const mockGet = jest.fn().mockResolvedValue({ empty: true, size: 0, docs: [] });
     const mockAdd = jest.fn();
     const mockSet = jest.fn();
@@ -38,16 +37,19 @@ jest.mock('@google-cloud/firestore', () => {
         get: mockGet,
     }));
 
-    return {
-        Firestore: jest.fn().mockImplementation(() => ({
-            collection: mockCollection,
-            doc: mockDoc,
-            batch: jest.fn(() => ({
-                update: jest.fn(),
-                commit: jest.fn(),
-            })),
+    const mockDbInstance = {
+        collection: mockCollection,
+        doc: mockDoc,
+        batch: jest.fn(() => ({
+            update: jest.fn(),
+            commit: jest.fn(),
         })),
-        FieldValue: mockFieldValue, // Export the mocked FieldValue
+    };
+
+    return {
+        getFirestore: jest.fn(() => mockDbInstance),
+        FieldValue: mockFieldValue,
+        Timestamp: { fromDate: jest.fn((d) => d) },
     };
 });
 
@@ -68,21 +70,18 @@ describe('GeoGame Storage - History Recording', () => {
     let mockAddFn;
 
     beforeAll(async () => {
-        // Since Firestore is mocked, initializeStorage should "succeed"
-        // without actually connecting to GCP.
+        // Since lib/firestore.js is mocked, initializeStorage is a no-op.
         await initializeStorage();
-        // Get references to the mocked functions for assertions
-        mockDbInstance = new Firestore(); // Get the mocked instance
+        // Get the shared mock db instance via the mocked getFirestore()
+        mockDbInstance = getFirestore();
         mockCollectionRef = mockDbInstance.collection;
-        // Find the specific mock function for 'add' created within the mock structure
-        const collectionReturnValue = mockCollectionRef(); // Call the mock collection function
-        mockAddFn = collectionReturnValue.add; // Get the mock add function from the return value
+        const collectionReturnValue = mockCollectionRef();
+        mockAddFn = collectionReturnValue.add;
     });
 
     beforeEach(() => {
         // Reset mocks before each test
         jest.clearAllMocks();
-        // Specifically reset the call history of the mock add function
         mockAddFn.mockClear();
         mockCollectionRef.mockClear();
     });

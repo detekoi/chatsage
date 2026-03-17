@@ -1,5 +1,5 @@
 // src/components/trivia/triviaStorage.js
-import { Firestore, FieldValue } from '@google-cloud/firestore';
+import { getFirestore, FieldValue } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 // --- Firestore Collections ---
@@ -7,9 +7,6 @@ const CONFIG_COLLECTION = 'triviaGameConfigs';
 const STATS_COLLECTION = 'triviaPlayerStats';
 const HISTORY_COLLECTION = 'triviaGameHistory';
 const QUESTIONS_COLLECTION = 'triviaQuestions';
-
-// --- Firestore Client ---
-let db = null;
 
 /**
  * Custom error class for storage operations.
@@ -23,53 +20,15 @@ class StorageError extends Error {
 }
 
 /**
- * Initializes the Firestore client.
- * Uses Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 async function initializeStorage() {
-    logger.info("[TriviaStorage] Initializing Firestore client...");
-    try {
-        logger.debug("[TriviaStorage] Creating new Firestore client instance...");
-        
-        db = new Firestore();
-        
-        logger.debug("[TriviaStorage] Firestore client created, testing connection...");
-        
-        const testQuery = db.collection(CONFIG_COLLECTION).limit(1);
-        const result = await testQuery.get();
-        
-        logger.debug(`[TriviaStorage] Test query successful. Found ${result.size} documents.`);
-        logger.info("[TriviaStorage] Firestore client initialized successfully.");
-    } catch (error) {
-        logger.fatal({ 
-            err: error, 
-            message: error.message,
-            code: error.code,
-            stack: error.stack,
-            projectId: process.env.GOOGLE_CLOUD_PROJECT || 'unknown'
-        }, "[TriviaStorage] CRITICAL: Failed to initialize Firestore client.");
-        
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-            logger.fatal(`[TriviaStorage] GOOGLE_APPLICATION_CREDENTIALS is set to: ${credPath}`);
-        } else {
-            logger.fatal("[TriviaStorage] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.");
-        }
-        
-        throw error;
-    }
+    logger.debug('[TriviaStorage] Using shared Firestore client.');
 }
 
-/**
- * Gets the Firestore database instance.
- * @returns {Firestore} Firestore DB instance.
- * @throws {Error} If storage is not initialized.
- */
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new Error("[TriviaStorage] Storage not initialized. Call initializeStorage first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 // --- Configuration Storage ---

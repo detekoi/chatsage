@@ -1,5 +1,5 @@
 // src/components/riddle/riddleStorage.js
-import { Firestore, FieldValue, Timestamp } from '@google-cloud/firestore';
+import { getFirestore, FieldValue, Timestamp } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 // --- Firestore Collections ---
@@ -8,8 +8,6 @@ const RIDDLE_PLAYER_STATS_COLLECTION = 'riddlePlayerStats';
 const RIDDLE_GAME_HISTORY_COLLECTION = 'riddleGameHistory';
 const RIDDLE_RECENT_KEYWORDS_COLLECTION = 'riddleRecentKeywords'; // For storing keywords of recently asked riddles
 const RIDDLE_RECENT_ANSWERS_COLLECTION = 'riddleRecentAnswers'; // For storing recent answers
-
-let db = null;
 
 export class RiddleStorageError extends Error {
     constructor(message, cause) {
@@ -20,31 +18,15 @@ export class RiddleStorageError extends Error {
 }
 
 /**
- * Initializes the Firestore client for the riddle game.
+ * No-op – Firestore is now initialized centrally via initializeFirestore() in initComponents.js.
  */
 export async function initializeRiddleStorage() {
-    logger.info("[RiddleStorage] Initializing Firestore client for Riddle Game...");
-    try {
-        if (!db) {
-            db = new Firestore();
-            // Test connection
-            const testQuery = db.collection(RIDDLE_CONFIG_COLLECTION).limit(1);
-            await testQuery.get();
-            logger.info("[RiddleStorage] Firestore client initialized and connected successfully.");
-        } else {
-            logger.info("[RiddleStorage] Firestore client already initialized.");
-        }
-    } catch (error) {
-        logger.fatal({ err: error }, "[RiddleStorage] CRITICAL: Failed to initialize Firestore client.");
-        throw new RiddleStorageError("Failed to initialize RiddleStorage", error);
-    }
+    logger.debug('[RiddleStorage] Using shared Firestore client.');
 }
 
+/** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
-    if (!db) {
-        throw new RiddleStorageError("RiddleStorage not initialized. Call initializeRiddleStorage first.");
-    }
-    return db;
+    return getFirestore();
 }
 
 // --- Configuration Storage (Similar to Trivia/Geo) ---
