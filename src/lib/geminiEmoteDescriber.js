@@ -1,17 +1,34 @@
 // src/lib/geminiEmoteDescriber.js
 // Uses Google Gemini Flash Lite to describe Twitch emotes visually for LLM context enrichment.
-// Adapted from tts-twitch's geminiEmoteDescriber.js for IRC-based message handling.
+// Works directly with EventSub message fragments — no IRC conversion needed.
 import { GoogleGenAI } from '@google/genai';
+import { getFirestore, FieldValue } from './firestore.js';
+import config from '../config/index.js';
 import logger from './logger.js';
 
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
-const EMOTE_CDN_URL = 'https://static-cdn.jtvnw.net/emoticons/v2';
+const { geminiModel, cdnUrl, timeoutMs } = config.emote;
 const EMOTE_IMAGE_FORMAT = 'static/dark/3.0';
-const GEMINI_TIMEOUT_MS = 8000;
 
-// In-memory cache: emoteId -> { description, cachedAt }
+// System instruction applied to all emote description calls.
+// Establishes accessibility framing and guards against common model failures.
+const SYSTEM_INSTRUCTION = `You are an accessibility assistant that describes Twitch emotes for text-to-speech. Your goal is precise, natural-sounding visual descriptions.
+
+Rules:
+- Reply with ONLY the short description — no preamble, no quotes, no trailing punctuation.
+- Do not output the emote's raw alphanumeric string verbatim (e.g. do not say "parfai14Parfait" or "LUL"). You may use meaningful English words embedded in the name (e.g. "parfait dessert" from "parfai14Parfait" is fine), but do not begin your reply with the full emote token itself.
+- When describing pride flags, always name the specific flag rather than generic terms. Examples: "rainbow Pride flag", "bisexual Pride flag", "transgender Pride flag", "lesbian Pride flag", "pansexual Pride flag", "nonbinary Pride flag", "asexual Pride flag". These are important cultural identifiers and accurate naming is essential for accessibility.`;
+
+// ---------------------------------------------------------------------------
+// L1 in-memory cache: emoteId -> { description, cachedAt }
+// ---------------------------------------------------------------------------
 const descriptionCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// ---------------------------------------------------------------------------
+// L2 Firestore persistent cache
+// ---------------------------------------------------------------------------
+const EMOTE_DESCRIPTIONS_COLLECTION = 'emoteDescriptions';
+let emoteDescriptionsDb = null;
 
 let genAI = null;
 
@@ -28,10 +45,27 @@ export function initEmoteDescriber(apiKey) {
     }
     try {
         genAI = new GoogleGenAI({ apiKey });
-        logger.info('Gemini emote describer initialized (model: %s)', GEMINI_MODEL);
+        logger.info('Gemini emote describer initialized (model: %s)', geminiModel);
         return true;
     } catch (error) {
         logger.error({ err: error }, 'Failed to initialize Gemini emote describer');
+        return false;
+    }
+}
+
+/**
+ * Initialize the Firestore reference for persistent emote description storage (L2 cache).
+ * Uses the shared Firestore instance from lib/firestore.js.
+ * Call once during bot startup (after initializeFirestore).
+ * @returns {boolean}
+ */
+export function initEmoteDescriptionStore() {
+    try {
+        emoteDescriptionsDb = getFirestore();
+        logger.info('Emote description Firestore store initialized');
+        return true;
+    } catch (error) {
+        logger.error({ err: error }, 'Failed to initialize emote description Firestore store');
         return false;
     }
 }
@@ -45,45 +79,32 @@ export function isEmoteDescriberAvailable() {
 }
 
 /**
- * Parse emotes from tmi.js IRC tags and the original message text.
- * tmi.js provides tags.emotes as an object: { emoteId: ["start-end", ...], ... }
- * or null if no emotes.
- *
- * @param {Object|null} emotesTag - The tags.emotes object from tmi.js
- * @param {string} message - The original message text
+ * Extract unique emotes from EventSub message fragments.
+ * @param {Array<{type: string, text: string, emote?: {id: string, owner_id?: string, format?: string[]}}>} fragments
  * @returns {Array<{id: string, name: string, count: number}>} Deduplicated emote entries
  */
-export function parseEmotesFromIRC(emotesTag, message) {
-    if (!emotesTag || typeof emotesTag !== 'object') return [];
+export function extractEmotesFromFragments(fragments) {
+    if (!Array.isArray(fragments) || fragments.length === 0) return [];
 
-    const emotes = [];
-    const seen = new Set();
+    const emoteCounts = new Map(); // emoteId -> { name, count }
 
-    for (const emoteId of Object.keys(emotesTag)) {
-        if (seen.has(emoteId)) continue;
-        seen.add(emoteId);
+    for (const frag of fragments) {
+        if (frag.type !== 'emote' || !frag.emote?.id) continue;
 
-        const positions = emotesTag[emoteId];
-        if (!Array.isArray(positions) || positions.length === 0) continue;
-
-        // Extract the emote name from the first occurrence position
-        const firstPos = positions[0];
-        const [startStr, endStr] = firstPos.split('-');
-        const start = parseInt(startStr, 10);
-        const end = parseInt(endStr, 10);
-
-        if (isNaN(start) || isNaN(end) || start < 0 || end >= message.length) continue;
-
-        const emoteName = message.substring(start, end + 1);
-
-        emotes.push({
-            id: emoteId,
-            name: emoteName,
-            count: positions.length,
-        });
+        const id = frag.emote.id;
+        const existing = emoteCounts.get(id);
+        if (existing) {
+            existing.count++;
+        } else {
+            emoteCounts.set(id, { name: frag.text, count: 1 });
+        }
     }
 
-    return emotes;
+    return Array.from(emoteCounts.entries()).map(([id, { name, count }]) => ({
+        id,
+        name,
+        count,
+    }));
 }
 
 /**
@@ -92,7 +113,7 @@ export function parseEmotesFromIRC(emotesTag, message) {
  * @returns {string}
  */
 export function getEmoteImageUrl(emoteId) {
-    return `${EMOTE_CDN_URL}/${emoteId}/${EMOTE_IMAGE_FORMAT}`;
+    return `${cdnUrl}/${emoteId}/${EMOTE_IMAGE_FORMAT}`;
 }
 
 /**
@@ -121,12 +142,17 @@ async function fetchEmoteImage(emoteId) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Cache: L1 (in-memory) + L2 (Firestore)
+// ---------------------------------------------------------------------------
+
 /**
- * Get a cached description for an emote, or null if not cached/expired.
+ * Get a cached description for an emote, checking L1 then L2.
  * @param {string} emoteId
- * @returns {string | null}
+ * @returns {Promise<string | null>}
  */
-function getCachedDescription(emoteId) {
+async function getCachedDescription(emoteId) {
+    // L1: in-memory cache
     const cached = descriptionCache.get(emoteId);
     if (cached && (Date.now() - cached.cachedAt) < CACHE_TTL_MS) {
         return cached.description;
@@ -134,26 +160,60 @@ function getCachedDescription(emoteId) {
     if (cached) {
         descriptionCache.delete(emoteId);
     }
+
+    // L2: Firestore persistent cache
+    if (emoteDescriptionsDb) {
+        try {
+            const doc = await emoteDescriptionsDb
+                .collection(EMOTE_DESCRIPTIONS_COLLECTION)
+                .doc(emoteId)
+                .get();
+            if (doc.exists) {
+                const data = doc.data();
+                if (data.description) {
+                    // Populate L1 from L2 hit
+                    descriptionCache.set(emoteId, { description: data.description, cachedAt: Date.now() });
+                    logger.debug({ emoteId, emoteName: data.emoteName }, 'Emote description loaded from Firestore cache');
+                    return data.description;
+                }
+            }
+        } catch (error) {
+            logger.warn({ err: error.message, emoteId }, 'Firestore emote description lookup failed, falling through to Gemini');
+        }
+    }
+
     return null;
 }
 
 /**
- * Cache a description for an emote.
+ * Cache a description in L1 and fire-and-forget to L2 (Firestore).
  * @param {string} emoteId
  * @param {string} description
+ * @param {string} [emoteName]
  */
-function cacheDescription(emoteId, description) {
+function cacheDescription(emoteId, description, emoteName) {
+    // L1: in-memory
     descriptionCache.set(emoteId, { description, cachedAt: Date.now() });
+
+    // L2: Firestore fire-and-forget
+    if (emoteDescriptionsDb) {
+        const data = { description, emoteName: emoteName || null, updatedAt: FieldValue.serverTimestamp() };
+        emoteDescriptionsDb
+            .collection(EMOTE_DESCRIPTIONS_COLLECTION)
+            .doc(emoteId)
+            .set(data, { merge: true })
+            .catch(error => logger.warn({ err: error.message, emoteId }, 'Firestore emote description write failed'));
+    }
 }
 
 /**
- * Describe a single emote using Gemini Flash Lite vision.
+ * Describe a single emote using Gemini vision with structured JSON output.
  * @param {string} emoteId
  * @param {string} emoteName - The text name of the emote (e.g. "LUL")
  * @returns {Promise<string | null>}
  */
 async function describeSingleEmote(emoteId, emoteName) {
-    const cached = getCachedDescription(emoteId);
+    const cached = await getCachedDescription(emoteId);
     if (cached) return cached;
 
     if (!genAI) return null;
@@ -165,7 +225,7 @@ async function describeSingleEmote(emoteId, emoteName) {
     }
 
     try {
-        const prompt = `Describe this Twitch emote named "${emoteName}" in 2-6 words for context. Focus on what it depicts (emotion, action, character). Be concise and natural-sounding. Reply with ONLY the short description, no quotes or extra text.`;
+        const prompt = `Describe this Twitch emote named "${emoteName}" in 2-6 words for context. Use the emote name as a clue to identify the subject — but do not echo the raw emote token verbatim in your reply (individual meaningful words from the name are fine). Focus on what it visually depicts. Be concise. No word "emote".`;
 
         const contents = [
             {
@@ -179,17 +239,29 @@ async function describeSingleEmote(emoteId, emoteName) {
 
         const response = await Promise.race([
             genAI.models.generateContent({
-                model: GEMINI_MODEL,
+                model: geminiModel,
+                systemInstruction: SYSTEM_INSTRUCTION,
                 contents,
+                config: {
+                    responseMimeType: 'application/json',
+                    responseJsonSchema: {
+                        type: 'object',
+                        properties: {
+                            description: { type: 'string', description: 'A 2-6 word visual description of the emote.' },
+                        },
+                        required: ['description'],
+                    },
+                },
             }),
             new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Gemini timeout')), GEMINI_TIMEOUT_MS)
+                setTimeout(() => reject(new Error('Gemini timeout')), timeoutMs)
             ),
         ]);
 
-        const description = response.text?.trim().replace(/[.!?,;:]+$/g, '');
+        const parsed = JSON.parse(response.text);
+        const description = parsed?.description?.trim().replace(/[.!?,;:]+$/g, '');
         if (description) {
-            cacheDescription(emoteId, description);
+            cacheDescription(emoteId, description, emoteName);
             logger.debug({ emoteId, emoteName, description }, 'Emote described by Gemini');
             return description;
         }
@@ -201,91 +273,18 @@ async function describeSingleEmote(emoteId, emoteName) {
 }
 
 /**
- * Enrich a chat message by annotating emotes with AI-generated descriptions.
- * Emote names in the message are replaced with "emoteName (description)" annotations
- * so the LLM understands what the emotes visually depict.
- *
- * Falls back to the original message if enrichment fails.
- *
- * @param {Object} tags - tmi.js message tags (must contain .emotes)
- * @param {string} message - The original message text
- * @returns {Promise<string>} The enriched message, or the original if no emotes or on failure
- */
-export async function enrichMessageWithEmoteDescriptions(tags, message) {
-    if (!genAI || !tags?.emotes || !message) return message;
-
-    const emotes = parseEmotesFromIRC(tags.emotes, message);
-    if (emotes.length === 0) return message;
-
-    try {
-        // Describe all unique emotes in parallel
-        const descriptionResults = await Promise.all(
-            emotes.map(async (emote) => {
-                const description = await describeSingleEmote(emote.id, emote.name);
-                return { ...emote, description };
-            })
-        );
-
-        // Build a replacement map: emoteName -> "emoteName (description)"
-        // Only replace emotes that were successfully described
-        const replacements = new Map();
-        for (const result of descriptionResults) {
-            if (result.description) {
-                replacements.set(result.name, `${result.name} (${result.description})`);
-            }
-        }
-
-        if (replacements.size === 0) return message;
-
-        // Replace emote names in the message text (working from right to left
-        // using positions to avoid offset issues)
-        let enriched = message;
-        const allPositions = [];
-
-        for (const emoteId of Object.keys(tags.emotes)) {
-            const positions = tags.emotes[emoteId];
-            if (!Array.isArray(positions)) continue;
-            for (const pos of positions) {
-                const [startStr, endStr] = pos.split('-');
-                const start = parseInt(startStr, 10);
-                const end = parseInt(endStr, 10);
-                if (isNaN(start) || isNaN(end)) continue;
-                const emoteName = message.substring(start, end + 1);
-                if (replacements.has(emoteName)) {
-                    allPositions.push({ start, end, replacement: replacements.get(emoteName) });
-                }
-            }
-        }
-
-        // Sort positions from right to left so replacements don't shift offsets
-        allPositions.sort((a, b) => b.start - a.start);
-
-        for (const { start, end, replacement } of allPositions) {
-            enriched = enriched.substring(0, start) + replacement + enriched.substring(end + 1);
-        }
-
-        logger.debug({ originalLength: message.length, enrichedLength: enriched.length, emotesDescribed: replacements.size }, 'Message enriched with emote descriptions');
-        return enriched;
-    } catch (error) {
-        logger.info({ err: error.message }, 'Failed to enrich message with emote descriptions — using original');
-        return message;
-    }
-}
-
-/**
  * Get a standalone emote context string for use as LLM context.
- * Unlike enrichMessageWithEmoteDescriptions, this doesn't modify the message text —
- * it returns a separate annotation string describing all emotes found.
- * This is safe to use when message text has been modified (e.g., command prefix stripped).
+ * Extracts emotes from EventSub message fragments, describes them via Gemini,
+ * and returns a bracketed annotation string.
  *
- * @param {Object} tags - tmi.js message tags (must contain .emotes)
- * @param {string} fullMessage - The ORIGINAL full message text (positions are relative to this)
- * @returns {Promise<string | null>} Context string like "[Emotes: Kappa = smirking face]", or null
+ * @param {Object} tags - Message tags (must contain .fragments from EventSub)
+ * @param {string} _message - Unused (kept for call-site compatibility)
+ * @returns {Promise<string | null>} Context string like "[Emotes in message: Kappa = smirking face]", or null
  */
-export async function getEmoteContextString(tags, fullMessage) {
-    if (!genAI || !tags?.emotes || !fullMessage) return null;
+export async function getEmoteContextString(tags, _message) {
+    if (!genAI || !tags?.fragments) return null;
 
-    const emotes = parseEmotesFromIRC(tags.emotes, fullMessage);
+    const emotes = extractEmotesFromFragments(tags.fragments);
     if (emotes.length === 0) return null;
 
     try {

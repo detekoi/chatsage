@@ -1,5 +1,5 @@
 import config from './config/index.js';
-import { initEmoteDescriber } from './lib/geminiEmoteDescriber.js';
+import { initEmoteDescriber, initEmoteDescriptionStore } from './lib/geminiEmoteDescriber.js';
 import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
 import { getHelixClient } from './components/twitch/helixClient.js';
@@ -87,6 +87,7 @@ async function main() {
 
         // --- Initialize Gemini Emote Describer ---
         initEmoteDescriber(config.gemini?.apiKey || process.env.GEMINI_API_KEY);
+        initEmoteDescriptionStore();
 
         // --- Get Instances needed for setup ---
         const contextManager = getContextManager();

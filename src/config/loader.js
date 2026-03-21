@@ -89,7 +89,14 @@ function loadConfig() {
         webui: {
             baseUrl: process.env.WEBUI_BASE_URL || 'https://us-central1-streamsage-bot.cloudfunctions.net',
             internalToken: process.env.WEBUI_INTERNAL_TOKEN || null,
-        }
+        },
+
+        // Emote Description (Gemini Vision)
+        emote: {
+            geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-3.1-flash-lite-preview',
+            cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
+            timeoutMs: 8000,
+        },
     };
 
     // Validate interval is a positive number

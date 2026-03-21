@@ -41,6 +41,9 @@ export function convertEventSubToTags(event) {
 
         // Message type
         'message-type': event.message_type || 'chat',
+
+        // Raw EventSub fragments for emote processing
+        fragments: event?.message?.fragments || null,
     };
 
     // Process badges
@@ -98,7 +101,7 @@ export function convertEventSubToTags(event) {
         mod: tags.mod,
         subscriber: tags.subscriber,
         bits: tags.bits
-    }, 'Converted EventSub event to IRC-style tags');
+    }, 'Converted EventSub event to tags');
 
     return tags;
 }
