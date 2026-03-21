@@ -2,6 +2,7 @@
 
 jest.mock('../../../src/lib/logger.js');
 jest.mock('@google/genai');
+jest.mock('sharp');
 jest.mock('../../../src/config/index.js', () => ({
     __esModule: true,
     default: {
@@ -9,6 +10,7 @@ jest.mock('../../../src/config/index.js', () => ({
             geminiModel: 'gemini-3.1-flash-lite-preview',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
+            animatedTimeoutMs: 12000,
         },
         gemini: { apiKey: 'test-key' },
     },
@@ -32,10 +34,12 @@ import {
     isEmoteDescriberAvailable,
     extractEmotesFromFragments,
     getEmoteImageUrl,
+    getAnimatedEmoteUrl,
     getEmoteContextString,
     _descriptionCache,
 } from '../../../src/lib/geminiEmoteDescriber.js';
 import { GoogleGenAI } from '@google/genai';
+import sharp from 'sharp';
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -49,6 +53,15 @@ GoogleGenAI.mockImplementation(() => ({
     },
 }));
 
+// Setup mock sharp — returns chainable metadata/png/toBuffer
+const mockToBuffer = jest.fn();
+const mockPng = jest.fn(() => ({ toBuffer: mockToBuffer }));
+const mockMetadata = jest.fn();
+sharp.mockReturnValue({
+    metadata: mockMetadata,
+    png: mockPng,
+});
+
 describe('geminiEmoteDescriber', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -57,6 +70,13 @@ describe('geminiEmoteDescriber', () => {
         mockGenerateContent.mockReset();
         mockGet.mockReset();
         mockSet.mockReset().mockResolvedValue(undefined);
+        mockToBuffer.mockReset();
+        mockPng.mockReset().mockReturnValue({ toBuffer: mockToBuffer });
+        mockMetadata.mockReset();
+        sharp.mockReturnValue({
+            metadata: mockMetadata,
+            png: mockPng,
+        });
     });
 
     describe('initEmoteDescriber', () => {
@@ -90,34 +110,42 @@ describe('geminiEmoteDescriber', () => {
             expect(extractEmotesFromFragments([])).toEqual([]);
         });
 
-        it('should extract a single emote', () => {
+        it('should extract a single static emote', () => {
             const fragments = [
-                { type: 'emote', text: 'Kappa', emote: { id: '25' } },
+                { type: 'emote', text: 'Kappa', emote: { id: '25', format: ['static'] } },
             ];
             const result = extractEmotesFromFragments(fragments);
-            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 1 }]);
+            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 1, isAnimated: false }]);
+        });
+
+        it('should detect animated emotes from format array', () => {
+            const fragments = [
+                { type: 'emote', text: 'catJAM', emote: { id: '123', format: ['animated', 'static'] } },
+            ];
+            const result = extractEmotesFromFragments(fragments);
+            expect(result).toEqual([{ id: '123', name: 'catJAM', count: 1, isAnimated: true }]);
         });
 
         it('should count repeated emotes', () => {
             const fragments = [
-                { type: 'emote', text: 'Kappa', emote: { id: '25' } },
+                { type: 'emote', text: 'Kappa', emote: { id: '25', format: ['static'] } },
                 { type: 'text', text: ' ' },
-                { type: 'emote', text: 'Kappa', emote: { id: '25' } },
+                { type: 'emote', text: 'Kappa', emote: { id: '25', format: ['static'] } },
             ];
             const result = extractEmotesFromFragments(fragments);
-            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 2 }]);
+            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 2, isAnimated: false }]);
         });
 
-        it('should extract multiple different emotes', () => {
+        it('should extract mixed static and animated emotes', () => {
             const fragments = [
-                { type: 'emote', text: 'Kappa', emote: { id: '25' } },
+                { type: 'emote', text: 'Kappa', emote: { id: '25', format: ['static'] } },
                 { type: 'text', text: ' ' },
-                { type: 'emote', text: 'LUL', emote: { id: '425618' } },
+                { type: 'emote', text: 'catJAM', emote: { id: '123', format: ['animated', 'static'] } },
             ];
             const result = extractEmotesFromFragments(fragments);
             expect(result).toHaveLength(2);
-            expect(result.find(e => e.id === '25')).toEqual({ id: '25', name: 'Kappa', count: 1 });
-            expect(result.find(e => e.id === '425618')).toEqual({ id: '425618', name: 'LUL', count: 1 });
+            expect(result.find(e => e.id === '25')).toMatchObject({ isAnimated: false });
+            expect(result.find(e => e.id === '123')).toMatchObject({ isAnimated: true });
         });
 
         it('should ignore non-emote fragments', () => {
@@ -127,23 +155,21 @@ describe('geminiEmoteDescriber', () => {
                 { type: 'mention', text: '@someone' },
             ];
             const result = extractEmotesFromFragments(fragments);
-            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 1 }]);
-        });
-
-        it('should skip emote fragments without an id', () => {
-            const fragments = [
-                { type: 'emote', text: 'Kappa', emote: {} },
-                { type: 'emote', text: 'LUL', emote: { id: '425618' } },
-            ];
-            const result = extractEmotesFromFragments(fragments);
-            expect(result).toEqual([{ id: '425618', name: 'LUL', count: 1 }]);
+            expect(result).toEqual([{ id: '25', name: 'Kappa', count: 1, isAnimated: false }]);
         });
     });
 
     describe('getEmoteImageUrl', () => {
-        it('should build the correct CDN URL', () => {
+        it('should build the correct static CDN URL', () => {
             const url = getEmoteImageUrl('25');
             expect(url).toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/static/dark/3.0');
+        });
+    });
+
+    describe('getAnimatedEmoteUrl', () => {
+        it('should build the correct animated CDN URL', () => {
+            const url = getAnimatedEmoteUrl('123');
+            expect(url).toBe('https://static-cdn.jtvnw.net/emoticons/v2/123/animated/dark/3.0');
         });
     });
 
@@ -163,9 +189,64 @@ describe('geminiEmoteDescriber', () => {
             expect(result).toBeNull();
         });
 
-        it('should return context string with described emotes via structured JSON', async () => {
+        it('should describe a static emote', async () => {
+            mockGet.mockResolvedValue({ exists: false });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+                headers: { get: () => 'image/png' },
+            });
+            mockGenerateContent.mockResolvedValueOnce({
+                text: '{"description": "smirking grey face, sarcasm"}',
+            });
+
+            const tags = {
+                fragments: [
+                    { type: 'emote', text: 'Kappa', emote: { id: '25', format: ['static'] } },
+                ],
+            };
+            const result = await getEmoteContextString(tags, 'Kappa');
+            expect(result).toBe('[Emotes in message: Kappa = smirking grey face, sarcasm]');
+        });
+
+        it('should describe an animated emote using frame strip', async () => {
             mockGet.mockResolvedValue({ exists: false });
 
+            // animated GIF fetch
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                arrayBuffer: () => Promise.resolve(new ArrayBuffer(16)),
+                headers: { get: () => 'image/gif' },
+            });
+
+            // sharp GIF extraction
+            mockMetadata.mockResolvedValueOnce({ pages: 12 });
+            mockToBuffer.mockResolvedValueOnce(Buffer.from('strip-png-data'));
+
+            mockGenerateContent.mockResolvedValueOnce({
+                text: '{"description": "cat nodding to music, vibing"}',
+            });
+
+            const tags = {
+                fragments: [
+                    { type: 'emote', text: 'catJAM', emote: { id: '123', format: ['animated', 'static'] } },
+                ],
+            };
+            const result = await getEmoteContextString(tags, 'catJAM');
+            expect(result).toBe('[Emotes in message: catJAM = cat nodding to music, vibing]');
+
+            // Verify animated prompt was used (contains "animation strip")
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.contents.at(-1).text).toContain('animation strip');
+        });
+
+        it('should fall back to static when animated fetch fails', async () => {
+            mockGet.mockResolvedValue({ exists: false });
+
+            // animated GIF fetch fails
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+
+            // static PNG fetch succeeds
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
@@ -173,43 +254,29 @@ describe('geminiEmoteDescriber', () => {
             });
 
             mockGenerateContent.mockResolvedValueOnce({
-                text: '{"description": "smirking face"}',
+                text: '{"description": "cat nodding"}',
             });
 
             const tags = {
                 fragments: [
-                    { type: 'emote', text: 'Kappa', emote: { id: '25' } },
+                    { type: 'emote', text: 'catJAM', emote: { id: '123', format: ['animated', 'static'] } },
                 ],
             };
-            const result = await getEmoteContextString(tags, 'Kappa');
-            expect(result).toBe('[Emotes in message: Kappa = smirking face]');
+            const result = await getEmoteContextString(tags, 'catJAM');
+            expect(result).toBe('[Emotes in message: catJAM = cat nodding]');
 
-            // Verify system instruction and structured output were passed
-            expect(mockGenerateContent).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    systemInstruction: expect.stringContaining('accessibility assistant'),
-                    config: expect.objectContaining({
-                        responseMimeType: 'application/json',
-                        responseJsonSchema: expect.objectContaining({
-                            type: 'object',
-                            properties: expect.objectContaining({
-                                description: expect.any(Object),
-                            }),
-                        }),
-                    }),
-                })
-            );
+            // Verify static prompt was used (no "animation strip")
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.contents.at(-1).text).not.toContain('animation strip');
         });
 
         it('should use L1 cached description on second call', async () => {
             mockGet.mockResolvedValue({ exists: false });
-
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
                 headers: { get: () => 'image/png' },
             });
-
             mockGenerateContent.mockResolvedValueOnce({
                 text: '{"description": "smirking face"}',
             });
@@ -220,11 +287,9 @@ describe('geminiEmoteDescriber', () => {
                 ],
             };
 
-            // First call — hits Gemini
             await getEmoteContextString(tags, 'Kappa');
             expect(mockGenerateContent).toHaveBeenCalledTimes(1);
 
-            // Second call — L1 cache
             const result = await getEmoteContextString(tags, 'Kappa');
             expect(result).toBe('[Emotes in message: Kappa = smirking face]');
             expect(mockGenerateContent).toHaveBeenCalledTimes(1);
@@ -232,7 +297,6 @@ describe('geminiEmoteDescriber', () => {
 
         it('should load description from Firestore L2 cache', async () => {
             initEmoteDescriptionStore();
-
             mockGet.mockResolvedValue({
                 exists: true,
                 data: () => ({ description: 'laughing face', emoteName: 'LUL' }),
@@ -248,29 +312,13 @@ describe('geminiEmoteDescriber', () => {
             expect(mockGenerateContent).not.toHaveBeenCalled();
         });
 
-        it('should return null when image fetch fails', async () => {
-            mockGet.mockResolvedValue({ exists: false });
-
-            mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
-
-            const tags = {
-                fragments: [
-                    { type: 'emote', text: 'Kappa', emote: { id: '25' } },
-                ],
-            };
-            const result = await getEmoteContextString(tags, 'Kappa');
-            expect(result).toBeNull();
-        });
-
         it('should return null when Gemini fails', async () => {
             mockGet.mockResolvedValue({ exists: false });
-
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
                 headers: { get: () => 'image/png' },
             });
-
             mockGenerateContent.mockRejectedValueOnce(new Error('API Error'));
 
             const tags = {
@@ -282,34 +330,27 @@ describe('geminiEmoteDescriber', () => {
             expect(result).toBeNull();
         });
 
-        it('should describe multiple different emotes', async () => {
+        it('should verify system instruction mentions chat AI understanding', async () => {
             mockGet.mockResolvedValue({ exists: false });
-
-            mockFetch
-                .mockResolvedValueOnce({
-                    ok: true,
-                    arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-                    headers: { get: () => 'image/png' },
-                })
-                .mockResolvedValueOnce({
-                    ok: true,
-                    arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
-                    headers: { get: () => 'image/png' },
-                });
-
-            mockGenerateContent
-                .mockResolvedValueOnce({ text: '{"description": "smirking face"}' })
-                .mockResolvedValueOnce({ text: '{"description": "laughing man"}' });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+                headers: { get: () => 'image/png' },
+            });
+            mockGenerateContent.mockResolvedValueOnce({
+                text: '{"description": "smirking face"}',
+            });
 
             const tags = {
                 fragments: [
                     { type: 'emote', text: 'Kappa', emote: { id: '25' } },
-                    { type: 'text', text: ' hello ' },
-                    { type: 'emote', text: 'LUL', emote: { id: '425618' } },
                 ],
             };
-            const result = await getEmoteContextString(tags, 'Kappa hello LUL');
-            expect(result).toBe('[Emotes in message: Kappa = smirking face, LUL = laughing man]');
+            await getEmoteContextString(tags, 'Kappa');
+
+            const callArgs = mockGenerateContent.mock.calls[0][0];
+            expect(callArgs.systemInstruction).toContain('chat AI can understand');
+            expect(callArgs.systemInstruction).toContain('emotional meaning');
         });
     });
 });

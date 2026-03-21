@@ -96,6 +96,7 @@ function loadConfig() {
             geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-3.1-flash-lite-preview',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
+            animatedTimeoutMs: 12000,
         },
     };
 
