@@ -2,10 +2,9 @@
 import logger from '../../lib/logger.js';
 import { getGenAIInstance } from '../llm/gemini/core.js';
 import { smartTruncate } from '../llm/llmUtils.js';
+import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
 
 const FLASH_LITE_MODEL = 'gemini-3.1-flash-lite-preview';
-
-const BASE_SYSTEM_INSTRUCTION = `You are a Twitch chat bot. Respond to the following prompt in a single short message suitable for Twitch chat. No markdown formatting. Be concise and match the tone requested in the prompt. Keep your response under 300 characters.`;
 
 // Extra context added only for check-in commands to prevent the LLM from
 // misinterpreting a user's personal check-in count as being first to stream.
@@ -19,7 +18,7 @@ const MAX_IRC_MESSAGE_LENGTH = 450;
  * @returns {string} The full system instruction.
  */
 function buildSystemInstruction(language, isCheckin = false) {
-    const base = isCheckin ? BASE_SYSTEM_INSTRUCTION + CHECKIN_HINT : BASE_SYSTEM_INSTRUCTION;
+    const base = isCheckin ? CHAT_SAGE_SYSTEM_INSTRUCTION + CHECKIN_HINT : CHAT_SAGE_SYSTEM_INSTRUCTION;
     if (!language) {
         return base;
     }
@@ -56,7 +55,6 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             config: {
                 systemInstruction: { parts: [{ text: systemInstruction }] },
-                temperature: 1.5,
             }
         });
 
