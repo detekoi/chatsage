@@ -164,7 +164,10 @@ export function listenForChannelChanges() {
                     // Update allow-list cache in real-time
                     if (channelData.isActive && channelData.twitchUserId) {
                         addAllowedChannel(channelData.channelName, channelData.twitchUserId);
-                    } else if (!channelData.isActive) {
+                    } else if (!channelData.isActive && !isInitialSnapshot) {
+                        // Skip removals on initial snapshot — the allowlist was
+                        // already correctly populated (or empty in dev mode).
+                        // Removing here would race with dev-mode additions.
                         removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
                     }
 
