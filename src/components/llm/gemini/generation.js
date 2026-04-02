@@ -145,17 +145,21 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
 }
 
 // --- Search Response ---
+const SEARCH_SYSTEM_INSTRUCTION = `${CHAT_SAGE_SYSTEM_INSTRUCTION}
+
+CRITICAL FOR !search COMMAND: Your training knowledge about world events, product releases, announcements, and anything time-sensitive is UNRELIABLE and likely OUTDATED. You MUST use the Google Search tool to fetch current, real-world information before answering. Do NOT answer from memory for any factual or recent-events query — always search first, then answer based on what you find.`;
+
 export async function generateSearchResponse(contextPrompt, userQuery, options = {}) {
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
-    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nYou MUST use the Google Search tool to answer this query with current, real-time information from the web. Do NOT rely on your training data alone. Response ≤ 420 chars.`;
+    const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nSearch the web right now and answer based on current results. Response ≤ 420 chars.`;
 
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: searchTool,
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+            systemInstruction: { parts: [{ text: SEARCH_SYSTEM_INSTRUCTION }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
         });
 
