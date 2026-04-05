@@ -260,6 +260,7 @@ Rules:
 2. Otherwise, set same_language to false and provide the translation in translated_text.
 3. Preserve the original formatting — no markdown, no quotes, no explanations.
 4. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
+5. IMPORTANT: If the text contains slurs, hate speech, or terms that violate platform policies, replace them with neutral descriptive terms in the translation (e.g. a homophobic slur → "[homophobic slur]", a racial slur → "[slur]"). Do NOT translate slurs literally — paraphrase the meaning instead. This is required to comply with chat moderation filters.
 
 Text:
 ${textToTranslate}`;
@@ -297,7 +298,7 @@ ${textToTranslate}`;
     // Attempt 2: Simplified plain-text prompt if first attempt failed
     if (!translatedText) {
         try {
-            const simplePrompt = `Translate to ${targetLanguage}: ${textToTranslate}`;
+            const simplePrompt = `Translate to ${targetLanguage} (replace any slurs or hate speech with neutral descriptive terms like "[slur]" instead of translating them literally): ${textToTranslate}`;
             const result2 = await ai.models.generateContent({
                 model: 'gemini-3.1-flash-lite-preview',
                 contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],

@@ -229,6 +229,19 @@ describe('translationUtils', () => {
             expect(prompt).toContain('nicknames');
             expect(prompt).toContain('game terms');
         });
+
+        it('should instruct the LLM to paraphrase slurs instead of translating them literally', async () => {
+            mockAI.models.generateContent.mockResolvedValue(
+                createStructuredResponse(true, '')
+            );
+
+            await translateText('maricones', 'English');
+
+            const call = mockAI.models.generateContent.mock.calls[0][0];
+            const prompt = call.contents[0].parts[0].text;
+            expect(prompt).toContain('slur');
+            expect(prompt).toContain('neutral descriptive');
+        });
     });
 
     describe('cleanupTranslationUtils', () => {
