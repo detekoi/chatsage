@@ -3,9 +3,8 @@ import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { isChannelAllowed } from './channelManager.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
-import { enqueueMessage } from '../../lib/ircSender.js';
-import { notifyStreamOnline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
+
+import { notifyStreamOnline, notifyStreamOffline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
 import * as sharedChatManager from './sharedChatManager.js';
 import LifecycleManager from '../../services/LifecycleManager.js';
 import { convertEventSubToTags } from './eventSubToTags.js';
@@ -219,27 +218,18 @@ export async function eventSubHandler(req, res, rawBody) {
                 getContextManager().clearStreamContext(login);
 
                 try {
-                    // Optionally send a short farewell before parting
-                    try {
-                        const cfg = await getChannelAutoChatConfig(login);
-                        if (cfg && cfg.mode !== 'off' && cfg.categories?.greetings) {
-                            // Guard against duplicate stream.offline events (different message IDs
-                            // from multiple active subscriptions) sending the farewell twice.
-                            const lastSent = lastFarewellSentAt.get(login) || 0;
-                            const nowMs = Date.now();
-                            if (nowMs - lastSent < FAREWELL_COOLDOWN_MS) {
-                                logger.warn({ login, msSinceLast: nowMs - lastSent }, '[EventSub] Skipping duplicate farewell — sent too recently');
-                            } else {
-                                lastFarewellSentAt.set(login, nowMs);
-                                const channel = `#${login}`;
-                                await enqueueMessage(channel, 'Stream just wrapped up — thanks for hanging out! See you next time ✨');
-                            }
-                        }
-                    } catch (e) {
-                        logger.debug({ err: e }, 'Farewell send skipped or failed');
+                    // Guard against duplicate stream.offline events (different message IDs
+                    // from multiple active subscriptions) sending the farewell twice.
+                    const lastSent = lastFarewellSentAt.get(login) || 0;
+                    const nowMs = Date.now();
+                    if (nowMs - lastSent < FAREWELL_COOLDOWN_MS) {
+                        logger.warn({ login, msSinceLast: nowMs - lastSent }, '[EventSub] Skipping duplicate farewell — sent too recently');
+                    } else {
+                        lastFarewellSentAt.set(login, nowMs);
+                        await notifyStreamOffline(login);
                     }
-                } catch (error) {
-                    logger.error({ err: error, channel: login }, 'Error trying to send farewell via EventSub offline notification.');
+                } catch (e) {
+                    logger.debug({ err: e }, 'Farewell send skipped or failed');
                 }
             } catch (error) {
                 logger.error({ err: error, event }, '[EventSub] Error handling stream.offline');

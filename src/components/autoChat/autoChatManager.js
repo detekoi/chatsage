@@ -279,6 +279,30 @@ export function notifyStreamOnline(channelName) {
     state.greetedOnStart = false;
 }
 
+async function maybeSendFarewell(channelName) {
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (cfg.mode === 'off' || cfg.categories.greetings !== true) return null;
+    const context = getContextManager().getContextForLLM(channelName, 'system', 'stream-offline');
+    const contextPrompt = buildContextPrompt(context);
+    const prompt = `The stream just ended. Write one warm, concise farewell message for chat. ≤25 words. No emojis.`;
+    const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
+    if (text) {
+        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    }
+    return text;
+}
+
+export async function notifyStreamOffline(channelName) {
+    try {
+        return await maybeSendFarewell(channelName);
+    } catch (e) {
+        logger.warn({ err: e, channelName }, '[AutoChatManager] Error sending farewell');
+        return null;
+    }
+}
+
 // --- Celebration Handlers (follows, subscriptions, raids) ---
 async function maybeSendFollowCelebration(channelName) {
     const cfg = await getChannelAutoChatConfig(channelName);
@@ -479,5 +503,5 @@ export async function notifyAdBreak(channelName, adEvent) {
 }
 
 // Exported for testing only
-export { refreshImageContext, buildImageContextLine, maybeSendGreeting };
+export { refreshImageContext, buildImageContextLine, maybeSendGreeting, maybeSendFarewell };
 export function _getRuntime() { return runtime; }
