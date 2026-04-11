@@ -337,6 +337,7 @@ export async function eventSubHandler(req, res, rawBody) {
             try {
                 const toName = event?.to_broadcaster_user_name || null;
                 const fromName = event?.from_broadcaster_user_name || 'a streamer';
+                const fromId = event?.from_broadcaster_user_id || null;
                 const viewers = event?.viewers || 0;
                 if (!toName) {
                     logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_name');
@@ -345,7 +346,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 const toBroadcasterId = event?.to_broadcaster_user_id;
                 const allowed = await isChannelAllowed(toBroadcasterId || toName);
                 if (!allowed) return;
-                await notifyRaid(toName.toLowerCase(), fromName, viewers);
+                await notifyRaid(toName.toLowerCase(), fromName, viewers, fromId);
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.raid');
             }

@@ -6,6 +6,7 @@ import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
 import { analyzeImage } from '../llm/geminiImageClient.js';
+import { getChannelInformation, getUsersById } from '../twitch/helixClient.js';
 
 // AutoChatManager periodically scans channel state and emits context-aware messages
 
@@ -334,14 +335,41 @@ async function maybeSendSubscriptionCelebration(channelName) {
     }
 }
 
-async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount) {
+async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount, raiderUserId) {
     const cfg = await getChannelAutoChatConfig(channelName);
     if (cfg.categories.raids !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-raid');
     const contextPrompt = buildContextPrompt(context);
     const viewersPhrase = typeof viewerCount === 'number' && viewerCount > 0 ? `${viewerCount} viewers` : 'raiders';
     const safeRaider = raiderUserName || 'the raiding streamer';
-    const prompt = `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic and invites raiders to hang out. ≤24 words.`;
+
+    // Fetch raider info from Twitch Helix API (parallel, best-effort)
+    let raiderContext = '';
+    if (raiderUserId) {
+        try {
+            const [channelInfo, userInfo] = await Promise.all([
+                getChannelInformation([raiderUserId], 'raid-celebration-channel'),
+                getUsersById([raiderUserId], 'raid-celebration-user'),
+            ]);
+            const ch = channelInfo?.[0];
+            const usr = userInfo?.[0];
+            const parts = [];
+            if (ch?.game_name) parts.push(`They were streaming: ${ch.game_name}${ch.title ? ` — "${ch.title}"` : ''}`);
+            if (ch?.tags?.length) parts.push(`Tags: ${ch.tags.join(', ')}`);
+            if (usr?.description) parts.push(`Bio: ${usr.description}`);
+            if (usr?.broadcaster_type) parts.push(`Status: ${usr.broadcaster_type}`);
+            if (parts.length) {
+                raiderContext = `\nAbout the raider:\n- ${parts.join('\n- ')}`;
+            }
+            logger.info({ channelName, raiderUserId, hasChannelInfo: !!ch, hasUserInfo: !!usr }, '[AutoChat] Fetched raider info for raid celebration');
+        } catch (err) {
+            logger.warn({ err: err.message, raiderUserId }, '[AutoChat] Failed to fetch raider info, using generic prompt');
+        }
+    }
+
+    const prompt = raiderContext
+        ? `A raid just arrived from ${safeRaider} with ${viewersPhrase}.${raiderContext}\n\nWrite ONE energetic welcome that naturally references what they were doing and finds a connection to our current stream. Invite raiders to hang out. ≤30 words.`
+        : `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic and invites raiders to hang out. ≤24 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
@@ -363,9 +391,9 @@ export async function notifySubscription(channelName) {
     } catch (e) { /* ignore */ }
 }
 
-export async function notifyRaid(channelName, raiderUserName, viewerCount) {
+export async function notifyRaid(channelName, raiderUserName, viewerCount, raiderUserId) {
     try {
-        await maybeSendRaidCelebration(channelName, raiderUserName, viewerCount);
+        await maybeSendRaidCelebration(channelName, raiderUserName, viewerCount, raiderUserId);
     } catch (e) { /* ignore */ }
 }
 

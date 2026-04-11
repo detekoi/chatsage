@@ -367,6 +367,44 @@ async function getSharedChatSession(broadcasterId) {
     }
 }
 
+/**
+ * Fetches user information from Twitch Helix API based on user IDs.
+ * @param {string[]} userIds - An array of user IDs to query. Max 100 per request.
+ * @returns {Promise<object[]>} A promise resolving to an array of user objects from the API.
+ *                                Returns an empty array if input is empty or on API error after logging.
+ */
+async function getUsersById(userIds, context = null) {
+    if (!userIds || userIds.length === 0) {
+        logger.warn('getUsersById called with empty user IDs.');
+        return [];
+    }
+    if (userIds.length > 100) {
+        logger.warn(`getUsersById called with ${userIds.length} IDs. Max 100 allowed per request. Truncating.`);
+        userIds = userIds.slice(0, 100);
+    }
+
+    const client = getHelixClient();
+    const params = new URLSearchParams();
+    userIds.forEach(id => params.append('id', id));
+
+    logger.debug({ idCount: userIds.length }, 'Fetching user information by ID from Helix...');
+
+    try {
+        const response = await retryWithBackoff(async () => {
+            const config = { params };
+            if (context) {
+                config.meta = { context };
+            }
+            return await client.get('/users', config);
+        }, 3, 1000);
+
+        return response.data?.data || [];
+    } catch (error) {
+        logger.error({ err: { message: error.message, code: error.code }, idCount: userIds.length }, `Failed to get user information for ${userIds.length} ID(s) after retries`);
+        return [];
+    }
+}
+
 
 // Export initializer, getter, and specific API call functions
 export {
@@ -374,6 +412,7 @@ export {
     getHelixClient,
     getChannelInformation,
     getUsersByLogin,
+    getUsersById,
     getLiveStreams,
     getSharedChatSession,
 };
