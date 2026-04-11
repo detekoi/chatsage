@@ -1,6 +1,8 @@
 import { getChannelAutoChatConfig, saveChannelAutoChatConfig, normalizeConfig } from '../../context/autoChatStorage.js';
 
-const helpText = 'Usage: !auto [off|low|medium|high] or !auto-config greetings:[on|off] facts:[on|off] questions:[on|off] ads:[on|off]';
+const helpText = 'Usage: !auto [off|low|medium|high] or !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>';
+
+const ALL_CATEGORIES = ['greetings', 'facts', 'questions', 'follows', 'subscriptions', 'raids', 'ads'];
 
 async function execute({ channel, _user, args, logger: log }) {
     const channelName = channel.substring(1);
@@ -11,7 +13,7 @@ async function execute({ channel, _user, args, logger: log }) {
         const cfg = await getChannelAutoChatConfig(channelName);
         log.info({ channelName, cfg }, '[!auto] Current auto-chat config');
         const cats = cfg.categories;
-        const parts = [`mode=${cfg.mode}`, `cats=${['greetings','facts','questions','ads'].filter(k => cats[k]).join('+') || 'none'}`];
+        const parts = [`mode=${cfg.mode}`, `cats=${ALL_CATEGORIES.filter(k => cats[k]).join('+') || 'none'}`];
         return this.reply(channel, `Auto-chat: ${parts.join(', ')}. ${helpText}`);
     }
 
@@ -30,14 +32,14 @@ async function execute({ channel, _user, args, logger: log }) {
             const [k, vRaw] = kv.split(':');
             const key = (k || '').toLowerCase();
             const v = (vRaw || '').toLowerCase();
-            if (['greetings','facts','questions','ads'].includes(key)) {
+            if (ALL_CATEGORIES.includes(key)) {
                 cfg.categories[key] = (v === 'on' || v === 'true' || v === 'yes' || v === '1');
             }
         }
         const clean = normalizeConfig(cfg);
         await saveChannelAutoChatConfig(channelName, clean);
         const cats = clean.categories;
-        return this.reply(channel, `Updated auto-chat: mode=${clean.mode}, cats=${['greetings','facts','questions','ads'].filter(k => cats[k]).join('+') || 'none'}`);
+        return this.reply(channel, `Updated auto-chat: mode=${clean.mode}, cats=${ALL_CATEGORIES.filter(k => cats[k]).join('+') || 'none'}`);
     }
 
     return this.reply(channel, helpText);

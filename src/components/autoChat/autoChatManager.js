@@ -101,7 +101,7 @@ function buildImageContextLine(channelName) {
 async function maybeSendGreeting(channelName) {
     // Greet once per stream start
     const cfg = await getChannelAutoChatConfig(channelName);
-    if (cfg.mode === 'off' || cfg.categories.greetings !== true) return;
+    if (cfg.categories.greetings !== true) return;
     const state = getState(channelName);
     if (state.greetedOnStart) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'stream-online');
@@ -281,7 +281,7 @@ export function notifyStreamOnline(channelName) {
 
 async function maybeSendFarewell(channelName) {
     const cfg = await getChannelAutoChatConfig(channelName);
-    if (cfg.mode === 'off' || cfg.categories.greetings !== true) return null;
+    if (cfg.categories.greetings !== true) return null;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'stream-offline');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `The stream just ended. Write one warm, concise farewell message for chat. ≤25 words. No emojis.`;
@@ -306,7 +306,7 @@ export async function notifyStreamOffline(channelName) {
 // --- Celebration Handlers (follows, subscriptions, raids) ---
 async function maybeSendFollowCelebration(channelName) {
     const cfg = await getChannelAutoChatConfig(channelName);
-    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    if (cfg.categories.follows !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-follow');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `A new follower joined the channel. Write ONE warm, concise celebration message using current stream/game and chat vibe. Do NOT reveal or guess the username. ≤22 words.`;
@@ -321,7 +321,7 @@ async function maybeSendFollowCelebration(channelName) {
 
 async function maybeSendSubscriptionCelebration(channelName) {
     const cfg = await getChannelAutoChatConfig(channelName);
-    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    if (cfg.categories.subscriptions !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `A new subscription just happened. Write ONE short, hype thank-you that references current stream context. Do NOT reveal or guess the subscriber's username. ≤22 words.`;
@@ -336,7 +336,7 @@ async function maybeSendSubscriptionCelebration(channelName) {
 
 async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount) {
     const cfg = await getChannelAutoChatConfig(channelName);
-    if (cfg.mode === 'off' || cfg.categories.celebrations !== true) return;
+    if (cfg.categories.raids !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-raid');
     const contextPrompt = buildContextPrompt(context);
     const viewersPhrase = typeof viewerCount === 'number' && viewerCount > 0 ? `${viewerCount} viewers` : 'raiders';

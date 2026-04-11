@@ -23,7 +23,9 @@ export const DEFAULT_AUTO_CHAT_CONFIG = Object.freeze({
         greetings: true,
         facts: true,
         questions: true,
-        celebrations: true,
+        follows: true,
+        subscriptions: true,
+        raids: true,
         ads: false,
     },
 });
@@ -83,11 +85,16 @@ export function normalizeConfig(input) {
     const mode = ['off', 'low', 'medium', 'high'].includes((cfg.mode || '').toLowerCase())
         ? cfg.mode.toLowerCase()
         : 'off';
+    // Backward compat: if legacy 'celebrations' key exists, new keys inherit its value
+    const legacyCelebrations = cfg.categories?.celebrations;
+    const celebDefault = legacyCelebrations !== undefined ? legacyCelebrations !== false : true;
     const categories = {
         greetings: cfg.categories?.greetings !== false,
         facts: cfg.categories?.facts !== false,
         questions: cfg.categories?.questions !== false,
-        celebrations: cfg.categories?.celebrations !== false,
+        follows: cfg.categories?.follows !== undefined ? cfg.categories.follows !== false : celebDefault,
+        subscriptions: cfg.categories?.subscriptions !== undefined ? cfg.categories.subscriptions !== false : celebDefault,
+        raids: cfg.categories?.raids !== undefined ? cfg.categories.raids !== false : celebDefault,
         ads: cfg.categories?.ads === true, // opt-in only
     };
     return { mode, categories };
