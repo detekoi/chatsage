@@ -13,8 +13,14 @@ jest.mock('../../../src/components/twitch/adSchedulePoller.js');
 jest.mock('../../../src/components/twitch/channelManager.js');
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/config/index.js', () => ({
+    default: {
+        twitch: { channels: ['testchannel'] },
+        app: { streamInfoFetchIntervalMs: 60000, nodeEnv: 'test' },
+        emote: { geminiModel: 'gemini-flash-lite', cdnUrl: 'https://example.com', timeoutMs: 8000, animatedTimeoutMs: 12000 },
+    },
     twitch: { channels: ['testchannel'] },
-    app: { streamInfoFetchIntervalMs: 60000, nodeEnv: 'test' }
+    app: { streamInfoFetchIntervalMs: 60000, nodeEnv: 'test' },
+    emote: { geminiModel: 'gemini-flash-lite', cdnUrl: 'https://example.com', timeoutMs: 8000, animatedTimeoutMs: 12000 },
 }));
 
 describe('LifecycleManager', () => {
