@@ -85,7 +85,11 @@ async function handleFunctionCall(functionCall) {
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
-    const standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date.\n- Do NOT use 'getCurrentTime' for general facts.`;
+    const botLanguage = options.botLanguage || null;
+    let standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date.\n- Do NOT use 'getCurrentTime' for general facts.`;
+    if (botLanguage) {
+        standardSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
+    }
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Answer directly.`;
 
     try {
@@ -153,13 +157,18 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
+    const botLanguage = options.botLanguage || null;
+    let searchSystemInstruction = SEARCH_SYSTEM_INSTRUCTION;
+    if (botLanguage) {
+        searchSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
+    }
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nSearch the web right now and answer based on current results. Response ≤ 420 chars.`;
 
     try {
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
             tools: searchTool,
-            systemInstruction: { parts: [{ text: SEARCH_SYSTEM_INSTRUCTION }] },
+            systemInstruction: { parts: [{ text: searchSystemInstruction }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
         });
 
@@ -187,13 +196,18 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
     if (!userQuery?.trim()) return null;
     const model = getGeminiClient();
     const thinkingLevel = options.thinkingLevel || 'high';
+    const botLanguage = options.botLanguage || null;
+    let unifiedSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+    if (botLanguage) {
+        unifiedSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
+    }
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤320 chars, direct.`;
 
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
             tools: [{ googleSearch: {} }],
-            systemInstruction: { parts: [{ text: CHAT_SAGE_SYSTEM_INSTRUCTION }] },
+            systemInstruction: { parts: [{ text: unifiedSystemInstruction }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
         });
         return extractTextFromResponse(result, result.candidates?.[0], 'unified')?.trim() || null;

@@ -2,6 +2,7 @@ import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
+import { resetChatSession } from '../../llm/gemini/chat.js';
 
 // Helper function removed - permission checking now handled by command system
 
@@ -49,6 +50,7 @@ const botLangHandler = {
         // Handle turning off translation
         if (action === 'off' || action === 'default' || action === 'english') {
             contextManager.setBotLanguage(channelName, null);
+            resetChatSession(channelName); // Invalidate cached session so next query uses English
             enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
             return;
         }
@@ -68,6 +70,7 @@ const botLangHandler = {
 
             // Set the bot language
             contextManager.setBotLanguage(channelName, targetLanguage);
+            resetChatSession(channelName); // Invalidate cached session so next query uses new language
 
             // Confirm in both languages
             const baseConfirm = `Bot language has been set to ${targetLanguage}. All bot responses will now be in ${targetLanguage}. Use "!botlang off" to reset.`;

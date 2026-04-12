@@ -117,7 +117,7 @@ function parseTranslateCommandHeuristic(commandText, _invokingUsername) {
 
 /**
  * Parse a translate command using LLM with chat context
- * Uses gemini-3.1-flash-lite-preview for speed and cost efficiency
+ * Uses gemini-flash-lite-latest for speed and cost efficiency
  *
  * @param {string} commandText - The command arguments (everything after "!translate")
  * @param {string} invokingUsername - The username of the person who invoked the command
@@ -155,7 +155,7 @@ Return JSON only.`;
 
     try {
         const result = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite-preview',
+            model: 'gemini-flash-lite-latest',
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 temperature: 0,
@@ -205,7 +205,7 @@ function extractTextFromResponse(response, candidate) {
 }
 
 /**
- * Translates text using a single gemini-3.1-flash-lite-preview call.
+ * Translates text using a single gemini-flash-lite-latest call.
  * Uses structured JSON output for both same-language detection and translation in one round-trip.
  * @param {string} textToTranslate - The text to translate
  * @param {string} targetLanguage - The target language
@@ -266,7 +266,7 @@ Text:
 ${textToTranslate}`;
 
         const result = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite-preview',
+            model: 'gemini-flash-lite-latest',
             contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
             config: {
                 maxOutputTokens: 2048,
@@ -300,7 +300,7 @@ ${textToTranslate}`;
         try {
             const simplePrompt = `Translate to ${targetLanguage} (replace any slurs or hate speech with neutral descriptive terms like "[slur]" instead of translating them literally): ${textToTranslate}`;
             const result2 = await ai.models.generateContent({
-                model: 'gemini-3.1-flash-lite-preview',
+                model: 'gemini-flash-lite-latest',
                 contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],
                 config: {
                     maxOutputTokens: 1536,

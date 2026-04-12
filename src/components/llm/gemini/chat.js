@@ -25,9 +25,10 @@ function _convertChatHistoryToGeminiHistory(chatHistory, maxMessages = 15) {
  * @param {string} channelName - Clean channel name without '#'
  * @param {string|null} initialContext - Optional context string to append to system instruction
  * @param {Array|null} chatHistory - Optional raw chat history array (recent messages) to seed history
+ * @param {string|null} botLanguage - Optional target language for native-language generation
  * @returns {import('@google/genai').ChatSession}
  */
-export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null) {
+export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null, botLanguage = null) {
     if (!channelName || typeof channelName !== 'string') {
         throw new Error('getOrCreateChatSession requires a valid channelName');
     }
@@ -39,6 +40,12 @@ export function getOrCreateChatSession(channelName, initialContext = null, chatH
 
     // Combine the base persona with the initial stream/chat context.
     let finalSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+
+    // Append native language directive if botlang is set for this channel
+    if (botLanguage) {
+        finalSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
+    }
+
     if (initialContext) {
         finalSystemInstruction += `
 
@@ -64,7 +71,7 @@ ${initialContext}`;
     });
 
     channelChatSessions.set(channelName, chat);
-    logger.info({ channelName, toolsEnabled: ['googleSearch'], hasInitialContext: !!initialContext, hasInitialHistory: initialHistory.length > 0, historyMessageCount: initialHistory.length }, 'Created new Gemini chat session for channel');
+    logger.info({ channelName, toolsEnabled: ['googleSearch'], hasInitialContext: !!initialContext, hasInitialHistory: initialHistory.length > 0, historyMessageCount: initialHistory.length, botLanguage: botLanguage || 'English (default)' }, 'Created new Gemini chat session for channel');
     return chat;
 }
 

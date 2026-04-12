@@ -176,7 +176,9 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         }
 
         // c. Use persistent chat session, passing context and (if applicable) history for initialization
-        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory);
+        // Also pass botLanguage so the system instruction includes the native-language directive
+        const botLanguage = contextManager.getBotLanguage(cleanChannel) || null;
+        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory, botLanguage);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
         const chatResult = await chatSession.sendMessage({ message: messageForChat });
         let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
@@ -230,7 +232,9 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
              logger.warn(`Final reply (even after summary/truncation) too long (${finalReplyText.length} chars). Applying smart truncation.`);
              finalReplyText = smartTruncate(finalReplyText, MAX_IRC_MESSAGE_LENGTH);
         }
-        await sendBotResponse(channel, finalReplyText, { replyToId });
+        // Skip post-hoc translation if the LLM already generated in the target language
+        const skipTranslation = !!botLanguage;
+        await sendBotResponse(channel, finalReplyText, { replyToId, skipTranslation });
         logBotResponse(cleanChannel, triggerType, {
             latencyMs: Date.now() - llmStartTime,
             responseLength: finalReplyText.length,
