@@ -386,8 +386,14 @@ export async function subscribeAllManagedChannels() {
                 const chatSubResult = await subscribeChannelChatMessage(userId);
                 const redemptionSubResult = await subscribeChannelPointsRedemptionAdd(userId);
 
-                const allSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success && redemptionSubResult.success;
-                if (allSuccess) {
+                // Celebration-related EventSub subscriptions (best-effort: 403 from missing
+                // scopes is logged but does not block the rest of the subscriptions)
+                const followSubResult = await subscribeChannelFollow(userId);
+                const subscribeSubResult = await subscribeChannelSubscribe(userId);
+                const raidSubResult = await subscribeChannelRaid(userId);
+
+                const coreSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success && redemptionSubResult.success;
+                if (coreSuccess) {
                     results.successful.push({ channel: channelName, userId });
                 } else {
                     const failures = [];
@@ -396,6 +402,15 @@ export async function subscribeAllManagedChannels() {
                     if (!chatSubResult.success) failures.push('channel.chat.message');
                     if (!redemptionSubResult.success) failures.push('channel.channel_points_custom_reward_redemption.add');
                     results.failed.push({ channel: channelName, error: `Failed: ${failures.join(', ')}` });
+                }
+
+                // Log celebration subscription failures separately (non-critical)
+                const celebrationFailures = [];
+                if (!followSubResult.success) celebrationFailures.push('channel.follow');
+                if (!subscribeSubResult.success) celebrationFailures.push('channel.subscribe');
+                if (!raidSubResult.success) celebrationFailures.push('channel.raid');
+                if (celebrationFailures.length > 0) {
+                    logger.warn({ channelName, userId, failed: celebrationFailures }, 'Some celebration EventSub subscriptions failed (may need broadcaster OAuth scopes)');
                 }
             } catch (error) {
                 logger.error({ err: error, channelName }, 'Error subscribing channel to EventSub');

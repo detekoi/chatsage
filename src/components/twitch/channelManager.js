@@ -110,10 +110,14 @@ export async function syncChannelWithEventSub(channelName, isActive, twitchUserI
         if (isActive) {
             // Subscribe to EventSub events for this channel
             logger.info(`[ChannelManager] Subscribing EventSub for channel: ${cleanChannelName}`);
-            const { subscribeChannelChatMessage, subscribeStreamOnline, subscribeStreamOffline } = await import('./twitchSubs.js');
+            const { subscribeChannelChatMessage, subscribeStreamOnline, subscribeStreamOffline, subscribeChannelFollow, subscribeChannelSubscribe, subscribeChannelRaid } = await import('./twitchSubs.js');
             await subscribeChannelChatMessage(userId);
             await subscribeStreamOnline(userId);
             await subscribeStreamOffline(userId);
+            // Celebration-related subscriptions (best-effort)
+            await subscribeChannelFollow(userId).catch(() => {});
+            await subscribeChannelSubscribe(userId).catch(() => {});
+            await subscribeChannelRaid(userId).catch(() => {});
             logger.info(`[ChannelManager] Successfully subscribed EventSub for channel: ${cleanChannelName}`);
             return true;
         } else {
