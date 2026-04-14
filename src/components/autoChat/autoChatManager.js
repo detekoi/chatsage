@@ -368,8 +368,8 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
     }
 
     const prompt = raiderContext
-        ? `A raid just arrived from ${safeRaider} with ${viewersPhrase}.${raiderContext}\n\nWrite ONE energetic welcome that naturally references what they were doing and finds a connection to our current stream. Invite raiders to hang out. ≤30 words.`
-        : `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic and invites raiders to hang out. ≤24 words.`;
+        ? `A raid just arrived from ${safeRaider} with ${viewersPhrase}.${raiderContext}\n\nWrite ONE energetic welcome that naturally references what they were doing and finds a connection to our current stream. Invite raiders to hang out, but assure the streamer it's okay to "raid and run" or go rest. ≤35 words.`
+        : `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic. Invite raiders to hang out, but assure the streamer it's okay to "raid and run" or go rest. ≤30 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
