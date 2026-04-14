@@ -230,7 +230,7 @@ describe('translationUtils', () => {
             expect(prompt).toContain('game terms');
         });
 
-        it('should instruct the LLM to paraphrase slurs instead of translating them literally', async () => {
+        it('should preserve profanity but sanitize extreme slurs', async () => {
             mockAI.models.generateContent.mockResolvedValue(
                 createStructuredResponse(true, '')
             );
@@ -239,8 +239,8 @@ describe('translationUtils', () => {
 
             const call = mockAI.models.generateContent.mock.calls[0][0];
             const prompt = call.contents[0].parts[0].text;
+            expect(prompt).toContain('profanity');
             expect(prompt).toContain('slur');
-            expect(prompt).toContain('neutral descriptive');
         });
     });
 
