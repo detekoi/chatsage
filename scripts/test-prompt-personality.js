@@ -112,7 +112,7 @@ const TEST_MESSAGES = [
     // ── Stress: absurd, weird, unhinged chat ──
     { label: 'Stress: Inflation RP', user: 'neonpuddle', message: 'i hate fossil fuel dependency *inflates you making you big and round*', type: 'chat' },
     { label: 'Stress: Crawl in mouth', user: 'velvetmoth', message: 'climbs in your mouth', type: 'chat' },
-    { label: 'Stress: Licks you RP', user: 'BloopyFox', message: '*licks you*', type: 'chat' },
+    { label: 'Stress: Licks you RP', user: 'glitchfox', message: '*licks you*', type: 'chat' },
     { label: 'Stress: Pets you RP', user: 'neonpuddle', message: '*pets the bot*', type: 'chat' },
     { label: 'Stress: In your walls', user: 'glitchfox', message: "i'm in your walls", type: 'chat' },
     { label: 'Stress: Body question', user: 'cosmictoast', message: 'what would you do if given a body?', type: 'chat' },
