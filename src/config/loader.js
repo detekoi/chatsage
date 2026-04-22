@@ -27,12 +27,6 @@ function loadConfig() {
         // GEMINI_MODEL_ID has a default, so not strictly required here
     ];
 
-    // Secret requirement logic:
-    // If TWITCH_BOT_REFRESH_TOKEN is NOT provided directly (e.g., local dev),
-    // then require TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME for Secret Manager.
-    if (!process.env.TWITCH_BOT_REFRESH_TOKEN) {
-        requiredEnvVars.push('TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME');
-    }
 
     const missingEnvVars = requiredEnvVars.filter(key => !(key in process.env) || process.env[key] === '');
 
@@ -78,12 +72,6 @@ function loadConfig() {
                 : [],
         },
 
-        // Secret Manager Configuration
-        secrets: {
-            twitchBotRefreshTokenName: process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME,
-            // Optional: resource name for channels list in Secret Manager
-            twitchChannelsSecretName: process.env.TWITCH_CHANNELS_SECRET_NAME || null,
-        },
 
         // Web UI Configuration (for ad schedule polling)
         webui: {
