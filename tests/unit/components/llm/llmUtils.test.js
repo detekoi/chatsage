@@ -1,9 +1,12 @@
 // tests/unit/components/llm/llmUtils.test.js
 
 jest.mock('../../../../src/lib/logger.js');
+jest.mock('../../../../src/lib/activityLogger.js');
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../src/components/llm/botResponseHandler.js');
+jest.mock('../../../../src/components/llm/conversationStorage.js');
+jest.mock('../../../../src/components/twitch/sharedChatManager.js');
 
 import {
     removeMarkdownAsterisks,
@@ -36,7 +39,8 @@ describe('llmUtils', () => {
                 userStates: new Map(),
                 botLanguage: 'en'
             }),
-            getAllChannelStates: jest.fn().mockReturnValue(mockChannelState)
+            getAllChannelStates: jest.fn().mockReturnValue(mockChannelState),
+            getBotLanguage: jest.fn().mockReturnValue(null)
         });
 
         buildContextPrompt.mockReturnValue('Mock context prompt');
@@ -120,8 +124,8 @@ describe('llmUtils', () => {
 
             expect(getContextManager).toHaveBeenCalled();
             expect(buildContextPrompt).toHaveBeenCalled();
-            expect(getOrCreateChatSession).toHaveBeenCalledWith('testchannel', 'Mock context prompt', expect.anything());
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: null });
+            expect(getOrCreateChatSession).toHaveBeenCalledWith('testchannel', 'Mock context prompt', expect.anything(), null);
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: null, skipTranslation: false });
             expect(logger.info).toHaveBeenCalledWith(
                 { channel: 'testchannel', user: 'testuser', trigger: 'mention' },
                 'Handling standard LLM query.'
@@ -131,7 +135,7 @@ describe('llmUtils', () => {
         it('should handle query with replyToId', async () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot', 'mention', 'reply-id-123');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: 'reply-id-123' });
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: 'reply-id-123', skipTranslation: false });
         });
 
         it('should handle query with command trigger', async () => {
@@ -203,7 +207,7 @@ describe('llmUtils', () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
             expect(summarizeText).toHaveBeenCalledWith(longResponse, 400);
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Short summary', { replyToId: null });
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Short summary', { replyToId: null, skipTranslation: false });
             expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/Summarization successful \(\d+ chars\)\./));
         });
 
@@ -223,7 +227,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'A'.repeat(499) + '.', { replyToId: null });
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'A'.repeat(499) + '.', { replyToId: null, skipTranslation: false });
             expect(logger.warn).toHaveBeenCalledWith('Summarization failed or returned empty for mention response. Falling back to smart truncation.');
         });
 
@@ -243,7 +247,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'B'.repeat(499) + '.', { replyToId: null });
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'B'.repeat(499) + '.', { replyToId: null, skipTranslation: false });
             expect(logger.warn).toHaveBeenCalledWith('Final reply (even after summary/truncation) too long (600 chars). Applying smart truncation.');
         });
 
@@ -305,11 +309,11 @@ describe('llmUtils', () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
             expect(logger.info).toHaveBeenCalledWith(
-                { usedGoogleSearch: true, webSearchQueries: ['test query'], sources: ['https://example.com', 'https://test.com'] },
+                expect.objectContaining({ usedGoogleSearch: true, webSearchQueries: ['test query'], sources: ['https://example.com', 'https://test.com'] }),
                 '[StandardChat] Search grounding metadata.'
             );
             expect(logger.info).toHaveBeenCalledWith(
-                { citations: [{ title: 'Test Source' }] },
+                expect.objectContaining({ citations: [{ title: 'Test Source' }] }),
                 '[StandardChat] Response included citations.'
             );
         });
@@ -327,7 +331,7 @@ describe('llmUtils', () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
             expect(logger.info).toHaveBeenCalledWith(
-                { usedGoogleSearch: false },
+                expect.objectContaining({ usedGoogleSearch: false }),
                 '[StandardChat] No search grounding metadata present.'
             );
         });
