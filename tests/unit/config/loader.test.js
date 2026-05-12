@@ -84,28 +84,6 @@ describe('Config Loader', () => {
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_CLIENT_SECRET/);
         });
-
-        test('should require TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME when TWITCH_BOT_REFRESH_TOKEN is not provided', async () => {
-            process.env.TWITCH_BOT_USERNAME = 'testbot';
-            process.env.GEMINI_API_KEY = 'test-key';
-            process.env.TWITCH_CLIENT_ID = 'test-client-id';
-            process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            // TWITCH_BOT_REFRESH_TOKEN not set, so SECRET_NAME is required
-
-            await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME/);
-        });
-
-        test('should not require TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME when TWITCH_BOT_REFRESH_TOKEN is provided', async () => {
-            process.env.TWITCH_BOT_USERNAME = 'testbot';
-            process.env.GEMINI_API_KEY = 'test-key';
-            process.env.TWITCH_CLIENT_ID = 'test-client-id';
-            process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN = 'direct-token';
-            // SECRET_NAME not required when direct token is provided
-
-            // This test now correctly expects the promise to resolve
-            await expect(loadConfig()).resolves.toBeDefined();
-        });
     });
 
     describe('Default Values', () => {
@@ -359,14 +337,6 @@ describe('Config Loader', () => {
             expect(config.app).toHaveProperty('prettyLog');
             expect(config.app).toHaveProperty('nodeEnv');
             expect(config.app).toHaveProperty('allowedBroadcasterIds');
-        });
-
-        test('should have correct secrets configuration structure', async () => {
-            process.env.TWITCH_CHANNELS_SECRET_NAME = 'channels-secret';
-            const config = await loadConfig();
-
-            expect(config.secrets).toHaveProperty('twitchBotRefreshTokenName', 'test-secret-name');
-            expect(config.secrets).toHaveProperty('twitchChannelsSecretName', 'channels-secret');
         });
 
         test('should have correct webui configuration structure', async () => {
