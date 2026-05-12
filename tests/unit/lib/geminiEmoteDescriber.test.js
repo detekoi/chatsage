@@ -31,7 +31,6 @@ jest.mock('../../../src/lib/firestore.js', () => ({
 import {
     initEmoteDescriber,
     initEmoteDescriptionStore,
-    isEmoteDescriberAvailable,
     extractEmotesFromFragments,
     getEmoteImageUrl,
     getAnimatedEmoteUrl,
@@ -89,10 +88,6 @@ describe('geminiEmoteDescriber', () => {
             expect(initEmoteDescriber('test-api-key')).toBe(true);
         });
 
-        it('should mark describer as available after init', () => {
-            initEmoteDescriber('test-api-key');
-            expect(isEmoteDescriberAvailable()).toBe(true);
-        });
     });
 
     describe('initEmoteDescriptionStore', () => {

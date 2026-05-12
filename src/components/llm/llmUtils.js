@@ -125,7 +125,7 @@ export function smartTruncate(text, maxLength) {
  * @param {string|null} replyToId - The ID of the message to reply to.
  * @param {string|null} sessionId - Optional shared chat session ID for merged context.
  */
-export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null) {
+export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null, emoteImageParts = []) {
     const logContext = sessionId 
         ? { channel: cleanChannel, user: lowerUsername, trigger: triggerType, sessionId }
         : { channel: cleanChannel, user: lowerUsername, trigger: triggerType };
@@ -180,7 +180,9 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const botLanguage = contextManager.getBotLanguage(cleanChannel) || null;
         const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory, botLanguage);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
-        const chatResult = await chatSession.sendMessage({ message: messageForChat });
+        // Include emote images as inline multimodal parts if present
+        const messageParts = [{ text: messageForChat }, ...emoteImageParts];
+        const chatResult = await chatSession.sendMessage({ message: messageParts });
         let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
 
         // Log Google Search grounding metadata and citations if present

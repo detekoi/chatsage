@@ -91,11 +91,13 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
         standardSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
     }
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nREPLY: ≤300 chars. Answer directly.`;
+    const emoteImageParts = options.emoteImageParts || [];
 
     try {
         // Note: Cannot combine responseMimeType: 'application/json' with custom function tools in Gemini 3
+        const userParts = [{ text: fullPrompt }, ...emoteImageParts];
         const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+            contents: [{ role: "user", parts: userParts }],
             tools: [standardAnswerTools],
             toolConfig: { functionCallingConfig: { mode: "AUTO" } },
             systemInstruction: { parts: [{ text: standardSystemInstruction }] },
@@ -163,10 +165,12 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
         searchSystemInstruction += ` You MUST respond entirely in ${botLanguage}.`;
     }
     const fullPrompt = `${contextPrompt}\n\nUSER: ${userQuery}\nSearch the web right now and answer based on current results. Response ≤ 420 chars.`;
+    const emoteImageParts = options.emoteImageParts || [];
 
     try {
+        const userParts = [{ text: fullPrompt }, ...emoteImageParts];
         const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+            contents: [{ role: "user", parts: userParts }],
             tools: searchTool,
             systemInstruction: { parts: [{ text: searchSystemInstruction }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }

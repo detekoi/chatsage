@@ -73,13 +73,6 @@ export function initEmoteDescriptionStore() {
     }
 }
 
-/**
- * Check if the emote describer is available.
- * @returns {boolean}
- */
-export function isEmoteDescriberAvailable() {
-    return genAI !== null;
-}
 
 /**
  * Extract unique emotes from EventSub message fragments.
@@ -383,6 +376,63 @@ export async function getEmoteContextString(tags, _message) {
     } catch (error) {
         logger.info({ err: error.message }, 'Failed to build emote context string');
         return null;
+    }
+}
+
+/**
+ * Fetch emote images as inline data parts for direct multimodal LLM input.
+ * No Gemini API call — just fetches the images and labels them.
+ * Reuses existing image fetch logic (static PNG + animated frame strip).
+ *
+ * @param {Object} tags - Message tags with .fragments from EventSub
+ * @returns {Promise<Array<{inlineData: {mimeType: string, data: string}} | {text: string}>>}
+ *   Array of Gemini content parts: one text label + one inlineData per emote.
+ *   Returns empty array if no emotes found or all fetches fail.
+ */
+export async function getEmoteImageParts(tags) {
+    if (!tags?.fragments) return [];
+
+    const emotes = extractEmotesFromFragments(tags.fragments);
+    if (emotes.length === 0) return [];
+
+    try {
+        const parts = [];
+        const fetchResults = await Promise.all(
+            emotes.map(async (emote) => {
+                // Try animated frame strip first, fall back to static PNG
+                let imageData = null;
+                if (emote.isAnimated) {
+                    imageData = await fetchAnimatedEmoteFrames(emote.id);
+                }
+                if (!imageData) {
+                    imageData = await fetchEmoteImage(emote.id);
+                }
+                return { ...emote, imageData };
+            })
+        );
+
+        const successful = fetchResults.filter(r => r.imageData);
+        if (successful.length === 0) return [];
+
+        // Build a text label summarizing which emotes are attached
+        const emoteNames = successful.map(r => r.name).join(', ');
+        parts.push({ text: `[Emote images in this message: ${emoteNames}]` });
+
+        // Add each emote image as an inline data part
+        for (const result of successful) {
+            parts.push({
+                inlineData: {
+                    mimeType: result.imageData.mimeType,
+                    data: result.imageData.data.toString('base64'),
+                },
+            });
+        }
+
+        logger.debug({ emoteCount: successful.length, emoteNames }, 'Built emote image parts for multimodal input');
+        return parts;
+    } catch (error) {
+        logger.info({ err: error.message }, 'Failed to build emote image parts');
+        return [];
     }
 }
 

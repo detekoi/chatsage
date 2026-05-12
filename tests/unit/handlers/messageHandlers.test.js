@@ -14,6 +14,9 @@ jest.mock('../../../src/config/index.js');
 jest.mock('../../../src/constants/botConstants.js');
 jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/twitch/sharedChatManager.js');
+jest.mock('../../../src/lib/geminiEmoteDescriber.js', () => ({
+    getEmoteImageParts: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('../../../src/components/geo/geoGameManager.js');
 jest.mock('../../../src/components/trivia/triviaGameManager.js');
 jest.mock('../../../src/components/riddle/riddleGameManager.js');
@@ -551,7 +554,9 @@ describe('Message Handlers', () => {
                 'testuser',
                 'hello',
                 'mention',
-                'msg-123'
+                'msg-123',
+                null,
+                expect.any(Array)
             );
         });
 
@@ -624,7 +629,8 @@ describe('Message Handlers', () => {
                 'hello',
                 'mention',
                 'msg-123',
-                'session-456'
+                'session-456',
+                expect.any(Array)
             );
         });
 
@@ -641,7 +647,9 @@ describe('Message Handlers', () => {
                 'testuser',
                 'how are you?',
                 'mention',
-                'msg-123'
+                'msg-123',
+                null,
+                expect.any(Array)
             );
         });
 
@@ -658,7 +666,9 @@ describe('Message Handlers', () => {
                 'testuser',
                 'hello',
                 'mention',
-                'fallback-id'
+                'fallback-id',
+                null,
+                expect.any(Array)
             );
         });
 
@@ -675,7 +685,9 @@ describe('Message Handlers', () => {
                 'testuser',
                 'hi how are you?',
                 'mention',
-                'msg-123'
+                'msg-123',
+                null,
+                expect.any(Array)
             );
         });
 
@@ -692,7 +704,9 @@ describe('Message Handlers', () => {
                 'testuser',
                 'hello',
                 'mention',
-                'msg-123'
+                'msg-123',
+                null,
+                expect.any(Array)
             );
         });
     });

@@ -13,7 +13,7 @@ import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../llm/
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
-import { getEmoteContextString } from '../../../lib/geminiEmoteDescriber.js';
+import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 
 // Note: IRC message length limits are handled by ircSender.js
@@ -137,10 +137,8 @@ const askHandler = {
 
         logger.info(`Executing !ask command for ${userName} in ${channel} with query: "${userQuery}"`);
 
-        // Describe emotes in the original message for LLM context
-        // Uses full message (context.message) since emote positions are relative to the original
-        const emoteContext = await getEmoteContextString(user, context.message);
-        const queryForLLM = emoteContext ? `${emoteContext} ${userQuery}` : userQuery;
+        // Fetch emote images for direct multimodal LLM input
+        const emoteImageParts = await getEmoteImageParts(user);
 
         try {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
@@ -179,20 +177,20 @@ const askHandler = {
             }
 
             // --- Not a regex-matched time query. Decide if search is needed, then route. ---
-            const userQueryWithContext = `The user is ${userName}. Their message is: ${queryForLLM}`;
+            const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
             const decision = await decideSearchWithStructuredOutput(contextPrompt, userQueryWithContext);
-            logger.info({ searchNeeded: decision?.searchNeeded, reason: decision?.reasoning }, `[${channelName}] Search decision for !ask`);
+            logger.info({ searchNeeded: decision?.searchNeeded, reason: decision?.reasoning, emoteImages: emoteImageParts.length > 0 }, `[${channelName}] Search decision for !ask`);
 
             let responseText = null;
             if (decision?.searchNeeded) {
                 // Do not require strict grounding signals; accept valid search answers even if metadata arrays are empty
-                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext, { requireGrounding: false });
+                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext, { requireGrounding: false, emoteImageParts });
                 if (!responseText) {
                     // Fallback to standard if grounded response failed (e.g., safety block)
-                    responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
+                    responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts });
                 }
             } else {
-                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext);
+                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts });
             }
 
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
