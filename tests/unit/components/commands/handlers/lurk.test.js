@@ -157,7 +157,7 @@ describe('Lurk Command Handler', () => {
                 'is going to lurk. Reason: getting coffee'
             );
             expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
-                model: 'gemini-3.1-flash-lite-preview',
+                model: 'gemini-flash-lite-latest',
                 contents: [{ role: 'user', parts: [{ text: expect.stringContaining('getting coffee') }] }]
             });
         });
@@ -323,7 +323,7 @@ describe('Lurk Command Handler', () => {
             await lurkHandler.execute(context);
 
             expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
-                model: 'gemini-3.1-flash-lite-preview',
+                model: 'gemini-flash-lite-latest',
                 contents: [{ role: 'user', parts: [{ text: expect.stringContaining('MixedCaseUser') }] }]
             });
         });

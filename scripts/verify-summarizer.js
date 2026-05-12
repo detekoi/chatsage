@@ -47,7 +47,7 @@ function buildSyntheticTranscript(totalMessages = 120) {
 async function main() {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
-        const modelId = process.env.GEMINI_MODEL_ID || 'gemini-3.1-flash-lite-preview';
+        const modelId = process.env.GEMINI_MODEL_ID || 'gemini-flash-lite-latest';
         if (!apiKey) {
             logger.fatal('GEMINI_API_KEY is missing in environment. Add it to your .env and retry.');
             process.exit(1);

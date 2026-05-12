@@ -52,7 +52,7 @@ const lurkHandler = {
             const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
 
             const result = await model.generateContent({
-                model: 'gemini-3.1-flash-lite-preview',
+                model: 'gemini-flash-lite-latest',
                 contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
             });
             let llmResponse = result?.response?.text ? result.response.text() : extractTextFromCandidate(result);

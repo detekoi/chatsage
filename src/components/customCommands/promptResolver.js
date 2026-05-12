@@ -4,7 +4,7 @@ import { getGenAIInstance } from '../llm/gemini/core.js';
 import { smartTruncate } from '../llm/llmUtils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
 
-const FLASH_LITE_MODEL = 'gemini-3.1-flash-lite-preview';
+const FLASH_LITE_MODEL = 'gemini-flash-lite-latest';
 
 // Extra context added only for check-in commands to prevent the LLM from
 // misinterpreting a user's personal check-in count as being first to stream.
@@ -27,7 +27,7 @@ function buildSystemInstruction(language, isCheckin = false) {
 
 /**
  * Sends a resolved prompt template to the LLM to generate a unique response.
- * Uses gemini-3.1-flash-lite-preview directly for minimal latency.
+ * Uses gemini-flash-lite-latest directly for minimal latency.
  * @param {string} prompt - The prompt with variables already resolved.
  * @param {string|null} [language=null] - Optional target language for the response.
  * @param {string|null} [streamContext=null] - Optional formatted stream context string.

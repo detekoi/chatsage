@@ -10,7 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 const API_KEY = process.env.GEMINI_API_KEY;
 if (!API_KEY) { console.error('❌ GEMINI_API_KEY not found in .env'); process.exit(1); }
 
-const MODEL = 'gemini-3.1-flash-lite-preview';
+const MODEL = 'gemini-flash-lite-latest';
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 const SYSTEM = `You are a Twitch chat bot. Respond to the following prompt in a single short message suitable for Twitch chat. No markdown formatting. Be concise and match the tone requested in the prompt. Keep your response under 300 characters. If a check-in count or number is mentioned, it refers to the viewer's cumulative all-time total check-ins.`;
 

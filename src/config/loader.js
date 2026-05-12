@@ -81,7 +81,7 @@ function loadConfig() {
 
         // Emote Description (Gemini Vision)
         emote: {
-            geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-3.1-flash-lite-preview',
+            geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-flash-lite-latest',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
             animatedTimeoutMs: 12000,

@@ -7,7 +7,7 @@ jest.mock('../../../src/config/index.js', () => ({
     __esModule: true,
     default: {
         emote: {
-            geminiModel: 'gemini-3.1-flash-lite-preview',
+            geminiModel: 'gemini-flash-lite-latest',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
             animatedTimeoutMs: 12000,
