@@ -28,6 +28,15 @@ function getAggressivenessMinGapMinutes(mode) {
     }
 }
 
+function getLullThresholdMinutes(mode) {
+    switch ((mode || 'off').toLowerCase()) {
+        case 'high': return 3;
+        case 'medium': return 5;
+        case 'low': return 8;
+        default: return Infinity;
+    }
+}
+
 function getState(channelName) {
     if (!runtime.has(channelName)) runtime.set(channelName, {});
     return runtime.get(channelName);
@@ -136,6 +145,9 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     const state = getState(channelName);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
+    // Suppress if chat is currently active (users are already engaging)
+    const quietMin = getLullThresholdMinutes(cfg.mode);
+    if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) return;
 
     // Clear stale chat summary so old game themes don't contaminate new prompts
     getContextManager().clearThematicContext(channelName);
@@ -170,6 +182,8 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
             || await generateSearchResponse(contextPrompt, prompt);
     }
     if (text) {
+        // Re-check: suppress if a user message arrived during LLM generation
+        if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) return;
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
@@ -182,7 +196,7 @@ async function maybeHandleLull(channelName) {
     const state = getState(channelName);
     const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     // Detect lull: no message for X minutes depending on mode
-    const lullThresholdMin = cfg.mode === 'high' ? 3 : cfg.mode === 'medium' ? 5 : 8;
+    const lullThresholdMin = getLullThresholdMinutes(cfg.mode);
     const lastMessageAtMs = state.lastMessageAtMs || 0;
     if (now() - lastMessageAtMs < lullThresholdMin * 60 * 1000) return;
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
@@ -216,6 +230,8 @@ async function maybeHandleLull(channelName) {
             || await generateSearchResponse(contextPrompt, prompt);
     }
     if (text) {
+        // Re-check: suppress if a user message arrived during LLM generation
+        if (now() - (state.lastMessageAtMs || 0) < lullThresholdMin * 60 * 1000) return;
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
@@ -235,6 +251,9 @@ async function maybeHandleTopicShift(channelName) {
 
     const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
+    // Suppress if chat is currently active
+    const quietMin = getLullThresholdMinutes(cfg.mode);
+    if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     // JIT: only fetch/analyze thumbnail when we're actually going to compose a message
     await refreshImageContext(channelName);
@@ -263,6 +282,8 @@ async function maybeHandleTopicShift(channelName) {
             || await generateSearchResponse(contextPrompt, prompt);
     }
     if (text) {
+        // Re-check: suppress if a user message arrived during LLM generation
+        if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
