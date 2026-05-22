@@ -11,9 +11,9 @@
 
 ChatSage es un chatbot impulsado por IA diseñado para entornos de chat de Twitch en cualquier idioma. Proporciona respuestas contextualmente relevantes basadas en el historial del chat, las consultas de los usuarios y la información del stream en tiempo real (juego actual, título, etiquetas).
 
-> Importante: El acceso a la versión en la nube de ChatSage actualmente es solo por invitación mediante una lista de permitidos (allow-list). El panel de autoservicio está desactivado para canales no aprobados. Si deseas probar el bot, contáctame aquí: [Formulario de contacto](https://detekoi.github.io/#contact-me).
+> Importante: El acceso a la versión en la nube de ChatSage actualmente es solo por invitación mediante una lista de permitidos (allow-list). El panel de autoservicio está desactivado para canales no aprobados. Si deseas probar el bot, contáctame aquí: [Formulario de contacto](https://parfaitfair.com/#contact).
 
-**[Agrega ChatSage a tu canal de Twitch →](https://streamsage-bot.web.app)**
+**[Agrega ChatSage a tu canal de Twitch →](https://bot.wildcat.chat)**
 
 [![Licencia](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE.md)
 
@@ -43,12 +43,12 @@ ChatSage es un chatbot impulsado por IA diseñado para entornos de chat de Twitc
 
 ## Agregar ChatSage a Tu Canal
 
-Nota: Solo los canales aprobados en la allow-list pueden habilitar ChatSage. Si tu canal aún no está aprobado pero quieres probarlo, escríbeme por el [Formulario de contacto](https://detekoi.github.io/#contact-me).
+Nota: Solo los canales aprobados en la allow-list pueden habilitar ChatSage. Si tu canal aún no está aprobado pero quieres probarlo, escríbeme por el [Formulario de contacto](https://parfaitfair.com/#contact).
 
 Si tu canal está aprobado, puedes agregar o quitar ChatSage usando la interfaz web:
 
 1. **Visita el Portal de Gestión de ChatSage**:
-   - Ve al [Portal de Gestión de ChatSage](https://streamsage-bot.web.app) (solo canales aprobados)
+   - Ve al [Portal de Gestión de ChatSage](https://bot.wildcat.chat) (solo canales aprobados)
    - Haz clic en "Iniciar sesión con Twitch"
 
 2. **Autoriza la Aplicación**:

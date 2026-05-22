@@ -12,9 +12,9 @@
 
 ChatSage ist ein KI-gestützter Chatbot, der für Twitch-Chat-Umgebungen in jeder Sprache entwickelt wurde. Er liefert kontextrelevante Antworten basierend auf dem Chat-Verlauf, Benutzeranfragen und Echtzeit-Stream-Informationen (aktuelles Spiel, Titel, Tags).
 
-> Wichtig: Der Zugang zur Cloud-Version von ChatSage ist derzeit nur über eine Allowlist (Einladung) möglich. Das Self-Service-Web-Dashboard ist für nicht genehmigte Kanäle deaktiviert. Wenn du den Bot ausprobieren möchtest, kontaktiere mich bitte hier: [Kontaktformular](https://detekoi.github.io/#contact-me).
+> Wichtig: Der Zugang zur Cloud-Version von ChatSage ist derzeit nur über eine Allowlist (Einladung) möglich. Das Self-Service-Web-Dashboard ist für nicht genehmigte Kanäle deaktiviert. Wenn du den Bot ausprobieren möchtest, kontaktiere mich bitte hier: [Kontaktformular](https://parfaitfair.com/#contact).
 
-**[ChatSage zu deinem Twitch-Kanal hinzufügen →](https://streamsage-bot.web.app)**
+**[ChatSage zu deinem Twitch-Kanal hinzufügen →](https://bot.wildcat.chat)**
 
 [![Lizenz](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](../LICENSE.md)
 
@@ -44,12 +44,12 @@ ChatSage ist ein KI-gestützter Chatbot, der für Twitch-Chat-Umgebungen in jede
 
 ## ChatSage zu deinem Kanal hinzufügen
 
-Hinweis: Nur vorab genehmigte Kanäle auf der Allowlist können ChatSage aktivieren. Wenn dein Kanal noch nicht freigeschaltet ist, du den Bot aber testen möchtest, melde dich bitte über das [Kontaktformular](https://detekoi.github.io/#contact-me).
+Hinweis: Nur vorab genehmigte Kanäle auf der Allowlist können ChatSage aktivieren. Wenn dein Kanal noch nicht freigeschaltet ist, du den Bot aber testen möchtest, melde dich bitte über das [Kontaktformular](https://parfaitfair.com/#contact).
 
 Wenn dein Kanal genehmigt ist, kannst du ChatSage über die Weboberfläche hinzufügen oder entfernen:
 
 1.  **Besuche das ChatSage-Verwaltungsportal**:
-    -   Gehe zum [ChatSage-Verwaltungsportal](https://streamsage-bot.web.app) (nur für freigeschaltete Kanäle)
+    -   Gehe zum [ChatSage-Verwaltungsportal](https://bot.wildcat.chat) (nur für freigeschaltete Kanäle)
     -   Klicke auf "Mit Twitch anmelden"
 
 2.  **Autorisiere die Anwendung**:
