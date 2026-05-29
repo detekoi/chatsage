@@ -1,10 +1,12 @@
 // tests/unit/components/twitch/eventsub.test.js
-import { handleKeepAlivePing, clearPhantomEventSubEntries } from '../../../../src/components/twitch/eventsub.js';
+import { handleKeepAlivePing, clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { getLiveStreams } from '../../../../src/components/twitch/helixClient.js';
 import { deleteTask, scheduleNextKeepAlivePing } from '../../../../src/lib/taskHelpers.js';
 import logger from '../../../../src/lib/logger.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
+import { isChannelAllowed } from '../../../../src/components/twitch/channelManager.js';
+import { notifySubscription, notifyGiftSubs } from '../../../../src/components/autoChat/autoChatManager.js';
 
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -13,6 +15,8 @@ jest.mock('../../../../src/lib/taskHelpers.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/services/LifecycleManager.js');
+jest.mock('../../../../src/components/twitch/channelManager.js');
+jest.mock('../../../../src/components/autoChat/autoChatManager.js');
 
 describe('EventSub Legacy Keep-Alive Endpoint', () => {
     let mockLifecycle;
@@ -95,5 +99,142 @@ describe('EventSub Ad Break Event Structure', () => {
 
         expect(automaticAd.is_automatic).toBe('true');
         expect(manualAd.is_automatic).toBe('false');
+    });
+});
+
+describe('EventSub Webhook Routing & Subscription Celebrations', () => {
+    let mockRes;
+    let oldBypass;
+
+    beforeEach(() => {
+        oldBypass = process.env.EVENTSUB_BYPASS;
+        process.env.EVENTSUB_BYPASS = 'true';
+        markEventSubReady();
+
+        mockRes = {
+            writeHead: jest.fn().mockReturnThis(),
+            end: jest.fn().mockReturnThis()
+        };
+
+        isChannelAllowed.mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        if (oldBypass === undefined) {
+            delete process.env.EVENTSUB_BYPASS;
+        } else {
+            process.env.EVENTSUB_BYPASS = oldBypass;
+        }
+    });
+
+    test('should process standard sub event and trigger notifySubscription', async () => {
+        const req = {
+            headers: {
+                'twitch-eventsub-message-type': 'notification',
+                'twitch-eventsub-message-id': 'sub-msg-1',
+                'twitch-eventsub-message-timestamp': new Date().toISOString()
+            }
+        };
+
+        const rawBody = JSON.stringify({
+            subscription: {
+                type: 'channel.subscribe'
+            },
+            event: {
+                broadcaster_user_name: 'testchannel',
+                broadcaster_user_id: '12345',
+                is_gift: false
+            }
+        });
+
+        await eventSubHandler(req, mockRes, rawBody);
+
+        expect(mockRes.writeHead).toHaveBeenCalledWith(200);
+        expect(notifySubscription).toHaveBeenCalledWith('testchannel');
+        expect(notifyGiftSubs).not.toHaveBeenCalled();
+    });
+
+    test('should skip standard sub event when it is a gift (guarded by is_gift: true)', async () => {
+        const req = {
+            headers: {
+                'twitch-eventsub-message-type': 'notification',
+                'twitch-eventsub-message-id': 'sub-msg-2',
+                'twitch-eventsub-message-timestamp': new Date().toISOString()
+            }
+        };
+
+        const rawBody = JSON.stringify({
+            subscription: {
+                type: 'channel.subscribe'
+            },
+            event: {
+                broadcaster_user_name: 'testchannel',
+                broadcaster_user_id: '12345',
+                is_gift: true
+            }
+        });
+
+        await eventSubHandler(req, mockRes, rawBody);
+
+        expect(mockRes.writeHead).toHaveBeenCalledWith(200);
+        expect(notifySubscription).not.toHaveBeenCalled();
+        expect(notifyGiftSubs).not.toHaveBeenCalled();
+    });
+
+    test('should route channel.subscription.gift events to notifyGiftSubs', async () => {
+        const req = {
+            headers: {
+                'twitch-eventsub-message-type': 'notification',
+                'twitch-eventsub-message-id': 'sub-msg-3',
+                'twitch-eventsub-message-timestamp': new Date().toISOString()
+            }
+        };
+
+        const rawBody = JSON.stringify({
+            subscription: {
+                type: 'channel.subscription.gift'
+            },
+            event: {
+                broadcaster_user_name: 'testchannel',
+                broadcaster_user_id: '12345',
+                total: 5,
+                is_anonymous: false,
+                user_name: 'GifterGuy',
+                cumulative_total: 10
+            }
+        });
+
+        await eventSubHandler(req, mockRes, rawBody);
+
+        expect(mockRes.writeHead).toHaveBeenCalledWith(200);
+        expect(notifyGiftSubs).toHaveBeenCalledWith('testchannel', 5, 'GifterGuy', 10);
+    });
+
+    test('should handle anonymous users correctly in channel.subscription.gift', async () => {
+        const req = {
+            headers: {
+                'twitch-eventsub-message-type': 'notification',
+                'twitch-eventsub-message-id': 'sub-msg-4',
+                'twitch-eventsub-message-timestamp': new Date().toISOString()
+            }
+        };
+
+        const rawBody = JSON.stringify({
+            subscription: {
+                type: 'channel.subscription.gift'
+            },
+            event: {
+                broadcaster_user_name: 'testchannel',
+                broadcaster_user_id: '12345',
+                total: 3,
+                is_anonymous: true,
+                cumulative_total: null
+            }
+        });
+
+        await eventSubHandler(req, mockRes, rawBody);
+
+        expect(mockRes.writeHead).toHaveBeenCalledWith(200);
+        expect(notifyGiftSubs).toHaveBeenCalledWith('testchannel', 3, null, null);
     });
 });
