@@ -207,6 +207,21 @@ export async function subscribeChannelSubscribe(broadcasterUserId) {
     return await makeHelixRequest('post', '/eventsub/subscriptions', body);
 }
 
+export async function subscribeChannelSubscriptionGift(broadcasterUserId) {
+    const { publicUrl, eventSubSecret } = config.twitch;
+    if (!publicUrl || !eventSubSecret) {
+        logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
+        return { success: false, error: 'Missing configuration' };
+    }
+    const body = {
+        type: 'channel.subscription.gift',
+        version: '1',
+        condition: { broadcaster_user_id: broadcasterUserId },
+        transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
+    };
+    return await makeHelixRequest('post', '/eventsub/subscriptions', body);
+}
+
 export async function subscribeChannelRaid(broadcasterUserId) {
     const { publicUrl, eventSubSecret } = config.twitch;
     if (!publicUrl || !eventSubSecret) {
@@ -390,6 +405,7 @@ export async function subscribeAllManagedChannels() {
                 // scopes is logged but does not block the rest of the subscriptions)
                 const followSubResult = await subscribeChannelFollow(userId);
                 const subscribeSubResult = await subscribeChannelSubscribe(userId);
+                const giftSubResult = await subscribeChannelSubscriptionGift(userId);
                 const raidSubResult = await subscribeChannelRaid(userId);
 
                 const coreSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success && redemptionSubResult.success;
@@ -408,6 +424,7 @@ export async function subscribeAllManagedChannels() {
                 const celebrationFailures = [];
                 if (!followSubResult.success) celebrationFailures.push('channel.follow');
                 if (!subscribeSubResult.success) celebrationFailures.push('channel.subscribe');
+                if (!giftSubResult.success) celebrationFailures.push('channel.subscription.gift');
                 if (!raidSubResult.success) celebrationFailures.push('channel.raid');
                 if (celebrationFailures.length > 0) {
                     logger.warn({ channelName, userId, failed: celebrationFailures }, 'Some celebration EventSub subscriptions failed (may need broadcaster OAuth scopes)');

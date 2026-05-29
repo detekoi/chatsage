@@ -356,6 +356,23 @@ async function maybeSendSubscriptionCelebration(channelName) {
     }
 }
 
+async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumulativeTotal) {
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (cfg.categories.subscriptions !== true) return;
+    const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
+    const contextPrompt = buildContextPrompt(context);
+    const gifterPhrase = gifterName ? `${gifterName}` : 'An anonymous gifter';
+    const cumulativePhrase = cumulativeTotal ? ` They've gifted ${cumulativeTotal} total in this channel.` : '';
+    const prompt = `${gifterPhrase} just gifted ${total} sub${total > 1 ? 's' : ''} to the channel!${cumulativePhrase} Write ONE energetic thank-you that references current stream context and the gift count. Do NOT list individual recipients. ≤28 words.`;
+    const text = await generateStandardResponse(contextPrompt, prompt)
+        || await generateSearchResponse(contextPrompt, prompt);
+    if (text) {
+        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        const state = getState(channelName);
+        recordAutoText(state, text);
+    }
+}
+
 async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount, raiderUserId) {
     const cfg = await getChannelAutoChatConfig(channelName);
     if (cfg.categories.raids !== true) return;
@@ -409,6 +426,12 @@ export async function notifyFollow(channelName) {
 export async function notifySubscription(channelName) {
     try {
         await maybeSendSubscriptionCelebration(channelName);
+    } catch (e) { /* ignore */ }
+}
+
+export async function notifyGiftSubs(channelName, total, gifterName, cumulativeTotal) {
+    try {
+        await maybeSendGiftSubCelebration(channelName, total, gifterName, cumulativeTotal);
     } catch (e) { /* ignore */ }
 }
 

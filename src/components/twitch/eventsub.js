@@ -4,7 +4,7 @@ import logger from '../../lib/logger.js';
 import { isChannelAllowed } from './channelManager.js';
 import { getContextManager } from '../context/contextManager.js';
 
-import { notifyStreamOnline, notifyStreamOffline, notifyFollow, notifySubscription, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
+import { notifyStreamOnline, notifyStreamOffline, notifyFollow, notifySubscription, notifyGiftSubs, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
 import * as sharedChatManager from './sharedChatManager.js';
 import LifecycleManager from '../../services/LifecycleManager.js';
 import { convertEventSubToTags } from './eventSubToTags.js';
@@ -324,12 +324,43 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster name');
                     return;
                 }
+                // Skip gift subs — they are handled in bulk by channel.subscription.gift
+                if (event?.is_gift === true) {
+                    logger.debug({ channelName }, '[EventSub] Skipping gift sub (handled by channel.subscription.gift)');
+                    return;
+                }
                 const broadcasterId = event?.broadcaster_user_id;
                 const allowed = await isChannelAllowed(broadcasterId || channelName);
                 if (!allowed) return;
                 await notifySubscription(channelName.toLowerCase());
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.subscribe');
+            }
+        }
+
+        if (subscription.type === 'channel.subscription.gift') {
+            try {
+                const channelName = event?.broadcaster_user_name || null;
+                if (!channelName) {
+                    logger.warn({ event }, '[EventSub] channel.subscription.gift missing broadcaster name');
+                    return;
+                }
+                const broadcasterId = event?.broadcaster_user_id;
+                const allowed = await isChannelAllowed(broadcasterId || channelName);
+                if (!allowed) return;
+                const total = event?.total || 1;
+                const isAnonymous = event?.is_anonymous === true;
+                const gifterName = isAnonymous ? null : (event?.user_name || null);
+                const cumulativeTotal = event?.cumulative_total || null;
+                logger.info({
+                    channelName: channelName.toLowerCase(),
+                    total,
+                    gifterName: gifterName || 'Anonymous',
+                    cumulativeTotal
+                }, '[EventSub] Gift sub bomb received');
+                await notifyGiftSubs(channelName.toLowerCase(), total, gifterName, cumulativeTotal);
+            } catch (error) {
+                logger.error({ err: error }, '[EventSub] Error handling channel.subscription.gift');
             }
         }
 
