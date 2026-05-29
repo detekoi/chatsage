@@ -327,12 +327,12 @@ export async function eventSubHandler(req, res, rawBody) {
                 // Skip gift subs — they are handled in bulk by channel.subscription.gift
                 if (event?.is_gift === true) {
                     logger.debug({ channelName }, '[EventSub] Skipping gift sub (handled by channel.subscription.gift)');
-                    return;
+                } else {
+                    const broadcasterId = event?.broadcaster_user_id;
+                    const allowed = await isChannelAllowed(broadcasterId || channelName);
+                    if (!allowed) return;
+                    await notifySubscription(channelName.toLowerCase());
                 }
-                const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || channelName);
-                if (!allowed) return;
-                await notifySubscription(channelName.toLowerCase());
             } catch (error) {
                 logger.error({ err: error }, '[EventSub] Error handling channel.subscribe');
             }
@@ -348,10 +348,10 @@ export async function eventSubHandler(req, res, rawBody) {
                 const broadcasterId = event?.broadcaster_user_id;
                 const allowed = await isChannelAllowed(broadcasterId || channelName);
                 if (!allowed) return;
-                const total = event?.total || 1;
+                const total = event?.total ?? 1;
                 const isAnonymous = event?.is_anonymous === true;
                 const gifterName = isAnonymous ? null : (event?.user_name || null);
-                const cumulativeTotal = event?.cumulative_total || null;
+                const cumulativeTotal = event?.cumulative_total ?? null;
                 logger.info({
                     channelName: channelName.toLowerCase(),
                     total,

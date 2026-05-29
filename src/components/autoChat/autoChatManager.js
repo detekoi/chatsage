@@ -8,6 +8,16 @@ import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
 import { analyzeImage } from '../llm/geminiImageClient.js';
 import { getChannelInformation, getUsersById } from '../twitch/helixClient.js';
 
+/**
+ * Strip characters commonly used for prompt injection from user-supplied strings
+ * before embedding them in LLM prompts. Keeps alphanumerics, spaces, hyphens,
+ * and underscores — which is all a Twitch username can legitimately contain.
+ */
+function sanitizeForPrompt(str) {
+    if (!str || typeof str !== 'string') return str;
+    return str.replace(/[\n\r`"'{}\[\]()\\]/g, '').trim().slice(0, 50);
+}
+
 // AutoChatManager periodically scans channel state and emits context-aware messages
 
 let intervalId = null;
@@ -361,7 +371,7 @@ async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumul
     if (cfg.categories.subscriptions !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
     const contextPrompt = buildContextPrompt(context);
-    const gifterPhrase = gifterName ? `${gifterName}` : 'An anonymous gifter';
+    const gifterPhrase = gifterName ? sanitizeForPrompt(gifterName) : 'An anonymous gifter';
     const cumulativePhrase = cumulativeTotal ? ` They've gifted ${cumulativeTotal} total in this channel.` : '';
     const prompt = `${gifterPhrase} just gifted ${total} sub${total > 1 ? 's' : ''} to the channel!${cumulativePhrase} Write ONE energetic thank-you that references current stream context and the gift count. Do NOT list individual recipients. ≤28 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt)
@@ -379,7 +389,7 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-raid');
     const contextPrompt = buildContextPrompt(context);
     const viewersPhrase = typeof viewerCount === 'number' && viewerCount > 0 ? `${viewerCount} viewers` : 'raiders';
-    const safeRaider = raiderUserName || 'the raiding streamer';
+    const safeRaider = sanitizeForPrompt(raiderUserName) || 'the raiding streamer';
 
     // Fetch raider info from Twitch Helix API (parallel, best-effort)
     let raiderContext = '';
