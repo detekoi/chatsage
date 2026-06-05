@@ -13,7 +13,7 @@
         "test:fast": "jest --testTimeout=5000",
         "test:channel-manager": "node scripts/test-channel-manager.js",
         "migrate:channels": "node scripts/migrate-channels-to-firestore.js",
-        "setup:cloud-tasks": "node scripts/setup-cloud-tasks.js",
+
         "trigger:stream-online": "node scripts/trigger-stream-online.js",
         "export:emails": "node scripts/export-mailing-list.js"
     },
@@ -30,7 +30,7 @@
     "dependencies": {
         "@google-cloud/firestore": "^7.11.0",
         "@google-cloud/secret-manager": "^6.0.1",
-        "@google-cloud/tasks": "^5.5.2",
+
         "@google/genai": "^1.15.0",
         "@tavily/core": "^0.7.5",
         "axios": "^1.16.0",

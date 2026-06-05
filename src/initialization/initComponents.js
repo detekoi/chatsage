@@ -11,7 +11,7 @@ import { initializeConversationStorage } from '../components/llm/conversationSto
 import { initializeGeminiClient } from '../components/llm/geminiClient.js';
 import { initializeHelixClient } from '../components/twitch/helixClient.js';
 import { initializeContextManager } from '../components/context/contextManager.js';
-import { cleanupKeepAliveTasks } from '../components/twitch/eventsub.js';
+
 import { initializeCommandProcessor } from '../components/commands/commandProcessor.js';
 import { initializeIrcSender } from '../lib/ircSender.js';
 import { initializeGeoGameManager } from '../components/geo/geoGameManager.js';
@@ -122,8 +122,7 @@ export async function initializeContextAndCommands() {
     // Pass enriched channel objects (with twitchUserId) when available, fall back to plain names
     await initializeContextManager(config.twitch.channelsWithIds || config.twitch.channels);
 
-    logger.info('Cleaning up any orphaned keep-alive tasks...');
-    await cleanupKeepAliveTasks();
+
 
     logger.info('Initializing Command Processor...');
     initializeCommandProcessor();

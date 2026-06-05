@@ -1,8 +1,6 @@
 // tests/unit/components/twitch/eventsub.test.js
-import { handleKeepAlivePing, clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
+import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
-import { getLiveStreams } from '../../../../src/components/twitch/helixClient.js';
-import { deleteTask, scheduleNextKeepAlivePing } from '../../../../src/lib/taskHelpers.js';
 import logger from '../../../../src/lib/logger.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 import { isChannelAllowed } from '../../../../src/components/twitch/channelManager.js';
@@ -11,44 +9,22 @@ import { notifySubscription, notifyGiftSubs } from '../../../../src/components/a
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/twitch/helixClient.js');
-jest.mock('../../../../src/lib/taskHelpers.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/services/LifecycleManager.js');
 jest.mock('../../../../src/components/twitch/channelManager.js');
 jest.mock('../../../../src/components/autoChat/autoChatManager.js');
 
-describe('EventSub Legacy Keep-Alive Endpoint', () => {
+describe('EventSub Phantom Entry Cleanup', () => {
     let mockLifecycle;
 
     beforeEach(() => {
-        // Reset mocks and clear any phantom entries before each test
         jest.clearAllMocks();
-
-        // Setup LifecycleManager mock
         mockLifecycle = {
             getActiveStreams: jest.fn().mockReturnValue([]),
             onStreamStatusChange: jest.fn()
         };
         LifecycleManager.get.mockReturnValue(mockLifecycle);
-
-        // Legacy keep-alive endpoint no longer schedules tasks (keep-alive is handled in-process)
-        scheduleNextKeepAlivePing.mockResolvedValue('keep-alive-task-test');
-    });
-
-    test('handleKeepAlivePing is a no-op (keep-alive is now in-process)', async () => {
-        await handleKeepAlivePing();
-
-        expect(logger.debug).toHaveBeenCalledWith(
-            'Legacy /keep-alive endpoint called - now using in-process keep-alive'
-        );
-
-        // Nothing legacy should fire anymore
-        expect(scheduleNextKeepAlivePing).not.toHaveBeenCalled();
-        expect(deleteTask).not.toHaveBeenCalled();
-        expect(getLiveStreams).not.toHaveBeenCalled();
-        expect(getContextManager).not.toHaveBeenCalled();
-        expect(LifecycleManager.get).not.toHaveBeenCalled();
     });
 
     test('should clear phantom entries using LifecycleManager', async () => {

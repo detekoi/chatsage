@@ -22,7 +22,6 @@ env:
   TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME: 'projects/907887386166/secrets/TWITCH_BOT_REFRESH_TOKEN/versions/latest'
   LAZY_CONNECT: 'false'
   PUBLIC_URL: 'https://chatsage-907887386166.us-central1.run.app'
-  KEEP_ALIVE_QUEUE: 'self-ping'
   GOOGLE_CLOUD_PROJECT: 'streamsage-bot'
   EVENTSUB_BYPASS: '0'
   ALLOWED_CHANNELS_SECRET_NAME: 'projects/907887386166/secrets/allowed-channels/versions/latest'
@@ -67,8 +66,11 @@ jobs:
             --project ${{ env.GCP_PROJECT_ID }} \
             --allow-unauthenticated \
             --min-instances=0 \
+            --cpu 0.5 \
+            --memory 512Mi \
+            --concurrency 1 \
             --cpu-boost \
-            --set-env-vars="NODE_ENV=${{ env.NODE_ENV }},LOG_LEVEL=${{ env.LOG_LEVEL }},PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }},TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }},TWITCH_CHANNELS_SECRET_NAME=${{ env.TWITCH_CHANNELS_SECRET_NAME }},GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }},STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }},PUBLIC_URL=${{ env.PUBLIC_URL }},LAZY_CONNECT=${{ env.LAZY_CONNECT }},TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }},KEEP_ALIVE_QUEUE=${{ env.KEEP_ALIVE_QUEUE }},GOOGLE_CLOUD_PROJECT=${{ env.GOOGLE_CLOUD_PROJECT }},WEBUI_BASE_URL=${{ env.WEBUI_BASE_URL }},WEBUI_INTERNAL_TOKEN=${{ env.WEBUI_INTERNAL_TOKEN }},ALLOWED_CHANNELS_SECRET_NAME=${{ env.ALLOWED_CHANNELS_SECRET_NAME }}" \
+            --set-env-vars="NODE_ENV=${{ env.NODE_ENV }},LOG_LEVEL=${{ env.LOG_LEVEL }},PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }},TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }},TWITCH_CHANNELS_SECRET_NAME=${{ env.TWITCH_CHANNELS_SECRET_NAME }},GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }},STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }},PUBLIC_URL=${{ env.PUBLIC_URL }},LAZY_CONNECT=${{ env.LAZY_CONNECT }},TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }},GOOGLE_CLOUD_PROJECT=${{ env.GOOGLE_CLOUD_PROJECT }},WEBUI_BASE_URL=${{ env.WEBUI_BASE_URL }},WEBUI_INTERNAL_TOKEN=${{ env.WEBUI_INTERNAL_TOKEN }},ALLOWED_CHANNELS_SECRET_NAME=${{ env.ALLOWED_CHANNELS_SECRET_NAME }}" \
             --set-secrets="GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest,TWITCH_CLIENT_ID=TWITCH_CLIENT_ID:latest,TWITCH_CLIENT_SECRET=TWITCH_CLIENT_SECRET:latest,TWITCH_EVENTSUB_SECRET=twitch-eventsub-secret:latest,TWITCH_BOT_REFRESH_TOKEN=TWITCH_BOT_REFRESH_TOKEN:latest" \
             --labels="managed-by=github-actions,commit-sha=${{ github.sha }}" \
             --format="get(status.url)")
@@ -77,3 +79,52 @@ jobs:
       - name: Show Deployment URL
         run: |
           echo "Deployed to Cloud Run: ${{ steps.deploy.outputs.url }}"
+
+      - name: Prune old revisions
+        continue-on-error: true
+        run: |
+          KEEP=5
+          for REV in $(gcloud run revisions list \
+            --service ${{ env.CLOUD_RUN_SERVICE_NAME }} \
+            --region ${{ env.GCP_REGION }} \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --format="value(REVISION)" \
+            --sort-by="~metadata.creationTimestamp" | tail -n +$((KEEP + 1))); do
+            if gcloud run services describe ${{ env.CLOUD_RUN_SERVICE_NAME }} \
+              --region ${{ env.GCP_REGION }} \
+              --project ${{ env.GCP_PROJECT_ID }} \
+              --format="value(spec.traffic[].revisionName)" 2>/dev/null | grep -q "$REV"; then
+              echo "Skipping active revision: $REV"
+            else
+              echo "Deleting revision: $REV"
+              gcloud run revisions delete "$REV" \
+                --region ${{ env.GCP_REGION }} \
+                --project ${{ env.GCP_PROJECT_ID }} \
+                --quiet || echo "Failed to delete $REV (may already be gone)"
+            fi
+          done
+
+      - name: Prune old container images
+        continue-on-error: true
+        run: |
+          KEEP=5
+          REPO="us-central1-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/cloud-run-source-deploy/${{ env.CLOUD_RUN_SERVICE_NAME }}"
+          DIGESTS=$(gcloud artifacts docker images list "$REPO" \
+            --sort-by="~CREATE_TIME" --format="value(DIGEST)" --limit=999 2>/dev/null)
+
+          TOTAL=$(echo "$DIGESTS" | grep -c . || true)
+          DELETE_COUNT=$((TOTAL - KEEP))
+
+          if [ "$DELETE_COUNT" -le 0 ]; then
+            echo "Only $TOTAL images found, nothing to prune (keeping $KEEP)"
+            exit 0
+          fi
+
+          echo "Pruning $DELETE_COUNT old images (keeping newest $KEEP of $TOTAL)"
+          echo "$DIGESTS" | tail -n "$DELETE_COUNT" | while IFS= read -r digest; do
+            echo "Deleting ${digest:0:12}..."
+            gcloud artifacts docker images delete \
+              "${REPO}@${digest}" \
+              --project ${{ env.GCP_PROJECT_ID }} --quiet --delete-tags \
+              || echo "Failed to delete ${digest:0:12} (may be in use)"
+          done

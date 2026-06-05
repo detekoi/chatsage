@@ -121,11 +121,7 @@ class LifecycleManager {
             if (wasLive) logger.info(`LifecycleManager: Stream ${login} went OFFLINE.`);
         }
 
-        // Trigger IRC actor response
         await this.reassessConnectionState();
-
-        // Note: Keep-alive logic removed - using min-instances=1 instead
-        // Bot now stays alive continuously without needing keep-alive pings
     }
 
     /**

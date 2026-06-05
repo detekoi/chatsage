@@ -1,6 +1,6 @@
 import http from 'http';
 import logger from '../lib/logger.js';
-import { eventSubHandler, handleKeepAlivePing } from '../components/twitch/eventsub.js';
+import { eventSubHandler } from '../components/twitch/eventsub.js';
 import { getSecretManagerStatus } from '../lib/secretManager.js';
 
 /**
@@ -59,19 +59,7 @@ export async function createHealthServer({ port, isDev, getIsFullyInitialized })
             return;
         }
 
-        // Keep-alive ping endpoint (called by Cloud Tasks)
-        if (req.method === 'POST' && req.url === '/keep-alive') {
-            try {
-                await handleKeepAlivePing();
-                res.writeHead(200, { 'Content-Type': 'text/plain' });
-                res.end('OK');
-            } catch (error) {
-                logger.error({ err: error }, 'Error handling keep-alive ping');
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('Internal Server Error');
-            }
-            return;
-        }
+
 
         // Health check endpoints (respond quickly)
         if ((req.method === 'GET' || req.method === 'HEAD') && (req.url === '/healthz' || req.url === '/')) {

@@ -78,26 +78,7 @@ function shouldProcessEvent(req) {
     return true;
 }
 
-/**
- * Cleans up any existing keep-alive tasks on startup to prevent orphaned tasks
- * from previous instances from interfering with the new instance.
- *
- * Note: Keep-alive is now managed by KeepAliveActor, so this is a no-op.
- */
-export async function cleanupKeepAliveTasks() {
-    logger.debug('Cleaning up any orphaned keep-alive tasks...');
-    // Keep-alive is now managed by KeepAliveActor in LifecycleManager
-    // No action needed here
-}
 
-/**
- * Legacy endpoint - no longer used with in-process keep-alive
- * Kept for backwards compatibility but does nothing
- * @deprecated Use in-process KeepAliveActor instead
- */
-export async function handleKeepAlivePing() {
-    logger.debug('Legacy /keep-alive endpoint called - now using in-process keep-alive');
-}
 
 /**
  * Manually clear phantom EventSub entries (useful for debugging/cleanup)
@@ -195,7 +176,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
 
-                // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
+                // Notify Lifecycle Manager for stream tracking and autochat
                 await lifecycle.onStreamStatusChange(login, true);
 
                 // Inform AutoChatManager so it can greet once
@@ -211,7 +192,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 const login = String(broadcaster_user_name).toLowerCase();
                 logger.info(`🔌 ${login} went offline.`);
 
-                // Notify Lifecycle Manager (which will manage keep-alive via KeepAliveActor)
+                // Notify Lifecycle Manager for stream tracking
                 await lifecycle.onStreamStatusChange(login, false);
 
                 // Clear the stream context
