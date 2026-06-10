@@ -78,6 +78,11 @@ const gameHandler = {
                 const gameInfo = await getCurrentGameInfo(channelName);
                 if (gameInfo && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') {
                     await handleGameInfoResponse(channel, channelName, userName, gameInfo, replyToId);
+                } else if (gameInfo?.streamTitle && gameInfo.streamTitle !== 'Unknown' && gameInfo.streamTitle !== 'N/A') {
+                    // No category set but stream has a title — use it
+                    logger.info(`[${channelName}] No game category set, but stream title available: "${gameInfo.streamTitle}"`);
+                    const titleBasedInfo = { ...gameInfo, gameName: gameInfo.streamTitle };
+                    await handleGameInfoResponse(channel, channelName, userName, titleBasedInfo, replyToId);
                 } else {
                     logger.info(`[${channelName}] No current game set in context for basic !game command.`);
                     enqueueMessage(channel, `I don't see a game set for the stream right now.`, { replyToId });
@@ -106,7 +111,13 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
         // Removed confirmation message to reduce chat verbosity
         // Get the official game info from the API/context FIRST
         const gameInfo = await getCurrentGameInfo(channelName);
-        const officialGameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
+        let officialGameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
+
+        // Fallback to stream title when no game category is set
+        if (!officialGameName && gameInfo?.streamTitle && gameInfo.streamTitle !== 'Unknown' && gameInfo.streamTitle !== 'N/A') {
+            logger.info(`[${channelName}] No game category for image analysis, falling back to stream title: "${gameInfo.streamTitle}"`);
+            officialGameName = gameInfo.streamTitle;
+        }
 
         if (!officialGameName) {
             enqueueMessage(channel, `Couldn't determine the current game. The channel might not be streaming a game.`, { replyToId });
@@ -357,12 +368,22 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
     try {
         // 1. Get Current Game Name
         const gameInfo = await getCurrentGameInfo(channelName);
-        const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
+        let gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
-        if (!gameName) {
-            // Softer, user-friendly guidance that acknowledges transient fetch issues
+        // Fallback: if no category is set but the stream has a title, use the title as context
+        // This handles streams where the broadcaster hasn't set a game category on Twitch
+        const streamTitle = (gameInfo?.streamTitle && gameInfo.streamTitle !== 'Unknown' && gameInfo.streamTitle !== 'N/A') ? gameInfo.streamTitle : null;
+
+        if (!gameName && !streamTitle) {
+            // No game AND no title — truly can't determine what's being played
             enqueueMessage(channel, `I'm fetching the current game info. Please try "!game ${helpQuery}" again in a few seconds, or include the game name like "!search <game> ${helpQuery}".`, { replyToId });
             return;
+        }
+
+        if (!gameName && streamTitle) {
+            // Use the stream title as a proxy for the game name
+            logger.info(`[${channelName}] No game category set, falling back to stream title: "${streamTitle}"`);
+            gameName = streamTitle;
         }
 
         // 2. Get Context & Formulate Search Query
