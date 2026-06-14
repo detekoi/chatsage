@@ -5,14 +5,18 @@
 import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { getUsersByLogin } from './helixClient.js';
+import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement } from './helixClient.js';
 import { getAppAccessToken } from './auth.js';
 
 // Cache for the bot's user ID
 let cachedBotUserId = null;
 
+// Cache for broadcaster IDs keyed by channel name
+const broadcasterIdCache = new Map();
+
 export function _resetCache() {
     cachedBotUserId = null;
+    broadcasterIdCache.clear();
 }
 
 /**
@@ -122,6 +126,72 @@ export async function sendMessage(channelName, message, options = {}) {
             err: error.response ? error.response.data : error.message,
             channel: cleanChannelName
         }, 'Error sending chat message via Helix');
+        return false;
+    }
+}
+
+/**
+ * Resolves a channel name to a broadcaster ID, with caching.
+ * @param {string} cleanChannelName - Lowercase channel name without '#'
+ * @returns {Promise<string|null>} The broadcaster ID, or null if not found
+ */
+async function _getBroadcasterId(cleanChannelName) {
+    const cached = broadcasterIdCache.get(cleanChannelName);
+    if (cached) return cached;
+
+    const users = await getUsersByLogin([cleanChannelName]);
+    if (!users || users.length === 0) return null;
+
+    const id = users[0].id;
+    broadcasterIdCache.set(cleanChannelName, id);
+    return id;
+}
+
+/**
+ * Sends an announcement to a specific channel using the Helix API.
+ * Announcements appear with a colored highlight bar in chat.
+ *
+ * @param {string} channelName - The name of the channel to send to
+ * @param {string} message - The announcement text (max 500 characters)
+ * @param {string} [color='primary'] - Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'
+ * @returns {Promise<boolean>} - True if successful, false otherwise
+ */
+export async function sendAnnouncement(channelName, message, color = 'primary') {
+    if (!channelName || !message) {
+        logger.warn('sendAnnouncement called with missing channel or message');
+        return false;
+    }
+
+    const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
+
+    try {
+        // Resolve broadcaster ID and bot ID in parallel
+        const [broadcasterId, botId] = await Promise.all([
+            _getBroadcasterId(cleanChannelName),
+            getBotUserId(),
+        ]);
+
+        if (!broadcasterId) {
+            logger.error({ channelName: cleanChannelName }, 'Could not find broadcaster ID for announcement');
+            return false;
+        }
+        if (!botId) {
+            logger.error('Could not determine Bot User ID for announcement');
+            return false;
+        }
+
+        const success = await helixSendAnnouncement(broadcasterId, botId, message, color);
+
+        if (success) {
+            logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) }, 'Sent announcement via Helix');
+        }
+
+        return success;
+    } catch (error) {
+        logger.error({
+            err: error.response ? error.response.data : error.message,
+            channel: cleanChannelName,
+        }, 'Error sending announcement via Helix');
         return false;
     }
 }

@@ -406,6 +406,57 @@ async function getUsersById(userIds, context = null) {
 }
 
 
+/**
+ * Sends an announcement to a broadcaster's chat room via the Helix API.
+ * Announcements appear with a colored highlight bar in chat.
+ * @param {string} broadcasterId - The broadcaster's user ID.
+ * @param {string} moderatorId - The moderator's user ID (or broadcaster's own ID).
+ * @param {string} message - The announcement text (max 500 characters).
+ * @param {string} [color='primary'] - Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
+ * @returns {Promise<boolean>} True if the announcement was sent successfully.
+ */
+async function sendAnnouncement(broadcasterId, moderatorId, message, color = 'primary') {
+    if (!broadcasterId || !moderatorId || !message) {
+        logger.warn({ broadcasterId, moderatorId, hasMessage: !!message }, 'sendAnnouncement called with missing params');
+        return false;
+    }
+
+    const client = getHelixClient();
+    const params = new URLSearchParams();
+    params.append('broadcaster_id', broadcasterId);
+    params.append('moderator_id', moderatorId);
+
+    const body = { message };
+    if (color && color !== 'primary') {
+        body.color = color;
+    }
+
+    try {
+        await retryWithBackoff(async () => {
+            return await client.post('/chat/announcements', body, {
+                params,
+                meta: { context: `announcement to ${broadcasterId}` },
+            });
+        }, 2, 1000);
+
+        logger.info({
+            broadcasterId,
+            moderatorId,
+            color,
+            messageLength: message.length,
+        }, 'Successfully sent chat announcement');
+        return true;
+    } catch (error) {
+        logger.error({
+            err: { message: error.message, code: error.code, status: error.response?.status },
+            broadcasterId,
+            moderatorId,
+            color,
+        }, 'Failed to send chat announcement');
+        return false;
+    }
+}
+
 // Export initializer, getter, and specific API call functions
 export {
     initializeHelixClient,
@@ -415,6 +466,7 @@ export {
     getUsersById,
     getLiveStreams,
     getSharedChatSession,
+    sendAnnouncement,
 };
 
 // Helper: get follower relationship with broadcaster user token

@@ -1,5 +1,5 @@
 import logger from '../../lib/logger.js';
-import { enqueueMessage } from '../../lib/ircSender.js';
+import { enqueueMessage, enqueueAnnouncement } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/geminiClient.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
@@ -142,7 +142,7 @@ async function maybeSendGreeting(channelName) {
     const prompt = `The stream just went live. Write one warm, concise greeting for chat. ≤25 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'primary');
         recordAutoText(state, text);
         state.greetedOnStart = true;
         state.lastAutoAtMs = now();
@@ -319,7 +319,7 @@ async function maybeSendFarewell(channelName) {
     const prompt = `The stream just ended. Write one warm, concise farewell message for chat. ≤25 words. No emojis.`;
     const text = await generateStandardResponse(contextPrompt, prompt) || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'primary');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -345,7 +345,7 @@ async function maybeSendFollowCelebration(channelName) {
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -360,7 +360,7 @@ async function maybeSendSubscriptionCelebration(channelName) {
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -377,7 +377,7 @@ async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumul
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'green');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -421,7 +421,7 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
     if (text) {
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'orange');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -566,7 +566,7 @@ async function sendAdNotification(channelName, type, seconds, prefetchedText) {
         }
         if (!text) return;
 
-        await enqueueMessage(`#${channelName}`, text);
+        await enqueueAnnouncement(`#${channelName}`, text, 'purple');
         const state = getState(channelName);
         recordAutoText(state, text);
     } catch (error) {

@@ -35,6 +35,8 @@ const SCOPES = [
     // Moderation & followers
     'channel:moderate',
     'moderator:read:followers',
+    // Announcements
+    'moderator:manage:announcements',
 ].join(' ');
 
 if (!CLIENT_ID || !CLIENT_SECRET) {

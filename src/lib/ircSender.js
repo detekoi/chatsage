@@ -1,5 +1,5 @@
 import logger from './logger.js';
-import { sendMessage as helixSendMessage } from '../components/twitch/chatClient.js';
+import { sendMessage as helixSendMessage, sendAnnouncement as helixSendAnnouncement } from '../components/twitch/chatClient.js';
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/geminiClient.js';
@@ -129,21 +129,36 @@ async function _processMessageQueue() {
     logger.debug(`Starting chat sender queue processing (length: ${messageQueue.length})`);
 
     while (messageQueue.length > 0) {
-        const { channel, text, replyToId } = messageQueue.shift(); // Get FIFO message
-        logger.debug(`_processMessageQueue: processing message - channel=${channel}, textLength=${text.length}`);
-        logger.debug(`Sending queued message to ${channel}: "${text.substring(0, 30)}..." (replyTo: ${replyToId || 'none'})`);
+        const item = messageQueue.shift();
+        const { channel, text, replyToId, type, color } = item;
+        logger.debug(`_processMessageQueue: processing ${type} - channel=${channel}, textLength=${text.length}`);
+        logger.debug(`Sending queued ${type} to ${channel}: "${text.substring(0, 30)}..." (replyTo: ${replyToId || 'none'})`);
         try {
-            const options = replyToId ? { replyToId } : {};
-            const success = await helixSendMessage(channel, text, options);
-            if (success) {
-                logger.debug(`_processMessageQueue: message sent successfully via Helix`);
+            let success = false;
+
+            if (type === 'announcement') {
+                // Try sending as announcement first
+                success = await helixSendAnnouncement(channel, text, color || 'primary');
+                if (!success) {
+                    // Fallback to regular message if announcement fails
+                    logger.warn({ channel, color }, 'Announcement failed, falling back to regular message');
+                    const options = replyToId ? { replyToId } : {};
+                    success = await helixSendMessage(channel, text, options);
+                }
             } else {
-                logger.warn({ channel, text: `"${text.substring(0, 30)}..."` }, 'Helix sendMessage returned false');
+                const options = replyToId ? { replyToId } : {};
+                success = await helixSendMessage(channel, text, options);
+            }
+
+            if (success) {
+                logger.debug(`_processMessageQueue: ${type} sent successfully via Helix`);
+            } else {
+                logger.warn({ channel, text: `"${text.substring(0, 30)}..."` }, `Helix send${type === 'announcement' ? 'Announcement' : 'Message'} returned false`);
             }
             await sleep(SEND_INTERVAL_MS);
         } catch (error) {
-            logger.debug(`_processMessageQueue: error sending message - ${error.message}`);
-            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null }, 'Failed to send queued message via Helix.');
+            logger.debug(`_processMessageQueue: error sending ${type} - ${error.message}`);
+            logger.error({ err: error, channel, text: `"${text.substring(0, 30)}..."`, replyToId: replyToId || null, type }, 'Failed to send queued item via Helix.');
             await sleep(SEND_INTERVAL_MS);
         }
     }
@@ -212,6 +227,68 @@ async function _translateIfNeeded(channelName, text) {
 }
 
 /**
+ * Shared preprocessing pipeline: translate, summarize, and truncate text.
+ * @param {string} channel Channel name with '#'.
+ * @param {string} text Raw message text.
+ * @param {boolean} skipTranslation If true, skips translation.
+ * @param {boolean} skipLengthProcessing If true, skips summarization and truncation.
+ * @param {string} label Log label ('Message' or 'Announcement') for observability.
+ * @returns {Promise<string>} Processed text ready for queuing.
+ */
+async function _preprocessText(channel, text, skipTranslation, skipLengthProcessing, label = 'Message') {
+    let finalText = text;
+
+    // Translate if needed (unless explicitly skipped)
+    if (!skipTranslation) {
+        const channelName = channel.substring(1); // Remove # prefix
+        finalText = await _translateIfNeeded(channelName, text);
+    }
+
+    // Handle length limits with summarization fallback (only if not already processed)
+    if (!skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+        logger.info(`[IRC Sender] ${label} too long (${finalText.length} chars > ${MAX_IRC_MESSAGE_LENGTH}), attempting LLM summarization.`);
+
+        try {
+            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
+            if (summary?.trim()) {
+                const beforeLength = finalText.length;
+                finalText = summary.trim();
+                // Hard clamp to target length to guarantee Twitch-safe length even if model slightly exceeds target
+                if (finalText.length > SUMMARY_TARGET_LENGTH) {
+                    logger.info(`[IRC Sender] Summary still too long (${finalText.length} > ${SUMMARY_TARGET_LENGTH}), applying intelligent truncation.`);
+                    finalText = _intelligentTruncate(finalText, SUMMARY_TARGET_LENGTH);
+                }
+                logger.info(`[IRC Sender] LLM summarization successful: ${beforeLength} chars → ${finalText.length} chars`);
+            } else {
+                logger.warn(`[IRC Sender] LLM summarization failed. Falling back to intelligent truncation at ${MAX_IRC_MESSAGE_LENGTH} chars.`);
+                finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+                logger.info(`[IRC Sender] Intelligent truncation applied: final length ${finalText.length} chars`);
+            }
+        } catch (error) {
+            logger.error({ err: error }, `[IRC Sender] Error during LLM summarization. Falling back to intelligent truncation.`);
+            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+            logger.info(`[IRC Sender] Intelligent truncation applied after error: final length ${finalText.length} chars`);
+        }
+
+        // Final safety check in case summarization still produced too long text
+        if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+            logger.warn(`[IRC Sender] ${label} STILL too long after processing (${finalText.length} chars), applying emergency truncation.`);
+            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+            logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
+        }
+    } else if (skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
+        // Emergency fallback: if length processing was skipped but message is still too long
+        logger.warn(`[IRC Sender] ${label} marked as pre-processed but still too long (${finalText.length} chars). Applying emergency truncation.`);
+        finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
+        logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
+    } else if (!skipLengthProcessing) {
+        logger.debug(`[IRC Sender] ${label} length OK (${finalText.length} chars ≤ ${MAX_IRC_MESSAGE_LENGTH}), no processing needed.`);
+    }
+
+    return finalText;
+}
+
+/**
  * Adds a message to the rate-limited send queue.
  * Translates the message if the channel has a language setting.
  * Summarizes message if it exceeds MAX_IRC_MESSAGE_LENGTH.
@@ -241,56 +318,9 @@ async function enqueueMessage(channel, text, options = {}) {
         skipLengthProcessing = !!options.skipLengthProcessing;
     }
 
-    let finalText = text;
+    const finalText = await _preprocessText(channel, text, skipTranslation, skipLengthProcessing, 'Message');
 
-    // Translate if needed (unless explicitly skipped)
-    if (!skipTranslation) {
-        const channelName = channel.substring(1); // Remove # prefix
-        finalText = await _translateIfNeeded(channelName, text);
-    }
-
-    // Handle length limits with summarization fallback (only if not already processed)
-    if (!skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-        logger.info(`[IRC Sender] Message too long (${finalText.length} chars > ${MAX_IRC_MESSAGE_LENGTH}), attempting LLM summarization.`);
-
-        try {
-            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
-            if (summary?.trim()) {
-                const beforeLength = finalText.length;
-                finalText = summary.trim();
-                // Hard clamp to 450 to guarantee Twitch-safe length even if model slightly exceeds target
-                if (finalText.length > SUMMARY_TARGET_LENGTH) {
-                    logger.info(`[IRC Sender] Summary still too long (${finalText.length} > ${SUMMARY_TARGET_LENGTH}), applying intelligent truncation.`);
-                    finalText = _intelligentTruncate(finalText, SUMMARY_TARGET_LENGTH);
-                }
-                logger.info(`[IRC Sender] LLM summarization successful: ${beforeLength} chars → ${finalText.length} chars`);
-            } else {
-                logger.warn(`[IRC Sender] LLM summarization failed. Falling back to intelligent truncation at ${MAX_IRC_MESSAGE_LENGTH} chars.`);
-                finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
-                logger.info(`[IRC Sender] Intelligent truncation applied: final length ${finalText.length} chars`);
-            }
-        } catch (error) {
-            logger.error({ err: error }, `[IRC Sender] Error during LLM summarization. Falling back to intelligent truncation.`);
-            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
-            logger.info(`[IRC Sender] Intelligent truncation applied after error: final length ${finalText.length} chars`);
-        }
-
-        // Final safety check in case summarization still produced too long text
-        if (finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-            logger.warn(`[IRC Sender] Message STILL too long after processing (${finalText.length} chars), applying emergency truncation.`);
-            finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
-            logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
-        }
-    } else if (skipLengthProcessing && finalText.length > MAX_IRC_MESSAGE_LENGTH) {
-        // Emergency fallback: if length processing was skipped but message is still too long
-        logger.warn(`[IRC Sender] Message marked as pre-processed but still too long (${finalText.length} chars). Applying emergency truncation.`);
-        finalText = _intelligentTruncate(finalText, MAX_IRC_MESSAGE_LENGTH);
-        logger.info(`[IRC Sender] Emergency truncation complete: final length ${finalText.length} chars`);
-    } else if (!skipLengthProcessing) {
-        logger.debug(`[IRC Sender] Message length OK (${finalText.length} chars ≤ ${MAX_IRC_MESSAGE_LENGTH}), no processing needed.`);
-    }
-
-    messageQueue.push({ channel, text: finalText, replyToId });
+    messageQueue.push({ channel, text: finalText, replyToId, type: 'message' });
     logger.info(`[IRC Sender] Message queued for ${channel}: ${finalText.length} chars. Queue size: ${messageQueue.length}`);
 
     // Trigger processing if not already running
@@ -336,10 +366,42 @@ async function waitForQueueEmpty() {
     }
 }
 
+/**
+ * Adds an announcement to the rate-limited send queue.
+ * Announcements appear with a colored highlight bar in Twitch chat.
+ * If the announcement API call fails, falls back to a regular chat message.
+ * @param {string} channel Channel name with '#'.
+ * @param {string} text Announcement text.
+ * @param {string} [color='primary'] Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
+ * @param {object} [options={}] Optional params.
+ * @param {boolean} [options.skipTranslation=false] If true, skips translation.
+ * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation.
+ */
+async function enqueueAnnouncement(channel, text, color = 'primary', options = {}) {
+    if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
+        logger.warn({ channel, text }, 'Attempted to queue invalid announcement.');
+        return;
+    }
+
+    const skipTranslation = !!(options && options.skipTranslation);
+    const skipLengthProcessing = !!(options && options.skipLengthProcessing);
+
+    const finalText = await _preprocessText(channel, text, skipTranslation, skipLengthProcessing, 'Announcement');
+
+    messageQueue.push({ channel, text: finalText, replyToId: null, type: 'announcement', color });
+    logger.info(`[IRC Sender] Announcement queued for ${channel}: ${finalText.length} chars, color=${color}. Queue size: ${messageQueue.length}`);
+
+    // Trigger processing if not already running
+    if (!isSending) {
+        _processMessageQueue().catch(err => logger.error({ err }, "Error in _processMessageQueue trigger"));
+    }
+}
+
 // Export the public functions
 export {
     initializeIrcSender,
     enqueueMessage,
+    enqueueAnnouncement,
     clearMessageQueue,
     waitForQueueEmpty,
 };
