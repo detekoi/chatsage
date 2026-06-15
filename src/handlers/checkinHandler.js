@@ -8,6 +8,7 @@ import { parseVariables } from '../components/customCommands/variableParser.js';
 import { resolvePrompt } from '../components/customCommands/promptResolver.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { buildContextPrompt } from '../components/llm/gemini/prompts.js';
+import { CHECKIN_SOURCE } from '../components/llm/inferenceHistoryStorage.js';
 
 /**
  * Handle a Channel Points redemption event for the Daily Check-In feature.
@@ -76,22 +77,32 @@ export async function handleCheckinRedemption(event) {
         try {
             const resolvedPrompt = await parseVariables(config.aiPrompt, context);
 
-            // Gather stream context for richer AI responses
+            // Gather stream context and chat context for richer AI responses
             let streamContextString = null;
             let botLanguage = null;
+            let chatContext = null;
             try {
                 const contextManager = getContextManager();
                 botLanguage = contextManager.getBotLanguage(channelLogin);
                 const llmContext = contextManager.getContextForLLM(channelLogin, userName, '');
                 if (llmContext) {
                     streamContextString = buildContextPrompt(llmContext);
+                    if (llmContext.recentChatHistory) {
+                        chatContext = llmContext.recentChatHistory;
+                    }
                 }
             } catch (ctxError) {
                 logger.debug({ err: ctxError, channel: channelLogin },
                     '[CheckinHandler] Could not gather stream context, proceeding without it');
             }
 
-            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString, true /* isCheckin */);
+            // resolvePrompt encapsulates the full dedup lifecycle:
+            // fetch history → inject into prompt → generate → log response
+            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString, true /* isCheckin */, {
+                channel: channelLogin,
+                source: CHECKIN_SOURCE,
+                chatContext,
+            });
 
             const elapsed = Date.now() - startTime;
 

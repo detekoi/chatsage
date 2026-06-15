@@ -15,6 +15,7 @@ import { getChannelFollower, getUsersByLogin } from '../twitch/helixClient.js';
 import { getBroadcasterAccessToken } from '../twitch/broadcasterTokenHelper.js';
 import { formatFollowAge } from '../customCommands/variableParser.js';
 import { resolvePrompt } from '../customCommands/promptResolver.js';
+import { customCommandSource } from '../llm/inferenceHistoryStorage.js';
 import config from '../../config/index.js';
 
 
@@ -324,6 +325,8 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         const contextManager = getContextManager();
         const streamContext = contextManager.getStreamContextSnapshot(channelName);
 
+        const isPromptCommand = customCmd.type === 'prompt';
+
         // Resolve the use count before parsing variables
         const useCount = await useCountPromise;
 
@@ -341,7 +344,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         // Determine final output string based on command type
         let finalOutput = resolvedText;
         let skipTranslation = false;
-        if (customCmd.type === 'prompt') {
+        if (isPromptCommand) {
             // For AI commands, generate directly in the target language if botlang is set
             const botLanguage = contextManager.getBotLanguage(channelName);
             if (botLanguage) {
@@ -349,7 +352,32 @@ async function _tryCustomCommand(channelName, tags, command, args) {
             } else {
                 logger.debug({ command, channel: channelName }, 'Passing resolved prompt to Gemini');
             }
-            finalOutput = await resolvePrompt(resolvedText, botLanguage || null);
+
+            // Build chat context from recent messages for conversational awareness
+            let chatContext = null;
+            try {
+                const llmContext = contextManager.getContextForLLM(channelName, displayName, '');
+                if (llmContext?.recentChatHistory) {
+                    chatContext = llmContext.recentChatHistory;
+                }
+            } catch (ctxError) {
+                logger.debug({ err: ctxError, channel: channelName },
+                    '[CommandProcessor] Could not gather chat context, proceeding without it');
+            }
+
+            // resolvePrompt encapsulates the full dedup lifecycle:
+            // fetch history → inject into prompt → generate → log response
+            finalOutput = await resolvePrompt(resolvedText, botLanguage || null, null, false, {
+                channel: channelName,
+                source: customCommandSource(command),
+                chatContext,
+            });
+
+            if (!finalOutput) {
+                // AI generation failed — send a user-friendly fallback
+                finalOutput = "Sorry, I couldn't come up with a response for that right now.";
+            }
+
             // Skip redundant translation if the LLM already generated in the target language
             if (botLanguage) {
                 skipTranslation = true;

@@ -7,6 +7,7 @@ jest.mock('../../../src/components/customCommands/variableParser.js');
 jest.mock('../../../src/components/customCommands/promptResolver.js');
 jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/llm/gemini/prompts.js');
+jest.mock('../../../src/components/llm/inferenceHistoryStorage.js');
 
 import { handleCheckinRedemption } from '../../../src/handlers/checkinHandler.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
@@ -15,6 +16,7 @@ import { parseVariables } from '../../../src/components/customCommands/variableP
 import { resolvePrompt } from '../../../src/components/customCommands/promptResolver.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
 import { buildContextPrompt } from '../../../src/components/llm/gemini/prompts.js';
+import { CHECKIN_SOURCE } from '../../../src/components/llm/inferenceHistoryStorage.js';
 
 describe('checkinHandler', () => {
     const baseEvent = {
@@ -33,7 +35,7 @@ describe('checkinHandler', () => {
         jest.clearAllMocks();
         parseVariables.mockImplementation(async (template) => template);
         getContextManager.mockReturnValue(mockContextManager);
-        mockContextManager.getContextForLLM.mockReturnValue({ channelName: 'testchannel', streamGame: 'Just Chatting' });
+        mockContextManager.getContextForLLM.mockReturnValue({ channelName: 'testchannel', streamGame: 'Just Chatting', recentChatHistory: 'user1: hello\nuser2: hey' });
         mockContextManager.getBotLanguage.mockReturnValue(null);
         buildContextPrompt.mockReturnValue('Channel: testchannel\nGame: Just Chatting');
     });
@@ -171,11 +173,13 @@ describe('checkinHandler', () => {
             );
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith('testchannel', 'TestViewer', '');
             expect(buildContextPrompt).toHaveBeenCalled();
+            // Dedup lifecycle is encapsulated — channel+source passed instead of recentHistory
             expect(resolvePrompt).toHaveBeenCalledWith(
                 'Write a fun check-in message for TestViewer, check-in #14',
                 null,
                 'Channel: testchannel\nGame: Just Chatting',
-                true
+                true,
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey' }
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -190,7 +194,8 @@ describe('checkinHandler', () => {
 
             await handleCheckinRedemption(baseEvent);
 
-            expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null, true);
+            expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null, true,
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: null });
         });
 
         test('passes bot language to resolvePrompt when configured', async () => {
@@ -204,7 +209,8 @@ describe('checkinHandler', () => {
                 'resolved prompt',
                 'japanese',
                 'Channel: testchannel\nGame: Just Chatting',
-                true
+                true,
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey' }
             );
         });
 

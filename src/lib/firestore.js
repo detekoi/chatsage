@@ -70,3 +70,14 @@ export function getFirestore() {
 // Re-export commonly used Firestore types so storage modules only need
 // to import from this file, not from @google-cloud/firestore directly.
 export { FieldValue, Timestamp };
+
+/**
+ * Creates an expiration Date from now + the given TTL in days.
+ * Used by storage modules that leverage Firestore TTL policies.
+ *
+ * @param {number} ttlDays - Number of days from now until expiration.
+ * @returns {Date} The expiration date.
+ */
+export function createExpiresAt(ttlDays) {
+    return new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+}

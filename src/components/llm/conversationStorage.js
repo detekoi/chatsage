@@ -7,7 +7,7 @@
 //     --collection-group=conversations \
 //     --project=streamsage-bot
 
-import { getFirestore, Timestamp } from '../../lib/firestore.js';
+import { getFirestore, Timestamp, createExpiresAt } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 
 const CONVERSATIONS_COLLECTION = 'conversations';
@@ -37,7 +37,7 @@ export async function logConversation(channel, userMessage, botResponse, metadat
     try {
         const db = getFirestore();
         const now = new Date();
-        const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
+        const expiresAt = createExpiresAt(TTL_DAYS);
 
         const doc = {
             channel,
