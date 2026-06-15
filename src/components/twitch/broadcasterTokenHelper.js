@@ -121,8 +121,14 @@ export async function getBroadcasterAccessToken(channelName) {
                 }, { merge: true });
             } catch (storeError) {
                 logger.error({ err: storeError, channel: lowerChannel },
-                    '[BroadcasterTokenHelper] CRITICAL: Failed to save rotated refresh token');
-                // Continue - still have a valid access token for this request
+                    '[BroadcasterTokenHelper] CRITICAL: Failed to save rotated refresh token. ' +
+                    'Evicting cache to force re-read on next call.');
+                // Don't cache the new access token — force a fresh refresh on next call
+                // so the failure surfaces immediately rather than after TTL expiry.
+                // The old refresh token may still be valid during Twitch's grace period.
+                tokenCache.delete(lowerChannel);
+                // Still return the valid access token for THIS request
+                return { accessToken: newAccessToken, twitchUserId };
             }
         }
 
@@ -161,4 +167,12 @@ export async function getBroadcasterAccessToken(channelName) {
  */
 export function clearCachedBroadcasterToken(channelName) {
     tokenCache.delete(channelName.toLowerCase());
+}
+
+/**
+ * Clears all cached broadcaster tokens.
+ * Used by test isolation and full state resets.
+ */
+export function clearAllCachedBroadcasterTokens() {
+    tokenCache.clear();
 }

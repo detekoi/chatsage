@@ -409,22 +409,29 @@ async function getUsersById(userIds, context = null) {
 /**
  * Sends an announcement to a broadcaster's chat room via the Helix API.
  * Announcements appear with a colored highlight bar in chat.
+ *
+ * NOTE: This endpoint requires a **user access token** with the
+ * moderator:manage:announcements scope, OR an **app access token** where
+ * the moderator has granted moderator:manage:announcements + user:bot
+ * and the broadcaster has granted channel:bot.
+ *
+ * This function bypasses the shared helixClient Axios instance and makes
+ * a direct axios call, matching the pattern used by getChannelFollower
+ * and getAdScheduleForBroadcaster.
+ *
  * @param {string} broadcasterId - The broadcaster's user ID.
- * @param {string} moderatorId - The moderator's user ID (or broadcaster's own ID).
+ * @param {string} moderatorId - The ID of the user whose token is provided (must be a mod or the broadcaster).
  * @param {string} message - The announcement text (max 500 characters).
+ * @param {string} accessToken - A user or app access token with moderator:manage:announcements scope.
  * @param {string} [color='primary'] - Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
- * @returns {Promise<boolean>} True if the announcement was sent successfully.
+ * @returns {Promise<{success: boolean, status?: number}>}
+ *   success=true on 204, or success=false with the HTTP status on failure.
  */
-async function sendAnnouncement(broadcasterId, moderatorId, message, color = 'primary') {
-    if (!broadcasterId || !moderatorId || !message) {
-        logger.warn({ broadcasterId, moderatorId, hasMessage: !!message }, 'sendAnnouncement called with missing params');
-        return false;
+async function sendAnnouncement(broadcasterId, moderatorId, message, accessToken, color = 'primary') {
+    if (!broadcasterId || !moderatorId || !message || !accessToken) {
+        logger.warn({ broadcasterId, moderatorId, hasMessage: !!message, hasToken: !!accessToken }, 'sendAnnouncement called with missing params');
+        return { success: false };
     }
-
-    const client = getHelixClient();
-    const params = new URLSearchParams();
-    params.append('broadcaster_id', broadcasterId);
-    params.append('moderator_id', moderatorId);
 
     const body = { message };
     if (color && color !== 'primary') {
@@ -433,9 +440,17 @@ async function sendAnnouncement(broadcasterId, moderatorId, message, color = 'pr
 
     try {
         await retryWithBackoff(async () => {
-            return await client.post('/chat/announcements', body, {
-                params,
-                meta: { context: `announcement to ${broadcasterId}` },
+            return await axios.post(`${TWITCH_HELIX_URL}/chat/announcements`, body, {
+                params: {
+                    broadcaster_id: broadcasterId,
+                    moderator_id: moderatorId,
+                },
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Client-ID': config.twitch.clientId,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 15000,
             });
         }, 2, 1000);
 
@@ -445,17 +460,30 @@ async function sendAnnouncement(broadcasterId, moderatorId, message, color = 'pr
             color,
             messageLength: message.length,
         }, 'Successfully sent chat announcement');
-        return true;
+        return { success: true };
     } catch (error) {
-        logger.error({
-            err: { message: error.message, code: error.code, status: error.response?.status },
+        const status = error.response?.status;
+        const logData = {
+            err: { message: error.message, code: error.code, status },
             broadcasterId,
             moderatorId,
             color,
-        }, 'Failed to send chat announcement');
-        return false;
+        };
+
+        if (status === 429) {
+            // Mirror the shared interceptor's rate-limit logging (lines 149-153)
+            const resetTime = error.response.headers['ratelimit-reset'];
+            const resetDate = resetTime ? new Date(parseInt(resetTime, 10) * 1000) : 'N/A';
+            logger.warn({ ...logData, resetTimestamp: resetTime, resetDate },
+                'Announcement rate limit exceeded (429). Limit: one per 2 seconds.');
+        } else {
+            logger.error(logData, 'Failed to send chat announcement');
+        }
+
+        return { success: false, status };
     }
 }
+
 
 // Export initializer, getter, and specific API call functions
 export {

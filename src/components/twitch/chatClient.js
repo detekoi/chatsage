@@ -7,16 +7,18 @@ import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement } from './helixClient.js';
 import { getAppAccessToken } from './auth.js';
+import { getBroadcasterAccessToken, clearCachedBroadcasterToken, clearAllCachedBroadcasterTokens } from './broadcasterTokenHelper.js';
 
 // Cache for the bot's user ID
 let cachedBotUserId = null;
 
-// Cache for broadcaster IDs keyed by channel name
+// Cache for broadcaster IDs keyed by channel name (used by app-token fallback)
 const broadcasterIdCache = new Map();
 
 export function _resetCache() {
     cachedBotUserId = null;
     broadcasterIdCache.clear();
+    clearAllCachedBroadcasterTokens();
 }
 
 /**
@@ -132,6 +134,7 @@ export async function sendMessage(channelName, message, options = {}) {
 
 /**
  * Resolves a channel name to a broadcaster ID, with caching.
+ * Used by the app-token fallback path in sendAnnouncement.
  * @param {string} cleanChannelName - Lowercase channel name without '#'
  * @returns {Promise<string|null>} The broadcaster ID, or null if not found
  */
@@ -151,6 +154,19 @@ async function _getBroadcasterId(cleanChannelName) {
  * Sends an announcement to a specific channel using the Helix API.
  * Announcements appear with a colored highlight bar in chat.
  *
+ * Two authorization paths (per Twitch API docs):
+ *
+ * 1. **Primary — Broadcaster token**: Uses the broadcaster's own user access
+ *    token (with moderator:manage:announcements from the web UI OAuth).
+ *    The broadcaster is always a moderator of their own channel, so
+ *    moderator_id = broadcaster_id.
+ *
+ * 2. **Fallback — App token + bot-as-moderator**: Uses the app access token
+ *    with the bot (WildcatSage) as moderator_id. Requires the bot to have
+ *    moderator:manage:announcements + user:bot scopes (from get-user-token.js)
+ *    and mod status in the channel (or broadcaster granted channel:bot).
+ *    Covers channels where the broadcaster hasn't completed OAuth.
+ *
  * @param {string} channelName - The name of the channel to send to
  * @param {string} message - The announcement text (max 500 characters)
  * @param {string} [color='primary'] - Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'
@@ -165,28 +181,53 @@ export async function sendAnnouncement(channelName, message, color = 'primary') 
     const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
 
     try {
-        // Resolve broadcaster ID and bot ID in parallel
-        const [broadcasterId, botId] = await Promise.all([
+        // Primary path: broadcaster's own user access token
+        const broadcasterAuth = await getBroadcasterAccessToken(cleanChannelName);
+        if (broadcasterAuth) {
+            const { accessToken, twitchUserId: broadcasterId } = broadcasterAuth;
+            const result = await helixSendAnnouncement(broadcasterId, broadcasterId, message, accessToken, color);
+            if (result.success) {
+                logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) },
+                    'Sent announcement via broadcaster token');
+                return true;
+            }
+            // On auth failure (401/403), the token is likely expired or revoked —
+            // evict the cache so the next call re-fetches from Firestore/Twitch
+            if (result.status === 401 || result.status === 403) {
+                clearCachedBroadcasterToken(cleanChannelName);
+                logger.warn({ channel: cleanChannelName, status: result.status },
+                    'Broadcaster token auth failed, evicted cache. Trying app token fallback.');
+            } else {
+                logger.warn({ channel: cleanChannelName, status: result.status },
+                    'Broadcaster token announcement failed, trying app token fallback');
+            }
+        }
+
+        // Fallback path: app access token + bot as moderator
+        // Works if bot has moderator:manage:announcements + user:bot scopes
+        // and has mod status in the channel (or broadcaster granted channel:bot)
+        const [broadcasterId, botId, appAccessToken] = await Promise.all([
             _getBroadcasterId(cleanChannelName),
             getBotUserId(),
+            getAppAccessToken(),
         ]);
 
-        if (!broadcasterId) {
-            logger.error({ channelName: cleanChannelName }, 'Could not find broadcaster ID for announcement');
+        if (!broadcasterId || !botId || !appAccessToken) {
+            logger.error({
+                channel: cleanChannelName,
+                hasBroadcasterId: !!broadcasterId,
+                hasBotId: !!botId,
+                hasAppToken: !!appAccessToken,
+            }, 'Missing required IDs for app-token announcement fallback');
             return false;
         }
-        if (!botId) {
-            logger.error('Could not determine Bot User ID for announcement');
-            return false;
+
+        const fallbackResult = await helixSendAnnouncement(broadcasterId, botId, message, appAccessToken, color);
+        if (fallbackResult.success) {
+            logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) },
+                'Sent announcement via app token fallback');
         }
-
-        const success = await helixSendAnnouncement(broadcasterId, botId, message, color);
-
-        if (success) {
-            logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) }, 'Sent announcement via Helix');
-        }
-
-        return success;
+        return fallbackResult.success;
     } catch (error) {
         logger.error({
             err: error.response ? error.response.data : error.message,
@@ -195,3 +236,4 @@ export async function sendAnnouncement(channelName, message, color = 'primary') 
         return false;
     }
 }
+
