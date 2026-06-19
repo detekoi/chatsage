@@ -4,6 +4,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
 import { searchTool } from '../llm/gemini/tools.js';
+import { calculateStringSimilarity } from '../../lib/stringUtils.js';
 
 // --- Schemas ---
 
@@ -76,30 +77,6 @@ function getGameFromContext(channelName) {
     }
 }
 
-// --- Helper: String similarity (Levenshtein) ---
-export function calculateStringSimilarity(str1, str2) {
-    const s1 = (str1 || "").toLowerCase();
-    const s2 = (str2 || "").toLowerCase();
-    const len1 = s1.length;
-    const len2 = s2.length;
-    const maxLen = Math.max(len1, len2);
-    if (maxLen === 0) return 1.0;
-
-    const dp = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
-    for (let i = 0; i <= len1; i++) dp[i][0] = i;
-    for (let j = 0; j <= len2; j++) dp[0][j] = j;
-
-    for (let i = 1; i <= len1; i++) {
-        for (let j = 1; j <= len2; j++) {
-            if (s1[i - 1] === s2[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1];
-            } else {
-                dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-            }
-        }
-    }
-    return 1 - (dp[len1][len2] / maxLen);
-}
 
 /**
  * Generates a trivia question based on topic and difficulty using Gemini Structured Output.

@@ -7,11 +7,6 @@ jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../src/lib/translationUtils.js');
-jest.mock('../../../../src/components/trivia/triviaQuestionService.js', () => ({
-    generateQuestion: jest.fn(),
-    verifyAnswer: jest.fn(),
-    calculateStringSimilarity: jest.requireActual('../../../../src/components/trivia/triviaQuestionService.js').calculateStringSimilarity,
-}));
 jest.mock('../../../../src/components/riddle/riddleService.js', () => ({
     generateRiddle: jest.fn(),
     verifyRiddleAnswer: jest.fn(),

@@ -3,7 +3,8 @@ import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
-import { generateQuestion, verifyAnswer, calculateStringSimilarity } from './triviaQuestionService.js';
+import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
+import { isTextTooSimilar as _isAnswerTooSimilar } from '../../lib/stringUtils.js';
 import {
     formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
     formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage
@@ -59,43 +60,6 @@ function _buildQuestionSignature(text) {
     const tokens = _tokenizeForSignature(text);
     const uniqueSorted = Array.from(new Set(tokens)).sort();
     return uniqueSorted.join('|');
-}
-
-/**
- * Checks whether a newly generated answer is too similar to any previously excluded answer.
- * Catches exact matches, containment ("Wilbur" in "Orville and Wilbur"), and
- * high Levenshtein similarity (> 0.75).
- * @param {string} newAnswer - The candidate answer to check.
- * @param {string[]} excludedAnswers - Array of lowercased answers to avoid.
- * @returns {boolean} true if the answer should be rejected.
- */
-function _isAnswerTooSimilar(newAnswer, excludedAnswers) {
-    if (!newAnswer || !excludedAnswers || excludedAnswers.length === 0) return false;
-    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const newNorm = norm(newAnswer);
-    if (!newNorm) return false;
-
-    for (const excluded of excludedAnswers) {
-        const exNorm = norm(excluded);
-        if (!exNorm) continue;
-
-        // 1. Exact match
-        if (newNorm === exNorm) return true;
-
-        // 2. Containment: one answer is a substring of the other
-        //    e.g. "wilbur" contained in "orville and wilbur"
-        if (newNorm.length >= 3 && exNorm.length >= 3) {
-            if (newNorm.includes(exNorm) || exNorm.includes(newNorm)) {
-                return true;
-            }
-        }
-
-        // 3. High string similarity (Levenshtein)
-        const similarity = calculateStringSimilarity(newNorm, exNorm);
-        if (similarity > 0.75) return true;
-    }
-
-    return false;
 }
 
 /*

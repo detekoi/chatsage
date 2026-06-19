@@ -3,7 +3,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
-import { calculateStringSimilarity } from '../trivia/triviaQuestionService.js';
+import { isTextTooSimilar as _isLocationTooSimilar } from '../../lib/stringUtils.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
@@ -151,43 +151,6 @@ function _clearTimers(gameState) {
     if (gameState.roundEndTimer) clearTimeout(gameState.roundEndTimer);
     gameState.nextClueTimer = null;
     gameState.roundEndTimer = null;
-}
-
-/**
- * Checks whether a newly selected location is too similar to any previously excluded location.
- * Catches exact matches, containment ("Fuji" in "Mount Fuji"), and
- * high Levenshtein similarity (> 0.75).
- * @param {string} newLocation - The candidate location name.
- * @param {string[]} excludedLocations - Array of location names to avoid.
- * @returns {boolean} true if the location should be rejected.
- */
-function _isLocationTooSimilar(newLocation, excludedLocations) {
-    if (!newLocation || !excludedLocations || excludedLocations.length === 0) return false;
-    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const newNorm = norm(newLocation);
-    if (!newNorm) return false;
-
-    for (const excluded of excludedLocations) {
-        const exNorm = norm(excluded);
-        if (!exNorm) continue;
-
-        // 1. Exact match
-        if (newNorm === exNorm) return true;
-
-        // 2. Containment: one location name is a substring of the other
-        //    e.g. "fuji" contained in "mount fuji"
-        if (newNorm.length >= 3 && exNorm.length >= 3) {
-            if (newNorm.includes(exNorm) || exNorm.includes(newNorm)) {
-                return true;
-            }
-        }
-
-        // 3. High string similarity (Levenshtein)
-        const similarity = calculateStringSimilarity(newNorm, exNorm);
-        if (similarity > 0.75) return true;
-    }
-
-    return false;
 }
 
 // Function to fully reset the game state to idle, clearing multi-round info

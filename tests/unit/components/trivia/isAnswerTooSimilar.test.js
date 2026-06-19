@@ -11,7 +11,6 @@ jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/trivia/triviaQuestionService.js', () => ({
     generateQuestion: jest.fn(),
     verifyAnswer: jest.fn(),
-    calculateStringSimilarity: jest.requireActual('../../../../src/components/trivia/triviaQuestionService.js').calculateStringSimilarity,
 }));
 jest.mock('../../../../src/components/trivia/triviaStorage.js', () => ({
     loadChannelConfig: jest.fn().mockResolvedValue({}),
