@@ -137,6 +137,7 @@ function _getOrCreateChannelState(channelName) {
         channelStates.set(channelName, {
             channelName: channelName,
             broadcasterId: null,
+            broadcasterBio: null,
             chatHistory: [],
             chatSummary: '',
             isSummarizing: false,
@@ -356,6 +357,7 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
 
     return {
         channelName: state.channelName,
+        broadcasterBio: state.broadcasterBio || null,
         streamGame: state.streamContext.game,
         streamGameId: state.streamContext.gameId,
         streamTitle: state.streamContext.title,
@@ -388,6 +390,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
     const allMessages = [];
     const channelSummaries = [];
     const streamInfos = [];
+    const channelBios = [];
 
     for (const channelName of channelNames) {
         if (!channelStates.has(channelName)) {
@@ -420,6 +423,11 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
                 startedAt: state.streamContext.startedAt
             });
         }
+
+        // Collect broadcaster bios
+        if (state.broadcasterBio) {
+            channelBios.push(`[${channelName}] ${state.broadcasterBio}`);
+        }
     }
 
     if (allMessages.length === 0) {
@@ -449,6 +457,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
 
     return {
         channelName: `[Shared: ${channelNames.join(', ')}]`,
+        broadcasterBio: channelBios.length > 0 ? channelBios.join('\n') : null,
         isSharedSession: true,
         participatingChannels: channelNames,
         streamGame: streamInfos.map(s => s.game).join(' & ') || 'N/A',
@@ -503,6 +512,9 @@ async function getBroadcasterId(channelName) {
 
         if (users && users.length > 0 && users[0].id) {
             state.broadcasterId = users[0].id;
+            // Always cache bio (even empty string) to prevent re-fetch loops
+            state.broadcasterBio = users[0].description || '';
+            logger.debug(`[${channelName}] Cached broadcaster bio from login lookup`);
             logger.info(`[${channelName}] Successfully fetched and cached broadcaster ID: ${state.broadcasterId}`);
             return state.broadcasterId;
         } else {
@@ -713,6 +725,31 @@ function getStreamContextSnapshot(channelName) {
     return { ...state.streamContext };
 }
 
+/**
+ * Gets the cached broadcaster bio for a channel.
+ * Uses ?? to preserve empty strings (which mean "fetched but blank").
+ * Returns null only when the bio has never been fetched.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {string|null} The broadcaster's bio/description, '' if fetched but blank, or null if not yet fetched.
+ */
+function getBroadcasterBio(channelName) {
+    const state = channelStates.get(channelName);
+    return state?.broadcasterBio ?? null;
+}
+
+/**
+ * Sets the broadcaster bio for a channel (used by the stream info poller for pre-seeded channels).
+ * Accepts empty strings as a valid sentinel meaning "fetched, but broadcaster has no bio."
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} bio - The broadcaster's bio/description (may be empty string).
+ */
+function setBroadcasterBio(channelName, bio) {
+    const state = channelStates.get(channelName);
+    if (!state) return;
+    state.broadcasterBio = typeof bio === 'string' ? bio : null;
+    logger.debug(`[${channelName}] Cached broadcaster bio`);
+}
+
 // Define what the "manager" object exposes
 const manager = {
     initialize: initializeContextManager,
@@ -723,6 +760,8 @@ const manager = {
     getContextForLLM: getContextForLLM,
     getMergedContextForLLM: getMergedContextForLLM,
     getStreamContextSnapshot,
+    getBroadcasterBio,
+    setBroadcasterBio,
     getBroadcasterId: getBroadcasterId,
     getChannelsForPolling: getChannelsForPolling,
     enableUserTranslation,

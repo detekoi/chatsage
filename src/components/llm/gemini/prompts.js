@@ -34,10 +34,12 @@ Avoid these words: chaos, vibe(s), basically, bold move.`;
  */
 export function buildContextPrompt(context) {
     const channelName = context.channelName || "N/A";
+    const bio = context.broadcasterBio || null;
     const game = context.streamGame || "N/A";
     const title = context.streamTitle || "N/A";
     const tags = context.streamTags || "N/A";
     const summary = context.chatSummary || "No summary available.";
     const history = context.recentChatHistory || "No recent messages.";
-    return `Channel: ${channelName}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}`;
+    const bioLine = bio ? `\nChannel bio: ${bio}` : '';
+    return `Channel: ${channelName}${bioLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}`;
 }

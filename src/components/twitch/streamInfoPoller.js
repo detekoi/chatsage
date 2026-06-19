@@ -1,10 +1,16 @@
 import logger from '../../lib/logger.js';
-import { getChannelInformation, getLiveStreams } from './helixClient.js';
+import { getChannelInformation, getLiveStreams, getUsersById } from './helixClient.js';
 import { getContextManager } from '../context/contextManager.js';
 // No need to import helixClient directly here, pass it in
 // No need to import contextManager directly here, pass it in
 
 let pollingIntervalId = null;
+
+// Bio fetch tracking
+const bioFetchedAtMs = new Map(); // channelName -> timestamp of last successful bio fetch
+let bioFetchConsecutiveFailures = 0;
+const BIO_FETCH_MAX_FAILURES = 3; // Circuit breaker: stop attempting after this many consecutive failures
+const BIO_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // Re-fetch bios every 30 minutes to catch profile updates
 
 /**
  * Fetches stream information for a batch of channels.
@@ -84,6 +90,42 @@ async function fetchBatch(channels, helixClient, contextManager, lifecycleManage
 
                     if (wasLive && lifecycleManager) {
                         statusChanges.push({ channel: channel.channelName, isLive: false });
+                    }
+                }
+            }
+        }
+
+        // Fetch and cache broadcaster bios (with TTL-based refresh)
+        if (bioFetchConsecutiveFailures < BIO_FETCH_MAX_FAILURES) {
+            const nowMs = Date.now();
+            const channelsNeedingBioFetch = channels.filter(c => {
+                // null = never fetched; '' or 'text' = already fetched
+                if (contextManager.getBroadcasterBio(c.channelName) === null) return true;
+                // TTL-based refresh for stale bios
+                const lastFetched = bioFetchedAtMs.get(c.channelName);
+                return lastFetched !== undefined && (nowMs - lastFetched) > BIO_REFRESH_INTERVAL_MS;
+            });
+
+            if (channelsNeedingBioFetch.length > 0) {
+                try {
+                    const idsToFetch = channelsNeedingBioFetch.map(c => c.broadcasterId);
+                    const users = await getUsersById(idsToFetch, 'Broadcaster bio fetch');
+                    const userMap = new Map(users.map(u => [u.id, u]));
+                    for (const channel of channelsNeedingBioFetch) {
+                        const user = userMap.get(channel.broadcasterId);
+                        if (user) {
+                            contextManager.setBroadcasterBio(channel.channelName, user.description || '');
+                            bioFetchedAtMs.set(channel.channelName, nowMs);
+                        }
+                    }
+                    bioFetchConsecutiveFailures = 0; // Reset on success
+                    logger.debug(`Fetched broadcaster bios for ${users.length} channel(s)`);
+                } catch (err) {
+                    bioFetchConsecutiveFailures++;
+                    if (bioFetchConsecutiveFailures >= BIO_FETCH_MAX_FAILURES) {
+                        logger.error({ err, failCount: bioFetchConsecutiveFailures }, 'Broadcaster bio fetch failed repeatedly — disabling until restart');
+                    } else {
+                        logger.warn({ err, failCount: bioFetchConsecutiveFailures }, 'Failed to fetch broadcaster bios (will retry next cycle)');
                     }
                 }
             }
