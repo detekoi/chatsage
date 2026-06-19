@@ -1,6 +1,7 @@
 import { getGeminiClient } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
 import { Type as GenAIType } from '@google/genai';
+import { searchTool } from '../llm/gemini/tools.js';
 
 const GeoClueSchema = {
     type: GenAIType.OBJECT,
@@ -38,7 +39,7 @@ Difficulty: ${difficulty}
 
     const model = getGeminiClient();
     try {
-        const tools = (mode === 'game') ? [{ googleSearch: {} }] : undefined;
+        const tools = (mode === 'game') ? searchTool : undefined;
 
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -84,7 +85,7 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
 
     const model = getGeminiClient();
     try {
-        const tools = (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? [{ googleSearch: {} }] : undefined;
+        const tools = (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? searchTool : undefined;
 
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -131,7 +132,7 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
 
     const model = getGeminiClient();
     try {
-        const tools = (mode === 'game') ? [{ googleSearch: {} }] : undefined;
+        const tools = (mode === 'game') ? searchTool : undefined;
 
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],

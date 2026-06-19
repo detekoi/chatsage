@@ -210,7 +210,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
     try {
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-            tools: [{ googleSearch: {} }],
+            tools: searchTool,
             systemInstruction: { parts: [{ text: unifiedSystemInstruction }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
         });

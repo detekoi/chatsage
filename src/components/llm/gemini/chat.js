@@ -1,6 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { getGeminiClient } from './core.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
+import { searchTool } from './tools.js';
 
 // --- NEW: Channel-scoped Chat Sessions ---
 // Maintain a persistent chat per Twitch channel to enable multi-turn context.
@@ -62,7 +63,7 @@ ${initialContext}`;
     const chat = model.startChat({
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
         // Enable Google Search grounding inside the chat session
-        tools: [{ googleSearch: {} }],
+        tools: searchTool,
         history: initialHistory,
         generationConfig: {
             responseMimeType: 'text/plain',

@@ -3,6 +3,7 @@ import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
+import { searchTool } from '../llm/gemini/tools.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
 const META_CONCEPT_BLACKLIST = [
@@ -210,13 +211,12 @@ Return JSON matching the schema.${languageDirective}`;
 
     try {
         // Always provide Google Search tool — Gemini auto-decides whether to use it
-        const tools = [{ googleSearch: {} }];
 
         logger.debug({ topic: actualTopic, language }, `[RiddleService] Generating riddle via Structured Output.`);
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: tools,
+            tools: searchTool,
             generationConfig: {
                 temperature: 0.75,
                 responseMimeType: "application/json",

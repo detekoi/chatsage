@@ -1,6 +1,7 @@
 import { getGeminiClient } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
 import { getLocationSelectionPrompt } from './geoPrompts.js';
+import { searchTool } from '../llm/gemini/tools.js';
 
 
 
@@ -55,7 +56,7 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         };
         if (mode === 'game') {
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
-            generateOptions.tools = [{ googleSearch: {} }];
+            generateOptions.tools = searchTool;
         }
         const result = await ai.models.generateContent(generateOptions);
         const response = result;

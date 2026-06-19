@@ -3,6 +3,7 @@ import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
+import { searchTool } from '../llm/gemini/tools.js';
 
 // --- Schemas ---
 
@@ -165,11 +166,10 @@ Only use Google Search if the question requires very recent or obscure facts tha
         logger.debug({ topic: specificTopic, language }, `[TriviaService] Generating question via Structured Output.`);
 
         // Always provide Google Search tool — Gemini auto-decides whether to use it
-        const tools = [{ googleSearch: {} }];
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: tools,
+            tools: searchTool,
             generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",

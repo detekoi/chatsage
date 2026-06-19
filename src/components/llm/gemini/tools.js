@@ -34,5 +34,5 @@ export const standardAnswerTools = {
     ]
 };
 
-// Configure search tool for Gemini 2.5 models (JavaScript format)
+// Configure search tool for Gemini models (JavaScript format)
 export const searchTool = [{ googleSearch: {} }];
