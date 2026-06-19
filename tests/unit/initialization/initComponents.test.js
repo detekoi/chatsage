@@ -48,7 +48,7 @@ import { initializeGeoGameManager } from '../../../src/components/geo/geoGameMan
 import { initializeTriviaGameManager } from '../../../src/components/trivia/triviaGameManager.js';
 import { initializeRiddleGameManager } from '../../../src/components/riddle/riddleGameManager.js';
 import { startAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
-import { cleanupKeepAliveTasks } from '../../../src/components/twitch/eventsub.js';
+
 import config from '../../../src/config/index.js';
 import logger from '../../../src/lib/logger.js';
 
@@ -270,7 +270,7 @@ describe('Component Initialization', () => {
             await initializeContextAndCommands();
 
             expect(initializeContextManager).toHaveBeenCalledWith(config.twitch.channelsWithIds);
-            expect(cleanupKeepAliveTasks).toHaveBeenCalledTimes(1);
+
             expect(initializeCommandProcessor).toHaveBeenCalledTimes(1);
             expect(initializeIrcSender).toHaveBeenCalledTimes(1);
         });
@@ -340,7 +340,7 @@ describe('Component Initialization', () => {
             initializeGeminiClient.mockReturnValue();
             initializeHelixClient.mockResolvedValue();
             initializeContextManager.mockResolvedValue();
-            cleanupKeepAliveTasks.mockResolvedValue();
+
             initializeCommandProcessor.mockReturnValue();
             initializeIrcSender.mockReturnValue();
             initializeGeoGameManager.mockResolvedValue();

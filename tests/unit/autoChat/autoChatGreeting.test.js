@@ -1,7 +1,7 @@
 import { _getRuntime, notifyStreamOnline, maybeSendGreeting } from '../../../src/components/autoChat/autoChatManager.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
 import { getChannelAutoChatConfig } from '../../../src/components/context/autoChatStorage.js';
-import { enqueueMessage } from '../../../src/lib/ircSender.js';
+import { enqueueAnnouncement } from '../../../src/lib/ircSender.js';
 import { buildContextPrompt, generateStandardResponse, generateSearchResponse } from '../../../src/components/llm/geminiClient.js';
 
 // Mock all dependencies
@@ -37,7 +37,7 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
             categories: { greetings: true },
         });
 
-        enqueueMessage.mockResolvedValue();
+        enqueueAnnouncement.mockResolvedValue();
         buildContextPrompt.mockReturnValue('context prompt');
         generateStandardResponse.mockResolvedValue('Welcome to the stream!');
         generateSearchResponse.mockResolvedValue(null);
@@ -57,7 +57,7 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
         await maybeSendGreeting(CHANNEL);
 
         // Greeting should NOT have been sent
-        expect(enqueueMessage).not.toHaveBeenCalled();
+        expect(enqueueAnnouncement).not.toHaveBeenCalled();
         expect(generateStandardResponse).not.toHaveBeenCalled();
 
         // greetedOnStart should be marked true so it doesn't keep re-checking
@@ -78,7 +78,7 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
         await maybeSendGreeting(CHANNEL);
 
         // Greeting SHOULD have been sent
-        expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, 'Welcome to the stream!');
+        expect(enqueueAnnouncement).toHaveBeenCalledWith(`#${CHANNEL}`, 'Welcome to the stream!', 'primary');
         const state = _getRuntime().get(CHANNEL);
         expect(state.greetedOnStart).toBe(true);
     });
@@ -95,11 +95,11 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
 
         // First call — greeting sent
         await maybeSendGreeting(CHANNEL);
-        expect(enqueueMessage).toHaveBeenCalledTimes(1);
+        expect(enqueueAnnouncement).toHaveBeenCalledTimes(1);
 
         // Second call — greeting should NOT be sent again (greetedOnStart is now true)
         await maybeSendGreeting(CHANNEL);
-        expect(enqueueMessage).toHaveBeenCalledTimes(1);
+        expect(enqueueAnnouncement).toHaveBeenCalledTimes(1);
     });
 
     test('should skip greeting when greetings category is disabled', async () => {
@@ -119,7 +119,7 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
 
         await maybeSendGreeting(CHANNEL);
 
-        expect(enqueueMessage).not.toHaveBeenCalled();
+        expect(enqueueAnnouncement).not.toHaveBeenCalled();
     });
 
     test('should skip greeting when auto-chat mode is off', async () => {
@@ -132,7 +132,7 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
 
         await maybeSendGreeting(CHANNEL);
 
-        expect(enqueueMessage).not.toHaveBeenCalled();
+        expect(enqueueAnnouncement).not.toHaveBeenCalled();
     });
 
     test('should send greeting when streamStartedAt is null (backwards compat)', async () => {
@@ -148,6 +148,6 @@ describe('AutoChat Greeting - Stream Age Guard', () => {
         await maybeSendGreeting(CHANNEL);
 
         // Greeting should still be sent (no startedAt data, fallback to old behavior)
-        expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, 'Welcome to the stream!');
+        expect(enqueueAnnouncement).toHaveBeenCalledWith(`#${CHANNEL}`, 'Welcome to the stream!', 'primary');
     });
 });
