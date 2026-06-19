@@ -1,7 +1,6 @@
 // src/components/twitch/channelManager.js
 import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-import config from '../../config/index.js';
 import { updateAllowedChannels, addAllowedChannel, removeAllowedChannel, isChannelAllowed as _isAllowed } from '../../lib/allowList.js';
 
 // Collection name (must match the name used in chatsage-web-ui)
@@ -145,7 +144,7 @@ export async function syncChannelWithEventSub(channelName, isActive, twitchUserI
     }
 }
 
-let isSyncing = false;
+
 
 /**
  * Sets up a listener for changes to the managedChannels collection.

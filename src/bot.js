@@ -2,13 +2,7 @@ import config from './config/index.js';
 import { initEmoteDescriber, initEmoteDescriptionStore } from './lib/geminiEmoteDescriber.js';
 import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
-import { getHelixClient } from './components/twitch/helixClient.js';
-import { getContextManager } from './components/context/contextManager.js';
 import { clearMessageQueue } from './lib/ircSender.js';
-import { getGeoGameManager } from './components/geo/geoGameManager.js';
-import { getTriviaGameManager } from './components/trivia/triviaGameManager.js';
-import { getRiddleGameManager } from './components/riddle/riddleGameManager.js';
-import { notifyUserMessage } from './components/autoChat/autoChatManager.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
 
@@ -88,10 +82,6 @@ async function main() {
         // --- Initialize Gemini Emote Describer ---
         initEmoteDescriber(config.gemini?.apiKey || process.env.GEMINI_API_KEY);
         initEmoteDescriptionStore();
-
-        // --- Get Instances needed for setup ---
-        const contextManager = getContextManager();
-        const helixClient = getHelixClient();
 
         // Log Secret Manager status for monitoring
         logger.info('Secret Manager Status:', getSecretManagerStatus());

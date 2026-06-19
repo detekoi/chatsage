@@ -156,6 +156,30 @@ describe('Geo Command Handler', () => {
                 { replyToId: '123' }
             );
         });
+
+        test('should reject trailing garbage arguments for game mode', async () => {
+            const context = createMockContext(['game', 'MyTitle', '3', 'extra']);
+            await geoHandler.execute(context);
+
+            expect(mockGeoManager.startGame).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Unknown command format or extra arguments provided. Use !geo help.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should reject trailing garbage arguments for real-world mode', async () => {
+            const context = createMockContext(['europe', '3', 'extra']);
+            await geoHandler.execute(context);
+
+            expect(mockGeoManager.startGame).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Unknown command format or extra arguments provided. Use !geo help.',
+                { replyToId: '123' }
+            );
+        });
     });
 
     describe('Stopping Games', () => {

@@ -60,10 +60,10 @@ const geoHandler = {
         const geoManager = getGeoGameManager(); // Get the manager instance
 
         let subCommand = args[0]?.toLowerCase();
-        let gameMode = 'real'; // Default mode
-        let scope = null; // Will hold gameTitle or regionScope
+        let gameMode;
+        let scope;
         let numberOfRounds = 1; // Default rounds
-        let consumedArgsCount = 0; // Track processed args for start commands
+        let consumedArgsCount;
 
         // Helper function to check if a string is a positive integer
         const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);
@@ -86,19 +86,29 @@ const geoHandler = {
         } else if (subCommand === 'game') {
             // !geo game [Optional Title] [Optional Rounds]
             gameMode = 'game';
-            consumedArgsCount = 1; // Consumed 'game'
             let potentialScopeParts = [];
             let potentialRoundsArg = null;
             let remainingArgs = args.slice(1); // Args after 'game'
 
             if (remainingArgs.length > 0) {
-                // Check if the last argument is a number
-                if (isPositiveInteger(remainingArgs[remainingArgs.length - 1])) {
-                    potentialRoundsArg = remainingArgs[remainingArgs.length - 1];
-                    potentialScopeParts = remainingArgs.slice(0, remainingArgs.length - 1);
+                let roundsIndex = -1;
+                for (let i = remainingArgs.length - 1; i >= 0; i--) {
+                    if (isPositiveInteger(remainingArgs[i])) {
+                        roundsIndex = i;
+                        break;
+                    }
+                }
+
+                if (roundsIndex !== -1) {
+                    potentialRoundsArg = remainingArgs[roundsIndex];
+                    potentialScopeParts = remainingArgs.slice(0, roundsIndex);
+                    consumedArgsCount = 1 + roundsIndex + 1; // "game" + title parts + rounds
                 } else {
                     potentialScopeParts = remainingArgs;
+                    consumedArgsCount = args.length;
                 }
+            } else {
+                consumedArgsCount = args.length;
             }
 
             if (potentialScopeParts.length > 0) {
@@ -124,7 +134,6 @@ const geoHandler = {
             if (potentialRoundsArg) {
                 numberOfRounds = parseInt(potentialRoundsArg, 10);
             }
-            consumedArgsCount = args.length; // All args consumed for this path
              // Proceed to start game below
 
         } else if (subCommand === 'stop') {
@@ -267,15 +276,24 @@ const geoHandler = {
         } else {
             // Assume !geo <region text...> [Optional Rounds] -> Real World Game
             gameMode = 'real';
-            let potentialScopeParts = [];
+            let potentialScopeParts;
             let potentialRoundsArg = null;
 
-            // Check if the last argument is a number
-            if (args.length > 0 && isPositiveInteger(args[args.length - 1])) {
-                potentialRoundsArg = args[args.length - 1];
-                potentialScopeParts = args.slice(0, args.length - 1);
+            let roundsIndex = -1;
+            for (let i = args.length - 1; i >= 0; i--) {
+                if (isPositiveInteger(args[i])) {
+                    roundsIndex = i;
+                    break;
+                }
+            }
+
+            if (roundsIndex !== -1) {
+                potentialRoundsArg = args[roundsIndex];
+                potentialScopeParts = args.slice(0, roundsIndex);
+                consumedArgsCount = roundsIndex + 1;
             } else {
-                potentialScopeParts = args.slice(0); // All args are part of the scope
+                potentialScopeParts = args.slice(0);
+                consumedArgsCount = args.length;
             }
 
             if (potentialScopeParts.length > 0) {
@@ -291,7 +309,6 @@ const geoHandler = {
             if (potentialRoundsArg) {
                 numberOfRounds = parseInt(potentialRoundsArg, 10);
             }
-            consumedArgsCount = args.length; // All args consumed
             // Proceed to start game below
         }
 

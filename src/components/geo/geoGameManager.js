@@ -225,8 +225,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             gameState.streakMap.clear();
         }
     }
-    let revealText = null;
-    let roundEndMessage = "";
+    let revealText;
+    let roundEndMessage;
     if (!gameState.targetLocation?.name) {
         logger.error(`[GeoGame][${gameState.channelName}] Cannot generate round reveal: targetLocation is missing.`);
         roundEndMessage = "An error occurred, and the round's location couldn't be revealed.";

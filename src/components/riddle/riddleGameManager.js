@@ -244,7 +244,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
 
         // Send end message
         const roundPrefix = totalRounds > 1 ? `(Round ${currentRound}/${totalRounds}) ` : "";
-        let endMessage = "";
+        let endMessage;
         if (reason === "answered" && winner) {
             const seconds = timeTakenMs ? Math.round(timeTakenMs / 1000) : null;
             const timeString = seconds !== null ? ` in ${seconds}s` : "";

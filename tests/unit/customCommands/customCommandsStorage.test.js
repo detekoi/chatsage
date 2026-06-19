@@ -4,11 +4,8 @@ import {
     addCustomCommand,
     getCustomCommand,
     getAllCustomCommands,
-    updateCustomCommand,
-    updateCustomCommandOptions,
     removeCustomCommand,
     incrementUseCount,
-    loadAllCustomCommands,
 } from '../../../src/components/customCommands/customCommandsStorage.js';
 
 // Mock logger

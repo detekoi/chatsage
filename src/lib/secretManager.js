@@ -1,27 +1,11 @@
 // src/lib/secretManager.js
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import logger from './logger.js';
-import { redact } from './redact.js';
 
 let client = null;
 
 // Helper for async sleep
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Extracts a display-safe name from a secret resource path.
- * e.g. 'projects/123/secrets/my-secret/versions/latest' -> 'my-secret'
- * @param {string} resourceName
- * @returns {string}
- */
-function sanitizeSecretName(resourceName) {
-    if (!resourceName) return '[unknown]';
-    const parts = resourceName.split('/secrets/');
-    if (parts.length > 1) {
-        return parts[1].split('/')[0];
-    }
-    return '[redacted]';
-}
 
 const secretCache = new Map();
 
@@ -198,7 +182,7 @@ async function setSecretValue(secretResourceName, secretValue) {
     try {
 
         // Add a new version to the existing secret
-        const [version] = await smClient.addSecretVersion({
+        await smClient.addSecretVersion({
             parent: secretResourceName,
             payload: {
                 data: Buffer.from(secretValue, 'utf8'),

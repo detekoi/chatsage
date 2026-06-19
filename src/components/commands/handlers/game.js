@@ -37,14 +37,12 @@ const gameHandler = {
 
         // --- Argument Parsing ---
         let analysisRequested = false;
-        let helpQueryArgs = [];
 
         if (args.length > 0 && args[0].toLowerCase() === 'analyze') {
             analysisRequested = true;
-            helpQueryArgs = args.slice(1); // Take args after 'analyze'
-        } else {
-            helpQueryArgs = args; // All args are potentially part of the help query
         }
+
+        const helpQueryArgs = analysisRequested ? args.slice(1) : args;
 
         const helpQuery = helpQueryArgs.join(' ').trim();
         const helpRequested = helpQuery.length > 0;

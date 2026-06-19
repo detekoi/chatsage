@@ -20,10 +20,8 @@ async function execute(context) {
 
     // Determine which user to check
     let targetUsername = user.username;
-    let targetDisplayName = displayName;
     if (args.length > 0) {
         targetUsername = args[0].toLowerCase().replace(/^@/, '');
-        targetDisplayName = targetUsername;
     }
 
     try {
@@ -50,7 +48,7 @@ async function execute(context) {
             return;
         }
         const targetUserId = users[0].id;
-        targetDisplayName = users[0].display_name || targetUsername;
+        const targetDisplayName = users[0].display_name || targetUsername;
 
         // Check follow status
         const followData = await getChannelFollower(

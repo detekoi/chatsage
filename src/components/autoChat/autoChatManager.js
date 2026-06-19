@@ -15,7 +15,7 @@ import { getChannelInformation, getUsersById } from '../twitch/helixClient.js';
  */
 function sanitizeForPrompt(str) {
     if (!str || typeof str !== 'string') return str;
-    return str.replace(/[\n\r`"'{}\[\]()\\]/g, '').trim().slice(0, 50);
+    return str.replace(/[\n\r`"'{}[\]()\\]/g, '').trim().slice(0, 50);
 }
 
 // AutoChatManager periodically scans channel state and emits context-aware messages

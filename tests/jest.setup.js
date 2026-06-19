@@ -14,7 +14,6 @@ afterEach(() => {
 // Safety net: fail fast if handles remain (except when explicitly allowed).
 afterAll(() => {
   if (process.env.JEST_ALLOW_OPEN_HANDLES) return;
-  // eslint-disable-next-line no-underscore-dangle
   const handles = process._getActiveHandles().filter(h => {
     // ignore TTY/stdio, pipes, sockets, and child processes which are always present in Node.js
     const ignoreTypes = ['Pipe', 'Socket', 'ChildProcess'];
@@ -24,7 +23,6 @@ afterAll(() => {
   });
   if (handles.length) {
     // Log handle types to help with future debugging
-    // eslint-disable-next-line no-console
     console.error('OPEN HANDLES:', handles.map(h => h.constructor?.name || typeof h));
     throw new Error(`Found ${handles.length} open handle(s). Close them or call unref() in your code/tests.`);
   }

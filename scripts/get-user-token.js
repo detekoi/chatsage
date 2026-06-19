@@ -9,7 +9,6 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import http from 'http';
-import open from 'open';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import escapeHtml from 'escape-html';

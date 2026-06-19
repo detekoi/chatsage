@@ -350,7 +350,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     }
 
     // --- 2. Send End Round Message ---
-    let endMessage = "";
+    let endMessage;
     if (!gameState.currentQuestion?.question) {
         logger.error(`[TriviaGame][${gameState.channelName}] Cannot generate round end message: question is missing.`);
         endMessage = "An error occurred, and the round information couldn't be displayed.";
@@ -1004,12 +1004,7 @@ async function _handleAnswer(channelName, username, displayName, message) {
     // Rate Limit Logic:
     // - Duplicate answer: 2000ms limit
     // - Different answer: 0ms limit (process immediately)
-    let timeLimit = 0;
-    if (currentAnswer === lastAnswer) {
-        timeLimit = 2000;
-    } else {
-        timeLimit = 0;
-    }
+    const timeLimit = currentAnswer === lastAnswer ? 2000 : 0;
 
     if (now - lastTs < timeLimit) {
         logger.debug(`[TriviaGame][${channelName}] Rate limit: ignoring answer "${currentAnswer}" from ${username} (${now - lastTs}ms < ${timeLimit}ms)`);

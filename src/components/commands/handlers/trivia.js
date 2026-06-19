@@ -58,7 +58,7 @@ const trivia = {
         const triviaManager = getTriviaGameManager();
 
         let subCommand = args[0]?.toLowerCase();
-        let topic = null;
+        let topic;
         let numberOfRounds = 1;
 
         // Helper function to check if a string is a positive integer

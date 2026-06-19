@@ -42,7 +42,7 @@ const riddleHandler = {
         }
 
         const subCommand = args[0].toLowerCase();
-        let topic = null;
+        let topic;
         let numberOfRounds = 1;
 
         switch (subCommand) {

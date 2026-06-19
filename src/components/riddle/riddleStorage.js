@@ -180,10 +180,13 @@ export async function clearLeaderboardData(channelName) {
         const fieldPath = `channels.${lowerChannel}`;
         let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
         
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
             const snapshot = await query.get();
-            if (snapshot.empty) break;
+            if (snapshot.empty) {
+                hasMore = false;
+                break;
+            }
 
             const batch = firestore.batch();
             snapshot.docs.forEach(doc => {
@@ -192,7 +195,10 @@ export async function clearLeaderboardData(channelName) {
             });
             await batch.commit();
             logger.debug(`[RiddleStorage] Cleared riddle data batch for ${snapshot.size} players. Total: ${clearedCount}`);
-            if (snapshot.size < batchSize) break;
+            if (snapshot.size < batchSize) {
+                hasMore = false;
+                break;
+            }
             query = query.startAfter(snapshot.docs[snapshot.docs.length - 1]);
         }
         logger.info(`[RiddleStorage] Successfully cleared riddle leaderboard for ${clearedCount} players in ${lowerChannel}.`);

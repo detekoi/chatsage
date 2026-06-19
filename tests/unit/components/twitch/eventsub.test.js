@@ -1,7 +1,5 @@
 // tests/unit/components/twitch/eventsub.test.js
 import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
-import { getContextManager } from '../../../../src/components/context/contextManager.js';
-import logger from '../../../../src/lib/logger.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 import { isChannelAllowed } from '../../../../src/components/twitch/channelManager.js';
 import { notifySubscription, notifyGiftSubs } from '../../../../src/components/autoChat/autoChatManager.js';

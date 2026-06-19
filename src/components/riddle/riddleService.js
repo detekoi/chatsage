@@ -13,17 +13,6 @@ const META_CONCEPT_BLACKLIST = [
     'yes', 'no', 'maybe', 'idk', 'dunno', 'ok', 'okay', 'yep', 'yup', 'nope', 'nah'
 ];
 
-/**
- * Determines the effective topic for riddle generation.
- * @param {string} topic - The riddle topic
- * @returns {boolean} Whether the topic is general knowledge
- */
-function isGeneralKnowledgeTopic(topic) {
-    if (!topic) return true;
-    const topicLower = topic.toLowerCase();
-    return topicLower === 'general knowledge' || topicLower === 'general';
-}
-
 // --- Schema ---
 const RiddleSchema = {
     type: GenAIType.OBJECT,

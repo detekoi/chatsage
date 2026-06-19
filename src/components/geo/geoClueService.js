@@ -112,7 +112,7 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
  * Generates a final reveal for the location using Structured Output.
  */
 export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown", language = null) {
-    let outcomeInstruction = "";
+    let outcomeInstruction;
     if (reason === "guessed") {
         outcomeInstruction = `The win has been announced. detailed summary ONLY.`;
     } else if (reason === "timeout") {

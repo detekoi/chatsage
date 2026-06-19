@@ -507,7 +507,7 @@ async function clearChannelLeaderboardData(channelName) {
     const statsCollection = db.collection(STATS_COLLECTION);
     let clearedCount = 0;
     const batchSize = 100;
-    let lastVisible = null;
+    let lastVisible;
     
     logger.info(`[TriviaStorage] Starting leaderboard clear process for channel: ${lowerChannel}`);
     
@@ -515,10 +515,11 @@ async function clearChannelLeaderboardData(channelName) {
         const fieldPath = `channels.${lowerChannel}`;
         let query = statsCollection.where(fieldPath, '!=', null).limit(batchSize);
         
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
             const snapshot = await query.get();
             if (snapshot.empty) {
+                hasMore = false;
                 break;
             }
             
@@ -535,6 +536,7 @@ async function clearChannelLeaderboardData(channelName) {
             logger.debug(`[TriviaStorage] Cleared leaderboard data batch for ${snapshot.size} players. Total cleared: ${clearedCount}`);
             
             if (snapshot.size < batchSize) {
+                hasMore = false;
                 break;
             }
             
