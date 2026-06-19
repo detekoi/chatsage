@@ -5,13 +5,7 @@ import { getRiddleGameManager } from '../../riddle/riddleGameManager.js';
 import { getLeaderboard } from '../../riddle/riddleStorage.js'; // Direct import for leaderboard
 import { formatRiddleHelpMessage, formatRiddleLeaderboardMessage } from '../../riddle/riddleMessageFormatter.js';
 import config from '../../../config/index.js'; // For bot's username
-
-// Helper function to check mod/broadcaster status
-function isPrivilegedUser(tags, channelNameNoHash) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelNameNoHash;
-    return isMod || isBroadcaster;
-}
+import { isPrivilegedUser } from '../../../lib/permissions.js';
 
 // Helper to check if a string is a positive integer
 const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);

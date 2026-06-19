@@ -5,13 +5,7 @@ import { getGeoGameManager } from '../../geo/geoGameManager.js';
 import { getContextManager } from '../../context/contextManager.js';
 // Need geoStorage to fetch the leaderboard
 import { getLeaderboard } from '../../geo/geoStorage.js';
-
-// Helper function to check mod/broadcaster status
-function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+import { isPrivilegedUser } from '../../../lib/permissions.js';
 
 /**
  * Helper function to format the leaderboard message.

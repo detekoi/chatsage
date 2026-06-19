@@ -9,17 +9,7 @@ import { getContextManager } from '../components/context/contextManager.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
 
-/**
- * Helper function for checking mod/broadcaster status
- * @param {Object} tags - Twitch message tags
- * @param {string} channelName - Channel name
- * @returns {boolean} Whether the user is privileged
- */
-export function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+
 
 /**
  * Handles pending report responses for numeric messages

@@ -12,13 +12,13 @@ import { getGeoGameManager } from '../components/geo/geoGameManager.js';
 import { getTriviaGameManager } from '../components/trivia/triviaGameManager.js';
 import { getRiddleGameManager } from '../components/riddle/riddleGameManager.js';
 import {
-    isPrivilegedUser,
     handlePendingReport,
     handleStopTranslation,
     handleAutoTranslation,
     handleBotMention,
     processGameGuesses
 } from './messageHandlers.js';
+import { isPrivilegedUser } from '../lib/permissions.js';
 
 /**
  * Handle a chat message from any source (EventSub or IRC).

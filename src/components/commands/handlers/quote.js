@@ -10,13 +10,7 @@ import {
     deleteQuote as deleteQuoteFromStorage,
     editQuote as editQuoteInStorage
 } from '../../quotes/quoteStorage.js';
-
-// Local helper (pattern used in other handlers)
-function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+import { isPrivilegedUser } from '../../../lib/permissions.js';
 
 // Parse text of form: 'some quote text - author' or 'some quote text-author'
 // Supports '-', '–', '—' with optional spaces

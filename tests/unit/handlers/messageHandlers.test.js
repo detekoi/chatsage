@@ -22,13 +22,13 @@ jest.mock('../../../src/components/trivia/triviaGameManager.js');
 jest.mock('../../../src/components/riddle/riddleGameManager.js');
 
 import {
-    isPrivilegedUser,
     handlePendingReport,
     handleStopTranslation,
     handleAutoTranslation,
     handleBotMention,
     processGameGuesses
 } from '../../../src/handlers/messageHandlers.js';
+import { isPrivilegedUser } from '../../../src/lib/permissions.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../src/lib/translationUtils.js';
 import { handleStandardLlmQuery } from '../../../src/components/llm/llmUtils.js';

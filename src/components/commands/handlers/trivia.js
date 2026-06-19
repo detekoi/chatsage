@@ -5,13 +5,7 @@ import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
 
 import { getLeaderboard } from '../../trivia/triviaStorage.js';
 import { formatHelpMessage } from '../../trivia/triviaMessageFormatter.js';
-
-// Helper function to check mod/broadcaster status
-function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+import { isPrivilegedUser } from '../../../lib/permissions.js';
 
 /**
  * Helper function to format the leaderboard message.

@@ -17,6 +17,7 @@ import { formatFollowAge } from '../customCommands/variableParser.js';
 import { resolvePrompt } from '../customCommands/promptResolver.js';
 import { customCommandSource } from '../llm/inferenceHistoryStorage.js';
 import config from '../../config/index.js';
+import { hasPermissionLevel } from '../../lib/permissions.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
@@ -72,29 +73,6 @@ function _isCustomCommandOnCooldown(channelName, commandName, cooldownMs) {
     return false;
 }
 
-/**
- * Checks if a user has the required custom command permission.
- * @param {string} permission - Required permission level.
- * @param {object} tags - tmi.js message tags.
- * @param {string} channelName - Channel name.
- * @returns {boolean} True if user has permission.
- */
-function _hasCustomCommandPermission(permission, tags, channelName) {
-    if (!permission || permission === 'everyone') return true;
-
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    const isModerator = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isVip = tags.badges?.vip === '1';
-    const isSubscriber = tags.subscriber === '1' || tags.badges?.subscriber === '1';
-
-    switch (permission) {
-        case 'broadcaster': return isBroadcaster;
-        case 'moderator': return isModerator || isBroadcaster;
-        case 'vip': return isVip || isModerator || isBroadcaster;
-        case 'subscriber': return isSubscriber || isVip || isModerator || isBroadcaster;
-        default: return true;
-    }
-}
 
 /**
  * Creates a getFollowage function bound to the current request context.
@@ -170,34 +148,15 @@ function parseCommand(message) {
 
 /**
  * Checks if the user has the required permission level for a command.
+ * Delegates to the centralized hasPermissionLevel utility.
  * @param {object} handler - The command handler object.
  * @param {object} tags - The user's message tags from tmi.js.
  * @param {string} channelName - The channel the command was issued in.
  * @returns {boolean} True if the user has permission, false otherwise.
  */
 function hasPermission(handler, tags, channelName) {
-    const requiredPermission = handler.permission || 'everyone'; // Default to everyone
-
-    if (requiredPermission === 'everyone') {
-        return true;
-    }
-
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    if (requiredPermission === 'broadcaster' && isBroadcaster) {
-        return true;
-    }
-
-    const isModerator = tags.mod === '1' || tags.badges?.moderator === '1';
-    if (requiredPermission === 'moderator' && (isModerator || isBroadcaster)) {
-        // Moderators or the broadcaster can use mod commands
-        return true;
-    }
-
-    // Add other roles like VIP, subscriber later if needed
-    // const isVip = tags.badges?.vip === '1';
-    // const isSubscriber = tags.subscriber === '1' || tags.badges?.subscriber === '1';
-
-    return false;
+    const requiredPermission = handler.permission || 'everyone';
+    return hasPermissionLevel(requiredPermission, tags, channelName);
 }
 
 /**
@@ -307,7 +266,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         logger.debug({ command, channel: channelName }, 'Found custom command');
 
         // Permission check
-        if (!_hasCustomCommandPermission(customCmd.permission, tags, channelName)) {
+        if (!hasPermissionLevel(customCmd.permission, tags, channelName)) {
             logger.debug(`User ${tags.username} lacks permission for custom command !${command}`);
             return false;
         }

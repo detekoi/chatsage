@@ -3,13 +3,7 @@ import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, parseTranslateCommand, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 import { buildContextPrompt } from '../../llm/geminiClient.js';
-
-// Helper function to check mod/broadcaster status
-function isPrivilegedUser(tags, channelName) {
-    const isMod = tags.mod === '1' || tags.badges?.moderator === '1';
-    const isBroadcaster = tags.badges?.broadcaster === '1' || tags.username === channelName;
-    return isMod || isBroadcaster;
-}
+import { isPrivilegedUser } from '../../../lib/permissions.js';
 
 /**
  * Handler for the !translate command with LLM-based argument parsing.
