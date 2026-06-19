@@ -1,56 +1,39 @@
-// src/lib/permissions.js
-// Centralized permission helpers for Twitch chat role checks.
-// All role-checking logic lives here to avoid duplicating badge parsing
-// across command handlers and message processors.
-//
-// Tags arrive via two paths with different value types:
-//   • EventSub (eventSubToTags.js): flags are boolean (true/false),
-//     badge ids vary by tier ('0', '3000', etc.)
-//   • IRC (tmi.js legacy): flags are string '0'/'1',
-//     badge ids are typically '1'
-//
-// All checks below accept both forms to stay path-agnostic.
+// Centralized Twitch role checks — single source of truth.
+// Accepts both EventSub (boolean flags, variable badge ids) and IRC (string '0'/'1') tag formats.
+import logger from './logger.js';
 
-/**
- * Checks if a user has moderator privileges (mod, lead mod, or broadcaster).
- * @param {object} tags - IRC-style message tags (native or converted from EventSub).
- * @param {string} channelName - Channel name (without '#').
- * @returns {boolean} True if the user is a moderator or broadcaster.
- */
-export function isPrivilegedUser(tags, channelName) {
+// Shared role computation used by both exported functions.
+function _resolveRoles(tags, channelName) {
     const isMod = tags.mod === '1' || tags.mod === true
-        || tags.badges?.moderator === '1'
+        || !!tags.badges?.moderator
         || !!tags.badges?.lead_moderator;
     const isBroadcaster = !!tags.badges?.broadcaster || tags.username === channelName;
+    const isVip = tags.vip === '1' || tags.vip === true || !!tags.badges?.vip;
+    const isSub = tags.subscriber === '1' || tags.subscriber === true || !!tags.badges?.subscriber;
+    return { isMod, isBroadcaster, isVip, isSub };
+}
+
+// Returns true if the user is a moderator (including lead mod) or the broadcaster.
+export function isPrivilegedUser(tags, channelName) {
+    const { isMod, isBroadcaster } = _resolveRoles(tags, channelName);
     return isMod || isBroadcaster;
 }
 
-/**
- * Checks whether a user satisfies a required permission level.
- * Permission hierarchy (most → least restrictive):
- *   broadcaster > moderator > vip > subscriber > everyone
- *
- * @param {string} permission - Required permission level.
- * @param {object} tags - IRC-style message tags.
- * @param {string} channelName - Channel name (without '#').
- * @returns {boolean} True if the user meets or exceeds the permission level.
- */
+// Checks whether a user meets a required permission level.
+// Hierarchy: broadcaster > moderator > vip > subscriber > everyone.
+// Unrecognized levels are denied and logged as a warning.
 export function hasPermissionLevel(permission, tags, channelName) {
     if (!permission || permission === 'everyone') return true;
 
-    const isBroadcaster = !!tags.badges?.broadcaster || tags.username === channelName;
-    const isModerator = tags.mod === '1' || tags.mod === true
-        || tags.badges?.moderator === '1'
-        || !!tags.badges?.lead_moderator;
-    const isVip = tags.vip === '1' || tags.vip === true || !!tags.badges?.vip;
-    const isSubscriber = tags.subscriber === '1' || tags.subscriber === true
-        || !!tags.badges?.subscriber;
+    const { isMod, isBroadcaster, isVip, isSub } = _resolveRoles(tags, channelName);
 
     switch (permission) {
         case 'broadcaster': return isBroadcaster;
-        case 'moderator': return isModerator || isBroadcaster;
-        case 'vip': return isVip || isModerator || isBroadcaster;
-        case 'subscriber': return isSubscriber || isVip || isModerator || isBroadcaster;
-        default: return true;
+        case 'moderator': return isMod || isBroadcaster;
+        case 'vip': return isVip || isMod || isBroadcaster;
+        case 'subscriber': return isSub || isVip || isMod || isBroadcaster;
+        default:
+            logger.warn({ permission, user: tags.username }, 'Unrecognized permission level — denying access');
+            return false;
     }
 }
