@@ -37,27 +37,10 @@ class RiddleStorage extends BaseGameStorage {
     }
 
     /**
-     * Helper that queries history by 'channel' first, falling back to legacy
-     * 'channelName' for pre-migration documents.
-     * @private
-     */
-    async _queryByChannelWithFallback(historyCol, lowerChannelName, buildQuery) {
-        // Try canonical 'channel' field first
-        let snapshot = await buildQuery(historyCol, 'channel', lowerChannelName).get();
-        if (!snapshot.empty) return snapshot;
-
-        // Fallback: try legacy 'channelName' field for pre-migration docs
-        logger.debug(`[RiddleStorage][${lowerChannelName}] No results with 'channel' field; trying legacy 'channelName'.`);
-        snapshot = await buildQuery(historyCol, 'channelName', lowerChannelName).get();
-        return snapshot;
-    }
-
-    /**
      * Override getLatestCompletedSessionInfo for riddle-specific format.
      *
      * Riddle game manager expects the response to use `riddlesInSession` (not
-     * `itemsInSession`) with `question`/`answer` fields, and the history
-     * documents use `channelName` in legacy data (migrated to `channel`).
+     * `itemsInSession`) with `question`/`answer` fields.
      */
     async getLatestCompletedSessionInfo(channelName) {
         const db = this._getDb();
@@ -67,10 +50,11 @@ class RiddleStorage extends BaseGameStorage {
         try {
             logger.debug(`[RiddleStorage][${lowerChannelName}] Fetching latest riddle entry.`);
 
-            const latestEntrySnapshot = await this._queryByChannelWithFallback(
-                historyCol, lowerChannelName,
-                (col, field, val) => col.where(field, '==', val).orderBy('timestamp', 'desc').limit(1)
-            );
+            const latestEntrySnapshot = await historyCol
+                .where('channel', '==', lowerChannelName)
+                .orderBy('timestamp', 'desc')
+                .limit(1)
+                .get();
 
             if (latestEntrySnapshot.empty) {
                 logger.debug(`[RiddleStorage][${lowerChannelName}] No riddle history found.`);
@@ -81,8 +65,6 @@ class RiddleStorage extends BaseGameStorage {
             const latestEntryData = latestEntryDoc.data();
             const sessionId = latestEntryData.gameSessionId;
             const totalRoundsInSession = latestEntryData.totalRounds;
-            // Detect which channel field this doc uses for sub-queries
-            const channelField = latestEntryData.channel ? 'channel' : 'channelName';
 
             logger.debug(`[RiddleStorage][${lowerChannelName}] Latest entry: ID=${latestEntryDoc.id}, SessionID=${sessionId}, TotalRounds=${totalRoundsInSession}`);
 
@@ -112,12 +94,12 @@ class RiddleStorage extends BaseGameStorage {
                 };
             }
 
-            // Multi-round: fetch all riddles for this session using the same channel field
+            // Multi-round: fetch all riddles for this session
             logger.info(`[RiddleStorage][${lowerChannelName}] Multi-round session detected (ID: ${sessionId}, TotalRounds: ${totalRoundsInSession}). Fetching all riddles.`);
             let sessionRiddlesSnapshot;
             try {
                 const sessionRiddlesQuery = historyCol
-                    .where(channelField, '==', lowerChannelName)
+                    .where('channel', '==', lowerChannelName)
                     .where('gameSessionId', '==', sessionId)
                     .orderBy('roundNumber', 'asc')
                     .limit(totalRoundsInSession + 5);
@@ -206,10 +188,11 @@ class RiddleStorage extends BaseGameStorage {
 
         logger.debug(`[RiddleStorage] Fetching most recent riddle for channel ${lowerChannelName}`);
         try {
-            const snapshot = await this._queryByChannelWithFallback(
-                historyCol, lowerChannelName,
-                (col, field, val) => col.where(field, '==', val).orderBy('timestamp', 'desc').limit(1)
-            );
+            const snapshot = await historyCol
+                .where('channel', '==', lowerChannelName)
+                .orderBy('timestamp', 'desc')
+                .limit(1)
+                .get();
 
             if (snapshot.empty) {
                 logger.debug(`[RiddleStorage] No riddle history found for channel ${lowerChannelName}.`);
