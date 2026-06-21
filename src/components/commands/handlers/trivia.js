@@ -89,7 +89,7 @@ const trivia = {
             const currentGameInitiator = triviaManager.getCurrentGameInitiator(channelName);
 
             if (!currentGameInitiator) {
-                enqueueMessage(channel, `There is no active Trivia game to stop.`, { replyToId });
+                await enqueueMessage(channel, `There is no active Trivia game to stop.`, { replyToId });
                 return;
             }
 
@@ -99,13 +99,13 @@ const trivia = {
                 logger.info(`[Trivia] Stop requested by ${invokingDisplayName}, result: ${result.message}`);
                 // Message to chat is handled by stopGame/transitionToEnding
             } else {
-                enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
+                await enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
             }
             return;
         } else if (subCommand === 'config') {
             // !trivia config ... -> Configure game settings
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `Only mods or the broadcaster can configure the game.`, { replyToId });
+                await enqueueMessage(channel, `Only mods or the broadcaster can configure the game.`, { replyToId });
                 return;
             }
 
@@ -140,26 +140,30 @@ const trivia = {
             }
 
             if (Object.keys(options).length === 0) {
-                enqueueMessage(channel, `Usage: !trivia config difficulty <easy|normal|hard> time <seconds> duration <minutes> topic <list> scoring <true|false> points <value> timebonus <true|false> difficultymultiplier <true|false>`, { replyToId });
+                await enqueueMessage(channel, `Usage: !trivia config difficulty <easy|normal|hard> time <seconds> duration <minutes> topic <list> scoring <true|false> points <value> timebonus <true|false> difficultymultiplier <true|false>`, { replyToId });
                 return;
             }
 
             const result = await triviaManager.configureGame(channelName, options);
-            enqueueMessage(channel, `${result.message}`, { replyToId });
+            await enqueueMessage(channel, `${result.message}`, { replyToId });
             return;
         } else if (subCommand === 'resetconfig') {
             // !trivia resetconfig -> Reset game configuration to defaults
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
+                await enqueueMessage(channel, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
                 return;
             }
 
             try {
                 const result = await triviaManager.resetChannelConfig(channelName);
-                enqueueMessage(channel, `${result.message}`, { replyToId });
+                await enqueueMessage(channel, `${result.message}`, { replyToId });
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error calling resetChannelConfig from trivia handler.');
-                enqueueMessage(channel, `An unexpected error occurred while trying to reset the configuration.`, { replyToId });
+                try {
+                    await enqueueMessage(channel, `An unexpected error occurred while trying to reset the configuration.`, { replyToId });
+                } catch (msgError) {
+                    logger.warn({ err: msgError }, '[Trivia] Failed to send error message to chat');
+                }
             }
             return;
         } else if (subCommand === 'leaderboard') {
@@ -167,34 +171,42 @@ const trivia = {
             try {
                 const leaderboardData = await getLeaderboard(channelName, 5);
                 const message = formatLeaderboardMessage(leaderboardData, channelName);
-                enqueueMessage(channel, message, { replyToId });
+                await enqueueMessage(channel, message, { replyToId });
                 logger.info(`[Trivia] Displayed leaderboard for channel ${channelName}`);
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error fetching or formatting trivia leaderboard.');
-                enqueueMessage(channel, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId });
+                try {
+                    await enqueueMessage(channel, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId });
+                } catch (msgError) {
+                    logger.warn({ err: msgError }, '[Trivia] Failed to send error message to chat');
+                }
             }
             return;
         } else if (subCommand === 'clearleaderboard' || subCommand === 'resetstats') {
             // !trivia clearleaderboard -> Clear the leaderboard
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
+                await enqueueMessage(channel, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
                 return;
             }
 
-            enqueueMessage(channel, `Attempting to clear Trivia leaderboard data for this channel. This may take a moment...`, { replyToId });
+            await enqueueMessage(channel, `Attempting to clear Trivia leaderboard data for this channel. This may take a moment...`, { replyToId });
 
             try {
                 const result = await triviaManager.clearLeaderboard(channelName);
-                enqueueMessage(channel, `${result.message}`, { replyToId });
+                await enqueueMessage(channel, `${result.message}`, { replyToId });
             } catch (error) {
                 logger.error({ err: error, channel: channelName }, 'Error calling clearLeaderboard from trivia handler.');
-                enqueueMessage(channel, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId });
+                try {
+                    await enqueueMessage(channel, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId });
+                } catch (msgError) {
+                    logger.warn({ err: msgError }, '[Trivia] Failed to send error message to chat');
+                }
             }
             return;
         } else if (subCommand === 'report' || subCommand === 'flag') {
             // !trivia report [reason...]
             if (args.length < 2) {
-                enqueueMessage(channel, `Please provide a reason for reporting. Usage: !trivia report <your reason>`, { replyToId });
+                await enqueueMessage(channel, `Please provide a reason for reporting. Usage: !trivia report <your reason>`, { replyToId });
                 return;
             }
             const reason = args.slice(1).join(' ');
@@ -202,19 +214,23 @@ const trivia = {
             try {
                 const reportInitiationResult = await triviaManager.initiateReportProcess(channelName, reason, invokingUsernameLower);
                 if (reportInitiationResult.message) {
-                    enqueueMessage(channel, `${reportInitiationResult.message}`, { replyToId });
+                    await enqueueMessage(channel, `${reportInitiationResult.message}`, { replyToId });
                 } else if (!reportInitiationResult.success) {
-                    enqueueMessage(channel, `Could not process your report request at this time.`, { replyToId });
+                    await enqueueMessage(channel, `Could not process your report request at this time.`, { replyToId });
                 }
             } catch (error) {
                 logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error calling initiateReportProcess for Trivia.');
-                enqueueMessage(channel, `An error occurred while trying to initiate the report.`, { replyToId });
+                try {
+                    await enqueueMessage(channel, `An error occurred while trying to initiate the report.`, { replyToId });
+                } catch (msgError) {
+                    logger.warn({ err: msgError }, '[Trivia] Failed to send error message to chat');
+                }
             }
             return;
         } else if (subCommand === 'help') {
             // !trivia help -> Show help information
             const helpMessage = formatHelpMessage(isModOrBroadcaster);
-            enqueueMessage(channel, `${helpMessage}`, { replyToId });
+            await enqueueMessage(channel, `${helpMessage}`, { replyToId });
             return;
         } else {
             // !trivia <topic> [rounds] -> Start a topic-specific game
@@ -244,7 +260,7 @@ const trivia = {
         // Validate number of rounds
         const MAX_ROUNDS = 10; // Example max
         if (numberOfRounds > MAX_ROUNDS) {
-            enqueueMessage(channel, `Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`, { replyToId });
+            await enqueueMessage(channel, `Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`, { replyToId });
             numberOfRounds = MAX_ROUNDS;
         }
 
@@ -255,12 +271,16 @@ const trivia = {
             const result = await triviaManager.startGame(channelName, topic, invokingUsernameLower, numberOfRounds);
 
             if (!result.success) {
-                enqueueMessage(channel, `${result.error}`, { replyToId });
+                await enqueueMessage(channel, `${result.error}`, { replyToId });
             }
             // Success messages are handled by the game manager through its own enqueueMessage calls
         } catch (error) {
             logger.error({ err: error }, "Unhandled error starting trivia game from command handler.");
-            enqueueMessage(channel, `An unexpected error occurred trying to start the game.`, { replyToId });
+            try {
+                await enqueueMessage(channel, `An unexpected error occurred trying to start the game.`, { replyToId });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[Trivia] Failed to send error message to chat');
+            }
         }
     }
 };

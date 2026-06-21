@@ -18,7 +18,7 @@ const helpHandler = {
         try {
             const response = `You can find my command list here: ${HELP_URL}`;
             const replyToId = user?.id || user?.['message-id'] || null;
-            enqueueMessage(channel, response, { replyToId });
+            await enqueueMessage(channel, response, { replyToId });
             logger.info(`Executed !help command in ${channel} for ${user.username}`);
         } catch (error) {
             logger.error({ err: error, channel: channel, user: user.username }, `Failed to enqueue help response.`);

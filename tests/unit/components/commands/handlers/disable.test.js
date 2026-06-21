@@ -116,7 +116,7 @@ describe('Disable Command Handler', () => {
 
             expect(logger.error).toHaveBeenCalledWith(
                 { err: error, channel: 'testchannel', user: 'testuser', command: 'trivia' },
-                '[DisableCommand] Error disabling command \'trivia\' in channel testchannel'
+                '[DisableCommand] Error executing disable command in channel testchannel'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',

@@ -14,32 +14,33 @@ async function execute(context) {
     const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove the '#' prefix
     const username = user.username;
-
-    // Check if command name was provided
-    if (args.length === 0) {
-        await enqueueMessage(channel, `Usage: !enable <commandName>. Example: !enable trivia`);
-        return;
-    }
-
-    const commandToEnable = args[0].toLowerCase();
-
-    // Validate that the command exists
-    if (!isValidCommand(commandToEnable, commandHandlers)) {
-        const availableCommands = getAllAvailableCommands(commandHandlers);
-        await enqueueMessage(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`);
-        return;
-    }
-
-    logger.info(`[EnableCommand] User ${username} attempting to enable command '${commandToEnable}' in channel ${channelName}`);
+    const replyToId = user?.id || user?.['message-id'] || null;
 
     try {
+        // Check if command name was provided
+        if (args.length === 0) {
+            await enqueueMessage(channel, `Usage: !enable <commandName>. Example: !enable trivia`, { replyToId });
+            return;
+        }
+
+        const commandToEnable = args[0].toLowerCase();
+
+        // Validate that the command exists
+        if (!isValidCommand(commandToEnable, commandHandlers)) {
+            const availableCommands = getAllAvailableCommands(commandHandlers);
+            await enqueueMessage(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
+            return;
+        }
+
+        logger.info(`[EnableCommand] User ${username} attempting to enable command '${commandToEnable}' in channel ${channelName}`);
+
         const result = await enableCommandForChannel(channelName, commandToEnable);
 
         if (result.success) {
-            await enqueueMessage(channel, `${result.message}`);
+            await enqueueMessage(channel, `${result.message}`, { replyToId });
             logger.info(`[EnableCommand] Successfully enabled command '${commandToEnable}' in channel ${channelName} by ${username}`);
         } else {
-            await enqueueMessage(channel, `${result.message}`);
+            await enqueueMessage(channel, `${result.message}`, { replyToId });
             logger.warn(`[EnableCommand] Failed to enable command '${commandToEnable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {
@@ -47,10 +48,14 @@ async function execute(context) {
             err: error,
             channel: channelName,
             user: username,
-            command: commandToEnable
-        }, `[EnableCommand] Error enabling command '${commandToEnable}' in channel ${channelName}`);
+            command: args[0] || 'N/A'
+        }, `[EnableCommand] Error executing enable command in channel ${channelName}`);
 
-        await enqueueMessage(channel, `Sorry, there was an error enabling the command. Please try again later.`);
+        try {
+            await enqueueMessage(channel, `Sorry, there was an error enabling the command. Please try again later.`, { replyToId });
+        } catch (msgError) {
+            logger.warn({ err: msgError }, '[EnableCommand] Failed to send error message to chat');
+        }
     }
 }
 

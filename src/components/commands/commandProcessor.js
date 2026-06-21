@@ -240,7 +240,7 @@ async function processMessage(channelName, tags, message) {
             `Error executing command !${command}`);
         // Optional: Send an error message back to the chat?
         try {
-            enqueueMessage(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
+            await enqueueMessage(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
         } catch (sayError) {
             logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
         }

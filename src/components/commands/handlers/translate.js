@@ -24,7 +24,7 @@ const translateHandler = {
 
         // --- Input Validation ---
         if (args.length === 0) {
-            enqueueMessage(channel, `Usage: !translate <language> [user] | !translate stop [user|all]`, { replyToId });
+            await enqueueMessage(channel, `Usage: !translate <language> [user] | !translate stop [user|all]`, { replyToId });
             return;
         }
 
@@ -53,22 +53,26 @@ const translateHandler = {
         // --- Permission checks ---
         if (action === 'stop_all') {
             if (!isModOrBroadcaster) {
-                enqueueMessage(channel, `Only mods or the broadcaster can stop all translations.`, { replyToId });
+                await enqueueMessage(channel, `Only mods or the broadcaster can stop all translations.`, { replyToId });
                 return;
             }
             try {
                 const count = contextManager.disableAllTranslationsInChannel(channelName);
-                enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
+                await enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
             } catch (e) {
                 logger.error({ err: e, channel: channelName }, 'Error disabling all translations.');
-                enqueueMessage(channel, `Sorry, an error occurred trying to stop all translations.`, { replyToId });
+                try {
+                    await enqueueMessage(channel, `Sorry, an error occurred trying to stop all translations.`, { replyToId });
+                } catch (msgError) {
+                    logger.warn({ err: msgError }, '[TranslateCommand] Failed to send error message to chat');
+                }
             }
             return;
         }
 
         // Check permission for targeting other users
         if (targetUsernameLower !== invokingUsernameLower && !isModOrBroadcaster) {
-            enqueueMessage(channel, `Only mods or the broadcaster can manage translation for other users.`, { replyToId });
+            await enqueueMessage(channel, `Only mods or the broadcaster can manage translation for other users.`, { replyToId });
             return;
         }
 
@@ -84,11 +88,11 @@ const translateHandler = {
                 const stopMessage = wasTranslating
                     ? `Okay, stopped translating messages for ${effectiveDisplayName}.`
                     : `Translation was already off for ${effectiveDisplayName}.`;
-                enqueueMessage(channel, stopMessage, { replyToId });
+                await enqueueMessage(channel, stopMessage, { replyToId });
             } else {
                 // Enable translation
                 if (!language) {
-                    enqueueMessage(channel, `Please specify a language. Example: !translate spanish`, { replyToId });
+                    await enqueueMessage(channel, `Please specify a language. Example: !translate spanish`, { replyToId });
                     return;
                 }
 
@@ -102,11 +106,15 @@ const translateHandler = {
                     finalConfirmation += ` / ${translatedConfirmation}`;
                 }
 
-                enqueueMessage(channel, finalConfirmation, { replyToId });
+                await enqueueMessage(channel, finalConfirmation, { replyToId });
             }
         } catch (e) {
             logger.error({ err: e, action, language, targetUsernameLower }, 'Error executing translate command action.');
-            enqueueMessage(channel, `Sorry, an error occurred while processing the translate command.`, { replyToId });
+            try {
+                await enqueueMessage(channel, `Sorry, an error occurred while processing the translate command.`, { replyToId });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[TranslateCommand] Failed to send error message to chat');
+            }
         }
     },
 };

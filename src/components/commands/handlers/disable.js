@@ -16,31 +16,31 @@ async function execute(context) {
     const username = user.username;
     const replyToId = user?.id || user?.['message-id'] || null;
 
-    // Check if command name was provided
-    if (args.length === 0) {
-        enqueueMessage(channel, `Usage: !disable <commandName>. Example: !disable trivia`, { replyToId });
-        return;
-    }
-
-    const commandToDisable = args[0].toLowerCase();
-    
-    // Validate that the command exists
-    if (!isValidCommand(commandToDisable, commandHandlers)) {
-        const availableCommands = getAllAvailableCommands(commandHandlers);
-        enqueueMessage(channel, `Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
-        return;
-    }
-
-    logger.info(`[DisableCommand] User ${username} attempting to disable command '${commandToDisable}' in channel ${channelName}`);
-
     try {
+        // Check if command name was provided
+        if (args.length === 0) {
+            await enqueueMessage(channel, `Usage: !disable <commandName>. Example: !disable trivia`, { replyToId });
+            return;
+        }
+
+        const commandToDisable = args[0].toLowerCase();
+        
+        // Validate that the command exists
+        if (!isValidCommand(commandToDisable, commandHandlers)) {
+            const availableCommands = getAllAvailableCommands(commandHandlers);
+            await enqueueMessage(channel, `Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
+            return;
+        }
+
+        logger.info(`[DisableCommand] User ${username} attempting to disable command '${commandToDisable}' in channel ${channelName}`);
+
         const result = await disableCommandForChannel(channelName, commandToDisable);
         
         if (result.success) {
-            enqueueMessage(channel, result.message, { replyToId });
+            await enqueueMessage(channel, result.message, { replyToId });
             logger.info(`[DisableCommand] Successfully disabled command '${commandToDisable}' in channel ${channelName} by ${username}`);
         } else {
-            enqueueMessage(channel, result.message, { replyToId });
+            await enqueueMessage(channel, result.message, { replyToId });
             logger.warn(`[DisableCommand] Failed to disable command '${commandToDisable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {
@@ -48,10 +48,14 @@ async function execute(context) {
             err: error,
             channel: channelName,
             user: username,
-            command: commandToDisable
-        }, `[DisableCommand] Error disabling command '${commandToDisable}' in channel ${channelName}`);
+            command: args[0] || 'N/A'
+        }, `[DisableCommand] Error executing disable command in channel ${channelName}`);
         
-        enqueueMessage(channel, `Sorry, there was an error disabling the command. Please try again later.`, { replyToId });
+        try {
+            await enqueueMessage(channel, `Sorry, there was an error disabling the command. Please try again later.`, { replyToId });
+        } catch (msgError) {
+            logger.warn({ err: msgError }, '[DisableCommand] Failed to send error message to chat');
+        }
     }
 }
 

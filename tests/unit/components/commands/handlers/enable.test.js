@@ -43,7 +43,8 @@ describe('Enable Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Usage: !enable <commandName>. Example: !enable trivia'
+                'Usage: !enable <commandName>. Example: !enable trivia',
+                { replyToId: '123' }
             );
             expect(enableCommandForChannel).not.toHaveBeenCalled();
         });
@@ -56,7 +57,8 @@ describe('Enable Command Handler', () => {
             expect(enableCommandForChannel).toHaveBeenCalledWith('testchannel', 'trivia');
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Command enabled successfully'
+                'Command enabled successfully',
+                { replyToId: '123' }
             );
             expect(logger.info).toHaveBeenCalledWith(
                 '[EnableCommand] Successfully enabled command \'trivia\' in channel testchannel by testuser'
@@ -78,7 +80,8 @@ describe('Enable Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Unknown command \'unknowncommand\'. Available commands: trivia, geo, riddle, ask'
+                'Unknown command \'unknowncommand\'. Available commands: trivia, geo, riddle, ask',
+                { replyToId: '123' }
             );
             expect(enableCommandForChannel).not.toHaveBeenCalled();
         });
@@ -94,7 +97,8 @@ describe('Enable Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Command was already enabled'
+                'Command was already enabled',
+                { replyToId: '123' }
             );
             expect(logger.warn).toHaveBeenCalledWith(
                 '[EnableCommand] Failed to enable command \'trivia\' in channel testchannel: Command was already enabled'
@@ -110,11 +114,12 @@ describe('Enable Command Handler', () => {
 
             expect(logger.error).toHaveBeenCalledWith(
                 { err: error, channel: 'testchannel', user: 'testuser', command: 'trivia' },
-                '[EnableCommand] Error enabling command \'trivia\' in channel testchannel'
+                '[EnableCommand] Error executing enable command in channel testchannel'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Sorry, there was an error enabling the command. Please try again later.'
+                'Sorry, there was an error enabling the command. Please try again later.',
+                { replyToId: '123' }
             );
         });
 

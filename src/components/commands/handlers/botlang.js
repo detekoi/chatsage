@@ -27,9 +27,9 @@ const botLangHandler = {
             // Show current status and usage info
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
+                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
             } else {
-                enqueueMessage(channel, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
+                await enqueueMessage(channel, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
             }
             return;
         }
@@ -40,9 +40,9 @@ const botLangHandler = {
         if (action === 'status') {
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}.`, { replyToId });
+                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}.`, { replyToId });
             } else {
-                enqueueMessage(channel, `Bot is currently set to speak English (default).`, { replyToId });
+                await enqueueMessage(channel, `Bot is currently set to speak English (default).`, { replyToId });
             }
             return;
         }
@@ -51,7 +51,7 @@ const botLangHandler = {
         if (action === 'off' || action === 'default' || action === 'english') {
             contextManager.setBotLanguage(channelName, null);
             resetChatSession(channelName); // Invalidate cached session so next query uses English
-            enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
+            await enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
             return;
         }
 
@@ -64,7 +64,7 @@ const botLangHandler = {
             const translatedTest = await translateText(testMessage, targetLanguage);
 
             if (!translatedTest || translatedTest === SAME_LANGUAGE || (typeof translatedTest === 'string' && translatedTest.trim().length === 0)) {
-                enqueueMessage(channel, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
+                await enqueueMessage(channel, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
                 return;
             }
 
@@ -90,7 +90,11 @@ const botLangHandler = {
             }
         } catch (error) {
             logger.error({ err: error, targetLanguage }, 'Error setting bot language');
-            enqueueMessage(channel, `Sorry, an error occurred while setting the bot language.`, { replyToId });
+            try {
+                await enqueueMessage(channel, `Sorry, an error occurred while setting the bot language.`, { replyToId });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[BotLang] Failed to send error message to chat');
+            }
         }
     },
 };

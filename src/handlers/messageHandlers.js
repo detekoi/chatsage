@@ -37,7 +37,7 @@ export async function handlePendingReport({
     // Try Riddle first
     let reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        enqueueMessage(channel, reportFinalizationResult.message);
+        await enqueueMessage(channel, reportFinalizationResult.message);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Riddle finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
@@ -48,7 +48,7 @@ export async function handlePendingReport({
     // Try Trivia next
     reportFinalizationResult = await triviaManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        enqueueMessage(channel, reportFinalizationResult.message);
+        await enqueueMessage(channel, reportFinalizationResult.message);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Trivia finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
@@ -59,7 +59,7 @@ export async function handlePendingReport({
     // Try Geo last
     reportFinalizationResult = await geoManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        enqueueMessage(channel, reportFinalizationResult.message);
+        await enqueueMessage(channel, reportFinalizationResult.message);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Geo finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
@@ -137,18 +137,18 @@ export async function handleStopTranslation({
     if (stopGlobally) { // Already checked permission above
         const count = contextManager.disableAllTranslationsInChannel(cleanChannel);
         const replyToId = tags?.id || tags?.['message-id'] || null;
-        enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
+        await enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
     } else {
         // Check permission if target is not self
         if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
-            enqueueMessage(channel, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
+            await enqueueMessage(channel, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
         } else {
             const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
             const replyToId = tags?.id || tags?.['message-id'] || null;
             if (targetUserForStop === lowerUsername) { // Message for self stop
-                enqueueMessage(channel, wasStopped ? `Translation stopped.` : `Translation was already off.`, { replyToId });
+                await enqueueMessage(channel, wasStopped ? `Translation stopped.` : `Translation was already off.`, { replyToId });
             } else { // Message for mod stopping someone else
-                enqueueMessage(channel, wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`, { replyToId });
+                await enqueueMessage(channel, wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`, { replyToId });
             }
         }
     }
@@ -181,7 +181,7 @@ export async function handleAutoTranslation({
         if (translatedText && translatedText !== SAME_LANGUAGE) {
             const reply = `🌐💬 ${translatedText}`;
             const replyToId = tags?.id || tags?.['message-id'] || null;
-            enqueueMessage(channel, reply, { replyToId });
+            await enqueueMessage(channel, reply, { replyToId });
             return true;
         } else if (translatedText === SAME_LANGUAGE) {
             logger.debug(`[${cleanChannel}] Message from ${lowerUsername} already in ${userState.targetLanguage}, skipping translation`);

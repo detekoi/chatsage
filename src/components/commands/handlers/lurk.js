@@ -90,7 +90,7 @@ const lurkHandler = {
             }
 
             const replyToId = user?.id || user?.['message-id'] || null;
-            enqueueMessage(channel, response, { replyToId });
+            await enqueueMessage(channel, response, { replyToId });
             logger.info(`Executed !lurk command in ${channel} for ${displayName}`);
 
         } catch (error) {

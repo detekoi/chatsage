@@ -68,9 +68,9 @@ const quoteHandler = {
             if (!args || args.length === 0) {
                 // Random
                 const q = await getRandomQuote(channelName);
-                if (!q) return enqueueMessage(channel, `No quotes yet. Add one with "!quote add <text [- author]>"`, { replyToId });
+                if (!q) return await enqueueMessage(channel, `No quotes yet. Add one with "!quote add <text [- author]>"`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
-                return enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             const sub = String(args[0]).toLowerCase();
@@ -79,87 +79,87 @@ const quoteHandler = {
             if (/^\d+$/.test(sub)) {
                 const id = parseInt(sub, 10);
                 const q = await getQuoteById(channelName, id);
-                if (!q) return enqueueMessage(channel, `Quote #${id} not found.`, { replyToId });
+                if (!q) return await enqueueMessage(channel, `Quote #${id} not found.`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
-                return enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'last') {
                 const q = await getLastQuote(channelName);
-                if (!q) return enqueueMessage(channel, `No quotes yet.`, { replyToId });
+                if (!q) return await enqueueMessage(channel, `No quotes yet.`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
-                return enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'search') {
                 const term = args.slice(1).join(' ').trim();
-                if (!term) return enqueueMessage(channel, `Usage: !quote search <term>`, { replyToId });
+                if (!term) return await enqueueMessage(channel, `Usage: !quote search <term>`, { replyToId });
                 const results = await searchQuotes(channelName, term);
                 if (!results || results.length === 0) {
-                    return enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
+                    return await enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
                 }
                 const q = results[0];
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
-                return enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             // If not a recognized command, treat as search
             if (!recognizedCommands.includes(sub)) {
                 const term = args.join(' ').trim();
-                if (!term) return enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
+                if (!term) return await enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
                 const results = await searchQuotes(channelName, term);
                 if (!results || results.length === 0) {
-                    return enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
+                    return await enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
                 }
                 const q = results[0];
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
-                return enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'add') {
                 const raw = args.slice(1).join(' ').trim();
-                if (!raw) return enqueueMessage(channel, `Usage: !quote add <text [- author]>`, { replyToId });
+                if (!raw) return await enqueueMessage(channel, `Usage: !quote add <text [- author]>`, { replyToId });
                 if (raw.length > MAX_QUOTE_LENGTH) {
-                    return enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
+                    return await enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
                 }
                 const { text, saidBy } = parseQuoteText(raw);
                 const addedBy = user?.['display-name'] || user?.username || 'unknown';
                 const { quoteId } = await addQuote(channelName, text, saidBy, addedBy);
                 const suffix = saidBy ? ` — ${saidBy}` : '';
-                return enqueueMessage(channel, `Added quote #${quoteId}: "${text}"${suffix}`, { replyToId });
+                return await enqueueMessage(channel, `Added quote #${quoteId}: "${text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'delete' || sub === 'remove' || sub === 'del') {
                 if (!isPrivilegedUser(user, channelName)) {
-                    return enqueueMessage(channel, `Only mods/broadcaster can delete quotes.`, { replyToId });
+                    return await enqueueMessage(channel, `Only mods/broadcaster can delete quotes.`, { replyToId });
                 }
                 if (args.length < 2 || !/^\d+$/.test(args[1])) {
-                    return enqueueMessage(channel, `Usage: !quote delete <id>`, { replyToId });
+                    return await enqueueMessage(channel, `Usage: !quote delete <id>`, { replyToId });
                 }
                 const id = parseInt(args[1], 10);
                 const ok = await deleteQuoteFromStorage(channelName, id);
-                return enqueueMessage(channel, ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await enqueueMessage(channel, ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`, { replyToId });
             }
 
             if (sub === 'edit' || sub === 'update') {
                 if (!isPrivilegedUser(user, channelName)) {
-                    return enqueueMessage(channel, `Only mods/broadcaster can edit quotes.`, { replyToId });
+                    return await enqueueMessage(channel, `Only mods/broadcaster can edit quotes.`, { replyToId });
                 }
                 if (args.length < 3 || !/^\d+$/.test(args[1])) {
-                    return enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
+                    return await enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
                 }
                 const id = parseInt(args[1], 10);
                 const raw = args.slice(2).join(' ').trim();
-                if (!raw) return enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
+                if (!raw) return await enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
                 if (raw.length > MAX_QUOTE_LENGTH) {
-                    return enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
+                    return await enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
                 }
                 const { text, saidBy } = parseQuoteText(raw);
                 const ok = await editQuoteInStorage(channelName, id, text, saidBy);
-                return enqueueMessage(channel, ok ? `Updated quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await enqueueMessage(channel, ok ? `Updated quote #${id}.` : `Quote #${id} not found.`, { replyToId });
             }
 
-            return enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
+            return await enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
         } catch (err) {
             logger.error({ 
                 err, 
@@ -170,7 +170,11 @@ const quoteHandler = {
                 user: user?.username,
                 args: args 
             }, '[QuoteCommand] Error executing quote command');
-            return enqueueMessage(channel, `Sorry, something went wrong handling !quote.`, { replyToId });
+            try {
+                return await enqueueMessage(channel, `Sorry, something went wrong handling !quote.`, { replyToId });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[QuoteCommand] Failed to send error message to chat');
+            }
         }
     },
 };

@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger.js';
+import { escapeRegExp } from '../../../lib/regexUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 // Import the relevant functions from geminiClient
 import {
@@ -87,12 +88,12 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
-        enqueueMessage(channel, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
+        await enqueueMessage(channel, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
         return;
     }
 
     // Strip any mistaken prefixes from the LLM response
-    let finalReplyText = responseText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+    let finalReplyText = responseText.replace(new RegExp(`^@?${escapeRegExp(userName.toLowerCase())}[,:]?\\s*`, 'i'), '').trim();
 
     // Remove markdown asterisks
     finalReplyText = removeMarkdownAsterisks(finalReplyText);
@@ -104,7 +105,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     // Let ircSender.js handle all length processing (summarization/truncation)
     logger.info(`[!ask] Enqueueing message (${finalLength} chars) for ${userName}`);
-    enqueueMessage(channel, finalReplyText, { replyToId });
+    await enqueueMessage(channel, finalReplyText, { replyToId });
     logConversation(channel.substring(1), userQuery, finalReplyText, { trigger: 'command' });
 }
 
@@ -124,14 +125,14 @@ const askHandler = {
         const contextManager = getContextManager();
 
         if (!userQuery) {
-            enqueueMessage(channel, `Please ask a question after the command. Usage: !ask <your question>`, { replyToId: user?.id || user?.['message-id'] || null });
+            await enqueueMessage(channel, `Please ask a question after the command. Usage: !ask <your question>`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
         // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
         if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
-            enqueueMessage(channel, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
+            await enqueueMessage(channel, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
@@ -144,7 +145,7 @@ const askHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !ask command.`);
-                enqueueMessage(channel, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });
+                await enqueueMessage(channel, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext);
@@ -201,7 +202,11 @@ const askHandler = {
             const finalMessage = errorMessage === 'Sorry, an error occurred while processing that.'
                 ? 'Sorry, an error occurred while processing your question.'
                 : errorMessage;
-            enqueueMessage(channel, finalMessage, { replyToId: user?.id || user?.['message-id'] || null });
+            try {
+                await enqueueMessage(channel, finalMessage, { replyToId: user?.id || user?.['message-id'] || null });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[AskCommand] Failed to send error message to chat');
+            }
         }
     },
 };

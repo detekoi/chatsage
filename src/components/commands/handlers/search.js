@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger.js';
+import { escapeRegExp } from '../../../lib/regexUtils.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/geminiClient.js';
@@ -30,7 +31,7 @@ const searchHandler = {
         const contextManager = getContextManager(); // Get context manager
 
         if (!userQuery) {
-            enqueueMessage(channel, `Please provide something to search for. Usage: !search <your query>`, { replyToId });
+            await enqueueMessage(channel, `Please provide something to search for. Usage: !search <your query>`, { replyToId });
             return;
         }
 
@@ -41,7 +42,7 @@ const searchHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `searching for: ${userQuery}`); // Get context object
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !search command from user ${userName}.`);
-                enqueueMessage(channel, `Sorry, I couldn't retrieve the current context to perform the search.`, { replyToId });
+                await enqueueMessage(channel, `Sorry, I couldn't retrieve the current context to perform the search.`, { replyToId });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
@@ -52,14 +53,14 @@ const searchHandler = {
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
-                enqueueMessage(channel, `Sorry, I couldn't find information about "${userQuery}" right now.`, { replyToId });
+                await enqueueMessage(channel, `Sorry, I couldn't find information about "${userQuery}" right now.`, { replyToId });
                 return; // Exit if no initial response
             }
 
             // 3. Format the initial reply and check length (prefix simplified)
             let finalReplyText = initialResponseText;
             // Strip mistaken @mentions of the user if present
-            finalReplyText = finalReplyText.replace(new RegExp(`^@?${userName.toLowerCase()}[,:]?\\s*`, 'i'), '').trim();
+            finalReplyText = finalReplyText.replace(new RegExp(`^@?${escapeRegExp(userName.toLowerCase())}[,:]?\\s*`, 'i'), '').trim();
             // Remove markdown asterisks
             finalReplyText = removeMarkdownAsterisks(finalReplyText);
 
@@ -116,12 +117,16 @@ const searchHandler = {
                 logger.warn(`Final reply (even after summary/truncation) too long (${finalMessage.length} chars). Truncating sharply.`);
                 finalMessage = finalMessage.substring(0, MAX_IRC_MESSAGE_LENGTH - 3) + '...';
             }
-            enqueueMessage(channel, finalMessage, { replyToId });
+            await enqueueMessage(channel, finalMessage, { replyToId });
             logConversation(channelName, userQuery, finalMessage, { trigger: 'command' });
 
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);
-            enqueueMessage(channel, `Sorry, an error occurred while searching.`, { replyToId });
+            try {
+                await enqueueMessage(channel, `Sorry, an error occurred while searching.`, { replyToId });
+            } catch (msgError) {
+                logger.warn({ err: msgError }, '[SearchCommand] Failed to send error message to chat');
+            }
         }
     },
 };
