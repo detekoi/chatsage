@@ -1,6 +1,8 @@
 import logger from '../../lib/logger.js';
-import { getChannelInformation, getLiveStreams, getUsersById } from './helixClient.js';
+import { getChannelInformation, getLiveStreams, getUsersById, getModerators } from './helixClient.js';
 import { getContextManager } from '../context/contextManager.js';
+import { getBroadcasterAccessToken } from './broadcasterTokenHelper.js';
+import config from '../../config/index.js';
 // No need to import helixClient directly here, pass it in
 // No need to import contextManager directly here, pass it in
 
@@ -11,6 +13,12 @@ const bioFetchedAtMs = new Map(); // channelName -> timestamp of last successful
 let bioFetchConsecutiveFailures = 0;
 const BIO_FETCH_MAX_FAILURES = 3; // Circuit breaker: stop attempting after this many consecutive failures
 const BIO_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // Re-fetch bios every 30 minutes to catch profile updates
+
+// Moderator fetch tracking
+const modFetchedAtMs = new Map(); // channelName -> timestamp of last successful mod fetch
+let modFetchConsecutiveFailures = 0;
+const MOD_FETCH_MAX_FAILURES = 3; // Circuit breaker
+const MOD_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // Re-fetch mods every 30 minutes
 
 /**
  * Fetches stream information for a batch of channels.
@@ -127,6 +135,66 @@ async function fetchBatch(channels, helixClient, contextManager, lifecycleManage
                     } else {
                         logger.warn({ err, failCount: bioFetchConsecutiveFailures }, 'Failed to fetch broadcaster bios (will retry next cycle)');
                     }
+                }
+            }
+        }
+
+        // Fetch and cache moderator lists (with TTL-based refresh)
+        if (modFetchConsecutiveFailures < MOD_FETCH_MAX_FAILURES) {
+            const nowMs = Date.now();
+            const channelsNeedingModFetch = channels.filter(c => {
+                // Check if we've never fetched or TTL has expired
+                const lastFetched = modFetchedAtMs.get(c.channelName);
+                return lastFetched === undefined || (nowMs - lastFetched) > MOD_REFRESH_INTERVAL_MS;
+            });
+
+            if (channelsNeedingModFetch.length > 0) {
+                const modFetchResults = await Promise.allSettled(
+                    channelsNeedingModFetch.map(async (channel) => {
+                        const tokenResult = await getBroadcasterAccessToken(channel.channelName);
+                        if (!tokenResult) {
+                            // No broadcaster token available — skip without TTL-stamping
+                            // so we retry as soon as a token becomes available
+                            logger.debug({ channel: channel.channelName }, 'No broadcaster token for mod fetch, skipping');
+                            return { channel, skipped: true };
+                        }
+
+                        // getModerators throws on API errors (no internal catch)
+                        const moderators = await getModerators(
+                            channel.broadcasterId,
+                            tokenResult.accessToken,
+                            config.twitch.clientId
+                        );
+
+                        return { channel, moderators };
+                    })
+                );
+
+                let hadFailureThisCycle = false;
+                for (const result of modFetchResults) {
+                    if (result.status === 'fulfilled') {
+                        const { channel, moderators, skipped } = result.value;
+                        if (skipped) continue;
+
+                        const modNames = moderators.map(m => m.user_name);
+                        contextManager.setModerators(channel.channelName, modNames);
+                        modFetchedAtMs.set(channel.channelName, nowMs);
+                        logger.debug({ channel: channel.channelName, moderatorCount: modNames.length }, 'Updated moderator list');
+                    } else {
+                        // Log error but don't overwrite cached mod list
+                        hadFailureThisCycle = true;
+                        logger.warn({ err: result.reason }, 'Failed to fetch moderators for a channel (will retry next cycle)');
+                    }
+                }
+
+                if (hadFailureThisCycle) {
+                    // Increment once per cycle, not per channel
+                    modFetchConsecutiveFailures++;
+                    if (modFetchConsecutiveFailures >= MOD_FETCH_MAX_FAILURES) {
+                        logger.error({ failCount: modFetchConsecutiveFailures }, 'Moderator fetch failed repeatedly — disabling until restart');
+                    }
+                } else {
+                    modFetchConsecutiveFailures = 0;
                 }
             }
         }

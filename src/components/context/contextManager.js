@@ -154,7 +154,8 @@ function _getOrCreateChannelState(channelName) {
                 offlineMissCount: 0,
             },
             userStates: new Map(), // <-- Initialize the userStates Map here
-            botLanguage: null // <-- Initialize with no language preference
+            botLanguage: null, // <-- Initialize with no language preference
+            moderators: [], // <-- Cached moderator display names for LLM context
         });
     }
     return channelStates.get(channelName);
@@ -368,6 +369,7 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
         recentChatHistory: _formatRecentHistory(recentHistory),
         username: currentUsername, // Pass these through
         currentMessage: currentMessage, // Pass these through
+        moderators: state.moderators || [],
     };
 }
 
@@ -391,6 +393,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
     const channelSummaries = [];
     const streamInfos = [];
     const channelBios = [];
+    const allModeratorsSet = new Set();
 
     for (const channelName of channelNames) {
         if (!channelStates.has(channelName)) {
@@ -427,6 +430,13 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
         // Collect broadcaster bios
         if (state.broadcasterBio) {
             channelBios.push(`[${channelName}] ${state.broadcasterBio}`);
+        }
+
+        // Collect moderators (deduplicate across channels)
+        if (Array.isArray(state.moderators)) {
+            for (const mod of state.moderators) {
+                allModeratorsSet.add(mod);
+            }
         }
     }
 
@@ -471,6 +481,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
         recentChatHistory: _formatRecentHistoryWithOrigin(recentMergedHistory),
         username: currentUsername,
         currentMessage: currentMessage,
+        moderators: [...allModeratorsSet],
     };
 }
 
@@ -726,6 +737,28 @@ function getStreamContextSnapshot(channelName) {
 }
 
 /**
+ * Sets the cached moderator list for a channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string[]} moderatorNames - Array of moderator display names.
+ */
+function setModerators(channelName, moderatorNames) {
+    const state = channelStates.get(channelName);
+    if (!state) return;
+    state.moderators = Array.isArray(moderatorNames) ? moderatorNames : [];
+    logger.debug(`[${channelName}] Cached ${state.moderators.length} moderator(s)`);
+}
+
+/**
+ * Gets the cached moderator list for a channel.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {string[]} Array of moderator display names, or empty array.
+ */
+function getModerators(channelName) {
+    const state = channelStates.get(channelName);
+    return state?.moderators || [];
+}
+
+/**
  * Gets the cached broadcaster bio for a channel.
  * Uses ?? to preserve empty strings (which mean "fetched but blank").
  * Returns null only when the bio has never been fetched.
@@ -773,6 +806,8 @@ const manager = {
     clearStreamContext,
     clearThematicContext,
     getAllChannelStates,
+    setModerators,
+    getModerators,
 };
 
 /**
@@ -792,4 +827,6 @@ export {
     getBotLanguage,
     clearStreamContext,
     clearThematicContext,
+    setModerators,
+    getModerators,
 };

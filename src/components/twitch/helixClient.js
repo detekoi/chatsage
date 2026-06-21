@@ -484,6 +484,51 @@ async function sendAnnouncement(broadcasterId, moderatorId, message, accessToken
     }
 }
 
+/**
+ * Fetches all moderators for a broadcaster's channel.
+ * Uses the broadcaster's user access token (requires moderation:read or channel:manage:moderators scope).
+ * Paginates to collect all moderators.
+ *
+ * @param {string} broadcasterId - The broadcaster's Twitch user ID.
+ * @param {string} userAccessToken - Broadcaster's user access token.
+ * @param {string} clientId - Twitch Client ID.
+ * @returns {Promise<Array<{user_id: string, user_login: string, user_name: string}>>}
+ *   Array of moderator objects, or empty array on error.
+ */
+async function getModerators(broadcasterId, userAccessToken, clientId) {
+    if (!broadcasterId || !userAccessToken || !clientId) {
+        logger.warn('getModerators called with missing params');
+        return [];
+    }
+
+    const allModerators = [];
+    let cursor = null;
+
+    do {
+        const params = { broadcaster_id: String(broadcasterId), first: '100' };
+        if (cursor) params.after = cursor;
+
+        const response = await retryWithBackoff(async () => {
+            return await axios.get(`${TWITCH_HELIX_URL}/moderation/moderators`, {
+                params,
+                headers: {
+                    Authorization: `Bearer ${userAccessToken}`,
+                    'Client-ID': clientId,
+                },
+                timeout: 15000,
+            });
+        }, 2, 1000);
+
+        const data = response.data?.data || [];
+        if (data.length === 0) break; // Guard against infinite loop on empty page with cursor
+        allModerators.push(...data);
+        cursor = response.data?.pagination?.cursor ?? null;
+    } while (cursor);
+
+    logger.debug({ broadcasterId, moderatorCount: allModerators.length }, 'Fetched moderator list');
+    return allModerators;
+}
+
 
 // Export initializer, getter, and specific API call functions
 export {
@@ -495,6 +540,7 @@ export {
     getLiveStreams,
     getSharedChatSession,
     sendAnnouncement,
+    getModerators,
 };
 
 // Helper: get follower relationship with broadcaster user token
