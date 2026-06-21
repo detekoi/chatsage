@@ -46,8 +46,14 @@ interface ChannelState {
 */
 
 // --- Constants ---
-const MAX_CHAT_HISTORY_LENGTH = 30; // Max messages to keep before summarizing
-const CHAT_HISTORY_PRUNE_LENGTH = 10; // Keep N most recent messages after summarizing
+const MAX_CHAT_HISTORY_LENGTH = 40; // Max messages to keep before summarizing
+const KEEP_RAW = 15; // Messages kept verbatim after prune — same count the prompt reads
+// INVARIANT: MAX_CHAT_HISTORY_LENGTH - KEEP_RAW must be >= 10.
+// summarizer.js bails when the segment is < 10 messages. If the gap is too small,
+// evicted batches fall below 10 → summarizer returns null → messages are pruned
+// without ever being summarized (silent data loss).
+const HARD_CAP = MAX_CHAT_HISTORY_LENGTH * 2; // Safety valve: force-prune even on failure
+// to prevent unbounded growth during extended LLM outages.
 
 // --- State ---
 /** @type {Map<string, ChannelState>} */
@@ -156,6 +162,7 @@ function _getOrCreateChannelState(channelName) {
             userStates: new Map(), // <-- Initialize the userStates Map here
             botLanguage: null, // <-- Initialize with no language preference
             moderators: [], // <-- Cached moderator display names for LLM context
+            summaryGeneration: 0, // <-- Monotonic counter; incremented by clearThematicContext
         });
     }
     return channelStates.get(channelName);
@@ -212,29 +219,55 @@ async function addMessage(channelName, username, message, tags) {
     // Check if history is too long AND if a summary isn't already running
     if (state.chatHistory.length > MAX_CHAT_HISTORY_LENGTH && !state.isSummarizing) {
         state.isSummarizing = true; // Set lock
+        // Snapshot the boundary *before* the async gap so messages arriving
+        // mid-summarization don't fall between evicted and kept windows.
+        const boundaryLength = state.chatHistory.length;
+        // Capture generation counter to detect clearThematicContext() during the await.
+        // If a game change clears the summary mid-summarization, we must NOT overwrite
+        // the reset with a stale folded summary that re-injects old-game themes.
+        const genBefore = state.summaryGeneration;
         try {
-            // Pass the history *before* pruning recent messages
+            // Only pass the messages being evicted — NOT the tail we keep.
+            // This avoids the "Echo Chamber" bug where kept messages appear
+            // in both the summary and the raw window.
+            const toEvict = state.chatHistory.slice(0, boundaryLength - KEEP_RAW);
             const summary = await triggerSummarizationIfNeeded(
                 channelName,
-                state.chatHistory,
-                state.chatSummary
+                toEvict,
+                state.chatSummary // previous summary for rolling fold
             );
             if (summary) {
-                state.chatSummary = summary;
-                // Prune history after successful summarization
-                state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+                // Guard: if clearThematicContext ran during the await, discard
+                // the stale folded summary — it carries old-game context.
+                if (state.summaryGeneration !== genBefore) {
+                    logger.info(`[${channelName}] Thematic context was cleared during summarization — discarding stale folded summary.`);
+                } else {
+                    state.chatSummary = summary;
+                }
+                // Prune history after successful summarization, keeping everything
+                // from the snapshotted boundary onward (plus anything pushed during await)
+                state.chatHistory = state.chatHistory.slice(boundaryLength - KEEP_RAW);
                 logger.debug(`Summarized and pruned history for ${channelName}. New length: ${state.chatHistory.length}`);
             } else {
-                // If summarization failed, prune more aggressively to prevent unbounded growth
-                logger.warn(`[${channelName}] Summarization failed, pruning chat history more aggressively to prevent token overflow.`);
-                state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
-                logger.debug(`Pruned history for ${channelName} after summarization failure. New length: ${state.chatHistory.length}`);
+                // Summarization failed (transient LLM error). Retain the messages so
+                // the next addMessage that exceeds MAX will retry. Only force-prune
+                // if we hit the hard cap — the LLM is likely persistently down.
+                if (state.chatHistory.length >= HARD_CAP) {
+                    logger.warn(`[${channelName}] Summarization failed and history hit hard cap (${HARD_CAP}). Force-pruning to prevent unbounded growth.`);
+                    state.chatHistory = state.chatHistory.slice(-KEEP_RAW);
+                } else {
+                    logger.warn(`[${channelName}] Summarization failed. Retaining messages for retry on next trigger (${state.chatHistory.length}/${HARD_CAP}).`);
+                }
             }
         } catch (error) {
             logger.error({ err: error, channel: channelName }, "Error during summarization trigger/pruning.");
-            // Prune aggressively to prevent unbounded growth when summarization throws errors
-            logger.warn(`[${channelName}] Exception during summarization, pruning chat history aggressively to prevent token overflow.`);
-            state.chatHistory = state.chatHistory.slice(-CHAT_HISTORY_PRUNE_LENGTH);
+            // Retain messages for retry — only force-prune at the hard cap
+            if (state.chatHistory.length >= HARD_CAP) {
+                logger.warn(`[${channelName}] Summarization threw and history hit hard cap (${HARD_CAP}). Force-pruning.`);
+                state.chatHistory = state.chatHistory.slice(-KEEP_RAW);
+            } else {
+                logger.warn(`[${channelName}] Summarization threw. Retaining messages for retry (${state.chatHistory.length}/${HARD_CAP}).`);
+            }
         } finally {
             state.isSummarizing = false; // Release lock
         }
@@ -324,6 +357,9 @@ function clearThematicContext(channelName) {
         logger.info(`[${channelName}] Clearing thematic context (old summary: "${state.chatSummary.substring(0, 50)}...").`);
         state.chatSummary = '';
     }
+    // Bump generation so any in-flight summarization knows NOT to overwrite
+    // the cleared summary with a stale fold that carries old-game themes.
+    state.summaryGeneration = (state.summaryGeneration || 0) + 1;
     // Keep chatHistory intact - it will naturally cycle out old messages
     // and provides useful recent context even across game changes
 }
@@ -354,7 +390,7 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
         return null;
     }
     const state = channelStates.get(channelName);
-    const recentHistory = state.chatHistory.slice(-15); // Get last ~15 messages for immediate context
+    const recentHistory = state.chatHistory.slice(-KEEP_RAW); // Get last messages for immediate context
 
     return {
         channelName: state.channelName,
@@ -453,7 +489,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
     });
 
     // Take recent messages from the merged timeline
-    const recentMergedHistory = allMessages.slice(-15);
+    const recentMergedHistory = allMessages.slice(-KEEP_RAW);
 
     // Format stream info
     const streamContextText = streamInfos.length > 0

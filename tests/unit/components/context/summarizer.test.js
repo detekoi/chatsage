@@ -66,7 +66,7 @@ describe('summarizer.triggerSummarizationIfNeeded', () => {
         const callArgs = summarizeText.mock.calls[0];
         expect(callArgs[0]).toContain('user0: Message 0');
         expect(callArgs[0]).toContain('user14: Message 14');
-        expect(callArgs[1]).toBe(300); // reduceTargetChars
+        expect(callArgs[1]).toBe(450); // reduceTargetChars
 
         expect(logger.info).toHaveBeenCalledWith(
             expect.stringMatching(/\[testchannel\] Single-pass summary generated \(\d+ chars\)\./)
@@ -106,7 +106,7 @@ describe('summarizer.triggerSummarizationIfNeeded', () => {
         );
         expect(summarizeText).toHaveBeenNthCalledWith(4,
             expect.stringContaining('Combine these chunk summaries'),
-            300 // reduceTargetChars
+            450 // reduceTargetChars
         );
 
         expect(logger.info).toHaveBeenCalledWith(
@@ -243,5 +243,169 @@ describe('summarizer.triggerSummarizationIfNeeded', () => {
         expect(logger.warn).toHaveBeenCalledWith(
             '[testchannel] Summarization returned empty result for single chunk.'
         );
+    });
+
+    // --- previousSummary folding tests ---
+
+    describe('previousSummary folding', () => {
+        it('should fold previousSummary into single-chunk summarization prompt', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const previousSummary = 'Earlier the chat discussed cats and dogs.';
+            const mockSummary = 'Combined summary with old + new context.';
+            summarizeText.mockResolvedValue(mockSummary);
+
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory, previousSummary);
+
+            expect(result).toBe(mockSummary);
+            expect(summarizeText).toHaveBeenCalledTimes(1);
+
+            // Verify the prompt includes the previous summary
+            const prompt = summarizeText.mock.calls[0][0];
+            expect(prompt).toContain('Previous context summary:');
+            expect(prompt).toContain(previousSummary);
+            expect(prompt).toContain('New chat messages to incorporate:');
+            expect(prompt).toContain('user0: Message 0');
+        });
+
+        it('should fold previousSummary into map/reduce reduce step', async () => {
+            const chatHistory = Array.from({ length: 45 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const previousSummary = 'Earlier the chat discussed cats and dogs.';
+            const finalSummary = 'Comprehensive folded summary.';
+
+            summarizeText
+                .mockResolvedValueOnce('Chunk 1 summary')
+                .mockResolvedValueOnce('Chunk 2 summary')
+                .mockResolvedValueOnce('Chunk 3 summary')
+                .mockResolvedValueOnce(finalSummary);
+
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory, previousSummary);
+
+            expect(result).toBe(finalSummary);
+
+            // Verify the reduce step (4th call) includes the previous summary
+            const reducePrompt = summarizeText.mock.calls[3][0];
+            expect(reducePrompt).toContain('Previous context summary:');
+            expect(reducePrompt).toContain(previousSummary);
+            expect(reducePrompt).toContain('New chunk summaries to incorporate:');
+            expect(reducePrompt).toContain('Chunk 1:');
+
+            // Map step prompts (calls 0-2) should NOT contain the previous summary
+            for (let i = 0; i < 3; i++) {
+                expect(summarizeText.mock.calls[i][0]).not.toContain('Previous context summary:');
+            }
+        });
+
+        it('should handle null previousSummary (state.chatSummary can be null)', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const mockSummary = 'Summary without prior context.';
+            summarizeText.mockResolvedValue(mockSummary);
+
+            // Explicitly pass null — this is the real-world case from state.chatSummary
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory, null);
+
+            expect(result).toBe(mockSummary);
+
+            // Prompt should NOT include "Previous context summary:" when null
+            const prompt = summarizeText.mock.calls[0][0];
+            expect(prompt).not.toContain('Previous context summary:');
+            expect(prompt).toContain('user0: Message 0');
+        });
+
+        it('should handle omitted previousSummary (undefined)', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const mockSummary = 'Summary without prior context.';
+            summarizeText.mockResolvedValue(mockSummary);
+
+            // Omit the 3rd argument entirely
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory);
+
+            expect(result).toBe(mockSummary);
+
+            // Prompt should NOT include "Previous context summary:" when omitted
+            const prompt = summarizeText.mock.calls[0][0];
+            expect(prompt).not.toContain('Previous context summary:');
+        });
+
+        it('should handle empty string previousSummary', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const mockSummary = 'Summary without prior context.';
+            summarizeText.mockResolvedValue(mockSummary);
+
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory, '');
+
+            expect(result).toBe(mockSummary);
+
+            // Empty string is falsy — should NOT include "Previous context summary:"
+            const prompt = summarizeText.mock.calls[0][0];
+            expect(prompt).not.toContain('Previous context summary:');
+        });
+
+        it('should handle whitespace-only previousSummary', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            const mockSummary = 'Summary without prior context.';
+            summarizeText.mockResolvedValue(mockSummary);
+
+            const result = await triggerSummarizationIfNeeded('testchannel', chatHistory, '   ');
+
+            expect(result).toBe(mockSummary);
+
+            // Whitespace-only trims to empty string — should NOT include previous summary
+            const prompt = summarizeText.mock.calls[0][0];
+            expect(prompt).not.toContain('Previous context summary:');
+        });
+
+        it('should log when folding previous summary', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            summarizeText.mockResolvedValue('Summary');
+
+            await triggerSummarizationIfNeeded('testchannel', chatHistory, 'Old summary');
+
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.stringContaining('(folding previous summary)')
+            );
+        });
+
+        it('should not log folding when no previous summary', async () => {
+            const chatHistory = Array.from({ length: 15 }, (_, i) => ({
+                username: `user${i}`,
+                message: `Message ${i}`
+            }));
+
+            summarizeText.mockResolvedValue('Summary');
+
+            await triggerSummarizationIfNeeded('testchannel', chatHistory);
+
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.not.stringContaining('(folding previous summary)')
+            );
+        });
     });
 });
