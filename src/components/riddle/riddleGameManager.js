@@ -752,7 +752,7 @@ export async function clearLeaderboard(channelName) {
     logger.info(`[RiddleGameManager][${channelName}] Clearing riddle leaderboard data.`);
     try {
         const result = await clearRiddleLeaderboardData(channelName);
-        return { success: true, message: result.message };
+        return { success: result.success, message: result.message };
     } catch (e) {
         logger.error({ err: e, channelName }, '[RiddleGameManager] Error clearing riddle leaderboard');
         return { success: false, message: e.message || "Failed to clear riddle leaderboard." };
@@ -885,10 +885,11 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         if (!riddleToReport || !riddleToReport.docId) {
             return { success: false, message: "Could not identify a specific riddle to report." };
         }
+        const questionPreview = riddleToReport.question || 'Unknown riddle';
         try {
             await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
-            logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${riddleToReport.question.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The riddle ("${riddleToReport.question.substring(0, 30)}...") has been reported.` };
+            logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${questionPreview.substring(0, 50)}..."`);
+            return { success: true, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting single/latest riddle via storage.`);
             return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };

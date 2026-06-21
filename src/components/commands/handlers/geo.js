@@ -26,11 +26,9 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
     const listItems = topPlayers.map((player, index) => {
         const rank = index + 1;
         const name = player.data?.displayName || player.id;
-        // Use points field
         const points = player.data?.channelPoints || 0;
-        // Optionally show wins too?
-        const wins = player.data?.channelWins || 0;
-        return `${rank}. ${name} (${points} pts, ${wins} wins)`; // Display points
+        const wins = player.data?.channelSuccesses || 0;
+        return `${rank}. ${name} (${points} pts, ${wins} wins)`;
     });
 
     return `🏆 Geo-Game Top Players in #${channelName}: ${listItems.join(', ')}`;

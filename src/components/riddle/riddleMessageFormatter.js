@@ -62,8 +62,10 @@ export function formatRiddleLeaderboardMessage(leaderboardData, channelName) {
         return `No Riddle stats found for #${channelName} yet!`;
     }
     const topPlayers = leaderboardData.slice(0, 5);
-    const listItems = topPlayers.map((player, index) => 
-        `${index + 1}. ${player.data?.displayName || player.id} (${player.data?.points || 0} pts, ${player.data?.correctAnswers || 0} solved)`
-    );
+    const listItems = topPlayers.map((player, index) => {
+        const pts = player.data?.channelPoints ?? player.data?.points ?? 0;
+        const solved = player.data?.channelSuccesses ?? player.data?.successes ?? 0;
+        return `${index + 1}. ${player.data?.displayName || player.id} (${pts} pts, ${solved} solved)`;
+    });
     return `🏆 Riddle Masters in #${channelName}: ${listItems.join(', ')}`;
 }

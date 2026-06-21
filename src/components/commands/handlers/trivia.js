@@ -27,7 +27,7 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
         const rank = index + 1;
         const name = player.data?.displayName || player.id;
         const points = player.data?.channelPoints || 0;
-        const correct = player.data?.channelCorrect || 0;
+        const correct = player.data?.channelSuccesses || 0;
         return `${rank}. ${name} (${points} pts, ${correct} correct)`;
     });
 
