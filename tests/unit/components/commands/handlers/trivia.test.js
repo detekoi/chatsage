@@ -349,7 +349,7 @@ describe('Trivia Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'There is no active Trivia game to stop.',
+                'There is no active Trivia to stop.',
                 { replyToId: '123' }
             );
         });

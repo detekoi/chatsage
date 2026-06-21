@@ -1,11 +1,25 @@
+// src/components/commands/handlers/geo.js
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getGeoGameManager } from '../../geo/geoGameManager.js';
-// Need context manager to get current game for !geo game
 import { getContextManager } from '../../context/contextManager.js';
-// Need geoStorage to fetch the leaderboard
 import { getLeaderboard } from '../../geo/geoStorage.js';
-import { isPrivilegedUser } from '../../../lib/permissions.js';
+import {
+    extractGameContext,
+    handleStop,
+    handleLeaderboard,
+    handleClearLeaderboard,
+    handleResetConfig,
+    handleReport,
+    handleConfig,
+    validateRounds,
+    startGameWithErrorHandling,
+    safeReply,
+    isPositiveInteger,
+} from './gameHandlerUtils.js';
+
+const GAME_NAME = 'Geo-Game';
+const COMMAND_NAME = 'geo';
 
 /**
  * Helper function to format the leaderboard message.
@@ -35,6 +49,23 @@ function formatLeaderboardMessage(leaderboardData, channelName) {
 }
 
 /**
+ * Config schema for geo game options.
+ */
+const GEO_CONFIG_SCHEMA = [
+    { keys: ['difficulty'], type: 'enum', optionName: 'difficulty', enumValues: ['easy', 'normal', 'hard'] },
+    { keys: ['interval', 'clueinterval', 'clueintervalseconds'], type: 'int', optionName: 'clueIntervalSeconds' },
+    { keys: ['duration', 'roundduration', 'rounddurationminutes'], type: 'int', optionName: 'roundDurationMinutes' },
+    { keys: ['region', 'regions'], type: 'list', optionName: 'regionRestrictions' },
+    { keys: ['game', 'gametitle'], type: 'list', optionName: 'gameTitlePreferences' },
+    { keys: ['scoring', 'scoretracking'], type: 'bool', optionName: 'scoreTracking' },
+    { keys: ['points', 'basepoints'], type: 'int', optionName: 'pointsBase' },
+    { keys: ['timebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
+    { keys: ['difficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
+];
+
+const GEO_CONFIG_USAGE = `Usage: !geo config difficulty <easy|normal|hard> interval <secs> duration <mins> region <list> game <list> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>`;
+
+/**
  * Handler for the !geo command and its subcommands.
  */
 const geoHandler = {
@@ -43,22 +74,15 @@ const geoHandler = {
     usage: '!geo [<rounds>] | stop | config <options...> | resetconfig | leaderboard | clearleaderboard | report <reason...> | help',
     permission: 'everyone', // Subcommand permissions handled inside
     execute: async (context) => {
-        const { channel, user, args } = context;
-        const channelName = channel.substring(1);
-        const invokingUsernameLower = user.username; // Get lowercase username
-        const invokingDisplayName = user['display-name'] || user.username;
-        const replyToId = user?.id || user?.['message-id'] || null;
-        const isModOrBroadcaster = isPrivilegedUser(user, channelName);
-        const geoManager = getGeoGameManager(); // Get the manager instance
+        const gameCtx = extractGameContext(context);
+        const { channel, channelName, username, displayName, replyToId, args } = gameCtx;
+        const geoManager = getGeoGameManager();
 
         let subCommand = args[0]?.toLowerCase();
         let gameMode;
         let scope;
         let numberOfRounds = 1; // Default rounds
         let consumedArgsCount;
-
-        // Helper function to check if a string is a positive integer
-        const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);
 
         // --- Subcommand Parsing ---
         if (!subCommand) {
@@ -67,14 +91,12 @@ const geoHandler = {
             scope = null;
             numberOfRounds = 1;
             consumedArgsCount = 0;
-            // Proceed to start game below
         } else if (isPositiveInteger(subCommand)) {
             // !geo <rounds> -> Start Real World Game (<rounds>, global scope)
             gameMode = 'real';
             scope = null;
             numberOfRounds = parseInt(subCommand, 10);
             consumedArgsCount = 1;
-             // Proceed to start game below
         } else if (subCommand === 'game') {
             // !geo game [Optional Title] [Optional Rounds]
             gameMode = 'game';
@@ -109,7 +131,7 @@ const geoHandler = {
                 // No title parts, get title from stream context
                 try {
                      const contextManager = getContextManager();
-                     const llmContext = contextManager.getContextForLLM(channelName, invokingDisplayName, "");
+                     const llmContext = contextManager.getContextForLLM(channelName, displayName, "");
                      scope = llmContext?.streamGame || null;
                      if (!scope || scope === "N/A") {
                          await enqueueMessage(channel, `Could not detect the current game. Please specify one: !geo game <Game Title> [rounds]`, { replyToId });
@@ -118,11 +140,7 @@ const geoHandler = {
                      logger.info(`[GeoGame] Using current stream game for !geo game: ${scope}`);
                 } catch (err) {
                      logger.error({ err }, "Error getting stream context for !geo game");
-                     try {
-                         await enqueueMessage(channel, `Error getting current stream game.`, { replyToId });
-                     } catch (msgError) {
-                         logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-                     }
+                     await safeReply(channel, `Error getting current stream game.`, { replyToId }, '[GeoGame]');
                      return;
                 }
             }
@@ -133,157 +151,32 @@ const geoHandler = {
              // Proceed to start game below
 
         } else if (subCommand === 'stop') {
-            // !geo stop
-            const currentGameInitiator = geoManager.getCurrentGameInitiator(channelName); // Get initiator
-
-            if (!currentGameInitiator) {
-                // No active game to stop
-                await enqueueMessage(channel, `There is no active Geo-Game round to stop.`, { replyToId });
-                return;
-            }
-
-            // Check permissions
-            if (isModOrBroadcaster || invokingUsernameLower === currentGameInitiator) {
-                // Allow if user is mod/broadcaster OR if they are the initiator
-                geoManager.stopGame(channelName); // Call manager's stop function; manager will send the final message
-                logger.info(`[GeoGame] Stop requested by ${invokingDisplayName}, handled by manager.`);
-            } else {
-                // Deny if not mod/broadcaster AND not the initiator
-                await enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
-            }
-            return; // Action done
+            await handleStop(gameCtx, geoManager, GAME_NAME);
+            return;
 
         } else if (subCommand === 'config') {
-            // !geo config ...
-            if (!isModOrBroadcaster) {
-                await enqueueMessage(channel, `Only mods or the broadcaster can configure the game.`, { replyToId });
-                return;
-            }
-            const options = {};
-            for (let i = 1; i < args.length; i += 2) {
-                const key = args[i]?.toLowerCase();
-                const value = args[i + 1];
-                if (!key || !value) continue;
-
-                // --- Existing Options ---
-                if (key === 'difficulty' && ['easy', 'normal', 'hard'].includes(value.toLowerCase())) {
-                    options.difficulty = value.toLowerCase();
-                } else if (['interval', 'clueinterval', 'clueintervalseconds'].includes(key)) {
-                    const interval = parseInt(value, 10);
-                    if (!isNaN(interval)) options.clueIntervalSeconds = interval;
-                } else if (['duration', 'roundduration', 'rounddurationminutes'].includes(key)) {
-                    const duration = parseInt(value, 10);
-                    if (!isNaN(duration)) options.roundDurationMinutes = duration;
-                } else if (key === 'region' || key === 'regions') {
-                    options.regionRestrictions = value.split(',').map(s => s.trim()).filter(Boolean);
-                } else if (key === 'game' || key === 'gametitle') {
-                    options.gameTitlePreferences = value.split(',').map(s => s.trim()).filter(Boolean);
-                } else if (key === 'scoring' || key === 'scoretracking') {
-                    options.scoreTracking = value.toLowerCase() === 'true' || value === '1';
-                }
-                // --- NEW Scoring Options ---
-                else if (key === 'points' || key === 'basepoints') {
-                     const points = parseInt(value, 10);
-                     if (!isNaN(points)) options.pointsBase = points;
-                 } else if (key === 'timebonus') {
-                     options.pointsTimeBonus = value.toLowerCase() === 'true' || value === '1';
-                 } else if (key === 'difficultymultiplier') {
-                     options.pointsDifficultyMultiplier = value.toLowerCase() === 'true' || value === '1';
-                 }
-                 // --- End NEW Scoring Options ---
-            }
-            if (Object.keys(options).length === 0) {
-                 // Update usage message
-                 await enqueueMessage(channel, `Usage: !geo config difficulty <easy|normal|hard> interval <secs> duration <mins> region <list> game <list> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>`, { replyToId });
-                 return;
-            }
-            const result = await geoManager.configureGame(channelName, options);
-            await enqueueMessage(channel, `${result.message}`, { replyToId });
-            return; // Action done
+            await handleConfig(gameCtx, geoManager, GEO_CONFIG_SCHEMA, GEO_CONFIG_USAGE, GAME_NAME);
+            return;
 
         } else if (subCommand === 'resetconfig') {
-            if (!isModOrBroadcaster) {
-                await enqueueMessage(channel, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
-                return;
-            }
-            try {
-                const result = await geoManager.resetChannelConfig(channelName);
-                await enqueueMessage(channel, `${result.message}`, { replyToId });
-            } catch (error) {
-                logger.error({ err: error, channel: channelName }, 'Error calling resetChannelConfig from command handler.');
-                try {
-                    await enqueueMessage(channel, `An unexpected error occurred while trying to reset the configuration.`, { replyToId });
-                } catch (msgError) {
-                    logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-                }
-            }
-            return; // Action done
+            await handleResetConfig(gameCtx, geoManager, GAME_NAME);
+            return;
 
         } else if (subCommand === 'leaderboard') {
-            // !geo leaderboard
-            try {
-                const leaderboardData = await getLeaderboard(channelName, 5); // Get top 5
-                const message = formatLeaderboardMessage(leaderboardData, channelName);
-                await enqueueMessage(channel, message, { replyToId });
-                logger.info(`[GeoGame] Displayed leaderboard for channel ${channelName}`);
-            } catch (error) {
-                logger.error({ err: error, channel: channelName }, 'Error fetching or formatting leaderboard.');
-                try {
-                    await enqueueMessage(channel, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId });
-                } catch (msgError) {
-                    logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-                }
-            }
-            return; // Action done
+            await handleLeaderboard(gameCtx, getLeaderboard, formatLeaderboardMessage, GAME_NAME);
+            return;
 
         } else if (subCommand === 'clearleaderboard' || subCommand === 'resetstats') {
-            if (!isModOrBroadcaster) {
-                await enqueueMessage(channel, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
-                return;
-            }
-            await enqueueMessage(channel, `Attempting to clear Geo-Game leaderboard data for this channel. This may take a moment...`, { replyToId });
-            try {
-                const result = await geoManager.clearLeaderboard(channelName);
-                await enqueueMessage(channel, `${result.message}`, { replyToId });
-            } catch (error) {
-                logger.error({ err: error, channel: channelName }, 'Error calling clearLeaderboard from command handler.');
-                try {
-                    await enqueueMessage(channel, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId });
-                } catch (msgError) {
-                    logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-                }
-            }
-            return; // Action done
+            await handleClearLeaderboard(gameCtx, geoManager, GAME_NAME);
+            return;
 
         } else if (subCommand === 'report' || subCommand === 'flag') {
-            // !geo report [reason...]
-            if (args.length < 2) {
-                await enqueueMessage(channel, `Please provide a reason for reporting. Usage: !geo report <your reason>`, { replyToId });
-                return;
-            }
-            const reason = args.slice(1).join(' ');
-            logger.info(`[GeoCmd] ${invokingDisplayName} is initiating report for last geo session in ${channelName}. Reason: ${reason}`);
-            try {
-                const reportInitiationResult = await geoManager.initiateReportProcess(channelName, reason, invokingUsernameLower);
-                if (reportInitiationResult.message) {
-                    await enqueueMessage(channel, `${reportInitiationResult.message}`, { replyToId });
-                } else if (!reportInitiationResult.success) {
-                    await enqueueMessage(channel, `Could not process your report request at this time.`, { replyToId });
-                }
-            } catch (error) {
-                logger.error({ err: error, channel: channelName, user: invokingUsernameLower }, 'Error calling initiateReportProcess for Geo.');
-                try {
-                    await enqueueMessage(channel, `An error occurred while trying to initiate the report.`, { replyToId });
-                } catch (msgError) {
-                    logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-                }
-            }
+            await handleReport(gameCtx, geoManager, GAME_NAME, COMMAND_NAME);
             return;
 
         } else if (subCommand === 'help') {
-            // !geo help
             await enqueueMessage(channel, `Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help`, { replyToId });
-            return; // Action done
+            return;
 
         } else {
             // Assume !geo <region text...> [Optional Rounds] -> Real World Game
@@ -313,7 +206,7 @@ const geoHandler = {
                  logger.info(`[GeoGame] Interpreting '!geo ${args.join(' ')}' as starting real mode (Region: '${scope}') for ${numberOfRounds} round(s).`);
             } else {
                  // Should not happen if args.length > 0 and first arg wasn't a number or known subcommand
-                 // but handle defensively. This implies `!geo` with no args, handled above.
+                 // but handle defensively.
                  logger.warn(`[GeoGame] Parser reached real-world scope interpretation unexpectedly for args: ${args.join(' ')}`);
                  scope = null; // Fallback to global scope
             }
@@ -327,39 +220,22 @@ const geoHandler = {
 
         // --- Start Game Section (Common for 'real' and 'game' modes determined above) ---
 
-        // If consumedArgsCount is less than args.length, it means some arguments were not processed by any logic path above,
-        // implying an unknown command format or subcommand was attempted after a valid start sequence initiator.
+        // If consumedArgsCount is less than args.length, it means some arguments were not processed
         if (consumedArgsCount < args.length) {
             logger.warn(`[GeoGame][${channelName}] Unknown arguments after primary command processing: ${args.slice(consumedArgsCount).join(' ')}`);
             await enqueueMessage(channel, `Unknown command format or extra arguments provided. Use !geo help.`, { replyToId });
             return;
         }
 
-        // Validate number of rounds (e.g., max 10)
-        const MAX_ROUNDS = 10;
-        if (numberOfRounds > MAX_ROUNDS) {
-             await enqueueMessage(channel, `Maximum number of rounds is ${MAX_ROUNDS}. Starting a ${MAX_ROUNDS}-round game.`, { replyToId });
-             numberOfRounds = MAX_ROUNDS;
-        }
+        // Validate number of rounds
+        numberOfRounds = await validateRounds(gameCtx, numberOfRounds, 10);
 
-        // Now, call the startGame function with the determined parameters
-        try {
-            logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Scope: ${scope || 'N/A'}, Rounds: ${numberOfRounds}, Initiator: ${invokingUsernameLower}`);
-            // Pass the determined scope (which is either gameTitle or regionScope)
-            const result = await geoManager.startGame(channelName, gameMode, scope, invokingUsernameLower, numberOfRounds);
-
-            if (!result.success) {
-                await enqueueMessage(channel, `${result.error}`, { replyToId });
-            }
-            // Success messages are handled by the game manager
-        } catch (error) {
-            logger.error({ err: error }, "Unhandled error starting game from command handler.");
-            try {
-                await enqueueMessage(channel, `An unexpected error occurred trying to start the game.`, { replyToId });
-            } catch (msgError) {
-                logger.warn({ err: msgError }, '[GeoGame] Failed to send error message to chat');
-            }
-        }
+        // Start the game
+        logger.info(`Attempting to start Geo-Game. Mode: ${gameMode}, Scope: ${scope || 'N/A'}, Rounds: ${numberOfRounds}, Initiator: ${username}`);
+        await startGameWithErrorHandling(gameCtx,
+            () => geoManager.startGame(channelName, gameMode, scope, username, numberOfRounds),
+            GAME_NAME
+        );
     }
 };
 

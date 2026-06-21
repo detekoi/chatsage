@@ -245,7 +245,7 @@ describe('Riddle Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Only mods or the broadcaster can clear the riddle leaderboard.',
+                'Only mods or the broadcaster can clear the leaderboard.',
                 { replyToId: '123' }
             );
         });

@@ -227,7 +227,7 @@ describe('Geo Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'There is no active Geo-Game round to stop.',
+                'There is no active Geo-Game to stop.',
                 { replyToId: '123' }
             );
         });

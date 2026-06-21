@@ -2,13 +2,21 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getRiddleGameManager } from '../../riddle/riddleGameManager.js';
-import { getLeaderboard } from '../../riddle/riddleStorage.js'; // Direct import for leaderboard
+import { getLeaderboard } from '../../riddle/riddleStorage.js';
 import { formatRiddleHelpMessage, formatRiddleLeaderboardMessage } from '../../riddle/riddleMessageFormatter.js';
-import config from '../../../config/index.js'; // For bot's username
-import { isPrivilegedUser } from '../../../lib/permissions.js';
+import config from '../../../config/index.js';
+import {
+    extractGameContext,
+    handleLeaderboard,
+    handleClearLeaderboard,
+    handleReport,
+    validateRounds,
+    startGameWithErrorHandling,
+    isPositiveInteger,
+} from './gameHandlerUtils.js';
 
-// Helper to check if a string is a positive integer
-const isPositiveInteger = (str) => /^[1-9]\d*$/.test(str);
+const GAME_NAME = 'Riddle';
+const COMMAND_NAME = 'riddle';
 
 const riddleHandler = {
     name: 'riddle',
@@ -16,99 +24,54 @@ const riddleHandler = {
     usage: '!riddle [<subject>] [<rounds>] | stop | leaderboard | clearleaderboard | report <reason...> | help',
     permission: 'everyone', // Subcommand permissions are handled internally
     execute: async (context) => {
-        const { channel, user, args } = context; // channel has #
-        const channelNameNoHash = channel.substring(1);
-        const invokingUsernameLower = user.username.toLowerCase();
-        const invokingDisplayName = user['display-name'] || user.username;
-        const replyToId = user?.id || user?.['message-id'] || null;
-        const isMod = isPrivilegedUser(user, channelNameNoHash);
-
+        const gameCtx = extractGameContext(context);
+        const { channel, channelName, username, displayName, replyToId, isMod, args } = gameCtx;
         const riddleManager = getRiddleGameManager();
 
         if (args.length === 0) {
-            // !riddle - Start a game, topic will be determined by manager (e.g., current game or general)
-            logger.info(`[RiddleCmd] Attempting to start default riddle game in ${channelNameNoHash} by ${invokingDisplayName}`);
-            const result = await riddleManager.startGame(channelNameNoHash, null, invokingUsernameLower, 1);
-            if (!result.success && result.error) {
-                await enqueueMessage(channel, `${result.error}`, { replyToId });
-            }
+            // !riddle - Start a game, topic will be determined by manager
+            logger.info(`[RiddleCmd] Attempting to start default riddle game in ${channelName} by ${displayName}`);
+            await startGameWithErrorHandling(gameCtx,
+                () => riddleManager.startGame(channelName, null, username, 1),
+                GAME_NAME
+            );
             return;
         }
 
         const subCommand = args[0].toLowerCase();
-        let topic;
-        let numberOfRounds = 1;
 
         switch (subCommand) {
             case 'stop': {
-                if (!isMod && invokingUsernameLower !== riddleManager.getCurrentGameInitiator(channelNameNoHash)) {
+                // Riddle stop has a unique pattern: it sends the result message directly
+                // and has a bot self-stop guard
+                if (!isMod && username !== riddleManager.getCurrentGameInitiator(channelName)) {
                     await enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the riddle game.`, { replyToId });
                     return;
                 }
-                // Prevent stopping the bot itself if by some chance its name is passed
-                if (args[1] && args[1].toLowerCase() === config.twitch.username.toLowerCase()){
-                     await enqueueMessage(channel, `I can't stop myself!`, { replyToId });
+                if (args[1] && args[1].toLowerCase() === config.twitch.username.toLowerCase()) {
+                    await enqueueMessage(channel, `I can't stop myself!`, { replyToId });
                     return;
                 }
 
-                const stopResult = riddleManager.stopGame(channelNameNoHash);
-                // Message to chat is handled by stopGame/transitionToEnding, but provide direct feedback too.
+                const stopResult = riddleManager.stopGame(channelName);
                 await enqueueMessage(channel, `${stopResult.message}`, { replyToId });
-                logger.info(`[RiddleCmd] Riddle game stop requested by ${invokingDisplayName} in ${channelNameNoHash}. Result: ${stopResult.message}`);
+                logger.info(`[RiddleCmd] Riddle game stop requested by ${displayName} in ${channelName}. Result: ${stopResult.message}`);
                 break;
             }
 
-            case 'leaderboard': {
-                try {
-                    const leaderboardData = await getLeaderboard(channelNameNoHash, 5);
-                    const message = formatRiddleLeaderboardMessage(leaderboardData, channelNameNoHash);
-                    await enqueueMessage(channel, message, { replyToId });
-                } catch (error) {
-                    logger.error({ err: error, channel: channelNameNoHash }, '[RiddleCmd] Error fetching riddle leaderboard.');
-                    try {
-                        await enqueueMessage(channel, `Sorry, couldn't fetch the riddle leaderboard right now.`, { replyToId });
-                    } catch (msgError) {
-                        logger.warn({ err: msgError }, '[RiddleCmd] Failed to send error message to chat');
-                    }
-                }
+            case 'leaderboard':
+                await handleLeaderboard(gameCtx, getLeaderboard, formatRiddleLeaderboardMessage, GAME_NAME);
                 break;
-            }
 
             case 'clearleaderboard':
-            case 'cleardata': {
-                if (!isMod) {
-                    await enqueueMessage(channel, `Only mods or the broadcaster can clear the riddle leaderboard.`, { replyToId });
-                    return;
-                }
-                await enqueueMessage(channel, `Attempting to clear Riddle leaderboard data for this channel...`, { replyToId });
-                try {
-                    const clearResult = await riddleManager.clearLeaderboard(channelNameNoHash);
-                    await enqueueMessage(channel, `${clearResult.message}`, { replyToId });
-                } catch (error) {
-                    logger.error({ err: error, channel: channelNameNoHash }, '[RiddleCmd] Error clearing riddle leaderboard.');
-                    try {
-                        await enqueueMessage(channel, `An error occurred while clearing the riddle leaderboard.`, { replyToId });
-                    } catch (msgError) {
-                        logger.warn({ err: msgError }, '[RiddleCmd] Failed to send error message to chat');
-                    }
-                }
+            case 'cleardata':
+                await handleClearLeaderboard(gameCtx, riddleManager, GAME_NAME);
                 break;
-            }
 
             case 'report':
-            case 'flag': {
-                if (args.length < 2) {
-                    await enqueueMessage(channel, `Please provide a reason for reporting. Usage: !riddle report <your reason>`, { replyToId });
-                    return;
-                }
-                const reason = args.slice(1).join(' ');
-                logger.info(`[RiddleCmd] ${invokingDisplayName} is initiating report for last riddle session in ${channelNameNoHash}. Reason: ${reason}`);
-                const reportInitiationResult = await riddleManager.initiateReportProcess(channelNameNoHash, reason, invokingUsernameLower);
-                if (reportInitiationResult.message) {
-                    await enqueueMessage(channel, `${reportInitiationResult.message}`, { replyToId });
-                }
+            case 'flag':
+                await handleReport(gameCtx, riddleManager, GAME_NAME, COMMAND_NAME);
                 break;
-            }
 
             case 'help': {
                 const helpMessage = formatRiddleHelpMessage(isMod);
@@ -123,40 +86,39 @@ const riddleHandler = {
                 // !riddle <subject> <rounds>
                 // !riddle <multi word subject>
                 // !riddle <multi word subject> <rounds>
+                let topic;
+                let numberOfRounds = 1;
 
                 if (isPositiveInteger(subCommand)) {
-                    // !riddle <rounds>
                     numberOfRounds = parseInt(subCommand, 10);
-                    topic = null; // General or game-based
+                    topic = null;
                 } else {
-                    // Last argument might be rounds
                     const lastArg = args[args.length - 1];
                     if (args.length > 1 && isPositiveInteger(lastArg)) {
                         numberOfRounds = parseInt(lastArg, 10);
                         topic = args.slice(0, -1).join(' ');
                     } else {
-                        // All args form the topic
                         topic = args.join(' ');
                     }
                 }
-                
+
                 // Clean topic (remove quotes)
                 if (topic) {
                     topic = topic.replace(/^"|"$/g, '').trim();
-                    if (topic.toLowerCase() === 'game') { // Explicit request for current game
+                    if (topic.toLowerCase() === 'game') {
                         topic = 'game'; // Special keyword for manager
                     } else if (topic.length === 0) {
-                        topic = null; // Treat empty quoted topic as general
+                        topic = null;
                     }
                 }
 
+                numberOfRounds = await validateRounds(gameCtx, numberOfRounds, 10);
 
-                logger.info(`[RiddleCmd] Attempting to start riddle game in ${channelNameNoHash} by ${invokingDisplayName}. Topic: ${topic || 'Default'}, Rounds: ${numberOfRounds}`);
-                const startResult = await riddleManager.startGame(channelNameNoHash, topic, invokingUsernameLower, numberOfRounds);
-                if (!startResult.success && startResult.error) {
-                    await enqueueMessage(channel, `${startResult.error}`, { replyToId });
-                }
-                // Success messages are handled by the game manager
+                logger.info(`[RiddleCmd] Attempting to start riddle game in ${channelName} by ${displayName}. Topic: ${topic || 'Default'}, Rounds: ${numberOfRounds}`);
+                await startGameWithErrorHandling(gameCtx,
+                    () => riddleManager.startGame(channelName, topic, username, numberOfRounds),
+                    GAME_NAME
+                );
                 break;
             }
         }
