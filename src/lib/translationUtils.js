@@ -1,6 +1,6 @@
 import { Type } from "@google/genai";
 import logger from './logger.js';
-import { getGenAIInstance } from '../components/llm/gemini/core.js';
+import { generateLiteContent } from '../components/llm/gemini/core.js';
 
 // Translation cache with LRU-style eviction and time-based expiration
 const translationCache = new Map();
@@ -129,8 +129,6 @@ export async function parseTranslateCommand(commandText, invokingUsername, chatC
         return { action: 'enable', targetUser: null, language: null };
     }
 
-    const ai = getGenAIInstance();
-
     const prompt = `Parse this Twitch chat translate command and extract the action, target user, and language.
 
 Command: !translate ${commandText}
@@ -154,17 +152,11 @@ Rules:
 Return JSON only.`;
 
     try {
-        const result = await ai.models.generateContent({
-            model: 'gemini-flash-lite-latest',
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-                temperature: 0,
-                responseMimeType: 'application/json',
-                responseSchema: TranslateCommandSchema
-            }
+        const responseText = await generateLiteContent(prompt, {
+            temperature: 0,
+            responseSchema: TranslateCommandSchema
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (responseText) {
             const parsed = JSON.parse(responseText);
             logger.debug({ commandText, parsed }, 'LLM parsed translate command');
@@ -184,25 +176,6 @@ Return JSON only.`;
     }
 }
 
-/**
- * Enhanced text extraction function similar to lurk command fixes
- * @param {Object} response - Gemini response object
- * @param {Object} candidate - Response candidate
- * @returns {string|null} Extracted text or null
- */
-function extractTextFromResponse(response, candidate) {
-    if (candidate?.content?.parts && Array.isArray(candidate.content.parts)) {
-        const joined = candidate.content.parts.map(p => p?.text || '').join('').trim();
-        if (joined) return joined;
-    }
-    if (typeof candidate?.text === 'string' && candidate.text.trim()) return candidate.text.trim();
-    if (typeof response?.text === 'function') {
-        const t = response.text();
-        if (typeof t === 'string' && t.trim()) return t.trim();
-    }
-    if (typeof response?.text === 'string' && response.text.trim()) return response.text.trim();
-    return null;
-}
 
 /**
  * Translates text using a single gemini-flash-lite-latest call.
@@ -233,7 +206,6 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via flash-lite');
 
-    const ai = getGenAIInstance();
     let translatedText = null;
 
     // Structured output schema for combined detection + translation
@@ -265,18 +237,12 @@ Rules:
 Text:
 ${textToTranslate}`;
 
-        const result = await ai.models.generateContent({
-            model: 'gemini-flash-lite-latest',
-            contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
-            config: {
-                maxOutputTokens: 2048,
-                temperature: 0.3,
-                responseMimeType: 'application/json',
-                responseSchema: TranslationResponseSchema
-            }
+        const responseText = await generateLiteContent(translationPrompt, {
+            temperature: 0.3,
+            maxOutputTokens: 2048,
+            responseSchema: TranslationResponseSchema
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (responseText) {
             try {
                 const parsed = JSON.parse(responseText);
@@ -299,24 +265,16 @@ ${textToTranslate}`;
     if (!translatedText) {
         try {
             const simplePrompt = `Translate to ${targetLanguage} (replace any slurs or hate speech with neutral descriptive terms like "[slur]" instead of translating them literally): ${textToTranslate}`;
-            const result2 = await ai.models.generateContent({
-                model: 'gemini-flash-lite-latest',
-                contents: [{ role: 'user', parts: [{ text: simplePrompt }] }],
-                config: {
-                    maxOutputTokens: 1536,
-                    temperature: 0.2,
-                    responseMimeType: 'text/plain'
-                }
+            const text2 = await generateLiteContent(simplePrompt, {
+                temperature: 0.2,
+                maxOutputTokens: 1536
             });
-            const candidate2 = result2?.candidates?.[0];
-            if (candidate2 && candidate2.finishReason !== 'SAFETY') {
-                const text2 = extractTextFromResponse(result2, candidate2);
+            if (text2) {
                 logger.debug({
                     phase: 'attempt2',
-                    finishReason: candidate2?.finishReason,
-                    hasText: !!text2
+                    hasText: true
                 }, 'Translation attempt2 result');
-                translatedText = text2 && text2.length > 0 ? text2 : null;
+                translatedText = text2;
             }
         } catch (e2) {
             logger.warn({ err: e2 }, 'Translation attempt2 (plain text) failed.');

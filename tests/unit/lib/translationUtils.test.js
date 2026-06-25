@@ -5,41 +5,21 @@ jest.mock('../../../src/components/llm/gemini/core.js');
 
 import * as translationUtils from '../../../src/lib/translationUtils.js';
 import logger from '../../../src/lib/logger.js';
-import { getGenAIInstance } from '../../../src/components/llm/gemini/core.js';
+import { generateLiteContent } from '../../../src/components/llm/gemini/core.js';
 
 const { translateText, cleanupTranslationUtils, SAME_LANGUAGE } = translationUtils;
 
 describe('translationUtils', () => {
-    let mockAI;
-
-    // Helper: create a structured response with same_language + translated_text
-    const createStructuredResponse = (sameLanguage, translatedText = '') => ({
-        candidates: [{
-            content: { parts: [{ text: JSON.stringify({ same_language: sameLanguage, translated_text: translatedText }) }] },
-            finishReason: 'STOP'
-        }]
-    });
+    const createStructuredResponse = (sameLanguage, translatedText = '') => {
+        return JSON.stringify({ same_language: sameLanguage, translated_text: translatedText });
+    };
 
     // Helper: create a plain-text response (for attempt 2 fallback)
-    const createPlainTextResponse = (text) => ({
-        candidates: [{
-            content: { parts: [{ text }] },
-            finishReason: 'STOP'
-        }]
-    });
+    const createPlainTextResponse = (text) => text;
 
     beforeEach(() => {
         jest.clearAllMocks();
         cleanupTranslationUtils();
-
-        // Single mock: flash-lite via getGenAIInstance -> ai.models.generateContent
-        mockAI = {
-            models: {
-                generateContent: jest.fn()
-            }
-        };
-        getGenAIInstance.mockReturnValue(mockAI);
-
         process.env.NODE_ENV = 'test';
     });
 
@@ -68,7 +48,7 @@ describe('translationUtils', () => {
         });
 
         it('should handle basic translation in a single call', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Hola mundo')
             );
 
@@ -76,11 +56,11 @@ describe('translationUtils', () => {
 
             expect(result).toBe('Hola mundo');
             // Only one API call (single flash-lite call handles both detection + translation)
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
         });
 
         it('should log success with correct metadata', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Bonjour le monde')
             );
 
@@ -96,7 +76,7 @@ describe('translationUtils', () => {
         });
 
         it('should return SAME_LANGUAGE when text is already in target language', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(true, '')
             );
 
@@ -104,21 +84,21 @@ describe('translationUtils', () => {
 
             expect(result).toBe(SAME_LANGUAGE);
             // Only one call — detected same language and stopped
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
         });
 
         it('should return null when both attempts fail', async () => {
-            mockAI.models.generateContent.mockRejectedValue(new Error('API Error'));
+            generateLiteContent.mockRejectedValue(new Error('API Error'));
 
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBeNull();
             // Two calls: attempt 1 (structured) fails, attempt 2 (plain text) fails
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(2);
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
         });
 
         it('should return null when response has no text', async () => {
-            mockAI.models.generateContent.mockResolvedValue({ candidates: [{}] });
+            generateLiteContent.mockResolvedValue(null);
 
             const result = await translateText('Hello world', 'Spanish');
 
@@ -127,7 +107,7 @@ describe('translationUtils', () => {
         });
 
         it('should clean quotation marks from translation', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, '"Hola mundo"')
             );
 
@@ -138,26 +118,20 @@ describe('translationUtils', () => {
 
         it('should retry with plain-text prompt when structured fails', async () => {
             // First attempt (structured) fails
-            mockAI.models.generateContent.mockRejectedValueOnce(new Error('Structured API Error'));
+            generateLiteContent.mockRejectedValueOnce(new Error('Structured API Error'));
             // Second attempt (plain text) succeeds
-            mockAI.models.generateContent.mockResolvedValueOnce(
+            generateLiteContent.mockResolvedValueOnce(
                 createPlainTextResponse('Hola mundo')
             );
 
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBe('Hola mundo');
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(2);
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
         });
 
         it('should fall back to raw text when JSON parsing fails', async () => {
-            // Return non-JSON text in the structured response slot
-            mockAI.models.generateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Hola mundo' }] },
-                    finishReason: 'STOP'
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Hola mundo');
 
             const result = await translateText('Hello world', 'Spanish');
 
@@ -165,25 +139,25 @@ describe('translationUtils', () => {
         });
 
         it('should use cached translation on second call', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Hola mundo')
             );
 
             // First call - hits API
             const result1 = await translateText('Hello world', 'Spanish');
             expect(result1).toBe('Hola mundo');
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
 
             // Second call - should use cache
             const result2 = await translateText('Hello world', 'Spanish');
             expect(result2).toBe('Hola mundo');
             // Still 1 call — cache was used
-            expect(mockAI.models.generateContent).toHaveBeenCalledTimes(1);
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
         });
 
         it('should return SAME_LANGUAGE when translation is nearly identical to input (similarity safeguard)', async () => {
             // LLM says same_language=false but the "translation" is basically the same text
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Denn, do you play Pokopia?')
             );
 
@@ -197,7 +171,7 @@ describe('translationUtils', () => {
         });
 
         it('should return SAME_LANGUAGE for username-like text that gets echoed back', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Ditto_Kak')
             );
 
@@ -207,7 +181,7 @@ describe('translationUtils', () => {
         });
 
         it('should NOT trigger similarity safeguard for genuine translations', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(false, 'Hola, ¿juegas Pokopia?')
             );
 
@@ -217,28 +191,26 @@ describe('translationUtils', () => {
         });
 
         it('should include Twitch chat context in the translation prompt', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(true, '')
             );
 
             await translateText('Hello world', 'English');
 
-            const call = mockAI.models.generateContent.mock.calls[0][0];
-            const prompt = call.contents[0].parts[0].text;
+            const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('Twitch');
             expect(prompt).toContain('nicknames');
             expect(prompt).toContain('game terms');
         });
 
         it('should preserve profanity but sanitize extreme slurs', async () => {
-            mockAI.models.generateContent.mockResolvedValue(
+            generateLiteContent.mockResolvedValue(
                 createStructuredResponse(true, '')
             );
 
             await translateText('maricones', 'English');
 
-            const call = mockAI.models.generateContent.mock.calls[0][0];
-            const prompt = call.contents[0].parts[0].text;
+            const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('profanity');
             expect(prompt).toContain('slur');
         });

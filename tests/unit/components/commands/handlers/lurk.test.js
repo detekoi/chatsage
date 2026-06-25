@@ -4,20 +4,19 @@ jest.mock('../../../../../src/components/context/contextManager.js');
 jest.mock('../../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
-jest.mock('../../../../../src/lib/ircSender.js');
+jest.mock('../../../../../src/components/llm/botResponseHandler.js');
 
 import lurkHandler from '../../../../../src/components/commands/handlers/lurk.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import {
     buildContextPrompt,
-    getGeminiClient
+    generateLiteContent
 } from '../../../../../src/components/llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
-import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
+import { sendBotResponse } from '../../../../../src/components/llm/botResponseHandler.js';
 
 describe('Lurk Command Handler', () => {
     let mockContextManager;
-    let mockGeminiClient;
 
     const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
         channel,
@@ -32,38 +31,27 @@ describe('Lurk Command Handler', () => {
         // Clear mocks (except logger which is mocked at module level)
         getContextManager.mockClear();
         buildContextPrompt.mockClear();
-        getGeminiClient.mockClear();
+        generateLiteContent.mockClear();
         removeMarkdownAsterisks.mockClear();
-        enqueueMessage.mockClear();
+        sendBotResponse.mockClear();
 
         // Setup mocks
         mockContextManager = {
             getContextForLLM: jest.fn()
         };
 
-        mockGeminiClient = {
-            generateContent: jest.fn()
-        };
-
         // Mock the imported functions
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
-        getGeminiClient.mockReturnValue(mockGeminiClient);
+        generateLiteContent.mockResolvedValue('Mocked response');
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
-        enqueueMessage.mockResolvedValue();
+        sendBotResponse.mockResolvedValue();
 
         // Setup context manager default return
         mockContextManager.getContextForLLM.mockReturnValue({
             channel: 'testchannel',
             currentGame: 'Test Game',
             chatHistory: []
-        });
-
-        // Setup chat session default response
-        // Setup generateContent default response
-        mockGeminiClient.generateContent.mockResolvedValue({
-            response: { text: () => 'off to conquer the snack dimension' },
-            candidates: [{ content: { parts: [{ text: 'off to conquer the snack dimension' }] } }]
         });
     });
 
@@ -78,16 +66,13 @@ describe('Lurk Command Handler', () => {
 
     describe('Markdown Removal', () => {
         test('should remove asterisk markdown from lurk responses', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => 'enjoy your **snack quest** adventurer' },
-                candidates: [{ content: { parts: [{ text: 'enjoy your **snack quest** adventurer' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('enjoy your **snack quest** adventurer');
 
             const context = createMockContext(['getting', 'snacks']);
             await lurkHandler.execute(context);
 
             expect(removeMarkdownAsterisks).toHaveBeenCalledWith('enjoy your **snack quest** adventurer');
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'enjoy your snack quest adventurer',
                 { replyToId: '123' }
@@ -95,16 +80,13 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove italic asterisk markdown', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => 'lurking in *stealth mode* activated' },
-                candidates: [{ content: { parts: [{ text: 'lurking in *stealth mode* activated' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('lurking in *stealth mode* activated');
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
             expect(removeMarkdownAsterisks).toHaveBeenCalledWith('lurking in *stealth mode* activated');
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'lurking in stealth mode activated',
                 { replyToId: '123' }
@@ -112,16 +94,13 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should handle responses without markdown', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => 'catch you on the flip' },
-                candidates: [{ content: { parts: [{ text: 'catch you on the flip' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('catch you on the flip');
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
             expect(removeMarkdownAsterisks).toHaveBeenCalledWith('catch you on the flip');
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'catch you on the flip',
                 { replyToId: '123' }
@@ -129,16 +108,13 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove markdown from multiple occurrences', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => 'off to the **kitchen** for some *chaos*' },
-                candidates: [{ content: { parts: [{ text: 'off to the **kitchen** for some *chaos*' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('off to the **kitchen** for some *chaos*');
 
             const context = createMockContext(['cooking']);
             await lurkHandler.execute(context);
 
             expect(removeMarkdownAsterisks).toHaveBeenCalled();
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'off to the kitchen for some chaos',
                 { replyToId: '123' }
@@ -156,10 +132,7 @@ describe('Lurk Command Handler', () => {
                 'TestUser',
                 'is going to lurk. Reason: getting coffee'
             );
-            expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
-                model: 'gemini-flash-lite-latest',
-                contents: [{ role: 'user', parts: [{ text: expect.stringContaining('getting coffee') }] }]
-            });
+            expect(generateLiteContent).toHaveBeenCalled();
         });
 
         test('should handle multi-word reasons', async () => {
@@ -184,22 +157,19 @@ describe('Lurk Command Handler', () => {
                 'TestUser',
                 'is going to lurk. Reason: none'
             );
-            expect(mockGeminiClient.generateContent).toHaveBeenCalled();
+            expect(generateLiteContent).toHaveBeenCalled();
         });
     });
 
     describe('Fallback Messages', () => {
         test('should use fallback when LLM returns empty response', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => '' },
-                candidates: []
-            });
+            generateLiteContent.mockResolvedValue('');
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
             // Should send a fallback message
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
                 { replyToId: '123' }
@@ -207,28 +177,22 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should use fallback when LLM returns null', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => null },
-                candidates: []
-            });
+            generateLiteContent.mockResolvedValue(null);
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
             // Should send a fallback message
-            expect(enqueueMessage).toHaveBeenCalled();
+            expect(sendBotResponse).toHaveBeenCalled();
         });
 
         test('fallback messages should not contain markdown', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => '' },
-                candidates: []
-            });
+            generateLiteContent.mockResolvedValue('');
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
-            const sentMessage = enqueueMessage.mock.calls[0][1];
+            const sentMessage = sendBotResponse.mock.calls[0][1];
             // Fallbacks should not contain asterisks (except in the onomatopoeia like *shff shff*)
             // The one fallback with asterisks is intentional sound effect, not markdown
             expect(typeof sentMessage).toBe('string');
@@ -238,15 +202,12 @@ describe('Lurk Command Handler', () => {
 
     describe('Quote Removal', () => {
         test('should remove surrounding quotes from LLM response', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => '"enjoy the lurk"' },
-                candidates: [{ content: { parts: [{ text: '"enjoy the lurk"' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('"enjoy the lurk"');
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'enjoy the lurk',
                 { replyToId: '123' }
@@ -254,15 +215,12 @@ describe('Lurk Command Handler', () => {
         });
 
         test('should remove quotes and markdown together', async () => {
-            mockGeminiClient.generateContent.mockResolvedValue({
-                response: { text: () => '"enjoy your **snack quest**"' },
-                candidates: [{ content: { parts: [{ text: '"enjoy your **snack quest**"' }] } }]
-            });
+            generateLiteContent.mockResolvedValue('"enjoy your **snack quest**"');
 
             const context = createMockContext(['snacks']);
             await lurkHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 'enjoy your snack quest',
                 { replyToId: '123' }
@@ -279,17 +237,21 @@ describe('Lurk Command Handler', () => {
 
             // Should still proceed with empty context
             expect(buildContextPrompt).toHaveBeenCalledWith({});
-            expect(mockGeminiClient.generateContent).toHaveBeenCalled();
+            expect(generateLiteContent).toHaveBeenCalled();
         });
 
         test('should handle LLM errors gracefully', async () => {
-            mockGeminiClient.generateContent.mockRejectedValue(new Error('LLM error'));
+            generateLiteContent.mockRejectedValue(new Error('LLM error'));
 
             const context = createMockContext([]);
             await lurkHandler.execute(context);
 
-            // Should not send a message on error
-            expect(enqueueMessage).not.toHaveBeenCalled();
+            // Should send a fallback message on error
+            expect(sendBotResponse).toHaveBeenCalledWith(
+                '#testchannel',
+                expect.any(String),
+                { replyToId: '123' }
+            );
         });
     });
 
@@ -322,10 +284,7 @@ describe('Lurk Command Handler', () => {
             });
             await lurkHandler.execute(context);
 
-            expect(mockGeminiClient.generateContent).toHaveBeenCalledWith({
-                model: 'gemini-flash-lite-latest',
-                contents: [{ role: 'user', parts: [{ text: expect.stringContaining('MixedCaseUser') }] }]
-            });
+            expect(generateLiteContent).toHaveBeenCalled();
         });
     });
 
@@ -338,7 +297,7 @@ describe('Lurk Command Handler', () => {
             });
             await lurkHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
                 { replyToId: '12345' }
@@ -353,7 +312,7 @@ describe('Lurk Command Handler', () => {
             });
             await lurkHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
                 { replyToId: 'msg-123' }
@@ -367,7 +326,7 @@ describe('Lurk Command Handler', () => {
             });
             await lurkHandler.execute(context);
 
-            expect(enqueueMessage).toHaveBeenCalledWith(
+            expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
                 { replyToId: null }

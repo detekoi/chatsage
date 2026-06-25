@@ -1,7 +1,7 @@
 import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
-import { getGeminiClient, getGenAIInstance, getConfiguredModelId } from './core.js';
+import { getGeminiClient, getGenAIInstance, getConfiguredModelId, generateLiteContent } from './core.js';
 import { extractTextFromResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
@@ -247,26 +247,18 @@ const SummarySchema = {
     required: ["summary"]
 };
 
-export async function summarizeText(textToSummarize, targetCharLength = 400, options = {}) {
+export async function summarizeText(textToSummarize, targetCharLength = 400, _options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || !textToSummarize.trim()) return null;
-    const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-flash-lite-latest';
 
     const prompt = `Summarize the following text in under ${targetCharLength} characters.
 Text: ${textToSummarize}`;
 
     try {
-        const result = await ai.models.generateContent({
-            model: modelId,
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: SummarySchema,
-                thinkingConfig: { thinkingLevel: options.thinkingLevel || 'high' }
-            }
+        const responseText = await generateLiteContent(prompt, {
+            ..._options,
+            responseSchema: SummarySchema
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (responseText) {
             const parsed = JSON.parse(responseText);
             let summary = parsed.summary;

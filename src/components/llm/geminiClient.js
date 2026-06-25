@@ -4,7 +4,8 @@
 export {
     initializeGeminiClient,
     getGenAIInstance,
-    getGeminiClient
+    getGeminiClient,
+    generateLiteContent
 } from './gemini/core.js';
 
 export {

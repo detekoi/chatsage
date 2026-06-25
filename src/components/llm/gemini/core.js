@@ -5,6 +5,7 @@ import { retryWithBackoff } from './utils.js';
 let genAI = null;
 let generativeModel = null; // Wrapper that mirrors old API (generateContent/startChat)
 let configuredModelId = null;
+let configuredLiteModelId = null;
 
 /**
  * Initializes the GoogleGenerativeAI client and the specific model.
@@ -20,8 +21,9 @@ export function initializeGeminiClient(geminiConfig) {
     }
 
     try {
-        logger.info(`Initializing Google GenAI with model: ${geminiConfig.modelId}`);
+        logger.info(`Initializing Google GenAI with model: ${geminiConfig.modelId} (Lite: ${geminiConfig.liteModelId})`);
         configuredModelId = geminiConfig.modelId;
+        configuredLiteModelId = geminiConfig.liteModelId || 'gemini-flash-lite-latest';
         genAI = new GoogleGenAI({ apiKey: geminiConfig.apiKey });
 
         // Wrapper provides an object-compatible API with previous code:
@@ -75,6 +77,7 @@ export function initializeGeminiClient(geminiConfig) {
         genAI = null;
         generativeModel = null;
         configuredModelId = null;
+        configuredLiteModelId = null;
         throw error;
     }
 }
@@ -95,4 +98,60 @@ export function getGeminiClient() {
 
 export function getConfiguredModelId() {
     return configuredModelId;
+}
+
+
+
+/**
+ * One-shot generateContent call using the lightweight model.
+ * Centralizes model selection, text extraction, and error handling.
+ *
+ * @param {string} prompt - The text prompt
+ * @param {object} [options={}] - Optional config overrides
+ * @param {string} [options.systemInstruction] - System instruction text
+ * @param {object} [options.responseSchema] - JSON schema for structured output
+ * @param {number} [options.temperature] - Temperature override
+ * @param {Array} [options.multimodalParts] - Additional content parts (e.g. emote images)
+ * @param {number} [options.maxOutputTokens] - Max tokens
+ * @returns {Promise<string|null>} Extracted text response, or null on failure
+ */
+export async function generateLiteContent(prompt, options = {}) {
+    if (!genAI) throw new Error('Gemini client not initialized');
+
+    const parts = [{ text: prompt }, ...(options.multimodalParts || [])];
+    const config = {};
+
+    if (options.systemInstruction) {
+        config.systemInstruction = options.systemInstruction;
+    }
+    if (options.responseSchema) {
+        config.responseMimeType = 'application/json';
+        config.responseSchema = options.responseSchema;
+    }
+    if (options.temperature !== undefined) {
+        config.temperature = options.temperature;
+    }
+    if (options.maxOutputTokens) {
+        config.maxOutputTokens = options.maxOutputTokens;
+    }
+
+    try {
+        const result = await retryWithBackoff(async () => {
+            return await genAI.models.generateContent({
+                model: configuredLiteModelId,
+                contents: [{ role: 'user', parts }],
+                ...(Object.keys(config).length > 0 ? { config } : {})
+            });
+        }, 'generateLiteContent');
+        const candidate = result?.candidates?.[0];
+        if (candidate?.finishReason === 'SAFETY') {
+            logger.warn('Content generation blocked due to SAFETY finishReason.');
+            return null;
+        }
+
+        return result?.text ?? candidate?.content?.parts?.[0]?.text ?? null;
+    } catch (error) {
+        logger.error({ err: error }, 'generateLiteContent failed');
+        return null;
+    }
 }

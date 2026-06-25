@@ -58,6 +58,7 @@ function loadConfig() {
         gemini: {
             apiKey: process.env.GEMINI_API_KEY,
             modelId: process.env.GEMINI_MODEL_ID || 'gemini-3-flash-preview',
+            liteModelId: process.env.GEMINI_LITE_MODEL_ID || 'gemini-flash-lite-latest',
         },
 
         // Application Behavior

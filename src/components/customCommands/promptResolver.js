@@ -1,11 +1,9 @@
 // src/components/customCommands/promptResolver.js
 import logger from '../../lib/logger.js';
-import { getGenAIInstance } from '../llm/gemini/core.js';
+import { generateLiteContent } from '../llm/gemini/core.js';
 import { smartTruncate } from '../llm/llmUtils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';
-
-const FLASH_LITE_MODEL = 'gemini-flash-lite-latest';
 
 // Extra context added only for check-in commands to prevent the LLM from
 // misinterpreting a user's personal check-in count as being first to stream.
@@ -76,8 +74,6 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
     }
 
     try {
-        const ai = getGenAIInstance();
-
         // Start Firestore read immediately if dedup is enabled — runs in parallel
         // with the synchronous prompt construction below (finding 5).
         const historyPromise = (channel && source)
@@ -108,15 +104,9 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
 
         const systemInstruction = buildSystemInstruction(language, isCheckin);
 
-        const result = await ai.models.generateContent({
-            model: FLASH_LITE_MODEL,
-            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-            config: {
-                systemInstruction: { parts: [{ text: systemInstruction }] },
-            }
+        const responseText = await generateLiteContent(fullPrompt, {
+            systemInstruction: systemInstruction
         });
-
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!responseText) {
             logger.warn({ prompt: fullPrompt }, '[PromptResolver] LLM returned empty response');

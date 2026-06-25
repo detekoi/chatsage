@@ -1,17 +1,10 @@
 // src/components/commands/handlers/lurk.js
 import logger from '../../../lib/logger.js';
 import { sendBotResponse } from '../../llm/botResponseHandler.js';
-import { getGeminiClient, buildContextPrompt } from '../../llm/geminiClient.js';
+import { buildContextPrompt, generateLiteContent } from '../../llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
-
-/**
- * Helper to extract text from a Gemini result object.
- */
-function extractTextFromCandidate(res) {
-    return res?.text || res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
 
 
 /**
@@ -56,21 +49,12 @@ const lurkHandler = {
                 ? ' If the user included emotes, incorporate what the emotes visually depict into your send-off.'
                 : '';
 
-            // Use generateContent directly for a single-turn, low-latency response
-            // This bypasses the shared session's default "high" thinking level
-            const model = getGeminiClient();
+            // Use generateLiteContent for a single-turn, low-latency response
             const fullPrompt = `${chatContext}\nTASK: ${prompt}${emoteHint}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
 
-            let llmResponse = '';
-            try {
-                const result = await model.generateContent({
-                    model: 'gemini-flash-lite-latest',
-                    contents: [{ role: 'user', parts: [{ text: fullPrompt }, ...emoteImageParts] }]
-                });
-                llmResponse = extractTextFromCandidate(result);
-            } catch (llmError) {
-                logger.warn({ err: llmError }, 'LLM generateContent failed for !lurk, using fallback.');
-            }
+            let llmResponse = await generateLiteContent(fullPrompt, {
+                multimodalParts: emoteImageParts
+            }) || '';
 
 
 

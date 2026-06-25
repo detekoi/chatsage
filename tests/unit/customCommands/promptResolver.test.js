@@ -1,11 +1,11 @@
 // tests/unit/customCommands/promptResolver.test.js
 import { resolvePrompt, formatHistoryForPrompt } from '../../../src/components/customCommands/promptResolver.js';
-import { getGenAIInstance } from '../../../src/components/llm/gemini/core.js';
+import { generateLiteContent } from '../../../src/components/llm/gemini/core.js';
 import { smartTruncate } from '../../../src/components/llm/llmUtils.js';
 import { getRecentInferences, logInference } from '../../../src/components/llm/inferenceHistoryStorage.js';
 
 jest.mock('../../../src/components/llm/gemini/core.js', () => ({
-    getGenAIInstance: jest.fn()
+    generateLiteContent: jest.fn()
 }));
 
 jest.mock('../../../src/components/llm/llmUtils.js', () => ({
@@ -30,16 +30,9 @@ jest.mock('../../../src/lib/logger.js', () => ({
 }));
 
 describe('promptResolver', () => {
-    let mockGenerateContent;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        mockGenerateContent = jest.fn();
-        getGenAIInstance.mockReturnValue({
-            models: {
-                generateContent: mockGenerateContent
-            }
-        });
+        generateLiteContent.mockResolvedValue('Mocked response');
     });
 
     test('returns empty string if prompt is empty', async () => {
@@ -47,38 +40,27 @@ describe('promptResolver', () => {
         expect(await resolvePrompt('')).toBe('');
     });
 
-    test('successfully generates and cleans response', async () => {
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: {
-                    parts: [{ text: '**This is** a _ test _ response!' }]
-                }
-            }]
-        });
-
+    test('sends full prompt to LLM', async () => {
         const result = await resolvePrompt('Say something fun');
 
-        expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
-            contents: [{ role: 'user', parts: [{ text: 'Say something fun' }] }]
-        }));
+        expect(generateLiteContent).toHaveBeenCalledWith(
+            expect.stringContaining('Say something fun'),
+            expect.any(Object)
+        );
 
-        // Should remove ** and _ (with trailing space)
-        expect(result).toBe('This is a  test  response!');
+        expect(result).toBe('Mocked response');
     });
 
-    test('returns null if LLM returns empty', async () => {
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: { parts: [] }
-            }]
-        });
-
+    test('successfully generates and cleans response', async () => {
+        generateLiteContent.mockResolvedValue('**A fun string**');
         const result = await resolvePrompt('Say something fun');
-        expect(result).toBeNull();
+
+        expect(result).toBe('A fun string');
+        expect(generateLiteContent).toHaveBeenCalledTimes(1);
     });
 
     test('returns null on error', async () => {
-        mockGenerateContent.mockRejectedValue(new Error('API Error'));
+        generateLiteContent.mockRejectedValue(new Error('API Error'));
 
         const result = await resolvePrompt('Say something fun');
         expect(result).toBeNull();
@@ -86,11 +68,7 @@ describe('promptResolver', () => {
 
     test('truncates response if too long', async () => {
         const longResponse = 'a'.repeat(500);
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: { parts: [{ text: longResponse }] }
-            }]
-        });
+        generateLiteContent.mockResolvedValue(longResponse);
 
         const result = await resolvePrompt('Say something fun');
         expect(smartTruncate).toHaveBeenCalledWith(longResponse, 450);
@@ -98,61 +76,45 @@ describe('promptResolver', () => {
     });
 
     test('includes language directive in system instruction when language is set', async () => {
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: { parts: [{ text: 'Hola amigo!' }] }
-            }]
-        });
+        generateLiteContent.mockResolvedValue('Hola amigo!');
 
         await resolvePrompt('Say hello', 'spanish');
 
-        const callArgs = mockGenerateContent.mock.calls[0][0];
-        expect(callArgs.config.systemInstruction.parts[0].text).toContain('You MUST respond entirely in spanish.');
+        const callOptions = generateLiteContent.mock.calls[0][1];
+        expect(callOptions.systemInstruction).toContain('You MUST respond entirely in spanish.');
     });
 
     test('does not include language directive when language is null', async () => {
-        mockGenerateContent.mockResolvedValue({
-            candidates: [{
-                content: { parts: [{ text: 'Hello friend!' }] }
-            }]
-        });
+        generateLiteContent.mockResolvedValue('Hello friend!');
 
         await resolvePrompt('Say hello');
 
-        const callArgs = mockGenerateContent.mock.calls[0][0];
-        expect(callArgs.config.systemInstruction.parts[0].text).not.toContain('You MUST respond entirely in');
+        const callOptions = generateLiteContent.mock.calls[0][1];
+        expect(callOptions.systemInstruction).not.toContain('You MUST respond entirely in');
     });
 
     // ─── Stream context ─────────────────────────────────────────────────
 
     describe('stream context', () => {
         test('appends stream context to prompt when provided', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Contextual response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Contextual response!');
 
             await resolvePrompt('Check-in prompt', null, 'Channel: testchannel\nGame: Minecraft');
 
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.contents[0].parts[0].text).toContain('Check-in prompt');
-            expect(callArgs.contents[0].parts[0].text).toContain('--- Stream Context ---');
-            expect(callArgs.contents[0].parts[0].text).toContain('Channel: testchannel');
+            const callPrompt = generateLiteContent.mock.calls[0][0];
+            expect(callPrompt).toContain('Check-in prompt');
+            expect(callPrompt).toContain('--- Stream Context ---');
+            expect(callPrompt).toContain('Channel: testchannel');
         });
 
         test('does not append context block when streamContext is null', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'No context response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('No context response!');
 
             await resolvePrompt('Check-in prompt', null, null);
 
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.contents[0].parts[0].text).toBe('Check-in prompt');
-            expect(callArgs.contents[0].parts[0].text).not.toContain('--- Stream Context ---');
+            const callPrompt = generateLiteContent.mock.calls[0][0];
+            expect(callPrompt).toBe('Check-in prompt');
+            expect(callPrompt).not.toContain('--- Stream Context ---');
         });
     });
 
@@ -160,32 +122,24 @@ describe('promptResolver', () => {
 
     describe('chat context', () => {
         test('appends chat context to prompt when provided', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Contextual response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Contextual response!');
 
             await resolvePrompt('Check-in prompt', null, null, false, {
                 chatContext: 'user1: hello\nuser2: what game is this',
             });
 
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.contents[0].parts[0].text).toContain('--- Recent Chat ---');
-            expect(callArgs.contents[0].parts[0].text).toContain('user1: hello');
+            const callPrompt = generateLiteContent.mock.calls[0][0];
+            expect(callPrompt).toContain('--- Recent Chat ---');
+            expect(callPrompt).toContain('user1: hello');
         });
 
         test('does not append chat context block when chatContext is null', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'No context response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('No context response!');
 
             await resolvePrompt('Check-in prompt', null, null, false, { chatContext: null });
 
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.contents[0].parts[0].text).not.toContain('--- Recent Chat ---');
+            const callPrompt = generateLiteContent.mock.calls[0][0];
+            expect(callPrompt).not.toContain('--- Recent Chat ---');
         });
     });
 
@@ -194,11 +148,7 @@ describe('promptResolver', () => {
     describe('encapsulated dedup lifecycle', () => {
         test('fetches history and injects it when channel+source are provided', async () => {
             getRecentInferences.mockResolvedValue(['prev response 1', 'prev response 2']);
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Unique response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Unique response!');
 
             await resolvePrompt('Say something', null, null, false, {
                 channel: 'testchannel',
@@ -206,17 +156,13 @@ describe('promptResolver', () => {
             });
 
             expect(getRecentInferences).toHaveBeenCalledWith('testchannel', 'custom:hug');
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.contents[0].parts[0].text).toContain('"prev response 1"');
-            expect(callArgs.contents[0].parts[0].text).toContain('"prev response 2"');
+            const callPrompt = generateLiteContent.mock.calls[0][0];
+            expect(callPrompt).toContain('"prev response 1"');
+            expect(callPrompt).toContain('"prev response 2"');
         });
 
         test('logs inference after successful generation', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'New response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('New response!');
 
             await resolvePrompt('Say something', null, null, false, {
                 channel: 'testchannel',
@@ -227,20 +173,17 @@ describe('promptResolver', () => {
         });
 
         test('does NOT log inference when LLM returns empty', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{ content: { parts: [] } }]
-            });
-
-            await resolvePrompt('Say something', null, null, false, {
+            generateLiteContent.mockResolvedValue('');
+            await resolvePrompt('Check-in prompt', null, null, true, {
                 channel: 'testchannel',
-                source: 'checkin',
+                source: 'checkin'
             });
 
             expect(logInference).not.toHaveBeenCalled();
         });
 
         test('does NOT log inference when LLM throws error', async () => {
-            mockGenerateContent.mockRejectedValue(new Error('API Error'));
+            generateLiteContent.mockRejectedValue(new Error('API Error'));
 
             await resolvePrompt('Say something', null, null, false, {
                 channel: 'testchannel',
@@ -251,11 +194,7 @@ describe('promptResolver', () => {
         });
 
         test('does not fetch history or log when channel/source are not provided', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Normal response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Normal response!');
 
             await resolvePrompt('Say something');
 
@@ -265,28 +204,25 @@ describe('promptResolver', () => {
 
         test('combines stream context, chat context, and history in correct order', async () => {
             getRecentInferences.mockResolvedValue(['old response']);
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{
-                    content: { parts: [{ text: 'Combined response!' }] }
-                }]
-            });
+            generateLiteContent.mockResolvedValue('Combined response!');
 
-            await resolvePrompt('Base prompt', null, 'Channel: test\nGame: Minecraft', false, {
+            await resolvePrompt('Check-in base prompt', null, 'Channel: test\nGame: Minecraft', false, {
                 channel: 'testchannel',
                 source: 'custom:test',
                 chatContext: 'user1: hello',
             });
 
-            const callArgs = mockGenerateContent.mock.calls[0][0];
-            const promptText = callArgs.contents[0].parts[0].text;
+            const callPrompt = generateLiteContent.mock.calls[0][0];
 
             // Verify ordering: base prompt → stream context → chat context → history
-            const streamIdx = promptText.indexOf('--- Stream Context ---');
-            const chatIdx = promptText.indexOf('--- Recent Chat ---');
-            const historyIdx = promptText.indexOf('"old response"');
-            expect(streamIdx).toBeGreaterThan(0);
-            expect(chatIdx).toBeGreaterThan(streamIdx);
-            expect(historyIdx).toBeGreaterThan(chatIdx);
+            const baseIndex = callPrompt.indexOf('Check-in base prompt');
+            const streamIndex = callPrompt.indexOf('--- Stream Context ---');
+            const chatIndex = callPrompt.indexOf('--- Recent Chat ---');
+            const historyIndex = callPrompt.indexOf('--- Your Previous Responses');
+
+            expect(baseIndex).toBeLessThan(streamIndex);
+            expect(streamIndex).toBeLessThan(chatIndex);
+            expect(chatIndex).toBeLessThan(historyIndex);
         });
     });
 

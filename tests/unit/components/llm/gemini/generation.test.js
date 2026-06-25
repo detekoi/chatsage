@@ -10,7 +10,7 @@ import {
     generateUnifiedResponse,
     summarizeText
 } from '../../../../../src/components/llm/gemini/generation.js';
-import { getGeminiClient, getGenAIInstance } from '../../../../../src/components/llm/gemini/core.js';
+import { getGeminiClient, getGenAIInstance, generateLiteContent } from '../../../../../src/components/llm/gemini/core.js';
 import { extractTextFromResponse } from '../../../../../src/components/llm/gemini/utils.js';
 
 
@@ -84,15 +84,12 @@ describe('gemini/generation.js', () => {
     });
 
     describe('summarizeText', () => {
-        it('should call generateContent on genAI instance', async () => {
-            mockGenerateContent.mockResolvedValue({
-                candidates: [{ content: { parts: [{ text: '{"summary": "Short summary"}' }] } }]
-            });
-            extractTextFromResponse.mockReturnValue('{"summary": "Short summary"}');
+        it('should call generateLiteContent and return parsed JSON', async () => {
+            generateLiteContent.mockResolvedValue('{"summary": "Short summary"}');
 
             const summary = await summarizeText('Long text to summarize');
 
-            expect(mockGenerateContent).toHaveBeenCalled();
+            expect(generateLiteContent).toHaveBeenCalled();
             expect(summary).toBe('Short summary');
         });
     });
