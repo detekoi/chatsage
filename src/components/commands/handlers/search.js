@@ -6,6 +6,7 @@ import { buildContextPrompt, summarizeText, generateSearchResponse } from '../..
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { logConversation } from '../../llm/conversationStorage.js';
+import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 
 // Define IRC message length limit (be conservative)
 const MAX_IRC_MESSAGE_LENGTH = 450;
@@ -47,9 +48,12 @@ const searchHandler = {
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
 
+            // Fetch emote images for direct multimodal LLM input
+            const emoteImageParts = await getEmoteImageParts(user);
+
             // 2. Use one-shot generateSearchResponse with Google Search grounding
             const searchQuery = `${userName} is asking: "${userQuery}"`;
-            const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery);
+            const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery, { emoteImageParts });
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);

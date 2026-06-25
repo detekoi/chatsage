@@ -190,6 +190,24 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
         const text = extractTextFromResponse(result, candidate, 'search')?.trim() || null;
         return text;
     } catch (error) {
+        if (emoteImageParts.length > 0) {
+            logger.warn({ err: error }, 'Search request with multimodal emotes failed. Retrying without image parts.');
+            try {
+                const userParts = [{ text: fullPrompt }];
+                const result = await model.generateContent({
+                    contents: [{ role: "user", parts: userParts }],
+                    tools: searchTool,
+                    systemInstruction: { parts: [{ text: searchSystemInstruction }] },
+                    generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
+                });
+                const candidate = result.candidates?.[0];
+                const text = extractTextFromResponse(result, candidate, 'search')?.trim() || null;
+                return text;
+            } catch (retryError) {
+                logger.error({ err: retryError }, 'Error during fallback search-grounded generateContent call');
+                return null;
+            }
+        }
         logger.error({ err: error }, 'Error during search-grounded generateContent call');
         return null;
     }

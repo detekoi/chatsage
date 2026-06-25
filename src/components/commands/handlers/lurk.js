@@ -1,15 +1,16 @@
 // src/components/commands/handlers/lurk.js
 import logger from '../../../lib/logger.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendBotResponse } from '../../llm/botResponseHandler.js';
 import { getGeminiClient, buildContextPrompt } from '../../llm/geminiClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
+import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 
 /**
  * Helper to extract text from a Gemini result object.
  */
 function extractTextFromCandidate(res) {
-    return res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return res?.text || res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 
@@ -36,6 +37,10 @@ const lurkHandler = {
             // Build the comprehensive chat context using the shared helper
             const chatContext = buildContextPrompt(llmContext);
 
+            // Fetch emote images for direct multimodal LLM input (defensively check for fragments)
+            const tagsSource = user.fragments ? user : { ...user, fragments: [] };
+            const emoteImageParts = await getEmoteImageParts(tagsSource);
+
             let prompt;
 
             if (lurkReason) {
@@ -46,16 +51,26 @@ const lurkHandler = {
                 prompt = `A Twitch user named "${displayName}" is about to start lurking. Based on the recent chat conversation, write a brief, natural send-off. Wordplay and unexpected poetry are welcome, but avoid tired clichés like "catch you on the flip side", "see you later", or "enjoy". Be fresh. Keep it under 20 words.`;
             }
 
+            // If emotes are present, add a hint so the LLM references the visual content
+            const emoteHint = emoteImageParts.length > 0
+                ? ' If the user included emotes, incorporate what the emotes visually depict into your send-off.'
+                : '';
+
             // Use generateContent directly for a single-turn, low-latency response
             // This bypasses the shared session's default "high" thinking level
             const model = getGeminiClient();
-            const fullPrompt = `${chatContext}\nTASK: ${prompt}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
+            const fullPrompt = `${chatContext}\nTASK: ${prompt}${emoteHint}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
 
-            const result = await model.generateContent({
-                model: 'gemini-flash-lite-latest',
-                contents: [{ role: 'user', parts: [{ text: fullPrompt }] }]
-            });
-            let llmResponse = result?.response?.text ? result.response.text() : extractTextFromCandidate(result);
+            let llmResponse = '';
+            try {
+                const result = await model.generateContent({
+                    model: 'gemini-flash-lite-latest',
+                    contents: [{ role: 'user', parts: [{ text: fullPrompt }, ...emoteImageParts] }]
+                });
+                llmResponse = extractTextFromCandidate(result);
+            } catch (llmError) {
+                logger.warn({ err: llmError }, 'LLM generateContent failed for !lurk, using fallback.');
+            }
 
 
 
@@ -90,12 +105,17 @@ const lurkHandler = {
             }
 
             const replyToId = user?.id || user?.['message-id'] || null;
-            await enqueueMessage(channel, response, { replyToId });
+            await sendBotResponse(channel, response, { replyToId });
             logger.info(`Executed !lurk command in ${channel} for ${displayName}`);
 
         } catch (error) {
             logger.error({ err: error, channel: channel, user: user.username }, 'Error executing !lurk command');
-            return;
+            const replyToId = user?.id || user?.['message-id'] || null;
+            try {
+                await sendBotResponse(channel, 'slipping into stealth mode—crunch, crunch, cone patrol.', { replyToId });
+            } catch (err2) {
+                logger.error({ err: err2 }, 'Failed to send lurk fallback in catch block');
+            }
         }
     },
 };

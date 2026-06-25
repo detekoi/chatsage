@@ -129,6 +129,27 @@ export function getAnimatedEmoteUrl(emoteId) {
 }
 
 /**
+ * Fetch an emote image with fallback logic and timeouts.
+ * Tries animated first if requested, falls back to static.
+ * @param {string} emoteId
+ * @param {boolean} isAnimated
+ * @returns {Promise<{data: Buffer, mimeType: string, wasAnimated: boolean} | null>}
+ */
+async function fetchBestEffortEmoteImage(emoteId, isAnimated) {
+    if (isAnimated) {
+        const frameStrip = await fetchAnimatedEmoteFrames(emoteId);
+        if (frameStrip) {
+            return { ...frameStrip, wasAnimated: true };
+        }
+    }
+    const staticImage = await fetchEmoteImage(emoteId);
+    if (staticImage) {
+        return { ...staticImage, wasAnimated: false };
+    }
+    return null;
+}
+
+/**
  * Fetch an emote image as bytes (static PNG).
  * @param {string} emoteId
  * @returns {Promise<{data: Buffer, mimeType: string} | null>}
@@ -136,17 +157,17 @@ export function getAnimatedEmoteUrl(emoteId) {
 async function fetchEmoteImage(emoteId) {
     try {
         const url = getEmoteImageUrl(emoteId);
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (!response.ok) {
             logger.debug({ emoteId, status: response.status }, 'Failed to fetch emote image');
             return null;
         }
         const arrayBuffer = await response.arrayBuffer();
         const contentType = response.headers.get('content-type') || 'image/png';
-        const safeMimeType = contentType.includes('gif') ? 'image/png' : contentType;
+        // Use actual content type. If twitch returns image/gif for a static path, pass it as image/gif.
         return {
             data: Buffer.from(arrayBuffer),
-            mimeType: safeMimeType,
+            mimeType: contentType,
         };
     } catch (error) {
         logger.debug({ err: error, emoteId }, 'Error fetching emote image');
@@ -165,7 +186,7 @@ async function fetchAnimatedEmoteFrames(emoteId) {
     const pipelineStart = Date.now();
     try {
         const url = getAnimatedEmoteUrl(emoteId);
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (!response.ok) {
             logger.debug({ emoteId, status: response.status }, 'Failed to fetch animated emote GIF');
             return null;
@@ -175,8 +196,9 @@ async function fetchAnimatedEmoteFrames(emoteId) {
         const fetchMs = Date.now() - pipelineStart;
 
         const extractStart = Date.now();
-        const { pages } = await sharp(gifBuffer, { animated: true }).metadata();
-        const stripData = await sharp(gifBuffer, { animated: true }).png().toBuffer();
+        const pipeline = sharp(gifBuffer, { animated: true });
+        const { pages } = await pipeline.metadata();
+        const stripData = await pipeline.png().toBuffer();
         const extractMs = Date.now() - extractStart;
         const totalMs = Date.now() - pipelineStart;
 
@@ -272,31 +294,17 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
 
     if (!genAI) return null;
 
-    let imageParts = null;
-    let animatedSuccess = false;
-
-    // Try animated path first if the emote supports it
-    if (isAnimated) {
-        const frameStrip = await fetchAnimatedEmoteFrames(emoteId);
-        if (frameStrip) {
-            imageParts = [{
-                inlineData: { mimeType: frameStrip.mimeType, data: frameStrip.data.toString('base64') },
-            }];
-            animatedSuccess = true;
-        }
+    // Fetch the best available image format for this emote
+    const emoteImageData = await fetchBestEffortEmoteImage(emoteId, isAnimated);
+    if (!emoteImageData) {
+        logger.info({ emoteId, emoteName }, 'Emote image fetch failed — cannot describe');
+        return null;
     }
 
-    // Fall back to static PNG
-    if (!imageParts) {
-        const imageData = await fetchEmoteImage(emoteId);
-        if (!imageData) {
-            logger.info({ emoteId, emoteName }, 'Emote image fetch failed — cannot describe');
-            return null;
-        }
-        imageParts = [{
-            inlineData: { mimeType: imageData.mimeType, data: imageData.data.toString('base64') },
-        }];
-    }
+    const imageParts = [{
+        inlineData: { mimeType: emoteImageData.mimeType, data: emoteImageData.data.toString('base64') },
+    }];
+    const animatedSuccess = emoteImageData.wasAnimated;
 
     try {
         // Chat-adapted prompts: focus on meaning/sentiment rather than pure visual description
@@ -399,14 +407,7 @@ export async function getEmoteImageParts(tags) {
         const parts = [];
         const fetchResults = await Promise.all(
             emotes.map(async (emote) => {
-                // Try animated frame strip first, fall back to static PNG
-                let imageData = null;
-                if (emote.isAnimated) {
-                    imageData = await fetchAnimatedEmoteFrames(emote.id);
-                }
-                if (!imageData) {
-                    imageData = await fetchEmoteImage(emote.id);
-                }
+                const imageData = await fetchBestEffortEmoteImage(emote.id, emote.isAnimated);
                 return { ...emote, imageData };
             })
         );
@@ -418,8 +419,9 @@ export async function getEmoteImageParts(tags) {
         const emoteNames = successful.map(r => r.name).join(', ');
         parts.push({ text: `[Emote images in this message: ${emoteNames}]` });
 
-        // Add each emote image as an inline data part
+        // Add each emote image with its own label
         for (const result of successful) {
+            parts.push({ text: `Emote Name: ${result.name}` });
             parts.push({
                 inlineData: {
                     mimeType: result.imageData.mimeType,
