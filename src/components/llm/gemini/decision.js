@@ -1,6 +1,7 @@
 import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getGeminiClient } from './core.js';
+import { safeParseJsonResponse } from './utils.js';
 
 // Lightweight keyword-based fallback when strict LLM call fails
 function inferSearchNeedByHeuristic(userQuery) {
@@ -63,14 +64,9 @@ Output JSON only.`;
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            try {
-                const parsed = JSON.parse(responseText);
-                return { searchNeeded: parsed.searchNeeded, reasoning: parsed.reasoning || 'No reasoning provided.' };
-            } catch (e) {
-                logger.warn({ err: e, text: responseText }, 'Failed to parse structured decision response.');
-            }
+        const parsed = safeParseJsonResponse(result, '[Decision - SearchNeeded]');
+        if (parsed) {
+            return { searchNeeded: parsed.searchNeeded, reasoning: parsed.reasoning || 'No reasoning provided.' };
         }
 
         logger.warn('Structured decision response empty or invalid; falling back to heuristic.');

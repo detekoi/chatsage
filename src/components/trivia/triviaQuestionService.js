@@ -1,7 +1,7 @@
 // src/components/trivia/triviaQuestionService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient } from '../llm/geminiClient.js';
+import { getGeminiClient, safeParseJsonResponse, safeExtractText } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
 import { searchTool } from '../llm/gemini/tools.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
@@ -146,7 +146,6 @@ Only use Google Search if the question requires very recent or obscure facts tha
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: searchTool,
             generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",
@@ -154,18 +153,8 @@ Only use Google Search if the question requires very recent or obscure facts tha
             }
         });
 
-        // Safe extraction of structured JSON
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!responseText) {
-            logger.warn('[TriviaService] No text content in Gemini response.');
-            return null;
-        }
-
-        let parsed;
-        try {
-            parsed = JSON.parse(responseText);
-        } catch (e) {
-            logger.warn({ err: e, text: responseText }, '[TriviaService] Failed to parse JSON response.');
+        const parsed = safeParseJsonResponse(result, '[TriviaService - Generate]');
+        if (!parsed) {
             return null;
         }
 
@@ -324,9 +313,8 @@ Return STRICT JSON.`;
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
+        const parsed = safeParseJsonResponse(result, '[TriviaService - Verify]');
+        if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[TriviaService] Verified via Structured Output.');
             return {
                 is_correct: parsed.is_correct,
@@ -372,7 +360,8 @@ Your explanation should be informative, engaging, and around 1-2 sentences long.
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.7 }
         });
-        return result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || `The correct answer is ${answer}.`;
+        const extractedText = safeExtractText(result, '[TriviaService - Explanation]');
+        return extractedText?.trim() || `The correct answer is ${answer}.`;
     } catch (error) {
         logger.error({ err: error }, 'Error generating explanation');
         return `The correct answer is ${answer}.`;

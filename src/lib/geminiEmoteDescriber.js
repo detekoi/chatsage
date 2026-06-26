@@ -2,7 +2,7 @@
 // Uses Google Gemini Flash Lite to describe Twitch emotes visually for LLM context enrichment.
 // Works directly with EventSub message fragments. Supports animated emotes via sharp.
 import sharp from 'sharp';
-import { GoogleGenAI } from '@google/genai';
+import { getGenAIInstance } from '../components/llm/geminiClient.js';
 import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';
@@ -33,7 +33,16 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMOTE_DESCRIPTIONS_COLLECTION = 'emoteDescriptions';
 let emoteDescriptionsDb = null;
 
-let genAI = null;
+let genAIInstance = null;
+function getGenAI() {
+    if (genAIInstance) return genAIInstance;
+    try {
+        genAIInstance = getGenAIInstance();
+        return genAIInstance;
+    } catch (e) {
+        return null;
+    }
+}
 
 /**
  * Initialize the Gemini client for emote descriptions.
@@ -47,7 +56,10 @@ export function initEmoteDescriber(apiKey) {
         return false;
     }
     try {
-        genAI = new GoogleGenAI({ apiKey });
+        const client = getGenAI();
+        if (!client) {
+            throw new Error('Shared GenAI client not initialized');
+        }
         logger.info('Gemini emote describer initialized (model: %s)', geminiModel);
         return true;
     } catch (error) {
@@ -292,6 +304,7 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
     const cached = await getCachedDescription(emoteId);
     if (cached) return cached;
 
+    const genAI = getGenAI();
     if (!genAI) return null;
 
     // Fetch the best available image format for this emote
@@ -315,14 +328,19 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
         const contents = [...imageParts, { text: prompt }];
         const effectiveTimeout = animatedSuccess ? animatedTimeoutMs : timeoutMs;
 
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Gemini timeout')), effectiveTimeout);
+        });
+
         const response = await Promise.race([
             genAI.models.generateContent({
                 model: geminiModel,
-                systemInstruction: SYSTEM_INSTRUCTION,
                 contents,
                 config: {
+                    systemInstruction: SYSTEM_INSTRUCTION,
                     responseMimeType: 'application/json',
-                    responseJsonSchema: {
+                    responseSchema: {
                         type: 'object',
                         properties: {
                             description: { type: 'string', description: 'A 2-8 word visual and emotional description of the emote.' },
@@ -331,10 +349,10 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
                     },
                 },
             }),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Gemini timeout')), effectiveTimeout)
-            ),
-        ]);
+            timeoutPromise,
+        ]).finally(() => {
+            clearTimeout(timeoutId);
+        });
 
         const parsed = JSON.parse(response.text);
         const description = parsed?.description?.trim().replace(/[.!?,;:]+$/g, '');
@@ -360,6 +378,7 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
  * @returns {Promise<string | null>} Context string like "[Emotes in message: Kappa = smirking face]", or null
  */
 export async function getEmoteContextString(tags, _message) {
+    const genAI = getGenAI();
     if (!genAI || !tags?.fragments) return null;
 
     const emotes = extractEmotesFromFragments(tags.fragments);

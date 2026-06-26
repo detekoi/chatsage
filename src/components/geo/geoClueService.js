@@ -1,4 +1,4 @@
-import { getGeminiClient } from '../llm/geminiClient.js';
+import { getGeminiClient, safeParseJsonResponse } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
 import { Type as GenAIType } from '@google/genai';
 import { searchTool } from '../llm/gemini/tools.js';
@@ -50,12 +50,8 @@ Difficulty: ${difficulty}
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
-            return parsed.clue_text;
-        }
-        return null;
+        const parsed = safeParseJsonResponse(result, '[GeoClue - Initial]');
+        return parsed?.clue_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating initial clue');
         return null;
@@ -96,12 +92,8 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
-            return parsed.clue_text;
-        }
-        return null;
+        const parsed = safeParseJsonResponse(result, '[GeoClue - FollowUp]');
+        return parsed?.clue_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating follow-up clue');
         return null;
@@ -143,12 +135,8 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
-            return parsed.reveal_text;
-        }
-        return null;
+        const parsed = safeParseJsonResponse(result, '[GeoClue - Reveal]');
+        return parsed?.reveal_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating final reveal');
         return null;

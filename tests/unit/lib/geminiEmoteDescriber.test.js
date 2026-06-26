@@ -1,8 +1,16 @@
 // tests/unit/lib/geminiEmoteDescriber.test.js
 
 jest.mock('../../../src/lib/logger.js');
-jest.mock('@google/genai');
 jest.mock('sharp');
+
+const mockGenerateContent = jest.fn();
+jest.mock('../../../src/components/llm/geminiClient.js', () => ({
+    getGenAIInstance: jest.fn(() => ({
+        models: {
+            generateContent: mockGenerateContent,
+        },
+    })),
+}));
 jest.mock('../../../src/config/index.js', () => ({
     __esModule: true,
     default: {
@@ -37,20 +45,11 @@ import {
     getEmoteContextString,
     _descriptionCache,
 } from '../../../src/lib/geminiEmoteDescriber.js';
-import { GoogleGenAI } from '@google/genai';
 import sharp from 'sharp';
 
 // Mock global fetch
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
-
-// Setup mock Gemini client
-const mockGenerateContent = jest.fn();
-GoogleGenAI.mockImplementation(() => ({
-    models: {
-        generateContent: mockGenerateContent,
-    },
-}));
 
 // Setup mock sharp — returns chainable metadata/png/toBuffer
 const mockToBuffer = jest.fn();
@@ -344,8 +343,8 @@ describe('geminiEmoteDescriber', () => {
             await getEmoteContextString(tags, 'Kappa');
 
             const callArgs = mockGenerateContent.mock.calls[0][0];
-            expect(callArgs.systemInstruction).toContain('chat AI can understand');
-            expect(callArgs.systemInstruction).toContain('emotional meaning');
+            expect(callArgs.config.systemInstruction).toContain('chat AI can understand');
+            expect(callArgs.config.systemInstruction).toContain('emotional meaning');
         });
     });
 });

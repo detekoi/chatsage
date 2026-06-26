@@ -113,3 +113,34 @@ export function extractTextFromResponse(response, candidate, logContext = 'respo
     logger.warn({ logContext }, 'Could not extract text from Gemini response.');
     return null;
 }
+
+/**
+ * Standardized helper to extract text from a Gemini generateContent response candidate.
+ * Wraps extractTextFromResponse.
+ * @param {object} result - The raw Gemini API result object
+ * @param {string} logContext - Logging context
+ * @returns {string|null} Extracted text or null
+ */
+export function safeExtractText(result, logContext = 'gemini') {
+    if (!result) return null;
+    const candidate = result.candidates?.[0];
+    return extractTextFromResponse(result, candidate, logContext);
+}
+
+/**
+ * Standardized helper to parse JSON from a Gemini generateContent response.
+ * @param {object} result - The raw Gemini API result object
+ * @param {string} logContext - Logging context
+ * @returns {object|null} Parsed JSON object or null on failure
+ */
+export function safeParseJsonResponse(result, logContext = 'gemini') {
+    const text = safeExtractText(result, logContext);
+    if (!text) return null;
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        logger.warn({ err: error, logContext, text }, 'Failed to parse JSON response');
+        return null;
+    }
+}
+

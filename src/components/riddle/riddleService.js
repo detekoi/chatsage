@@ -1,9 +1,8 @@
 // src/components/riddle/riddleService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient } from '../llm/geminiClient.js';
+import { getGeminiClient, safeParseJsonResponse } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
-import { searchTool } from '../llm/gemini/tools.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
 const META_CONCEPT_BLACKLIST = [
@@ -205,7 +204,6 @@ Return JSON matching the schema.${languageDirective}`;
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: prompt }] }],
-            tools: searchTool,
             generationConfig: {
                 temperature: 0.75,
                 responseMimeType: "application/json",
@@ -213,17 +211,8 @@ Return JSON matching the schema.${languageDirective}`;
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!responseText) {
-            logger.warn('[RiddleService] No text content in Gemini response.');
-            return null;
-        }
-
-        let args;
-        try {
-            args = JSON.parse(responseText);
-        } catch (e) {
-            logger.warn({ err: e, text: responseText }, '[RiddleService] Failed to parse JSON response.');
+        const args = safeParseJsonResponse(result, '[RiddleService - Generate]');
+        if (!args) {
             return null;
         }
 
@@ -331,9 +320,8 @@ Return STRICT JSON.`;
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
+        const parsed = safeParseJsonResponse(result, '[RiddleService - Verify]');
+        if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[RiddleService] Verified answer via Structured Output.');
             return {
                 isCorrect: parsed.is_correct,

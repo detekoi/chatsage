@@ -1,4 +1,4 @@
-import { getGeminiClient } from '../llm/geminiClient.js';
+import { getGeminiClient, safeExtractText } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
 import { getLocationSelectionPrompt } from './geoPrompts.js';
 import { searchTool } from '../llm/gemini/tools.js';
@@ -39,17 +39,12 @@ const checkGuessTool = {
 export async function selectLocation(mode, config = {}, gameTitle = null, excludedLocations = [], sessionRegionScope = null) {
     const prompt = getLocationSelectionPrompt(mode, config, gameTitle, excludedLocations, sessionRegionScope);
 
-    // Create a fresh AI instance without any system instruction to avoid token overhead
-    const { getGenAIInstance } = await import('../llm/geminiClient.js');
-    const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || 'gemini-flash-latest';
-
+    const model = getGeminiClient();
     logger.debug({ mode, gameTitle, sessionRegionScope, excludedCount: excludedLocations.length, prompt }, '[GeoLocation] Selecting location');
     try {
         const generateOptions = {
-            model: modelId,
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
+            generationConfig: {
                 temperature: 0.5, // Moderate temp for variety
                 candidateCount: 1
             }
@@ -58,7 +53,7 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
             generateOptions.tools = searchTool;
         }
-        const result = await ai.models.generateContent(generateOptions);
+        const result = await model.generateContent(generateOptions);
         const response = result;
         const candidate = response?.candidates?.[0];
 
@@ -78,24 +73,7 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         }
 
 
-        // Robust text extraction similar to geminiClient.js approach
-        let text = null;
-        const parts = candidate?.content?.parts;
-        if (Array.isArray(parts) && parts.length > 0) {
-            text = parts.map(part => part.text || '').join('').trim();
-        }
-
-        // Fallback text extraction methods
-        if (!text && candidate && typeof candidate.text === 'string') {
-            text = candidate.text.trim();
-        }
-        if (!text && response && typeof response.text === 'function') {
-            const responseText = response.text();
-            text = typeof responseText === 'string' ? responseText.trim() : null;
-        }
-        if (!text && response && typeof response.text === 'string') {
-            text = response.text.trim();
-        }
+        const text = safeExtractText(result, '[GeoLocation]');
 
         if (!text) {
             logger.warn('[GeoLocation] Could not extract text from Gemini response');

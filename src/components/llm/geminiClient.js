@@ -29,3 +29,8 @@ export {
 export {
     decideSearchWithStructuredOutput
 } from './gemini/decision.js';
+
+export {
+    safeExtractText,
+    safeParseJsonResponse
+} from './gemini/utils.js';

@@ -2,7 +2,7 @@ import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 import { getGeminiClient, getGenAIInstance, getConfiguredModelId, generateLiteContent } from './core.js';
-import { extractTextFromResponse } from './utils.js';
+import { extractTextFromResponse, safeExtractText, safeParseJsonResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
 
@@ -23,8 +23,7 @@ export async function fetchIanaTimezoneForLocation(locationName) {
         logger.error('fetchIanaTimezoneForLocation called with invalid locationName.');
         return null;
     }
-    const ai = getGenAIInstance();
-    const modelId = process.env.GEMINI_MODEL_ID || getConfiguredModelId() || 'gemini-flash-latest';
+    const model = getGeminiClient();
 
     const prompt = `What is the IANA timezone for "${locationName}"?
 Examples: "New York" -> "America/New_York", "Tokyo" -> "Asia/Tokyo".
@@ -32,19 +31,17 @@ If unknown or ambiguous, return "UNKNOWN".
 Return STRICT JSON.`;
 
     try {
-        const result = await ai.models.generateContent({
-            model: modelId,
+        const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
+            generationConfig: {
                 temperature: 0.0,
                 responseMimeType: 'application/json',
                 responseSchema: TimezoneSchema
             }
         });
 
-        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (responseText) {
-            const parsed = JSON.parse(responseText);
+        const parsed = safeParseJsonResponse(result, '[Timezone]');
+        if (parsed) {
             const tz = parsed.iana_timezone;
             if (tz && tz !== 'UNKNOWN') {
                 return tz;
@@ -117,7 +114,7 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                 const history = [
                     { role: "user", parts: [{ text: fullPrompt }] },
                     { role: "model", parts: candidate.content.parts },
-                    { role: "function", parts: [{ functionResponse: { name: functionCall.name, response: functionResult } }] }
+                    { role: "user", parts: [{ functionResponse: { name: functionCall.name, response: functionResult } }] }
                 ];
                 const followup = await model.generateContent({
                     contents: history,
@@ -135,12 +132,12 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                     return "I can't answer that due to safety guidelines.";
                 }
 
-                const followupResponseText = followupCandidate?.content?.parts?.[0]?.text;
+                const followupResponseText = safeExtractText(followup, 'standard-followup');
                 return followupResponseText?.trim() || null;
             }
         }
 
-        const responseText = candidate?.content?.parts?.[0]?.text;
+        const responseText = safeExtractText(result, 'standard');
         return responseText?.trim() || null;
 
     } catch (error) {
@@ -187,7 +184,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
         } else {
             logger.info({ usedGoogleSearch: false }, '[SearchResponse] No search grounding metadata present.');
         }
-        const text = extractTextFromResponse(result, candidate, 'search')?.trim() || null;
+        const text = safeExtractText(result, 'search')?.trim() || null;
         return text;
     } catch (error) {
         if (emoteImageParts.length > 0) {
@@ -201,7 +198,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
                     generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
                 });
                 const candidate = result.candidates?.[0];
-                const text = extractTextFromResponse(result, candidate, 'search')?.trim() || null;
+                const text = safeExtractText(result, 'search')?.trim() || null;
                 return text;
             } catch (retryError) {
                 logger.error({ err: retryError }, 'Error during fallback search-grounded generateContent call');
@@ -232,7 +229,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
             systemInstruction: { parts: [{ text: unifiedSystemInstruction }] },
             generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
         });
-        return extractTextFromResponse(result, result.candidates?.[0], 'unified')?.trim() || null;
+        return safeExtractText(result, 'unified')?.trim() || null;
     } catch (err) {
         return null; // Silent fail
     }

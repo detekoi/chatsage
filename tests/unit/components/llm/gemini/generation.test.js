@@ -2,7 +2,11 @@
 
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/components/llm/gemini/core.js');
-jest.mock('../../../../../src/components/llm/gemini/utils.js');
+jest.mock('../../../../../src/components/llm/gemini/utils.js', () => ({
+    extractTextFromResponse: jest.fn(),
+    safeExtractText: jest.fn(),
+    safeParseJsonResponse: jest.fn(),
+}));
 
 import {
     generateStandardResponse,
@@ -11,7 +15,7 @@ import {
     summarizeText
 } from '../../../../../src/components/llm/gemini/generation.js';
 import { getGeminiClient, getGenAIInstance, generateLiteContent } from '../../../../../src/components/llm/gemini/core.js';
-import { extractTextFromResponse } from '../../../../../src/components/llm/gemini/utils.js';
+import { extractTextFromResponse, safeExtractText, safeParseJsonResponse } from '../../../../../src/components/llm/gemini/utils.js';
 
 
 describe('gemini/generation.js', () => {
@@ -23,6 +27,15 @@ describe('gemini/generation.js', () => {
         getGeminiClient.mockReturnValue({ generateContent: mockGenerateContent });
         getGenAIInstance.mockReturnValue({ models: { generateContent: mockGenerateContent } });
         extractTextFromResponse.mockReturnValue('Mocked response text');
+        safeExtractText.mockReturnValue('Mocked response text');
+        safeParseJsonResponse.mockImplementation((result) => {
+            const text = result?.candidates?.[0]?.content?.parts?.[0]?.text || '{"iana_timezone": "America/New_York"}';
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                return null;
+            }
+        });
     });
 
     describe('generateStandardResponse', () => {
