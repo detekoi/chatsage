@@ -4,6 +4,9 @@ jest.mock('../../../../src/components/twitch/helixClient.js');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/config/index.js');
 jest.mock('../../../../src/components/twitch/channelManager.js');
+jest.mock('../../../../src/components/twitch/chatClient.js', () => ({
+    getBotUserId: jest.fn().mockResolvedValue('bot123')
+}));
 
 import {
     subscribeChannelSubscriptionGift,
@@ -27,7 +30,12 @@ describe('twitchSubs', () => {
         };
 
         // mockHelixClient must be a callable mock function because makeHelixRequest calls it directly as: helixClient(axiosConfig)
-        mockHelixClient = jest.fn().mockResolvedValue({ data: { data: [{ id: 'sub-id' }] } });
+        mockHelixClient = jest.fn().mockImplementation((axiosConfig) => {
+            if (axiosConfig && axiosConfig.method === 'get') {
+                return Promise.resolve({ data: { data: [] } });
+            }
+            return Promise.resolve({ data: { data: [{ id: 'sub-id' }] } });
+        });
         getHelixClient.mockReturnValue(mockHelixClient);
     });
 
@@ -91,9 +99,12 @@ describe('twitchSubs', () => {
 
             // Core endpoints succeed, celebration endpoints fail
             mockHelixClient.mockImplementation((axiosConfig) => {
+                if (axiosConfig && axiosConfig.method === 'get') {
+                    return Promise.resolve({ data: { data: [] } });
+                }
                 const body = axiosConfig.data;
                 const coreTypes = ['stream.online', 'stream.offline', 'channel.chat.message', 'channel.channel_points_custom_reward_redemption.add'];
-                if (coreTypes.includes(body.type)) {
+                if (body && coreTypes.includes(body.type)) {
                     return Promise.resolve({ data: { data: [{ id: 'sub-id', status: 'enabled' }] } });
                 }
                 return Promise.reject(new Error('Missing OAuth scope'));

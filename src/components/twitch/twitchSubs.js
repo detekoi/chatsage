@@ -64,6 +64,13 @@ async function makeHelixRequest(method, endpoint, body = null, userAccessToken =
 
 // --- EXPORTED FUNCTIONS ---
 
+export function getSubKey(type, condition) {
+    const parts = Object.entries(condition || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`);
+    return `${type}|${parts.join('|')}`;
+}
+
 export async function subscribeStreamOnline(broadcasterUserId) {
     const { publicUrl, eventSubSecret } = config.twitch;
     if (!publicUrl || !eventSubSecret) {
@@ -127,24 +134,55 @@ export async function getEventSubSubscriptions(context = 'Fetch EventSub subscri
 
     // Fetch from API
     logger.debug({ context }, 'Fetching EventSub subscriptions from API');
-    const fetchPromise = makeHelixRequest('get', '/eventsub/subscriptions', null, null, context)
-        .then(result => {
-            // Cache successful results
-            if (result.success) {
-                eventSubSubscriptionsCache = result;
-                eventSubSubscriptionsCacheTimestamp = Date.now();
-                logger.debug({ context, subscriptionCount: result.data?.data?.length || 0 }, 'EventSub subscriptions fetched and cached');
+    
+    const fetchPromise = (async () => {
+        let allSubs = [];
+        let cursor = null;
+        let totalCost = 0;
+        let maxTotalCost = 0;
+        let total = 0;
+
+        do {
+            const endpoint = cursor ? `/eventsub/subscriptions?after=${encodeURIComponent(cursor)}` : '/eventsub/subscriptions';
+            const result = await makeHelixRequest('get', endpoint, null, null, context);
+            if (!result.success) {
+                // Return immediately without caching to avoid poisoning cache with partial results
+                return { success: false, error: result.error || 'Failed to fetch EventSub subscriptions' };
             }
-            eventSubSubscriptionsInFlightPromise = null; // Clear in-flight tracker
-            return result;
-        })
-        .catch(error => {
-            eventSubSubscriptionsInFlightPromise = null; // Clear in-flight tracker on error
-            throw error;
-        });
+            
+            allSubs.push(...(result.data?.data || []));
+            totalCost = result.data?.total_cost || totalCost;
+            maxTotalCost = result.data?.max_total_cost || maxTotalCost;
+            total = result.data?.total || total;
+            cursor = result.data?.pagination?.cursor || null;
+        } while (cursor);
+        
+        const finalResult = {
+            success: true,
+            data: {
+                data: allSubs,
+                total_cost: totalCost,
+                max_total_cost: maxTotalCost,
+                total: total
+            }
+        };
+
+        eventSubSubscriptionsCache = finalResult;
+        eventSubSubscriptionsCacheTimestamp = Date.now();
+        logger.debug({ context, subscriptionCount: allSubs.length }, 'EventSub subscriptions fetched and cached');
+        
+        return finalResult;
+    })();
 
     eventSubSubscriptionsInFlightPromise = fetchPromise;
-    return await fetchPromise;
+    try {
+        const result = await fetchPromise;
+        eventSubSubscriptionsInFlightPromise = null;
+        return result;
+    } catch (error) {
+        eventSubSubscriptionsInFlightPromise = null;
+        throw error;
+    }
 }
 
 export async function deleteEventSubSubscription(subscriptionId) {
@@ -292,12 +330,17 @@ export async function subscribeChannelChatMessage(broadcasterUserId) {
         logger.info({ broadcasterUserId, botUserId, type: 'channel.chat.message' }, 'Successfully subscribed to channel.chat.message');
         clearEventSubSubscriptionsCache();
     } else {
-        // CRITICAL: channel.chat.message is essential for receiving chat
-        logger.error({
+        const is403 = result.error && result.error.includes('403');
+        const logLevel = is403 ? 'warn' : 'error';
+        const msg = is403
+            ? 'channel.chat.message subscription rejected (broadcaster has not authorized bot or added as mod)'
+            : 'CRITICAL: Failed to subscribe to channel.chat.message - channel will not receive chat messages!';
+            
+        logger[logLevel]({
             broadcasterUserId,
             error: result.error,
             type: 'channel.chat.message'
-        }, 'CRITICAL: Failed to subscribe to channel.chat.message - channel will not receive chat messages!');
+        }, msg);
     }
     return result;
 }
@@ -370,9 +413,61 @@ export async function subscribeSharedChatEnd(broadcasterUserId) {
 
 export async function subscribeAllManagedChannels() {
     try {
+        if (!config.twitch.publicUrl) {
+            logger.error('Missing PUBLIC_URL in config. Cannot subscribe or deduplicate EventSub webhooks.');
+            return { successful: [], failed: [], total: 0, error: 'Missing PUBLIC_URL' };
+        }
+
         const { getActiveManagedChannels } = await import('./channelManager.js');
         const activeChannels = await getActiveManagedChannels();
         const results = { successful: [], failed: [], total: activeChannels.length };
+
+        // PRE-FETCH EXISTING SUBSCRIPTIONS for deduplication and cleanup
+        const existingSubsResult = await getEventSubSubscriptions('Startup deduplication fetch', false);
+        const existingSubs = existingSubsResult?.data?.data || [];
+        
+        const activeSubKeys = new Set();
+        let cleanedUpCount = 0;
+        let skippedCount = 0;
+        const currentCallback = `${config.twitch.publicUrl}/twitch/event`;
+        
+        for (const sub of existingSubs) {
+            const isStaleStatus = ['authorization_revoked', 'notification_failures_exceeded', 'user_removed', 'version_removed'].includes(sub.status);
+            const isStaleCallback = sub.transport?.callback !== currentCallback;
+            
+            if (isStaleStatus || isStaleCallback) {
+                const deleteResult = await deleteEventSubSubscription(sub.id);
+                if (deleteResult.success) {
+                    cleanedUpCount++;
+                } else {
+                    logger.warn({ subId: sub.id, error: deleteResult.error }, 'Failed to delete stale EventSub subscription');
+                }
+            } else if (sub.status === 'enabled' || sub.status === 'webhook_callback_verification_pending') {
+                const key = getSubKey(sub.type, sub.condition);
+                activeSubKeys.add(key);
+            }
+        }
+        
+        if (cleanedUpCount > 0) {
+            logger.info({ cleanedUpCount }, 'Cleaned up stale EventSub subscriptions');
+        }
+
+        const { getBotUserId } = await import('./chatClient.js');
+        const botUserId = await getBotUserId();
+        if (!botUserId) {
+            logger.error('CRITICAL: Could not determine bot user ID. channel.chat.message subscriptions will fail.');
+        }
+
+        const skipIfActive = async (type, condition, subscribeFn) => {
+            const key = getSubKey(type, condition);
+            if (activeSubKeys.has(key)) {
+                skippedCount++;
+                return { success: true, alreadyExists: true };
+            }
+            return await subscribeFn();
+        };
+
+        const unauthChatBroadcasterIds = new Set();
 
         for (const channel of activeChannels) {
             const channelName = channel.name;
@@ -396,17 +491,26 @@ export async function subscribeAllManagedChannels() {
                     userId = userResponse.id;
                 }
 
-                const onlineSubResult = await subscribeStreamOnline(userId);
-                const offlineSubResult = await subscribeStreamOffline(userId);
-                const chatSubResult = await subscribeChannelChatMessage(userId);
-                const redemptionSubResult = await subscribeChannelPointsRedemptionAdd(userId);
+                const onlineSubResult = await skipIfActive('stream.online', { broadcaster_user_id: userId }, () => subscribeStreamOnline(userId));
+                const offlineSubResult = await skipIfActive('stream.offline', { broadcaster_user_id: userId }, () => subscribeStreamOffline(userId));
+                
+                let chatSubResult = { success: false, error: 'Missing botUserId' };
+                if (botUserId) {
+                    const chatCondition = { broadcaster_user_id: userId, user_id: botUserId };
+                    chatSubResult = await skipIfActive('channel.chat.message', chatCondition, () => subscribeChannelChatMessage(userId));
+                    if (!chatSubResult.success && chatSubResult.error && chatSubResult.error.includes('403')) {
+                        unauthChatBroadcasterIds.add(userId);
+                    }
+                }
+                
+                const redemptionSubResult = await skipIfActive('channel.channel_points_custom_reward_redemption.add', { broadcaster_user_id: userId }, () => subscribeChannelPointsRedemptionAdd(userId));
 
                 // Celebration-related EventSub subscriptions (best-effort: 403 from missing
                 // scopes is logged but does not block the rest of the subscriptions)
-                const followSubResult = await subscribeChannelFollow(userId);
-                const subscribeSubResult = await subscribeChannelSubscribe(userId);
-                const giftSubResult = await subscribeChannelSubscriptionGift(userId);
-                const raidSubResult = await subscribeChannelRaid(userId);
+                const followSubResult = await skipIfActive('channel.follow', { broadcaster_user_id: userId, moderator_user_id: userId }, () => subscribeChannelFollow(userId));
+                const subscribeSubResult = await skipIfActive('channel.subscribe', { broadcaster_user_id: userId }, () => subscribeChannelSubscribe(userId));
+                const giftSubResult = await skipIfActive('channel.subscription.gift', { broadcaster_user_id: userId }, () => subscribeChannelSubscriptionGift(userId));
+                const raidSubResult = await skipIfActive('channel.raid', { to_broadcaster_user_id: userId }, () => subscribeChannelRaid(userId));
 
                 const coreSuccess = onlineSubResult.success && offlineSubResult.success && chatSubResult.success && redemptionSubResult.success;
                 if (coreSuccess) {
@@ -422,18 +526,41 @@ export async function subscribeAllManagedChannels() {
 
                 // Log celebration subscription failures separately (non-critical)
                 const celebrationFailures = [];
-                if (!followSubResult.success) celebrationFailures.push('channel.follow');
-                if (!subscribeSubResult.success) celebrationFailures.push('channel.subscribe');
-                if (!giftSubResult.success) celebrationFailures.push('channel.subscription.gift');
-                if (!raidSubResult.success) celebrationFailures.push('channel.raid');
-                if (celebrationFailures.length > 0) {
-                    logger.warn({ channelName, userId, failed: celebrationFailures }, 'Some celebration EventSub subscriptions failed (may need broadcaster OAuth scopes)');
+                let hasUnexpectedFailure = false;
+                const checkCelebration = (res, name) => {
+                    if (!res.success) {
+                        celebrationFailures.push(name);
+                        if (!res.error || !res.error.includes('403')) {
+                            hasUnexpectedFailure = true;
+                        }
+                    }
+                };
+                
+                checkCelebration(followSubResult, 'channel.follow');
+                checkCelebration(subscribeSubResult, 'channel.subscribe');
+                checkCelebration(giftSubResult, 'channel.subscription.gift');
+                checkCelebration(raidSubResult, 'channel.raid');
+
+                if (hasUnexpectedFailure) {
+                    logger.warn({ channelName, userId, failed: celebrationFailures }, 'Some celebration EventSub subscriptions failed unexpectedly');
                 }
             } catch (error) {
                 logger.error({ err: error, channelName }, 'Error subscribing channel to EventSub');
                 results.failed.push({ channel: channelName, error: error.message });
             }
         }
+
+        if (unauthChatBroadcasterIds.size > 0) {
+            logger.warn({ 
+                count: unauthChatBroadcasterIds.size, 
+                ids: Array.from(unauthChatBroadcasterIds) 
+            }, 'Channels missing bot authorization for chat messages');
+        }
+        
+        if (skippedCount > 0) {
+            logger.info({ skippedCount }, 'Skipped existing EventSub subscriptions during batch processing');
+        }
+
         logger.info({ successful: results.successful.length, failed: results.failed.length, total: results.total }, 'EventSub subscription batch completed');
         return results;
     } catch (error) {
