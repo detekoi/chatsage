@@ -17,6 +17,11 @@ const OAUTH_DOC_ID = 'oauth';
 const tokenCache = new Map();
 const TOKEN_EXPIRY_BUFFER_MS = 60 * 1000; // Treat tokens as expired 60s early
 
+// Tracks channels that have already emitted a warn-level "no token" log this
+// instance lifetime.  Subsequent hits for the same channel log at debug to
+// avoid filling logs every poll cycle with identical warnings.
+const warnedNoToken = new Set();
+
 /** @returns {import('@google-cloud/firestore').Firestore} */
 function _getDb() {
     return getFirestore();
@@ -50,8 +55,10 @@ export async function getBroadcasterAccessToken(channelName) {
     }
 
     if (!channelInfo?.twitchUserId) {
-        logger.warn({ channel: lowerChannel },
+        const logFn = warnedNoToken.has(lowerChannel) ? logger.debug : logger.warn;
+        logFn.call(logger, { channel: lowerChannel },
             '[BroadcasterTokenHelper] No twitchUserId found for channel');
+        warnedNoToken.add(lowerChannel);
         return null;
     }
 
@@ -75,8 +82,10 @@ export async function getBroadcasterAccessToken(channelName) {
     }
 
     if (!refreshToken) {
-        logger.warn({ channel: lowerChannel, twitchUserId },
+        const logFn = warnedNoToken.has(lowerChannel) ? logger.debug : logger.warn;
+        logFn.call(logger, { channel: lowerChannel, twitchUserId },
             '[BroadcasterTokenHelper] No refresh token found. Broadcaster needs to re-authenticate.');
+        warnedNoToken.add(lowerChannel);
         return null;
     }
 
@@ -139,6 +148,9 @@ export async function getBroadcasterAccessToken(channelName) {
             expiresAt: Date.now() + (expiresIn * 1000) - TOKEN_EXPIRY_BUFFER_MS,
         });
 
+        // Clear suppression so a future token loss re-emits a warn
+        warnedNoToken.delete(lowerChannel);
+
         logger.debug({ channel: lowerChannel, expiresIn },
             '[BroadcasterTokenHelper] Successfully obtained broadcaster access token');
 
@@ -175,4 +187,5 @@ export function clearCachedBroadcasterToken(channelName) {
  */
 export function clearAllCachedBroadcasterTokens() {
     tokenCache.clear();
+    warnedNoToken.clear();
 }
