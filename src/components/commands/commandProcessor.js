@@ -286,6 +286,12 @@ async function _tryCustomCommand(channelName, tags, command, args) {
 
         const isPromptCommand = customCmd.type === 'prompt';
 
+        // Fetch user pronouns for variable parsing
+        const userLogin = tags.username?.toLowerCase() || '';
+        const { pronounService } = await import('../../lib/pronounService.js');
+        const grammar = await pronounService.getUserPronouns(userLogin);
+        const userPronouns = grammar ? { display: grammar.display, grammar } : null;
+
         // Resolve the use count before parsing variables
         const useCount = await useCountPromise;
 
@@ -298,6 +304,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
             useCount,
             streamContext,
             getFollowage: _createFollowageResolver(channelName),
+            userPronouns,
         });
 
         // Determine final output string based on command type

@@ -130,7 +130,8 @@ describe('Lurk Command Handler', () => {
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith(
                 'testchannel',
                 'TestUser',
-                'is going to lurk. Reason: getting coffee'
+                'is going to lurk. Reason: getting coffee',
+                expect.any(Object)
             );
             expect(generateLiteContent).toHaveBeenCalled();
         });
@@ -142,7 +143,8 @@ describe('Lurk Command Handler', () => {
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith(
                 'testchannel',
                 'TestUser',
-                'is going to lurk. Reason: taking the dog for a walk'
+                'is going to lurk. Reason: taking the dog for a walk',
+                expect.any(Object)
             );
         });
     });
@@ -155,7 +157,8 @@ describe('Lurk Command Handler', () => {
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith(
                 'testchannel',
                 'TestUser',
-                'is going to lurk. Reason: none'
+                'is going to lurk. Reason: none',
+                expect.any(Object)
             );
             expect(generateLiteContent).toHaveBeenCalled();
         });
@@ -346,7 +349,8 @@ describe('Lurk Command Handler', () => {
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith(
                 'testchannel',
                 'DisplayName',
-                expect.any(String)
+                expect.any(String),
+                expect.any(Object)
             );
         });
 
@@ -360,7 +364,8 @@ describe('Lurk Command Handler', () => {
             expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith(
                 'testchannel',
                 'regularuser',
-                expect.any(String)
+                expect.any(String),
+                expect.any(Object)
             );
         });
     });

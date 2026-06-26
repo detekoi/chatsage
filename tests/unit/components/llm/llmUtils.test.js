@@ -7,6 +7,11 @@ jest.mock('../../../../src/components/llm/geminiClient.js');
 jest.mock('../../../../src/components/llm/botResponseHandler.js');
 jest.mock('../../../../src/components/llm/conversationStorage.js');
 jest.mock('../../../../src/components/twitch/sharedChatManager.js');
+jest.mock('../../../../src/lib/pronounService.js', () => ({
+    pronounService: {
+        getUserPronouns: jest.fn().mockResolvedValue(null)
+    }
+}));
 
 import {
     removeMarkdownAsterisks,
@@ -171,7 +176,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
+            console.log(logger.error.mock.calls); expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
             expect(logger.error).toHaveBeenCalledWith(
                 '[testchannel] LLM generated null or empty response after retry. Sending fallback.'
             );
@@ -187,7 +192,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
+            console.log(logger.error.mock.calls); expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
         });
 
         it('should handle long responses with summarization', async () => {

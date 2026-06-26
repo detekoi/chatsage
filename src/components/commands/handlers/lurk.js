@@ -5,7 +5,7 @@ import { buildContextPrompt, generateLiteContent } from '../../llm/geminiClient.
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
-
+import { pronounService } from '../../../lib/pronounService.js';
 
 /**
  * Handler for the !lurk command.
@@ -24,8 +24,13 @@ const lurkHandler = {
         const contextManager = getContextManager();
 
         try {
+            // Fetch user pronouns
+            const userLogin = (user?.username || displayName).toLowerCase();
+            const grammar = await pronounService.getUserPronouns(userLogin);
+            const userPronouns = grammar ? { display: grammar.display, grammar } : null;
+
             // Get the full context object from the context manager (proceed even if unavailable)
-            const llmContext = contextManager.getContextForLLM(channelName, displayName, `is going to lurk. Reason: ${lurkReason || 'none'}`) || {};
+            const llmContext = contextManager.getContextForLLM(channelName, displayName, `is going to lurk. Reason: ${lurkReason || 'none'}`, userPronouns) || {};
 
             // Build the comprehensive chat context using the shared helper
             const chatContext = buildContextPrompt(llmContext);

@@ -6,7 +6,11 @@ import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
 import { analyzeImage } from '../llm/geminiImageClient.js';
-import { getChannelInformation, getUsersById } from '../twitch/helixClient.js';
+import {
+    getChannelInformation,
+    getUsersById
+} from '../twitch/helixClient.js';
+import { pronounService } from '../../lib/pronounService.js';
 
 /**
  * Strip characters commonly used for prompt injection from user-supplied strings
@@ -371,8 +375,20 @@ async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumul
     if (cfg.categories.subscriptions !== true) return;
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
     const contextPrompt = buildContextPrompt(context);
+    
+    // Fetch pronouns for the gifter if known
+    let gifterPronouns = null;
+    if (gifterName) {
+        const gifterLogin = gifterName.toLowerCase();
+        gifterPronouns = await pronounService.getUserPronouns(gifterLogin);
+    }
+    let subjectPhrase = 'They have';
+    if (gifterPronouns) {
+        const hasVerb = gifterPronouns.Subject === 'They' ? 'have' : 'has';
+        subjectPhrase = `${gifterPronouns.Subject} ${hasVerb}`;
+    }
     const gifterPhrase = gifterName ? sanitizeForPrompt(gifterName) : 'An anonymous gifter';
-    const cumulativePhrase = cumulativeTotal ? ` They've gifted ${cumulativeTotal} total in this channel.` : '';
+    const cumulativePhrase = cumulativeTotal ? ` ${subjectPhrase} gifted ${cumulativeTotal} total in this channel.` : '';
     const prompt = `${gifterPhrase} just gifted ${total} sub${total > 1 ? 's' : ''} to the channel!${cumulativePhrase} Write ONE energetic thank-you that references current stream context and the gift count. Do NOT list individual recipients. ≤28 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt)
         || await generateSearchResponse(contextPrompt, prompt);
@@ -401,8 +417,12 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
             ]);
             const ch = channelInfo?.[0];
             const usr = userInfo?.[0];
+            const raiderPronouns = await pronounService.getUserPronouns(raiderUserName.toLowerCase());
+            const subject = raiderPronouns ? raiderPronouns.Subject : 'They';
+            const wasVerb = subject === 'They' ? 'were' : 'was';
+
             const parts = [];
-            if (ch?.game_name) parts.push(`They were streaming: ${ch.game_name}${ch.title ? ` — "${ch.title}"` : ''}`);
+            if (ch?.game_name) parts.push(`${subject} ${wasVerb} streaming: ${ch.game_name}${ch.title ? ` — "${ch.title}"` : ''}`);
             if (ch?.tags?.length) parts.push(`Tags: ${ch.tags.join(', ')}`);
             if (usr?.description) parts.push(`Bio: ${usr.description}`);
             if (usr?.broadcaster_type) parts.push(`Status: ${usr.broadcaster_type}`);

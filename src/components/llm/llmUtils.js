@@ -5,6 +5,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
+import { pronounService } from '../../lib/pronounService.js';
 
 /**
  * Helper to generate user-friendly error messages based on error type
@@ -138,6 +139,11 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         let llmContext;
         let chatSessionKey;
 
+        // Fetch user pronouns
+        const userLogin = lowerUsername || '';
+        const grammar = await pronounService.getUserPronouns(userLogin);
+        const userPronouns = grammar ? { display: grammar.display, grammar } : null;
+
         // a. Get context (merged or single-channel)
         if (sessionId) {
             // Shared chat session - use merged context
@@ -149,13 +155,13 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
 
             // Get channel logins from participant IDs
             const channelLogins = session.participants.map(p => p.broadcaster_user_login);
-            llmContext = contextManager.getMergedContextForLLM(channelLogins, displayName, userMessage);
+            llmContext = contextManager.getMergedContextForLLM(channelLogins, displayName, userMessage, userPronouns);
             chatSessionKey = sessionId; // Use session ID as chat key
             
             logger.debug({ sessionId, channels: channelLogins }, `Using merged context for shared session`);
         } else {
             // Single channel context
-            llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage);
+            llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage, userPronouns);
             chatSessionKey = cleanChannel;
         }
 

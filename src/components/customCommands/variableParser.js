@@ -16,6 +16,10 @@ import logger from '../../lib/logger.js';
  *   $(uptime)        - Stream uptime (if live)
  *   $(game)          - Current game title
  *   $(followage)     - How long the user has followed the channel
+ *   $(pronouns)      - User's pronoun display string (e.g. "He/Him" or "They/Them")
+ *   $(pronoun_subject)- e.g., "he", "she", "they"
+ *   $(pronoun_object) - e.g., "him", "her", "them"
+ *   $(pronoun_possessive) - e.g., "his", "her", "their"
  * 
  * @param {string} template - The response template with variables.
  * @param {object} context - Context for variable resolution.
@@ -26,6 +30,7 @@ import logger from '../../lib/logger.js';
  * @param {number} [context.checkinCount] - Per-user check-in count (counter commands).
  * @param {object} [context.streamContext] - Stream context from contextManager.
  * @param {Function} [context.getFollowage] - Async function to get followage info.
+ * @param {object} [context.userPronouns] - The user's pronouns object from contextManager.
  * @returns {Promise<string>} The resolved response string.
  */
 export async function parseVariables(template, context) {
@@ -33,7 +38,7 @@ export async function parseVariables(template, context) {
         return '';
     }
 
-    const { user = '', channel = '', args = [], useCount = 0, checkinCount = null, streamContext = null, getFollowage = null } = context;
+    const { user = '', channel = '', args = [], useCount = 0, checkinCount = null, streamContext = null, getFollowage = null, userPronouns = null } = context;
 
     // Match all $(variableName) patterns, including those with spaces and arguments
     const variablePattern = /\$\(([^)]+)\)/g;
@@ -70,6 +75,7 @@ export async function parseVariables(template, context) {
                 checkinCount,
                 streamContext,
                 getFollowage,
+                userPronouns,
             });
         } catch (error) {
             logger.warn({ variable: variableContent, error: error.message },
@@ -90,7 +96,7 @@ export async function parseVariables(template, context) {
  * @returns {Promise<string>} Resolved value.
  */
 async function _resolveVariable(variableContent, context) {
-    const { user, channel, args, useCount, checkinCount, streamContext, getFollowage } = context;
+    const { user, channel, args, useCount, checkinCount, streamContext, getFollowage, userPronouns } = context;
     const lowerContent = variableContent.toLowerCase();
 
     // $(user)
@@ -134,6 +140,26 @@ async function _resolveVariable(variableContent, context) {
             return String(Math.floor(Math.random() * (max - min + 1)) + min);
         }
         return String(min); // Fallback if min > max
+    }
+
+    // $(pronouns)
+    if (lowerContent === 'pronouns') {
+        return userPronouns && userPronouns.display ? userPronouns.display : 'They/Them';
+    }
+
+    // $(pronoun_subject)
+    if (lowerContent === 'pronoun_subject') {
+        return userPronouns && userPronouns.grammar ? userPronouns.grammar.subject : 'they';
+    }
+
+    // $(pronoun_object)
+    if (lowerContent === 'pronoun_object') {
+        return userPronouns && userPronouns.grammar ? userPronouns.grammar.object : 'them';
+    }
+
+    // $(pronoun_possessive)
+    if (lowerContent === 'pronoun_possessive') {
+        return userPronouns && userPronouns.grammar ? userPronouns.grammar.possessive : 'their';
     }
 
     // $(uptime)

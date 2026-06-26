@@ -74,7 +74,7 @@ describe('AutoChat Gift Sub Celebration', () => {
 
         expect(generateStandardResponse).toHaveBeenCalledWith(
             'context prompt',
-            expect.stringContaining("GifterGuy just gifted 10 subs to the channel! They've gifted 42 total in this channel.")
+            expect.stringContaining("GifterGuy just gifted 10 subs to the channel! They have gifted 42 total in this channel.")
         );
         expect(enqueueAnnouncement).toHaveBeenCalledWith(`#${CHANNEL}`, 'Thanks for the subs!', 'green');
     });

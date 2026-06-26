@@ -171,7 +171,7 @@ describe('checkinHandler', () => {
                 'Write a fun check-in message for $(user), check-in #$(checkin_count)',
                 expect.objectContaining({ checkinCount: 14 })
             );
-            expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith('testchannel', 'TestViewer', '');
+            expect(mockContextManager.getContextForLLM).toHaveBeenCalledWith('testchannel', 'TestViewer', '', expect.any(Object));
             expect(buildContextPrompt).toHaveBeenCalled();
             // Dedup lifecycle is encapsulated — channel+source passed instead of recentHistory
             expect(resolvePrompt).toHaveBeenCalledWith(
@@ -292,6 +292,7 @@ describe('checkinHandler', () => {
                 args: [],
                 useCount: 42,
                 checkinCount: 42,
+                userPronouns: expect.any(Object)
             });
         });
     });

@@ -16,6 +16,7 @@ import { getCurrentTime } from '../../../lib/timeUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 import { logConversation } from '../../llm/conversationStorage.js';
+import { pronounService } from '../../../lib/pronounService.js';
 
 // Note: IRC message length limits are handled by ircSender.js
 // This handler focuses on response generation, not formatting
@@ -141,8 +142,13 @@ const askHandler = {
         // Fetch emote images for direct multimodal LLM input
         const emoteImageParts = await getEmoteImageParts(user);
 
+        // Fetch user pronouns
+        const userLogin = (user?.username || userName).toLowerCase();
+        const grammar = await pronounService.getUserPronouns(userLogin);
+        const userPronouns = grammar ? { display: grammar.display, grammar } : null;
+
         try {
-            const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`);
+            const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`, userPronouns);
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !ask command.`);
                 await enqueueMessage(channel, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });

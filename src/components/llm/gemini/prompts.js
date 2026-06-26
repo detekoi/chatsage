@@ -47,5 +47,6 @@ export function buildContextPrompt(context) {
         ? context.moderators.join(', ')
         : null;
     const modsLine = moderators ? `\nChannel moderators: ${moderators}` : '';
-    return `Channel: ${channelName}${bioLine}${modsLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}`;
+    const pronounsLine = context.userPronouns?.display ? `\nUser pronouns: ${context.userPronouns.display} (use ${context.userPronouns.display.toLowerCase()} when referring to this user)` : '';
+    return `Channel: ${channelName}${bioLine}${modsLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}${pronounsLine}`;
 }

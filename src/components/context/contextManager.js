@@ -382,9 +382,10 @@ function _formatRecentHistory(history) {
  * @param {string} channelName - Channel name (without '#').
  * @param {string} currentUsername - The user whose message triggered the request.
  * @param {string} currentMessage - The message content that triggered the request.
+ * @param {object|null} userPronouns - The user's pronoun display string and grammatical forms (optional).
  * @returns {object | null} Context object for buildPrompt, or null if state doesn't exist.
  */
-function getContextForLLM(channelName, currentUsername, currentMessage) {
+function getContextForLLM(channelName, currentUsername, currentMessage, userPronouns = null) {
     if (!channelStates.has(channelName)) {
         logger.warn(`No state found for channel ${channelName} when requesting LLM context.`);
         return null;
@@ -405,6 +406,7 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
         recentChatHistory: _formatRecentHistory(recentHistory),
         username: currentUsername, // Pass these through
         currentMessage: currentMessage, // Pass these through
+        userPronouns: userPronouns, // Pass these through
         moderators: state.moderators || [],
     };
 }
@@ -415,9 +417,10 @@ function getContextForLLM(channelName, currentUsername, currentMessage) {
  * @param {string[]} channelNames - Array of channel names participating in the shared session.
  * @param {string} currentUsername - The user currently messaging.
  * @param {string} currentMessage - The current message from the user.
+ * @param {object|null} userPronouns - The user's pronouns (optional).
  * @returns {object|null} Merged context for LLM, or null if unable to build.
  */
-function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
+function getMergedContextForLLM(channelNames, currentUsername, currentMessage, userPronouns = null) {
     if (!Array.isArray(channelNames) || channelNames.length === 0) {
         logger.warn('getMergedContextForLLM called with invalid channelNames');
         return null;
@@ -517,6 +520,7 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage) {
         recentChatHistory: _formatRecentHistoryWithOrigin(recentMergedHistory),
         username: currentUsername,
         currentMessage: currentMessage,
+        userPronouns: userPronouns,
         moderators: [...allModeratorsSet],
     };
 }

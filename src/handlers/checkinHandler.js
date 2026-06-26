@@ -9,6 +9,7 @@ import { resolvePrompt } from '../components/customCommands/promptResolver.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { buildContextPrompt } from '../components/llm/gemini/prompts.js';
 import { CHECKIN_SOURCE } from '../components/llm/inferenceHistoryStorage.js';
+import { pronounService } from '../lib/pronounService.js';
 
 /**
  * Handle a Channel Points redemption event for the Daily Check-In feature.
@@ -53,6 +54,12 @@ export async function handleCheckinRedemption(event) {
         isNew,
     }, '[CheckinHandler] Check-in recorded');
 
+    // Fetch user pronouns (fire and forget / non-blocking if slow)
+    // We await it here since we need it for context, but it has a short timeout
+    const userLogin = (event?.user_login || userName).toLowerCase();
+    const grammar = await pronounService.getUserPronouns(userLogin);
+    const userPronouns = grammar ? { display: grammar.display, grammar } : null;
+
     // Build response context
     const channel = `#${channelLogin}`;
     const context = {
@@ -61,6 +68,7 @@ export async function handleCheckinRedemption(event) {
         args: [],
         useCount: count,
         checkinCount: count,
+        userPronouns,
     };
 
     // Helper: build the static fallback message
@@ -84,7 +92,7 @@ export async function handleCheckinRedemption(event) {
             try {
                 const contextManager = getContextManager();
                 botLanguage = contextManager.getBotLanguage(channelLogin);
-                const llmContext = contextManager.getContextForLLM(channelLogin, userName, '');
+                const llmContext = contextManager.getContextForLLM(channelLogin, userName, '', userPronouns);
                 if (llmContext) {
                     streamContextString = buildContextPrompt(llmContext);
                     if (llmContext.recentChatHistory) {
