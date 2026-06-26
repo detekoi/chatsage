@@ -238,10 +238,17 @@ export function formatFollowAge(followedAt) {
         months += 12;
     }
 
+    let weeks = 0;
+    if (days >= 7) {
+        weeks = Math.floor(days / 7);
+        days = days % 7;
+    }
+
     const parts = [];
     if (years > 0) parts.push(`${years} year${years !== 1 ? 's' : ''}`);
     if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
-    if (days > 0 && years === 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`); // Only show days if less than a year
+    if (weeks > 0) parts.push(`${weeks} week${weeks !== 1 ? 's' : ''}`);
+    if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
 
     return parts.length > 0 ? parts.join(' ') : 'just now';
 }

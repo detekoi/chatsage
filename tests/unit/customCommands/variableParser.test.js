@@ -281,7 +281,7 @@ describe('variableParser', () => {
             const daysAgo = new Date();
             daysAgo.setDate(daysAgo.getDate() - 15);
             const result = formatFollowAge(daysAgo.toISOString());
-            expect(result).toMatch(/15 days/);
+            expect(result).toMatch(/2 weeks 1 day/);
         });
 
         test('formats months correctly', () => {
@@ -298,11 +298,19 @@ describe('variableParser', () => {
             expect(result).toMatch(/2 years/);
         });
 
-        test('hides days when over a year', () => {
+        test('shows days even when over a year', () => {
             const longAgo = new Date();
             longAgo.setFullYear(longAgo.getFullYear() - 1);
             longAgo.setDate(longAgo.getDate() - 10);
             const result = formatFollowAge(longAgo.toISOString());
+            expect(result).toMatch(/1 week 3 days/);
+        });
+
+        test('formats weeks exactly when days is a multiple of 7', () => {
+            const weeksAgo = new Date();
+            weeksAgo.setDate(weeksAgo.getDate() - 14);
+            const result = formatFollowAge(weeksAgo.toISOString());
+            expect(result).toMatch(/2 weeks/);
             expect(result).not.toMatch(/day/);
         });
 
