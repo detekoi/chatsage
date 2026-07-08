@@ -36,8 +36,8 @@ export function sanitizeTimerName(raw) {
         .replace(/[\s-]+/g, '_')
         .replace(/[^a-z0-9_]/g, '')
         .replace(/_{2,}/g, '_')
-        .replace(/^_|_$/g, '')
-        .slice(0, 25);
+        .slice(0, 25)
+        .replace(/^_|_$/g, '');
 }
 export const RESERVED_TIMER_NAMES = [
     'add', 'addai', 'edit', 'remove', 'delete', 'show', 'list',

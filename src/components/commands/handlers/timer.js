@@ -46,7 +46,7 @@ async function execute(context) {
     }
 
     const subCommand = args[0].toLowerCase();
-    const timerName = sanitizeTimerName(args[1]);
+    const timerName = args[1]?.toLowerCase();
 
     switch (subCommand) {
         case 'add':
@@ -98,10 +98,16 @@ async function _handleAdd(channel, channelName, timerName, responseArgs, usernam
         await enqueueMessage(channel, `Please specify a timer name. ${usage}`);
         return;
     }
-    if (!TIMER_NAME_REGEX.test(timerName)) {
+
+    const sanitizedName = sanitizeTimerName(timerName);
+    if (!sanitizedName) {
         await enqueueMessage(channel, `Timer name sanitized to nothing — try a name with letters or numbers.`);
         return;
     }
+    
+    // We reassign to use the sanitized version for all storage operations
+    timerName = sanitizedName;
+
     if (RESERVED_TIMER_NAMES.includes(timerName)) {
         await enqueueMessage(channel, `"${timerName}" is a reserved word and can't be used as a timer name.`);
         return;
