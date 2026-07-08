@@ -4,6 +4,7 @@ import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
 import { clearMessageQueue } from './lib/ircSender.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
+import { stopTimerManager } from './components/timers/timerManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
 
 // Extracted modules
@@ -34,6 +35,13 @@ async function gracefulShutdown(signal) {
         shutdownCommandStateManager();
     } catch (error) {
         logger.error({ err: error }, 'Error shutting down command state manager during shutdown.');
+    }
+
+    // Stop timer manager
+    try {
+        stopTimerManager();
+    } catch (error) {
+        logger.error({ err: error }, 'Error stopping timer manager during shutdown.');
     }
 
     // Clear message queue

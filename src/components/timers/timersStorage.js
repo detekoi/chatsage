@@ -47,13 +47,13 @@ export const RESERVED_TIMER_NAMES = [
 // Variables that depend on a triggering user and therefore can't be resolved
 // when a timer fires on its own. Rejected at save time (chat handler + web UI).
 const UNSUPPORTED_TIMER_VARIABLES = [
-    /\$\(user\)/i,
-    /\$\(args\)/i,
-    /\$\(\d+\)/,
-    /\$\(followage\)/i,
-    /\$\(pronouns?\)/i,
-    /\$\(pronoun_[a-z]+\)/i,
-    /\$\(checkin_count\)/i,
+    /\$\(\s*user\s*\)/i,
+    /\$\(\s*args\s*\)/i,
+    /\$\(\s*\d+\s*\)/,
+    /\$\(\s*followage\s*\)/i,
+    /\$\(\s*pronouns?\s*\)/i,
+    /\$\(\s*pronoun_[a-z]+\s*\)/i,
+    /\$\(\s*checkin_count\s*\)/i,
 ];
 
 /**
@@ -163,41 +163,53 @@ export async function addTimer(channelName, timerName, response, createdBy, type
     const docRef = _timerDocRef(db, lowerChannel, lowerTimer);
 
     try {
-        const existing = await docRef.get();
-        if (existing.exists) {
-            logger.debug(`[TimersStorage] Timer ${lowerTimer} already exists in channel ${lowerChannel}`);
-            return false;
-        }
+        const result = await db.runTransaction(async (t) => {
+            const existing = await t.get(docRef);
+            if (existing.exists) {
+                return false;
+            }
 
-        const countSnap = await db.collection(CHANNEL_TIMERS_COLLECTION)
-            .doc(lowerChannel)
-            .collection(TIMERS_SUBCOLLECTION)
-            .count()
-            .get();
-        if (countSnap.data().count >= MAX_TIMERS_PER_CHANNEL) {
-            throw new TimersStorageError(`Channel ${lowerChannel} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`);
-        }
+            const colRef = db.collection(CHANNEL_TIMERS_COLLECTION)
+                .doc(lowerChannel)
+                .collection(TIMERS_SUBCOLLECTION);
+            const allTimers = await t.get(colRef);
+            
+            if (allTimers.size >= MAX_TIMERS_PER_CHANNEL) {
+                throw new TimersStorageError(`Channel ${lowerChannel} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`);
+            }
 
-        await docRef.set({
-            response,
-            type,
-            intervalMinutes,
-            minChatLines,
-            enabled: true,
-            useCount: 0,
-            lastRunAt: null,
-            createdBy: createdBy.toLowerCase(),
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            const clampedInterval = Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, intervalMinutes));
+            const clampedLines = Math.max(0, Math.min(MAX_MIN_CHAT_LINES, minChatLines));
+
+            t.create(docRef, {
+                response,
+                type,
+                intervalMinutes: clampedInterval,
+                minChatLines: clampedLines,
+                enabled: true,
+                useCount: 0,
+                lastRunAt: null,
+                createdBy: createdBy.toLowerCase(),
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            });
+
+            // Also set the parent doc to ensure it exists for queries
+            t.set(
+                db.collection(CHANNEL_TIMERS_COLLECTION).doc(lowerChannel),
+                { channelName: lowerChannel, updatedAt: FieldValue.serverTimestamp() },
+                { merge: true }
+            );
+
+            return true;
         });
 
-        // Also set the parent doc to ensure it exists for queries
-        await db.collection(CHANNEL_TIMERS_COLLECTION)
-            .doc(lowerChannel)
-            .set({ channelName: lowerChannel, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-
-        logger.info(`[TimersStorage] Added timer ${lowerTimer} for channel ${lowerChannel} (type: ${type}, every ${intervalMinutes}m)`);
-        return true;
+        if (result) {
+            logger.info(`[TimersStorage] Added timer ${lowerTimer} for channel ${lowerChannel} (type: ${type}, every ${intervalMinutes}m)`);
+        } else {
+            logger.debug(`[TimersStorage] Timer ${lowerTimer} already exists in channel ${lowerChannel}`);
+        }
+        return result;
     } catch (error) {
         if (error instanceof TimersStorageError) throw error;
         logger.error({ err: error, channel: lowerChannel, timer: lowerTimer },
@@ -260,10 +272,10 @@ export async function updateTimerOptions(channelName, timerName, options) {
 
         const updateData = { updatedAt: FieldValue.serverTimestamp() };
         if (options.intervalMinutes !== undefined) {
-            updateData.intervalMinutes = options.intervalMinutes;
+            updateData.intervalMinutes = Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, options.intervalMinutes));
         }
         if (options.minChatLines !== undefined) {
-            updateData.minChatLines = options.minChatLines;
+            updateData.minChatLines = Math.max(0, Math.min(MAX_MIN_CHAT_LINES, options.minChatLines));
         }
         if (options.enabled !== undefined) {
             updateData.enabled = options.enabled;

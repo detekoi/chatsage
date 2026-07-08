@@ -76,6 +76,7 @@ describe('sanitizeTimerName', () => {
 describe('addTimer', () => {
     let mockDocRef;
     let mockParentDocRef;
+    let mockTransaction;
     let timerCount;
 
     beforeEach(() => {
@@ -90,20 +91,27 @@ describe('addTimer', () => {
             set: jest.fn(async () => {}),
             collection: jest.fn(() => ({
                 doc: jest.fn(() => mockDocRef),
+                get: jest.fn(async () => ({ size: timerCount })),
                 count: jest.fn(() => ({
                     get: jest.fn(async () => ({ data: () => ({ count: timerCount }) })),
                 })),
             })),
         };
+        mockTransaction = {
+            get: jest.fn(async (ref) => ref.get()),
+            create: jest.fn(async () => {}),
+            set: jest.fn(async () => {}),
+        };
         getFirestore.mockReturnValue({
             collection: jest.fn(() => ({ doc: jest.fn(() => mockParentDocRef) })),
+            runTransaction: jest.fn(async (cb) => cb(mockTransaction)),
         });
     });
 
     test('creates a timer with full document shape', async () => {
         const created = await addTimer('TestChannel', 'Promo', 'Hello!', 'ModUser', 'text', 30, 10);
         expect(created).toBe(true);
-        expect(mockDocRef.set).toHaveBeenCalledWith(expect.objectContaining({
+        expect(mockTransaction.create).toHaveBeenCalledWith(mockDocRef, expect.objectContaining({
             response: 'Hello!',
             type: 'text',
             intervalMinutes: 30,
@@ -112,13 +120,13 @@ describe('addTimer', () => {
             useCount: 0,
             lastRunAt: null,
             createdBy: 'moduser',
+            createdAt: 'server-timestamp',
+            updatedAt: 'server-timestamp',
         }));
-        // Parent doc is created so channel docs are listable
-        expect(mockParentDocRef.set).toHaveBeenCalledWith(
-            expect.objectContaining({ channelName: 'testchannel' }),
-            { merge: true },
-        );
+        // Verify parent doc is set to ensure queries work
+        expect(mockTransaction.set).toHaveBeenCalledWith(mockParentDocRef, { channelName: 'testchannel', updatedAt: 'server-timestamp' }, { merge: true });
     });
+
 
     test('returns false when the timer already exists', async () => {
         mockDocRef.get.mockResolvedValue({ exists: true });

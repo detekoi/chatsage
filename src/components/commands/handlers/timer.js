@@ -128,13 +128,11 @@ async function _handleAdd(channel, channelName, timerName, responseArgs, usernam
         await enqueueMessage(channel, `Timer text must be ${MAX_RESPONSE_LENGTH} characters or fewer.`);
         return;
     }
-    if (type === 'text') {
-        const offenders = findUnsupportedTimerVariables(response);
-        if (offenders.length > 0) {
-            await enqueueMessage(channel,
-                `Timers fire without a triggering user, so these variables aren't supported: ${offenders.join(', ')}`);
-            return;
-        }
+    const offenders = findUnsupportedTimerVariables(response);
+    if (offenders.length > 0) {
+        await enqueueMessage(channel,
+            `Timers fire without a triggering user, so these variables aren't supported: ${offenders.join(', ')}`);
+        return;
     }
 
     try {
@@ -177,13 +175,11 @@ async function _handleEdit(channel, channelName, timerName, responseArgs, logger
             await enqueueMessage(channel, `Timer "${timerName}" not found. Use "!timer add" to create it.`);
             return;
         }
-        if (existing.type !== 'prompt') {
-            const offenders = findUnsupportedTimerVariables(response);
-            if (offenders.length > 0) {
-                await enqueueMessage(channel,
-                    `Timers fire without a triggering user, so these variables aren't supported: ${offenders.join(', ')}`);
-                return;
-            }
+        const offenders = findUnsupportedTimerVariables(response);
+        if (offenders.length > 0) {
+            await enqueueMessage(channel,
+                `Timers fire without a triggering user, so these variables aren't supported: ${offenders.join(', ')}`);
+            return;
         }
 
         await updateTimerResponse(channelName, timerName, response);

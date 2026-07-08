@@ -28,6 +28,7 @@ const START_DELAY_MS = 25 * 1000;
 let startTimeoutId = null;
 let intervalId = null;
 let unsubscribeListener = null;
+let tickInProgress = false;
 
 // Timer definitions, written only by loadAllTimers() and the snapshot listener.
 const configCache = new Map(); // channelName -> Map<timerName, timerDoc>
@@ -145,6 +146,12 @@ async function fireTimer(channelName, timer) {
         logger.debug(`[TimerManager] Timer ${timer.name} deleted/disabled mid-fire in ${channelName}, dropping message`);
         return;
     }
+    
+    // Re-check: the stream might have gone offline during LLM generation.
+    if (!isStreamLive(channelName)) {
+        logger.debug(`[TimerManager] Stream went offline mid-fire in ${channelName}, dropping message`);
+        return;
+    }
 
     await enqueueMessage(`#${channelName}`, finalOutput, { skipTranslation });
     recordTimerRun(channelName, timer.name);
@@ -152,25 +159,38 @@ async function fireTimer(channelName, timer) {
 }
 
 async function tick() {
+    if (tickInProgress) {
+        logger.warn('[TimerManager] Tick skipped due to previous tick still running (LLM delay)');
+        return;
+    }
+    tickInProgress = true;
     try {
         const nowMs = Date.now();
         for (const [channelName, timers] of configCache) {
-            if (timers.size === 0) continue;
-            if (!isStreamLive(channelName)) continue;
+            try {
+                if (timers.size === 0) continue;
+                if (!isStreamLive(channelName)) continue;
 
-            const eligible = [...timers.values()].filter(t => isEligible(channelName, t, nowMs));
-            if (eligible.length === 0) continue;
+                const eligible = [...timers.values()].filter(t => isEligible(channelName, t, nowMs));
+                if (eligible.length === 0) continue;
 
-            // Fire at most one timer per channel per tick (longest-starved first)
-            // so multiple due timers never post back-to-back.
-            eligible.sort((a, b) => {
-                const channelRuntime = getChannelRuntime(channelName);
-                return (channelRuntime.get(a.name)?.lastRunAtMs || 0) - (channelRuntime.get(b.name)?.lastRunAtMs || 0);
-            });
-            await fireTimer(channelName, eligible[0]);
+                // Fire at most one timer per channel per tick (longest-starved first)
+                // so multiple due timers never post back-to-back.
+                eligible.sort((a, b) => {
+                    const channelRuntime = getChannelRuntime(channelName);
+                    return (channelRuntime.get(a.name)?.lastRunAtMs || 0) - (channelRuntime.get(b.name)?.lastRunAtMs || 0);
+                });
+                
+                await Promise.race([
+                    fireTimer(channelName, eligible[0]),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('fireTimer timeout exceeded')), 30000))
+                ]);
+            } catch (err) {
+                logger.error({ err, channel: channelName }, '[TimerManager] Error processing channel during tick');
+            }
         }
-    } catch (err) {
-        logger.error({ err }, '[TimerManager] Error during tick');
+    } finally {
+        tickInProgress = false;
     }
 }
 
