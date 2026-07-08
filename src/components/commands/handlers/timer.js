@@ -9,6 +9,7 @@ import {
     findUnsupportedTimerVariables,
     TimersStorageError,
     TIMER_NAME_REGEX,
+    sanitizeTimerName,
     RESERVED_TIMER_NAMES,
     MIN_INTERVAL_MINUTES,
     MAX_INTERVAL_MINUTES,
@@ -45,7 +46,7 @@ async function execute(context) {
     }
 
     const subCommand = args[0].toLowerCase();
-    const timerName = args[1]?.toLowerCase();
+    const timerName = sanitizeTimerName(args[1]);
 
     switch (subCommand) {
         case 'add':
@@ -98,7 +99,7 @@ async function _handleAdd(channel, channelName, timerName, responseArgs, usernam
         return;
     }
     if (!TIMER_NAME_REGEX.test(timerName)) {
-        await enqueueMessage(channel, `Timer names must be 1-25 lowercase letters, numbers, or underscores.`);
+        await enqueueMessage(channel, `Timer name sanitized to nothing — try a name with letters or numbers.`);
         return;
     }
     if (RESERVED_TIMER_NAMES.includes(timerName)) {

@@ -24,6 +24,21 @@ export const MAX_MIN_CHAT_LINES = 100;
 export const MAX_TIMERS_PER_CHANNEL = 20;
 export const MAX_RESPONSE_LENGTH = 500;
 export const TIMER_NAME_REGEX = /^[a-z0-9_]{1,25}$/;
+/**
+ * Sanitize a user-typed timer name into a valid slug.
+ * "Gaming news" → "gaming_news", "gaming-news" → "gaming_news"
+ */
+export function sanitizeTimerName(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    return raw
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+        .replace(/[^a-z0-9_]/g, '')
+        .replace(/_{2,}/g, '_')
+        .replace(/^_|_$/g, '')
+        .slice(0, 25);
+}
 export const RESERVED_TIMER_NAMES = [
     'add', 'addai', 'edit', 'remove', 'delete', 'show', 'list',
     'interval', 'lines', 'enable', 'disable', 'options', 'help',
