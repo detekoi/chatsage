@@ -22,8 +22,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Rules
 - All Twitch API calls must use `helixClient.js` (never direct axios)
-- All bot messages must use `enqueueMessage()` from `ircSender.js`
+- All bot messages must use `enqueueMessage()` from `ircSender.js` (never `ircClient.say()`)
 - All logging must use centralized `logger` from `src/lib/logger.js`
 - Access configuration only via `src/config/index.js` (never `process.env`)
-- Use `getContextManager()` for all state access
-- LLM responses must go through `sendBotResponse()` from `botResponseHandler.js`
+- Use `getContextManager()` for stream/chat context and user state. Focused modules within `context/` (channelActivity, liveStatus) may manage their own state when they expose a clean API. Component managers (timers, auto-chat, trivia, geo) may maintain their own operational state (caches, scheduling, game progress)
+- LLM responses to user messages should go through `sendBotResponse()` from `botResponseHandler.js`. Unsolicited bot-initiated messages (auto-chat, timers, game announcements) use `enqueueMessage()` directly
