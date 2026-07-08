@@ -6,7 +6,7 @@ import logger from '../lib/logger.js';
 import config from '../config/index.js';
 import { processMessage as processCommand } from '../components/commands/commandProcessor.js';
 import { isChannelAllowed } from '../components/twitch/channelManager.js';
-import { notifyUserMessage } from '../components/autoChat/autoChatManager.js';
+import { recordChatMessage } from '../components/context/channelActivity.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { getGeoGameManager } from '../components/geo/geoGameManager.js';
 import { getTriviaGameManager } from '../components/trivia/triviaGameManager.js';
@@ -105,8 +105,8 @@ export async function handleChatMessage(channel, tags, message) {
         logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding message to context');
     });
 
-    // Notify AutoChatManager about activity
-    try { notifyUserMessage(cleanChannel, Date.now()); } catch (e) { /* ignore */ }
+    // Record chat activity (feeds auto-chat lull detection and timer gating)
+    try { recordChatMessage(cleanChannel, Date.now()); } catch (e) { /* ignore */ }
 
     // 2. Process commands
     let wasTranslateCommand = message.trim().toLowerCase().startsWith('!translate ');

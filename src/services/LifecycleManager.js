@@ -2,6 +2,7 @@ import config from '../config/index.js';
 import logger from '../lib/logger.js';
 import { startStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
 import { startAutoChatManager } from '../components/autoChat/autoChatManager.js';
+import { startTimerManager } from '../components/timers/timerManager.js';
 import { startAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
@@ -52,6 +53,10 @@ class LifecycleManager {
             // 2. Start Auto Chat Manager
             logger.info('LifecycleManager: Starting Auto-Chat Manager...');
             await startAutoChatManager();
+
+            // 2b. Start Timer Manager (timed messages)
+            logger.info('LifecycleManager: Starting Timer Manager...');
+            await startTimerManager();
 
             // 3. Start Ad Schedule Poller
             logger.info('LifecycleManager: Starting Ad Schedule Poller...');

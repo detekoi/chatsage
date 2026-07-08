@@ -11,6 +11,8 @@ import {
     getUsersById
 } from '../twitch/helixClient.js';
 import { pronounService } from '../../lib/pronounService.js';
+import { recordChatMessage, getLastMessageAt, seedLastMessageAt } from '../context/channelActivity.js';
+import { isStreamLive } from '../context/liveStatus.js';
 
 /**
  * Strip characters commonly used for prompt injection from user-supplied strings
@@ -28,8 +30,9 @@ let intervalId = null;
 const TICK_MS = 60 * 1000; // 1 minute cadence
 const IMAGE_REFRESH_MS = 3 * 60 * 1000; // Refresh thumbnail analysis every 3 minutes
 
-// Internal per-channel runtime state (not persisted)
-const runtime = new Map(); // channelName -> { lastMessageAtMs, lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion, lastAutoKind, lastImageContext, lastImageFetchAtMs }
+// Internal per-channel runtime state (not persisted).
+// Chat activity (last message time) lives in the shared channelActivity tracker.
+const runtime = new Map(); // channelName -> { lastAutoAtMs, lastGame, lastSummaryHash, greetedOnStart, lastQuestion, lastAutoKind, lastImageContext, lastImageFetchAtMs }
 
 function now() { return Date.now(); }
 
@@ -161,7 +164,7 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
     // Suppress if chat is currently active (users are already engaging)
     const quietMin = getLullThresholdMinutes(cfg.mode);
-    if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) return;
+    if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) return;
 
     // Clear stale chat summary so old game themes don't contaminate new prompts
     getContextManager().clearThematicContext(channelName);
@@ -197,7 +200,7 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
-        if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) return;
+        if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) return;
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
@@ -211,7 +214,7 @@ async function maybeHandleLull(channelName) {
     const minGapMin = getAggressivenessMinGapMinutes(cfg.mode);
     // Detect lull: no message for X minutes depending on mode
     const lullThresholdMin = getLullThresholdMinutes(cfg.mode);
-    const lastMessageAtMs = state.lastMessageAtMs || 0;
+    const lastMessageAtMs = getLastMessageAt(channelName);
     if (now() - lastMessageAtMs < lullThresholdMin * 60 * 1000) return;
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) return;
 
@@ -245,7 +248,7 @@ async function maybeHandleLull(channelName) {
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
-        if (now() - (state.lastMessageAtMs || 0) < lullThresholdMin * 60 * 1000) return;
+        if (now() - getLastMessageAt(channelName) < lullThresholdMin * 60 * 1000) return;
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
@@ -267,7 +270,7 @@ async function maybeHandleTopicShift(channelName) {
     if (now() - (state.lastAutoAtMs || 0) < minGapMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
     // Suppress if chat is currently active
     const quietMin = getLullThresholdMinutes(cfg.mode);
-    if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
+    if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
 
     // JIT: only fetch/analyze thumbnail when we're actually going to compose a message
     await refreshImageContext(channelName);
@@ -297,7 +300,7 @@ async function maybeHandleTopicShift(channelName) {
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
-        if (now() - (state.lastMessageAtMs || 0) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
+        if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
@@ -305,9 +308,9 @@ async function maybeHandleTopicShift(channelName) {
     state.lastSummaryHash = currentHash;
 }
 
+// Back-compat wrapper: activity tracking now lives in channelActivity.js
 export function notifyUserMessage(channelName, timestampMs) {
-    const state = getState(channelName);
-    state.lastMessageAtMs = Math.max(state.lastMessageAtMs || 0, timestampMs || now());
+    recordChatMessage(channelName, timestampMs || now());
 }
 
 export function notifyStreamOnline(channelName) {
@@ -482,7 +485,7 @@ export async function startAutoChatManager() {
     for (const [channelName, state] of contextManager.getAllChannelStates()) {
         const s = getState(channelName);
         const last = state.chatHistory?.[state.chatHistory.length - 1]?.timestamp;
-        s.lastMessageAtMs = last ? new Date(last).getTime() : 0;
+        if (last) seedLastMessageAt(channelName, new Date(last).getTime());
         s.lastAutoAtMs = 0;
         s.greetedOnStart = false;
         s.lastGame = state.streamContext?.game || null;
@@ -496,9 +499,7 @@ export async function startAutoChatManager() {
                 if ((cfg.mode || 'off') === 'off') continue;
 
                 // Stream must be live to auto-chat
-                const ctx = contextManager.getContextForLLM(channelName, 'system', 'tick');
-                const isLive = !!(ctx && ctx.streamGame && ctx.streamGame !== 'N/A');
-                if (!isLive) continue;
+                if (!isStreamLive(channelName)) continue;
 
                 // Detect game change
                 const currentGame = state.streamContext?.game || null;

@@ -36,6 +36,7 @@ import quote from './quote.js';
 import enable from './enable.js';
 import disable from './disable.js';
 import command from './command.js';
+import timer from './timer.js';
 // import cooldown from './cooldown.js';
 // import setthreshold from './setthreshold.js';
 
@@ -86,6 +87,8 @@ const commandHandlers = {
     enable: enable,
     disable: disable,
     command: command,
+    timer: timer,
+    timers: timer, // Alias
     // cooldown: cooldown,
     // setthreshold: setthreshold,
 

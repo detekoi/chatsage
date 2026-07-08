@@ -35,6 +35,15 @@ export function customCommandSource(commandName) {
     return `custom:${commandName}`;
 }
 
+/**
+ * Returns the source key for a timed message by timer name.
+ * @param {string} timerName - The timer name.
+ * @returns {string} Source key, e.g. "timer:hype".
+ */
+export function timerSource(timerName) {
+    return `timer:${timerName}`;
+}
+
 // ─── Firestore I/O ──────────────────────────────────────────────────────────
 
 /**

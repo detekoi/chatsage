@@ -2,6 +2,7 @@ import LifecycleManager from '../../../src/services/LifecycleManager.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
 import { startStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
 import { startAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
+import { startTimerManager } from '../../../src/components/timers/timerManager.js';
 import { startAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
 
 // Mock dependencies
@@ -9,6 +10,7 @@ jest.mock('../../../src/components/twitch/helixClient.js');
 jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/twitch/streamInfoPoller.js');
 jest.mock('../../../src/components/autoChat/autoChatManager.js');
+jest.mock('../../../src/components/timers/timerManager.js');
 jest.mock('../../../src/components/twitch/adSchedulePoller.js');
 jest.mock('../../../src/components/twitch/channelManager.js');
 jest.mock('../../../src/lib/logger.js');
@@ -51,6 +53,7 @@ describe('LifecycleManager', () => {
 
             expect(startStreamInfoPolling).toHaveBeenCalled();
             expect(startAutoChatManager).toHaveBeenCalled();
+            expect(startTimerManager).toHaveBeenCalled();
             expect(startAdSchedulePoller).toHaveBeenCalled();
             expect(lifecycleManager.isMonitoring).toBe(true);
         });
