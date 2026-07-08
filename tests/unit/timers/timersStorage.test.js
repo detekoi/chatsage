@@ -1,6 +1,7 @@
 // tests/unit/timers/timersStorage.test.js
 import {
     findUnsupportedTimerVariables,
+    sanitizeTimerName,
     addTimer,
     MAX_TIMERS_PER_CHANNEL,
     TimersStorageError,
@@ -45,6 +46,30 @@ describe('findUnsupportedTimerVariables', () => {
         expect(findUnsupportedTimerVariables('')).toEqual([]);
         expect(findUnsupportedTimerVariables(null)).toEqual([]);
         expect(findUnsupportedTimerVariables(undefined)).toEqual([]);
+    });
+});
+
+describe('sanitizeTimerName', () => {
+    test('slugifies spaces and hyphens to underscores', () => {
+        expect(sanitizeTimerName('Gaming news')).toBe('gaming_news');
+        expect(sanitizeTimerName('gaming-news')).toBe('gaming_news');
+    });
+
+    test('strips invalid characters and collapses underscores', () => {
+        expect(sanitizeTimerName('Bad-Name!')).toBe('bad_name');
+        expect(sanitizeTimerName('a  -  b')).toBe('a_b');
+        expect(sanitizeTimerName('__promo__')).toBe('promo');
+    });
+
+    test('truncates to 25 characters', () => {
+        expect(sanitizeTimerName('x'.repeat(40))).toHaveLength(25);
+    });
+
+    test('returns empty string for unusable input', () => {
+        expect(sanitizeTimerName('!!!')).toBe('');
+        expect(sanitizeTimerName('')).toBe('');
+        expect(sanitizeTimerName(null)).toBe('');
+        expect(sanitizeTimerName(undefined)).toBe('');
     });
 });
 

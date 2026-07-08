@@ -99,8 +99,15 @@ describe('timer handler (!timer)', () => {
         );
     });
 
-    test('add rejects an invalid name', async () => {
+    test('add sanitizes a messy name into a valid slug', async () => {
+        addTimer.mockResolvedValue(true);
         await execute(makeContext('add Bad-Name! 30 some message'));
+        expect(addTimer).toHaveBeenCalledWith(
+            'testchannel', 'bad_name', 'some message', 'moduser', 'text', 30, 5);
+    });
+
+    test('add rejects a name that sanitizes to nothing', async () => {
+        await execute(makeContext('add !!! 30 some message'));
         expect(addTimer).not.toHaveBeenCalled();
     });
 
