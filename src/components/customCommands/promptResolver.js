@@ -29,7 +29,7 @@ export function formatHistoryForPrompt(responses) {
         .map((r, i) => `${i + 1}. "${r}"`)
         .join('\n');
 
-    return `--- Your Previous Responses (DO NOT repeat any of these — be creative and unique) ---\n${numbered}`;
+    return `--- Your Previous Responses ---\n${numbered}\nDO NOT repeat any of these responses. Rewording the same stories, facts, or jokes counts as repeating — the content must be genuinely new, not just phrased differently. If the task would produce the same content again (e.g. the news hasn't changed), cover a different story, angle, or topic instead.`;
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────

@@ -244,6 +244,7 @@ describe('promptResolver', () => {
         test('formats responses as numbered list with dedup instruction', () => {
             const result = formatHistoryForPrompt(['Hello there!', 'Welcome back!']);
             expect(result).toContain('DO NOT repeat');
+            expect(result).toContain('Rewording the same stories, facts, or jokes counts as repeating');
             expect(result).toContain('1. "Hello there!"');
             expect(result).toContain('2. "Welcome back!"');
         });
