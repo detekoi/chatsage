@@ -8,7 +8,6 @@ import {
     getTimersForChannel,
     findUnsupportedTimerVariables,
     TimersStorageError,
-    TIMER_NAME_REGEX,
     sanitizeTimerName,
     RESERVED_TIMER_NAMES,
     MIN_INTERVAL_MINUTES,

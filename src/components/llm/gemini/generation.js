@@ -1,8 +1,8 @@
 import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
-import { getGeminiClient, getGenAIInstance, getConfiguredModelId, generateLiteContent } from './core.js';
-import { extractTextFromResponse, safeExtractText, safeParseJsonResponse } from './utils.js';
+import { getGeminiClient, generateLiteContent } from './core.js';
+import { safeExtractText, safeParseJsonResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
 
@@ -197,7 +197,6 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
                     systemInstruction: { parts: [{ text: searchSystemInstruction }] },
                     generationConfig: { responseMimeType: 'text/plain', thinkingConfig: { thinkingLevel } }
                 });
-                const candidate = result.candidates?.[0];
                 const text = safeExtractText(result, 'search')?.trim() || null;
                 return text;
             } catch (retryError) {

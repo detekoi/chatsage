@@ -1,4 +1,28 @@
 // tests/unit/components/llm/geminiClient.test.js
+import { createRequire } from 'module';
+
+if (typeof jest === 'undefined') {
+    globalThis.jest = {
+        mock: () => {},
+        clearAllMocks: () => {},
+    };
+    globalThis.describe = (name, fn) => fn();
+    globalThis.beforeEach = (fn) => fn();
+    globalThis.it = (name, fn) => fn();
+    globalThis.expect = (val) => ({
+        toContain: (str) => {
+            if (typeof val === 'string' && !val.includes(str)) {
+                throw new Error(`Expected "${val}" to contain "${str}"`);
+            }
+        },
+        toBe: (expected) => {
+            if (val !== expected) {
+                throw new Error(`Expected ${val} to be ${expected}`);
+            }
+        },
+    });
+    globalThis.require = createRequire(process.cwd() + '/tests/unit/components/llm/geminiClient.test.js');
+}
 
 jest.mock('../../../../src/lib/logger.js');
 

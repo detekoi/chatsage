@@ -3,7 +3,6 @@ import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getGeminiClient, safeParseJsonResponse, safeExtractText } from '../llm/geminiClient.js';
 import { Type as GenAIType } from '@google/genai';
-import { searchTool } from '../llm/gemini/tools.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
 
 // --- Schemas ---
