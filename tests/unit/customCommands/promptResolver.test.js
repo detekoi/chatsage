@@ -129,8 +129,10 @@ describe('promptResolver', () => {
             });
 
             const callPrompt = generateLiteContent.mock.calls[0][0];
-            expect(callPrompt).toContain('--- Recent Chat ---');
+            expect(callPrompt).toContain('--- Recent Chat');
+            expect(callPrompt).toContain('do NOT reply to or address these messages');
             expect(callPrompt).toContain('user1: hello');
+            expect(callPrompt).toContain('Now complete the original task stated at the top of this prompt.');
         });
 
         test('does not append chat context block when chatContext is null', async () => {
@@ -139,7 +141,8 @@ describe('promptResolver', () => {
             await resolvePrompt('Check-in prompt', null, null, false, { chatContext: null });
 
             const callPrompt = generateLiteContent.mock.calls[0][0];
-            expect(callPrompt).not.toContain('--- Recent Chat ---');
+            expect(callPrompt).not.toContain('--- Recent Chat');
+            expect(callPrompt).not.toContain('Now complete the original task');
         });
     });
 
@@ -217,7 +220,7 @@ describe('promptResolver', () => {
             // Verify ordering: base prompt → stream context → chat context → history
             const baseIndex = callPrompt.indexOf('Check-in base prompt');
             const streamIndex = callPrompt.indexOf('--- Stream Context ---');
-            const chatIndex = callPrompt.indexOf('--- Recent Chat ---');
+            const chatIndex = callPrompt.indexOf('--- Recent Chat');
             const historyIndex = callPrompt.indexOf('--- Your Previous Responses');
 
             expect(baseIndex).toBeLessThan(streamIndex);

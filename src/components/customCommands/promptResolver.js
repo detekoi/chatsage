@@ -88,9 +88,11 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             fullPrompt += `\n\n--- Stream Context ---\n${streamContext}`;
         }
 
-        // Append recent chat messages so the LLM can riff on the conversation
+        // Append recent chat messages so the LLM can riff on the conversation.
+        // Framed as background-only: without this the model sometimes abandons
+        // the task and replies directly to a chatter.
         if (chatContext) {
-            fullPrompt += `\n\n--- Recent Chat ---\n${chatContext}`;
+            fullPrompt += `\n\n--- Recent Chat (background context only — do NOT reply to or address these messages) ---\n${chatContext}`;
         }
 
         // Await history and append dedup block
@@ -98,6 +100,11 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         const historyBlock = formatHistoryForPrompt(recentHistory);
         if (historyBlock) {
             fullPrompt += `\n\n${historyBlock}`;
+        }
+
+        // Re-anchor the model on the task after the context blocks.
+        if (chatContext) {
+            fullPrompt += `\n\nNow complete the original task stated at the top of this prompt. The sections above are background context only.`;
         }
 
         logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length }, '[PromptResolver] Generating response for custom command prompt');
