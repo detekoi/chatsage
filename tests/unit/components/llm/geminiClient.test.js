@@ -11,7 +11,10 @@ if (typeof jest === 'undefined') {
     globalThis.it = (name, fn) => fn();
     globalThis.expect = (val) => ({
         toContain: (str) => {
-            if (typeof val === 'string' && !val.includes(str)) {
+            if (typeof val !== 'string') {
+                throw new Error(`Expected "${val}" to be a string containing "${str}", but got ${typeof val}`);
+            }
+            if (!val.includes(str)) {
                 throw new Error(`Expected "${val}" to contain "${str}"`);
             }
         },
