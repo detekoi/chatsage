@@ -104,8 +104,12 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
 
         const systemInstruction = buildSystemInstruction(language, isCheckin);
 
+        // Google Search grounding is attached but dynamic: the model only searches
+        // when the prompt asks for current info (e.g. "look up...", "search for...").
+        // Ad-lib prompts skip the search entirely, so latency/cost is unaffected.
         const responseText = await generateLiteContent(fullPrompt, {
-            systemInstruction: systemInstruction
+            systemInstruction: systemInstruction,
+            tools: [{ googleSearch: {} }]
         });
 
         if (!responseText) {

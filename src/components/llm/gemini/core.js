@@ -113,6 +113,7 @@ export function getConfiguredModelId() {
  * @param {number} [options.temperature] - Temperature override
  * @param {Array} [options.multimodalParts] - Additional content parts (e.g. emote images)
  * @param {number} [options.maxOutputTokens] - Max tokens
+ * @param {Array} [options.tools] - Tool declarations (e.g. [{ googleSearch: {} }] for grounding)
  * @returns {Promise<string|null>} Extracted text response, or null on failure
  */
 export async function generateLiteContent(prompt, options = {}) {
@@ -134,6 +135,9 @@ export async function generateLiteContent(prompt, options = {}) {
     if (options.maxOutputTokens) {
         config.maxOutputTokens = options.maxOutputTokens;
     }
+    if (options.tools) {
+        config.tools = options.tools;
+    }
 
     try {
         const result = await retryWithBackoff(async () => {
@@ -149,7 +153,10 @@ export async function generateLiteContent(prompt, options = {}) {
             return null;
         }
 
-        return result?.text ?? candidate?.content?.parts?.[0]?.text ?? null;
+        // Grounded responses can contain multiple parts (text + thought signatures),
+        // so join all text parts rather than taking only the first.
+        const joinedParts = candidate?.content?.parts?.filter(p => p.text).map(p => p.text).join('');
+        return result?.text ?? (joinedParts || null);
     } catch (error) {
         logger.error({ err: error }, 'generateLiteContent failed');
         return null;
