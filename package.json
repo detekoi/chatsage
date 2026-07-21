@@ -33,7 +33,7 @@
 
         "@google/genai": "^1.15.0",
         "@tavily/core": "^0.7.5",
-        "axios": "^1.16.0",
+        "axios": "^1.18.1",
         "dotenv": "^16.4.5",
         "escape-html": "^1.0.3",
         "express": "^5.2.1",
