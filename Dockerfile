@@ -1,5 +1,5 @@
 # Stage 1: Build Stage - Install dependencies and copy source code
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 LABEL maintainer="Henry Manes" description="Build stage for ChatSage Twitch Bot"
 
 WORKDIR /usr/src/app
@@ -19,7 +19,7 @@ COPY ./src ./src
 # Optional: Add a healthcheck or build step here if necessary
 
 # Stage 2: Production Stage - Create the final lightweight image
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 LABEL maintainer="Henry Manes" description="Production image for ChatSage Twitch Bot"
 
 WORKDIR /usr/src/app
