@@ -54,8 +54,23 @@ export async function createHealthServer({ port, isDev, getIsFullyInitialized })
         // EventSub webhook endpoint
         if (req.method === 'POST' && req.url === '/twitch/event') {
             const chunks = [];
-            req.on('data', c => chunks.push(c));
-            req.on('end', () => eventSubHandler(req, res, Buffer.concat(chunks)));
+            let totalLength = 0;
+            const MAX_SIZE = 2 * 1024 * 1024; // 2MB limit to prevent OOM
+            
+            req.on('data', c => {
+                totalLength += c.length;
+                if (totalLength > MAX_SIZE) {
+                    req.destroy(new Error('Payload too large'));
+                } else {
+                    chunks.push(c);
+                }
+            });
+            
+            req.on('end', () => {
+                if (!req.destroyed) {
+                    eventSubHandler(req, res, Buffer.concat(chunks));
+                }
+            });
             return;
         }
 
