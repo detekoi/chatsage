@@ -70,7 +70,12 @@ steps:
         --role="roles/cloudtasks.enqueuer" \
         --condition=None
 
-      echo "IAM permissions granted successfully"
+      # Configure Firestore TTL for distributed cache
+      gcloud firestore fields ttls update expiresAt \
+        --collection-group=processedEvents \
+        --enable-ttl \
+        --async || true
 
+      echo "IAM permissions granted successfully"
 images:
 - 'gcr.io/${_PROJECT_ID}/${_SERVICE_NAME}:$COMMIT_SHA'

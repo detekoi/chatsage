@@ -11,14 +11,17 @@ const channelNameToIdMap = new Map();
 /**
  * Returns true if the broadcaster is permitted to use the bot.
  * Accepts either a Twitch User ID (numeric string) or a channel login name.
- * If no channels have been loaded yet, allows all (startup grace period).
+ *
+ * Fails closed: an empty allowed set denies everything. There is deliberately
+ * no "startup grace period" that allows all channels before Firestore has
+ * loaded — that fallback let webhooks for unauthorized channels through during
+ * cold starts. Cold-start sequencing is handled by waitForInit() in eventsub.js
+ * instead, so this function must never be relaxed to compensate for it.
  *
  * The allowed set is populated from Firestore managedChannels by channelManager.
  */
 export function isChannelAllowed(identifier) {
   if (!identifier) return false;
-
-  // No startup grace:  // (Startup grace fallback removed for security — initialization is handled by eventsub.js waitForInit)
 
   const normalized = String(identifier).trim();
 

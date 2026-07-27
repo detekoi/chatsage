@@ -65,8 +65,8 @@ async function _isCustomCommandOnCooldown(channelName, commandName, cooldownMs) 
     if (cooldownMs <= 0) return false;
     const key = `cooldown:${channelName}:${commandName}`;
     const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
-    // Using isDuplicateEvent to enforce the cooldown TTL across instances
-    return await isDuplicateEvent(key, Date.now(), cooldownMs);
+    // Using isDuplicateEvent to enforce the cooldown TTL across instances. Pass null for timestamp to skip replay guard, and false to fail closed on Firestore errors.
+    return await isDuplicateEvent(key, null, cooldownMs, false);
 }
 
 

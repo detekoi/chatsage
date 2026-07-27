@@ -55,8 +55,6 @@ function pruneOldProcessedIds(nowTs) {
 
 // Per-channel farewell deduplication: guards against duplicate stream.offline
 // webhooks that arrive with different message IDs (e.g. from multiple active subscriptions).
-const lastFarewellSentAt = new Map(); // channel login -> timestamp(ms)
-const FAREWELL_COOLDOWN_MS = 30 * 1000; // 30 seconds
 
 async function shouldProcessEvent(req, isChat) {
     const messageId = req.headers['twitch-eventsub-message-id'];
@@ -217,7 +215,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     // Guard against duplicate stream.offline events (different message IDs
                     // from multiple active subscriptions) sending the farewell twice.
                     const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
-                    if (await isDuplicateEvent(`farewell:${login}`, Date.now(), 30000)) {
+                    if (await isDuplicateEvent(`farewell:${login}`, null, 30000, false)) {
                         logger.warn({ login }, '[EventSub] Skipping duplicate farewell — sent too recently');
                     } else {
                         await notifyStreamOffline(login);

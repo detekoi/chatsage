@@ -79,6 +79,19 @@ jobs:
         run: |
           echo "Deployed to Cloud Run: ${{ steps.deploy.outputs.url }}"
 
+      # The distributed dedup cache writes one document per EventSub event. Without
+      # this TTL policy those documents accumulate forever. Idempotent, so it is safe
+      # to re-run on every deploy. Deliberately continue-on-error rather than "|| true"
+      # so a missing IAM permission shows up as a failed step instead of passing silently.
+      - name: Ensure Firestore TTL policy on processedEvents
+        continue-on-error: true
+        run: |
+          gcloud firestore fields ttls update expiresAt \
+            --collection-group=processedEvents \
+            --project ${{ env.GCP_PROJECT_ID }} \
+            --enable-ttl \
+            --quiet
+
       - name: Prune old revisions
         continue-on-error: true
         run: |
