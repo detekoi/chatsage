@@ -68,7 +68,13 @@ export async function createHealthServer({ port, isDev, getIsFullyInitialized })
             
             req.on('end', () => {
                 if (!req.destroyed) {
-                    eventSubHandler(req, res, Buffer.concat(chunks));
+                    eventSubHandler(req, res, Buffer.concat(chunks)).catch(err => {
+                        logger.error({ err }, 'Unhandled error in eventSubHandler');
+                        if (!res.headersSent) {
+                            res.writeHead(500, { 'Content-Type': 'text/plain' });
+                            res.end('Internal Server Error');
+                        }
+                    });
                 }
             });
             return;

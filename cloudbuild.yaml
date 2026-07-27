@@ -58,7 +58,7 @@ steps:
 
       echo "Granting IAM permissions to: $SERVICE_ACCOUNT"
 
-      # Grant Firestore/Datastore User role (for leader election)
+      # Grant Firestore/Datastore User role (for config, distributed deduplication, and custom commands)
       gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
         --member="serviceAccount:$SERVICE_ACCOUNT" \
         --role="roles/datastore.user" \

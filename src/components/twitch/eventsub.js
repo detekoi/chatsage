@@ -58,7 +58,7 @@ function pruneOldProcessedIds(nowTs) {
 const lastFarewellSentAt = new Map(); // channel login -> timestamp(ms)
 const FAREWELL_COOLDOWN_MS = 30 * 1000; // 30 seconds
 
-function shouldProcessEvent(req) {
+async function shouldProcessEvent(req, isChat) {
     const messageId = req.headers['twitch-eventsub-message-id'];
     const timestampHeader = req.headers['twitch-eventsub-message-timestamp'];
     if (!messageId || !timestampHeader) return false;
@@ -68,14 +68,25 @@ function shouldProcessEvent(req) {
         logger.warn({ messageId, timestampHeader }, 'Dropping EventSub message older than 10 minutes (replay guard)');
         return false;
     }
-    if (processedEventIds.has(messageId)) {
-        logger.warn({ messageId }, 'Dropping duplicate EventSub message (already processed)');
-        return false;
+    
+    if (isChat) {
+        // Best-effort in-memory dedup for chat messages to avoid Firestore latency on hot path
+        if (processedEventIds.has(messageId)) {
+            logger.warn({ messageId }, 'Dropping duplicate chat message (in-memory dedup)');
+            return false;
+        }
+        processedEventIds.set(messageId, nowTs);
+        if (processedEventIds.size > 1000) pruneOldProcessedIds(nowTs);
+        return true;
+    } else {
+        // Firestore-backed deduplication for non-chat events
+        const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+        if (await isDuplicateEvent(messageId, timestampHeader)) {
+            logger.warn({ messageId }, 'Dropping duplicate non-chat EventSub message (Firestore dedup)');
+            return false;
+        }
+        return true;
     }
-    // Record and prune
-    processedEventIds.set(messageId, nowTs);
-    if (processedEventIds.size > 1000) pruneOldProcessedIds(nowTs);
-    return true;
 }
 
 
@@ -122,9 +133,12 @@ function verifySignature(req, rawBody) {
     const hmacMessage = messageId + timestamp + rawBody;
     const hmac = 'sha256=' + crypto.createHmac('sha256', secret).update(hmacMessage).digest('hex');
 
-    const isSignatureValid = crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
-
-    return isSignatureValid;
+    try {
+        const isSignatureValid = crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
+        return isSignatureValid;
+    } catch (err) {
+        return false;
+    }
 }
 
 export async function eventSubHandler(req, res, rawBody) {
@@ -148,7 +162,8 @@ export async function eventSubHandler(req, res, rawBody) {
     }
 
     if (messageType === 'notification') {
-        if (!shouldProcessEvent(req)) {
+        const isChat = notification.subscription?.type === 'channel.chat.message';
+        if (!(await shouldProcessEvent(req, isChat))) {
             return; // Already responded 200 above; just ignore processing
         }
 
@@ -201,12 +216,10 @@ export async function eventSubHandler(req, res, rawBody) {
                 try {
                     // Guard against duplicate stream.offline events (different message IDs
                     // from multiple active subscriptions) sending the farewell twice.
-                    const lastSent = lastFarewellSentAt.get(login) || 0;
-                    const nowMs = Date.now();
-                    if (nowMs - lastSent < FAREWELL_COOLDOWN_MS) {
-                        logger.warn({ login, msSinceLast: nowMs - lastSent }, '[EventSub] Skipping duplicate farewell — sent too recently');
+                    const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+                    if (await isDuplicateEvent(`farewell:${login}`, Date.now(), 30000)) {
+                        logger.warn({ login }, '[EventSub] Skipping duplicate farewell — sent too recently');
                     } else {
-                        lastFarewellSentAt.set(login, nowMs);
                         await notifyStreamOffline(login);
                     }
                 } catch (e) {

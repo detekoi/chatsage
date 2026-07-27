@@ -18,8 +18,7 @@ const channelNameToIdMap = new Map();
 export function isChannelAllowed(identifier) {
   if (!identifier) return false;
 
-  // No startup grace: default deny if no channels loaded
-  if (allowedBroadcasterIds.size === 0) return false;
+  // No startup grace:  // (Startup grace fallback removed for security — initialization is handled by eventsub.js waitForInit)
 
   const normalized = String(identifier).trim();
 

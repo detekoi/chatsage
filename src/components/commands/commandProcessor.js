@@ -25,8 +25,7 @@ const COMMAND_PREFIX = '!'; // Define the prefix for commands
 const recentCommandInvocations = new Map(); // key -> timestamp ms
 const DUPLICATE_WINDOW_MS = 20000; // 20 seconds to reliably prevent double-fires
 
-// Cooldown tracking for custom commands
-const customCommandCooldowns = new Map(); // "channel:command" -> last used timestamp
+// Cooldown tracking for custom commands is handled via distributedCache (Firestore)
 
 function _makeDedupKey(channelName, username, command, args, messageId = null) {
     // Prefer messageId if available (tmi.js may provide tags.id)
@@ -62,15 +61,12 @@ function _shouldSuppressDuplicate(key) {
  * @param {number} cooldownMs - Cooldown in milliseconds.
  * @returns {boolean} True if on cooldown.
  */
-function _isCustomCommandOnCooldown(channelName, commandName, cooldownMs) {
+async function _isCustomCommandOnCooldown(channelName, commandName, cooldownMs) {
     if (cooldownMs <= 0) return false;
-    const key = `${channelName}:${commandName}`;
-    const lastUsed = customCommandCooldowns.get(key);
-    if (lastUsed && (Date.now() - lastUsed) < cooldownMs) {
-        return true;
-    }
-    customCommandCooldowns.set(key, Date.now());
-    return false;
+    const key = `cooldown:${channelName}:${commandName}`;
+    const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+    // Using isDuplicateEvent to enforce the cooldown TTL across instances
+    return await isDuplicateEvent(key, Date.now(), cooldownMs);
 }
 
 
@@ -272,7 +268,7 @@ async function _tryCustomCommand(channelName, tags, command, args) {
         }
 
         // Cooldown check
-        if (_isCustomCommandOnCooldown(channelName, command, customCmd.cooldownMs || 0)) {
+        if (await _isCustomCommandOnCooldown(channelName, command, customCmd.cooldownMs || 0)) {
             logger.debug(`Custom command !${command} is on cooldown in ${channelName}`);
             return true; // Consumed the command, just not responding
         }
