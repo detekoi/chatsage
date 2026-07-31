@@ -15,7 +15,8 @@
         "migrate:channels": "node scripts/migrate-channels-to-firestore.js",
 
         "trigger:stream-online": "node scripts/trigger-stream-online.js",
-        "export:emails": "node scripts/export-mailing-list.js"
+        "export:emails": "node scripts/export-mailing-list.js",
+        "benchmark:latency": "node scripts/benchmark-latency.js"
     },
     "keywords": [
         "twitch",
