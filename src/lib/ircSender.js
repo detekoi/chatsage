@@ -118,9 +118,7 @@ function _intelligentTruncate(text, maxLength) {
  * Processes the message queue internally.
  */
 async function _processMessageQueue() {
-    logger.debug(`_processMessageQueue: isSending=${isSending}, queueLength=${messageQueue.length}`);
     if (isSending || messageQueue.length === 0) {
-        logger.debug(`_processMessageQueue: exiting early - isSending=${isSending}, queueLength=${messageQueue.length}`);
         return; // Already running or queue empty
     }
 

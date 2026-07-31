@@ -125,7 +125,7 @@ export function startAdSchedulePoller() {
             const contextManager = getContextManager();
             const channelStates = contextManager.getAllChannelStates();
             const channelCount = Array.from(channelStates).length;
-            logger.info({ channelCount }, '[AdSchedule] Poller tick - checking channels');
+            logger.debug({ channelCount }, '[AdSchedule] Poller tick - checking channels');
 
             for (const [channelName, state] of channelStates) {
                 // Only if live - check stream context directly

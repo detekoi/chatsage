@@ -316,6 +316,7 @@ describe('variableParser', () => {
 
         test('uses singular for 1 year/month/day', () => {
             const oneYearAgo = new Date();
+            oneYearAgo.setDate(1);
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
             oneYearAgo.setMonth(oneYearAgo.getMonth() - 1);
             const result = formatFollowAge(oneYearAgo.toISOString());
