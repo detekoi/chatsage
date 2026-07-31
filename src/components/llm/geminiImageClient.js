@@ -21,15 +21,16 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         const modelId = config.llm?.provider === 'openai' ? config.openai.modelId : config.gemini.modelId;
 
         logger.info({ promptLength: prompt.length }, 'Generating image analysis response');
-        const text = await describeImages({ parts, prompt, modelId });
+        const text = await describeImages({ parts, prompt, modelId, temperature: 0.2, thinkingLevel: 'high' });
 
         if (text && text.trim().length > 0) {
             return text.trim();
         }
 
-        // Targeted single retry for sparse response
+        // Targeted single retry for sparse/truncated responses, with a raised
+        // token ceiling so the retry doesn't hit the same MAX_TOKENS failure.
         const shortPrompt = 'Briefly describe the scene in ≤ 140 characters. Plain text only.';
-        const retryText = await describeImages({ parts, prompt: shortPrompt, modelId });
+        const retryText = await describeImages({ parts, prompt: shortPrompt, modelId, temperature: 0.2, thinkingLevel: 'high', maxOutputTokens: 4096 });
         return retryText?.trim() || null;
     } catch (error) {
         logger.error({ err: error }, 'Error during image analysis');

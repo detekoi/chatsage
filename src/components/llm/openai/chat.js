@@ -1,5 +1,5 @@
 import logger from '../../../lib/logger.js';
-import { getOpenAiInstance, getConfiguredModelId, getConfiguredReasoningEffort } from './core.js';
+import { getOpenAiInstance, getConfiguredModelId, getConfiguredReasoningEffort, formatOpenAiContent } from './core.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../gemini/prompts.js';
 import { searchTool } from './tools.js';
 import { retryWithBackoff } from '../retryUtils.js';
@@ -29,11 +29,23 @@ export class OpenAiChatSession {
         const openai = getOpenAiInstance();
         const model = getConfiguredModelId();
 
-        // Push new user message
-        this.history.push({
-            role: 'user',
-            content: typeof messageText === 'string' ? messageText : JSON.stringify(messageText)
-        });
+        // Callers use the Gemini chat convention: a bare string, a parts array,
+        // or an envelope { message: parts } where parts are {text}/{inlineData}
+        // objects (llmUtils.js sends emote images this way). Convert image parts
+        // to input_image content instead of serializing them as JSON text.
+        let content;
+        if (typeof messageText === 'string') {
+            content = messageText;
+        } else if (typeof messageText?.message === 'string') {
+            content = messageText.message;
+        } else {
+            const parts = Array.isArray(messageText) ? messageText
+                : Array.isArray(messageText?.message) ? messageText.message
+                    : [messageText];
+            content = formatOpenAiContent(null, parts);
+        }
+
+        this.history.push({ role: 'user', content });
 
         // Trim history to sliding window
         if (this.history.length > MAX_HISTORY_MESSAGES) {
@@ -41,10 +53,13 @@ export class OpenAiChatSession {
         }
 
         try {
+            // Snapshot the history — the live array gets the assistant turn
+            // pushed after the call, and the request must not be mutated.
+            const inputSnapshot = [...this.history];
             const response = await retryWithBackoff(async () => {
                 return await openai.responses.create({
                     model,
-                    input: this.history,
+                    input: inputSnapshot,
                     instructions: this.systemInstruction,
                     tools: searchTool,
                     reasoning: { effort: getConfiguredReasoningEffort() }

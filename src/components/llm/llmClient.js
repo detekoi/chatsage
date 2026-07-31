@@ -13,7 +13,7 @@ import * as openAiGen from './openai/generation.js';
 import * as openAiDec from './openai/decision.js';
 import * as openAiUtils from './openai/utils.js';
 
-import { toGeminiSchema, toOpenAiStrictSchema } from './schemaUtils.js';
+import { toGeminiSchema } from './schemaUtils.js';
 
 export { buildContextPrompt } from './gemini/prompts.js';
 
@@ -153,26 +153,35 @@ export async function generateStructuredJson({
     temperature,
     model = 'main',
     tools,
-    multimodalParts
+    multimodalParts,
+    returnMeta = false
 }) {
     if (isOpenAi()) {
-        const strictSchema = toOpenAiStrictSchema(schema);
-        const responseText = await openAiCore.generateLiteContent(prompt, {
+        // Pass the plain schema through — openai/core.js applies the strict
+        // conversion exactly once.
+        const { text, response } = await openAiCore.generateLiteContentWithResponse(prompt, {
             systemInstruction,
-            responseSchema: strictSchema,
+            responseSchema: schema,
             schemaName,
             temperature,
             modelId: model === 'lite' ? config.openai.liteModelId : config.openai.modelId,
+            reasoningEffort: model === 'lite' ? undefined : config.openai.reasoningEffort,
             tools,
             multimodalParts
         });
-        if (!responseText) return null;
-        try {
-            return JSON.parse(responseText);
-        } catch (e) {
-            logger.warn({ err: e, text: responseText }, 'Failed to parse structured JSON response in facade');
-            return null;
+        let parsed = null;
+        if (text) {
+            try {
+                parsed = JSON.parse(text);
+            } catch (e) {
+                logger.warn({ err: e, text }, 'Failed to parse structured JSON response in facade');
+            }
         }
+        if (returnMeta) {
+            const searchUsed = !!response?.output?.some(item => item.type === 'web_search_call');
+            return { parsed, searchUsed };
+        }
+        return parsed;
     } else {
         const geminiModel = geminiCore.getGeminiClient();
         const geminiSchema = toGeminiSchema(schema);
@@ -191,7 +200,12 @@ export async function generateStructuredJson({
             generationConfig: genConfig
         });
 
-        return geminiUtils.safeParseJsonResponse(result, `[StructuredJson:${schemaName}]`);
+        const parsed = geminiUtils.safeParseJsonResponse(result, `[StructuredJson:${schemaName}]`);
+        if (returnMeta) {
+            const searchUsed = !!(result?.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
+            return { parsed, searchUsed };
+        }
+        return parsed;
     }
 }
 
@@ -221,6 +235,7 @@ export async function generateText(prompt, {
             maxOutputTokens,
             multimodalParts,
             modelId: model === 'lite' ? config.openai.liteModelId : config.openai.modelId,
+            reasoningEffort: model === 'lite' ? undefined : config.openai.reasoningEffort,
             ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
         });
     }
@@ -239,27 +254,46 @@ export async function generateText(prompt, {
         ...(Object.keys(genConfig).length > 0 ? { generationConfig: genConfig } : {})
     });
 
-    return geminiUtils.safeExtractText(result, '[GenerateText]');
+    const text = geminiUtils.safeExtractText(result, '[GenerateText]');
+    if (!text) {
+        const candidate = result?.candidates?.[0];
+        logger.warn({
+            finishReason: candidate?.finishReason,
+            hasCandidates: !!result?.candidates?.length,
+            partsLength: candidate?.content?.parts?.length ?? 0,
+            promptFeedback: result?.promptFeedback
+        }, '[GenerateText] Text extraction failed — response diagnostics attached.');
+    }
+    return text;
 }
 
 /**
  * Image description helper normalizing inlineData vs input_image across providers.
+ * `thinkingLevel` maps to Gemini thinkingConfig / OpenAI reasoning effort;
+ * `temperature` applies on Gemini only (unsupported by OpenAI reasoning models).
  */
-export async function describeImages({ parts, prompt, systemInstruction, modelId }) {
+export async function describeImages({ parts, prompt, systemInstruction, modelId, temperature, maxOutputTokens, thinkingLevel }) {
     if (isOpenAi()) {
         const responseText = await openAiCore.generateLiteContent(prompt, {
             systemInstruction,
             multimodalParts: parts,
-            modelId: modelId || config.openai.modelId
+            modelId: modelId || config.openai.modelId,
+            maxOutputTokens,
+            ...(thinkingLevel ? { reasoningEffort: thinkingLevel } : {})
         });
         return responseText;
     } else {
         const geminiModel = geminiCore.getGeminiClient();
         const contents = [{ role: 'user', parts: [...(parts || []), { text: prompt }] }];
+        const genConfig = {};
+        if (temperature !== undefined) genConfig.temperature = temperature;
+        if (maxOutputTokens) genConfig.maxOutputTokens = maxOutputTokens;
+        if (thinkingLevel) genConfig.thinkingConfig = { thinkingLevel };
         const result = await geminiModel.generateContent({
             model: modelId || config.gemini.modelId,
             contents,
-            ...(systemInstruction ? { systemInstruction } : {})
+            ...(systemInstruction ? { systemInstruction } : {}),
+            ...(Object.keys(genConfig).length > 0 ? { generationConfig: genConfig } : {})
         });
         return geminiUtils.safeExtractText(result, '[DescribeImages]');
     }

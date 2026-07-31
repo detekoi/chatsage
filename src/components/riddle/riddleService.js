@@ -149,12 +149,13 @@ Return JSON matching the schema.${languageDirective}`;
     try {
         logger.debug({ topic: actualTopic, language }, `[RiddleService] Generating riddle via Structured Output.`);
 
-        const args = await generateStructuredJson({
+        const { parsed: args, searchUsed: groundingSearchUsed } = await generateStructuredJson({
             prompt,
             schema: activeSchema,
             schemaName: 'riddle',
             temperature: 0.75,
-            tools: [{ googleSearch: {} }]
+            tools: [{ googleSearch: {} }],
+            returnMeta: true
         });
 
         if (!args) {
@@ -183,7 +184,7 @@ Return JSON matching the schema.${languageDirective}`;
             keywords: args.keywords,
             difficulty: args.difficulty_generated || difficulty,
             explanation: args.explanation || "No explanation provided.",
-            searchUsed: !!args.search_used,
+            searchUsed: !!args.search_used || groundingSearchUsed,
             topic: actualTopic,
             requestedTopic: topic,
             language: language || null

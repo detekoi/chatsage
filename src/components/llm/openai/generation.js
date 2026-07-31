@@ -8,6 +8,8 @@ import { TimezoneSchema, SummarySchema } from '../schemaUtils.js';
 import { retryWithBackoff } from '../retryUtils.js';
 import { toOpenAiStrictSchema } from '../schemaUtils.js';
 
+const strictTimezoneSchema = toOpenAiStrictSchema(TimezoneSchema);
+
 /**
  * Uses the LLM to infer a valid IANA timezone for a given location string.
  */
@@ -34,7 +36,7 @@ Return STRICT JSON.`;
                         type: 'json_schema',
                         name: 'timezone_response',
                         strict: true,
-                        schema: toOpenAiStrictSchema(TimezoneSchema)
+                        schema: strictTimezoneSchema
                     }
                 }
             });

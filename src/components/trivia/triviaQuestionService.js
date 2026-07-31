@@ -82,12 +82,13 @@ Only use web search if the question requires very recent or obscure facts that m
     try {
         logger.debug({ topic: specificTopic, language }, `[TriviaService] Generating question via Structured Output.`);
 
-        const parsed = await generateStructuredJson({
+        const { parsed, searchUsed: groundingSearchUsed } = await generateStructuredJson({
             prompt,
             schema: activeSchema,
             schemaName: 'trivia_question',
             temperature: 0.7,
-            tools: [{ googleSearch: {} }]
+            tools: [{ googleSearch: {} }],
+            returnMeta: true
         });
 
         if (!parsed) {
@@ -131,7 +132,9 @@ Only use web search if the question requires very recent or obscure facts that m
             alternateAnswers: alternate_answers || [],
             explanation: explanation || "No explanation provided.",
             difficulty: actualDiff || difficulty,
-            searchUsed: !!search_used,
+            // Cross-check the model's self-reported flag against provider metadata
+            // (grounding metadata / web_search_call items) — models misreport this.
+            searchUsed: !!search_used || groundingSearchUsed,
             verified: true, // Structured output = implicitly verified
             topic: isGeneralTopic ? 'general' : specificTopic,
             category: category || "",

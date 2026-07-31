@@ -3,7 +3,9 @@ import { getOpenAiInstance, getConfiguredModelId } from './core.js';
 import { safeParseJsonResponse } from './utils.js';
 import { SearchDecisionSchema, toOpenAiStrictSchema } from '../schemaUtils.js';
 import { retryWithBackoff } from '../retryUtils.js';
-import { inferSearchNeedByHeuristic } from '../gemini/decision.js';
+import { inferSearchNeedByHeuristic } from '../searchHeuristic.js';
+
+const strictSearchDecisionSchema = toOpenAiStrictSchema(SearchDecisionSchema);
 
 export async function decideSearchWithStructuredOutput(contextPrompt, userQuery) {
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: 'Empty query' };
@@ -33,7 +35,7 @@ Output JSON only.`;
                         type: 'json_schema',
                         name: 'search_decision',
                         strict: true,
-                        schema: toOpenAiStrictSchema(SearchDecisionSchema)
+                        schema: strictSearchDecisionSchema
                     }
                 },
                 reasoning: { effort: 'low' }

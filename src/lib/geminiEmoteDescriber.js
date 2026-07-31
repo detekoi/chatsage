@@ -34,18 +34,19 @@ let emoteDescriptionsDb = null;
 
 export function initEmoteDescriber(apiKey) {
     if (!apiKey) {
-        logger.warn('GEMINI_API_KEY not set — emote description feature disabled');
+        logger.warn('LLM API key for the active provider not set — emote description feature disabled');
         return false;
     }
     try {
         const client = getGenAIInstance();
         if (!client) {
-            throw new Error('Shared GenAI client not initialized');
+            throw new Error('Shared LLM client not initialized');
         }
-        logger.info('Gemini emote describer initialized (model: %s)', geminiModel);
+        const activeModel = config.llm?.provider === 'openai' ? openaiModel : geminiModel;
+        logger.info('Emote describer initialized (provider: %s, model: %s)', config.llm?.provider || 'gemini', activeModel);
         return true;
     } catch (error) {
-        logger.error({ err: error }, 'Failed to initialize Gemini emote describer');
+        logger.error({ err: error }, 'Failed to initialize emote describer');
         return false;
     }
 }

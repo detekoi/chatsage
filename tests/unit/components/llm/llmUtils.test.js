@@ -121,6 +121,26 @@ describe('llmUtils', () => {
 
             expect(result).toBe('');
         });
+
+        it('should strip markdown links and keep visible text', () => {
+            const result = removeMarkdownAsterisks('Check out [Wikipedia](https://en.wikipedia.org/wiki/Test?utm_source=openai) for more.');
+            expect(result).toBe('Check out Wikipedia for more.');
+        });
+
+        it('should strip OpenAI web search citation format', () => {
+            const result = removeMarkdownAsterisks('She won an Emmy. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Lushious_Massacr?utm_source=openai))');
+            expect(result).toBe('She won an Emmy. (en.wikipedia.org)');
+        });
+
+        it('should strip parenthesised bare URLs', () => {
+            const result = removeMarkdownAsterisks('Source (https://example.com/page)');
+            expect(result).toBe('Source');
+        });
+
+        it('should collapse leftover whitespace from removals', () => {
+            const result = removeMarkdownAsterisks('word  (https://x.com)  end');
+            expect(result).toBe('word end');
+        });
     });
 
     describe('handleStandardLlmQuery', () => {

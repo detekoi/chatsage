@@ -87,8 +87,11 @@ async function main() {
         const { markEventSubReady } = await import('./components/twitch/eventsub.js');
         markEventSubReady();
 
-        // --- Initialize Gemini Emote Describer ---
-        initEmoteDescriber(config.gemini?.apiKey || process.env.GEMINI_API_KEY);
+        // --- Initialize Emote Describer (uses the active LLM provider's key) ---
+        const emoteLlmApiKey = config.llm?.provider === 'openai'
+            ? config.openai?.apiKey
+            : config.gemini?.apiKey;
+        initEmoteDescriber(emoteLlmApiKey);
         initEmoteDescriptionStore();
 
         // Log Secret Manager status for monitoring

@@ -33,6 +33,29 @@ describe('OpenAI Chat Session Module', () => {
         expect(session.history.length).toBe(2); // user + assistant
     });
 
+    test('sendMessage unwraps Gemini-style {message: parts} envelope with emote images', async () => {
+        const instance = getOpenAiInstance();
+        const createSpy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
+            output_text: 'Nice emote!'
+        });
+
+        const session = getOrCreateChatSession('testchannel');
+        const messageParts = [
+            { text: 'USER: alice says: check this out' },
+            { inlineData: { mimeType: 'image/png', data: 'aGVsbG8=' } }
+        ];
+        const response = await session.sendMessage({ message: messageParts });
+
+        expect(response.text()).toBe('Nice emote!');
+        const sentInput = createSpy.mock.calls[0][0].input;
+        const userTurn = sentInput[sentInput.length - 1];
+        expect(userTurn.role).toBe('user');
+        expect(userTurn.content).toEqual([
+            { type: 'input_text', text: 'USER: alice says: check this out' },
+            { type: 'input_image', image_url: 'data:image/png;base64,aGVsbG8=' }
+        ]);
+    });
+
     test('resetChatSession removes channel session', () => {
         const s1 = getOrCreateChatSession('testchannel');
         resetChatSession('testchannel');

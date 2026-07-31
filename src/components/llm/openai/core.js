@@ -95,8 +95,10 @@ export function formatOpenAiContent(promptText, multimodalParts = []) {
 /**
  * One-shot generation call using OpenAI Responses API with the lightweight model.
  * Centralizes model selection, text extraction, and error/refusal handling.
+ * Returns both the extracted text and the raw response so callers can inspect
+ * output items (e.g. web_search_call) without a second request.
  */
-export async function generateLiteContent(prompt, options = {}) {
+export async function generateLiteContentWithResponse(prompt, options = {}) {
     if (!openaiClient) throw new Error('OpenAI client not initialized');
 
     const model = options.modelId || configuredLiteModelId;
@@ -163,13 +165,18 @@ export async function generateLiteContent(prompt, options = {}) {
         const refusal = extractRefusal(response);
         if (refusal) {
             logger.warn({ refusal }, 'OpenAI content generation refused.');
-            return null;
+            return { text: null, response };
         }
 
         const extracted = response.output_text?.trim() || null;
-        return extracted;
+        return { text: extracted, response };
     } catch (error) {
         logger.error({ err: error }, 'generateLiteContent failed');
-        return null;
+        return { text: null, response: null };
     }
+}
+
+export async function generateLiteContent(prompt, options = {}) {
+    const { text } = await generateLiteContentWithResponse(prompt, options);
+    return text;
 }
