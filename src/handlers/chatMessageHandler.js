@@ -6,6 +6,7 @@ import logger from '../lib/logger.js';
 import config from '../config/index.js';
 import { processMessage as processCommand } from '../components/commands/commandProcessor.js';
 import { isChannelAllowed } from '../components/twitch/channelManager.js';
+import { isDevChannel } from '../lib/devChannels.js';
 import { recordChatMessage } from '../components/context/channelActivity.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { getGeoGameManager } from '../components/geo/geoGameManager.js';
@@ -43,9 +44,9 @@ export async function handleChatMessage(channel, tags, message) {
 
     // Enforce allow-list
     try {
-        const isConfiguredChannel = Array.isArray(config.twitch.channels) && config.twitch.channels.map(c => c.toLowerCase()).includes(cleanChannel.toLowerCase());
-        let allowed = isConfiguredChannel;
-        if (!allowed && config.app.nodeEnv !== 'development') {
+        // Dev channels configured via TWITCH_CHANNELS are always allowed in development
+        let allowed = isDevChannel(cleanChannel);
+        if (!allowed) {
             allowed = await isChannelAllowed(cleanChannel);
         }
         if (!allowed) {

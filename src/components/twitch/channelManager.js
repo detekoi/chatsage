@@ -1,8 +1,8 @@
 // src/components/twitch/channelManager.js
-import config from '../../config/index.js';
 import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
 import { updateAllowedChannels, addAllowedChannel, removeAllowedChannel, isChannelAllowed as _isAllowed } from '../../lib/allowList.js';
+import { isDevChannel } from '../../lib/devChannels.js';
 
 // Collection name (must match the name used in chatsage-web-ui)
 const MANAGED_CHANNELS_COLLECTION = 'managedChannels';
@@ -160,10 +160,6 @@ export function listenForChannelChanges() {
 
     const unsubscribe = db.collection(MANAGED_CHANNELS_COLLECTION)
         .onSnapshot(snapshot => {
-            const devChannels = (config.app.nodeEnv === 'development' && Array.isArray(config.twitch.channels))
-                ? config.twitch.channels.map(c => String(c).toLowerCase())
-                : [];
-
             const changes = [];
 
             snapshot.docChanges().forEach(change => {
@@ -171,18 +167,18 @@ export function listenForChannelChanges() {
                 // Defensive check for channelName
                 if (channelData && typeof channelData.channelName === 'string') {
                     const normName = channelData.channelName.toLowerCase();
-                    const isDevChannel = devChannels.includes(normName);
+                    const devChannel = isDevChannel(normName);
 
                     // Update allow-list cache in real-time
                     if (channelData.isActive && channelData.twitchUserId) {
                         addAllowedChannel(channelData.channelName, channelData.twitchUserId);
-                    } else if (!channelData.isActive && !isInitialSnapshot && !isDevChannel) {
+                    } else if (!channelData.isActive && !isInitialSnapshot && !devChannel) {
                         // Skip removals on initial snapshot or for dev-mode channels configured in .env
                         removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
                     }
 
                     // Skip EventSub syncing for inactive dev-mode channels (they are explicitly managed by dev mode boot)
-                    if (!isDevChannel || channelData.isActive) {
+                    if (!devChannel || channelData.isActive) {
                         changes.push({
                             type: change.type,
                             channelName: channelData.channelName,
@@ -190,6 +186,10 @@ export function listenForChannelChanges() {
                             docId: change.doc.id,
                             channelData: channelData
                         });
+                    } else {
+                        // Log that we're intentionally skipping this dev-channel event
+                        logger.info({ channelName: channelData.channelName, isActive: channelData.isActive, changeType: change.type },
+                            '[ChannelManager] Skipping EventSub sync for dev-configured channel (managed by dev-mode boot)');
                     }
                 } else {
                     logger.warn({ docId: change.doc.id }, `[ChannelManager] Firestore listener detected change in document missing valid 'channelName'. Skipping processing for this change.`);

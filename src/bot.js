@@ -6,6 +6,7 @@ import { clearMessageQueue } from './lib/ircSender.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { stopTimerManager } from './components/timers/timerManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
+import { hasDevChannels } from './lib/devChannels.js';
 
 // Extracted modules
 import { createHealthServer, closeHealthServer } from './server/healthServer.js';
@@ -132,7 +133,7 @@ async function main() {
         // we subscribe them explicitly and add them to the allowlist.
         // This runs AFTER the lifecycle manager so the initial Firestore snapshot
         // doesn't undo the addAllowedChannel() call.
-        if (config.app.nodeEnv === 'development' && config.twitch.channels.length > 0) {
+        if (hasDevChannels()) {
             try {
                 const { getUsersByLogin } = await import('./components/twitch/helixClient.js');
                 const { subscribeStreamOnline, subscribeStreamOffline, subscribeChannelChatMessage } = await import('./components/twitch/twitchSubs.js');

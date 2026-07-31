@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { isChannelAllowed } from './channelManager.js';
+import { isDevChannel } from '../../lib/devChannels.js';
 import { getContextManager } from '../context/contextManager.js';
 
 import { notifyStreamOnline, notifyStreamOffline, notifyFollow, notifySubscription, notifyGiftSubs, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
@@ -51,6 +52,23 @@ function pruneOldProcessedIds(nowTs) {
             processedEventIds.delete(id);
         }
     }
+}
+
+/**
+ * Dev-aware channel authorization check.
+ * In development, channels listed in config.twitch.channels (from TWITCH_CHANNELS env)
+ * are always allowed — even if they are isActive:false in Firestore (which is
+ * intentional to prevent the production bot from subscribing to test channels).
+ * Falls back to the Firestore-backed allowlist for all other channels.
+ *
+ * @param {string} broadcasterId - Twitch User ID of the broadcaster
+ * @param {string} channelLogin  - Broadcaster login name (lowercase)
+ * @returns {Promise<boolean>}
+ */
+async function isEventAllowed(broadcasterId, channelLogin) {
+    if (isDevChannel(channelLogin)) return true;
+    // Firestore-backed allowlist (production path)
+    return isChannelAllowed(broadcasterId || channelLogin);
 }
 
 // Per-channel farewell deduplication: guards against duplicate stream.offline
@@ -183,7 +201,7 @@ export async function eventSubHandler(req, res, rawBody) {
 
                 // Enforce allow-list (prefer broadcaster ID for immutability)
                 const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || login);
+                const allowed = await isEventAllowed(broadcasterId, login);
                 if (!allowed) {
                     logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
                     return;
@@ -239,7 +257,7 @@ export async function eventSubHandler(req, res, rawBody) {
 
                 // Enforce allow-list
                 const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || channelLogin);
+                const allowed = await isEventAllowed(broadcasterId, channelLogin);
                 if (!allowed) {
                     logger.debug({ channelLogin }, '[EventSub] Chat message from non-allowed channel, ignoring');
                     return;
@@ -278,7 +296,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
 
-                const allowed = await isChannelAllowed(broadcasterId || channelLogin);
+                const allowed = await isEventAllowed(broadcasterId, channelLogin);
                 if (!allowed) {
                     logger.debug({ channelLogin }, '[EventSub] Channel Points event for non-allowed channel');
                     return;
@@ -295,13 +313,13 @@ export async function eventSubHandler(req, res, rawBody) {
         // --- Celebrations: follows (no username), subscriptions (no username), raids (raider username allowed) ---
         if (subscription.type === 'channel.follow') {
             try {
-                const channelName = event?.broadcaster_user_name || event?.to_broadcaster_user_name || null;
+                const channelName = event?.broadcaster_user_name || null;
                 if (!channelName) {
                     logger.warn({ event }, '[EventSub] channel.follow missing broadcaster name');
                     return;
                 }
                 const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || channelName);
+                const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
                 await notifyFollow(channelName.toLowerCase());
             } catch (error) {
@@ -321,7 +339,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     logger.debug({ channelName }, '[EventSub] Skipping gift sub (handled by channel.subscription.gift)');
                 } else {
                     const broadcasterId = event?.broadcaster_user_id;
-                    const allowed = await isChannelAllowed(broadcasterId || channelName);
+                    const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                     if (!allowed) return;
                     await notifySubscription(channelName.toLowerCase());
                 }
@@ -338,7 +356,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
                 const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || channelName);
+                const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
                 const total = event?.total ?? 1;
                 const isAnonymous = event?.is_anonymous === true;
@@ -367,7 +385,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
                 const toBroadcasterId = event?.to_broadcaster_user_id;
-                const allowed = await isChannelAllowed(toBroadcasterId || toName);
+                const allowed = await isEventAllowed(toBroadcasterId, toName?.toLowerCase());
                 if (!allowed) return;
                 await notifyRaid(toName.toLowerCase(), fromName, viewers, fromId);
             } catch (error) {
@@ -383,7 +401,7 @@ export async function eventSubHandler(req, res, rawBody) {
                     return;
                 }
                 const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isChannelAllowed(broadcasterId || channelName);
+                const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
 
                 const isAutomatic = event?.is_automatic === true;
