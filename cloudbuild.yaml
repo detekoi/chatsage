@@ -31,7 +31,7 @@ steps:
     - '--port'
     - '8080'
     - '--set-env-vars'
-    - 'GOOGLE_CLOUD_PROJECT=${_PROJECT_ID},GCP_REGION=${_REGION},NODE_ENV=production,LLM_PROVIDER=gemini,OPENAI_MODEL_ID=gpt-5.6-luna'
+    - 'GOOGLE_CLOUD_PROJECT=${_PROJECT_ID},GCP_REGION=${_REGION},NODE_ENV=production,LLM_PROVIDER=gemini,GEMINI_MODEL_ID=gemini-3-flash-preview,GEMINI_LITE_MODEL_ID=gemini-flash-lite-latest,OPENAI_MODEL_ID=gpt-5.6-luna,OPENAI_LITE_MODEL_ID=gpt-5.6-luna'
     - '--set-secrets'
     - |
       TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=projects/${_PROJECT_ID}/secrets/twitch-bot-refresh-token/versions/latest,

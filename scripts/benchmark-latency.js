@@ -138,6 +138,13 @@ const TEST_CASES = [
     }
 ];
 
+// Suppress SDK warning logs regarding thoughtSignature parts during benchmarks
+const originalWarn = console.warn;
+console.warn = function (...args) {
+    if (typeof args[0] === 'string' && args[0].includes('thoughtSignature')) return;
+    originalWarn.apply(console, args);
+};
+
 // ── Model Invocation Runners with Streaming & Precision Latency ────────────────
 
 async function callGeminiStream(tc) {
@@ -159,7 +166,16 @@ async function callGeminiStream(tc) {
         });
 
         for await (const chunk of stream) {
-            const chunkText = chunk.text || (chunk.candidates?.[0]?.content?.parts?.[0]?.text) || '';
+            let chunkText = '';
+            const parts = chunk.candidates?.[0]?.content?.parts;
+            if (parts && Array.isArray(parts)) {
+                for (const p of parts) {
+                    if (p.text) chunkText += p.text;
+                }
+            } else if (typeof chunk.text === 'string') {
+                chunkText = chunk.text;
+            }
+
             if (chunkText.length > 0) {
                 if (ttftMs === null) {
                     ttftMs = performance.now() - startTime;

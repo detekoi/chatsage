@@ -1,0 +1,666 @@
+{
+  "timestamp": "2026-07-31T03:30:28.781Z",
+  "config": {
+    "iterations": 10,
+    "warmupRuns": 1,
+    "useCaseFilter": "all",
+    "geminiModel": "gemini-flash-lite-latest",
+    "openaiModel": "gpt-5.6-luna"
+  },
+  "overall": {
+    "gemini": {
+      "ttft": {
+        "p50": 346,
+        "p90": 376,
+        "p95": 388,
+        "p99": 398,
+        "mean": 349,
+        "min": 326,
+        "max": 400,
+        "stddev": 23
+      },
+      "totalLatency": {
+        "p50": 419,
+        "p90": 538,
+        "p95": 559,
+        "p99": 575,
+        "mean": 449,
+        "min": 382,
+        "max": 579,
+        "stddev": 66
+      }
+    },
+    "openai": {
+      "ttft": {
+        "p50": 564,
+        "p90": 880,
+        "p95": 1039,
+        "p99": 1166,
+        "mean": 646,
+        "min": 457,
+        "max": 1198,
+        "stddev": 228
+      },
+      "totalLatency": {
+        "p50": 926,
+        "p90": 1285,
+        "p95": 1387,
+        "p99": 1468,
+        "mean": 997,
+        "min": 769,
+        "max": 1488,
+        "stddev": 240
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "checkin_newcomer",
+      "category": "checkin",
+      "name": "Daily Check-In: Newcomer (1st check-in)",
+      "prompt": "Note that @idzuna just checked in for time #1. React with quiet warmth and welcome them to the stream!",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 333,
+          "p90": 391,
+          "p95": 403,
+          "p99": 413,
+          "mean": 345,
+          "min": 300,
+          "max": 416,
+          "stddev": 36
+        },
+        "totalLatency": {
+          "p50": 480,
+          "p90": 541,
+          "p95": 550,
+          "p99": 557,
+          "mean": 489,
+          "min": 444,
+          "max": 559,
+          "stddev": 40
+        },
+        "tokensPerSec": {
+          "p50": 67,
+          "p90": 73,
+          "p95": 75,
+          "p99": 77,
+          "mean": 66,
+          "min": 45,
+          "max": 78,
+          "stddev": 8
+        },
+        "sampleText": "Welcome in @idzuna! So glad you're here for your very first check-in! Grab a cozy drink and get comfy, SageDen is happy to have you 💚✨"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 457,
+          "p90": 555,
+          "p95": 779,
+          "p99": 959,
+          "mean": 508,
+          "min": 405,
+          "max": 1004,
+          "stddev": 167
+        },
+        "totalLatency": {
+          "p50": 859,
+          "p90": 1286,
+          "p95": 1455,
+          "p99": 1590,
+          "mean": 955,
+          "min": 714,
+          "max": 1624,
+          "stddev": 260
+        },
+        "tokensPerSec": {
+          "p50": 34,
+          "p90": 39,
+          "p95": 40,
+          "p99": 42,
+          "mean": 33,
+          "min": 20,
+          "max": 42,
+          "stddev": 6
+        },
+        "sampleText": "Welcome in, @idzuna! Check-in #1—glad you’re here. Settle in and enjoy the stream 🌙"
+      }
+    },
+    {
+      "id": "checkin_regular",
+      "category": "checkin",
+      "name": "Daily Check-In: Regular (42nd check-in)",
+      "prompt": "Note that @parfaitfair just checked in for time #42. React with quiet warmth and a touch of wit, like someone who genuinely notices the regulars.",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 343,
+          "p90": 376,
+          "p95": 388,
+          "p99": 397,
+          "mean": 342,
+          "min": 315,
+          "max": 399,
+          "stddev": 27
+        },
+        "totalLatency": {
+          "p50": 521,
+          "p90": 578,
+          "p95": 594,
+          "p99": 607,
+          "mean": 527,
+          "min": 478,
+          "max": 610,
+          "stddev": 40
+        },
+        "tokensPerSec": {
+          "p50": 71,
+          "p90": 77,
+          "p95": 78,
+          "p99": 79,
+          "mean": 69,
+          "min": 51,
+          "max": 79,
+          "stddev": 8
+        },
+        "sampleText": "forty-two check-ins, parfaitfair? Hitchhiker's guide would be proud. glad to have you back in the sage circle! ☕✨"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 744,
+          "p90": 1060,
+          "p95": 1830,
+          "p99": 2446,
+          "mean": 947,
+          "min": 659,
+          "max": 2600,
+          "stddev": 555
+        },
+        "totalLatency": {
+          "p50": 1198,
+          "p90": 1566,
+          "p95": 2286,
+          "p99": 2862,
+          "mean": 1376,
+          "min": 1046,
+          "max": 3007,
+          "stddev": 553
+        },
+        "tokensPerSec": {
+          "p50": 26,
+          "p90": 31,
+          "p95": 31,
+          "p99": 32,
+          "mean": 25,
+          "min": 9,
+          "max": 32,
+          "stddev": 6
+        },
+        "sampleText": "@parfaitfair, check-in #42—your loyalty is becoming suspiciously legendary. Glad to have you back, regular."
+      }
+    },
+    {
+      "id": "checkin_milestone",
+      "category": "checkin",
+      "name": "Daily Check-In: Milestone (100th check-in)",
+      "prompt": "Note that @turboicehusky just checked in for time #100! Celebrate this major milestone with excitement and genuine gratitude.",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 400,
+          "p90": 443,
+          "p95": 460,
+          "p99": 473,
+          "mean": 390,
+          "min": 307,
+          "max": 477,
+          "stddev": 56
+        },
+        "totalLatency": {
+          "p50": 579,
+          "p90": 647,
+          "p95": 656,
+          "p99": 663,
+          "mean": 577,
+          "min": 482,
+          "max": 665,
+          "stddev": 59
+        },
+        "tokensPerSec": {
+          "p50": 77,
+          "p90": 89,
+          "p95": 90,
+          "p99": 91,
+          "mean": 78,
+          "min": 68,
+          "max": 91,
+          "stddev": 7
+        },
+        "sampleText": "YOOOOO 100 CHECK-INS @turboicehusky!! That is legendary dedication, huge thanks for hanging out with us so much! Let's goooo! PogChamp 🎉"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 568,
+          "p90": 632,
+          "p95": 678,
+          "p99": 714,
+          "mean": 586,
+          "min": 497,
+          "max": 723,
+          "stddev": 57
+        },
+        "totalLatency": {
+          "p50": 1110,
+          "p90": 1234,
+          "p95": 1305,
+          "p99": 1362,
+          "mean": 1125,
+          "min": 1004,
+          "max": 1377,
+          "stddev": 101
+        },
+        "tokensPerSec": {
+          "p50": 42,
+          "p90": 46,
+          "p95": 47,
+          "p99": 48,
+          "mean": 42,
+          "min": 34,
+          "max": 48,
+          "stddev": 4
+        },
+        "sampleText": "@turboicehusky 100 cumulative check-ins! 🎉 That’s an incredible milestone—thank you for showing up and being part of the community! Here’s to many more! 🐺🙌"
+      }
+    },
+    {
+      "id": "trans_en_ja",
+      "category": "translation",
+      "name": "Translation: English -> Japanese",
+      "prompt": "Target language: Japanese\nText to translate: \"Good luck on the boss fight, you got this!\"",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 365,
+          "p90": 410,
+          "p95": 444,
+          "p99": 472,
+          "mean": 369,
+          "min": 302,
+          "max": 479,
+          "stddev": 46
+        },
+        "totalLatency": {
+          "p50": 414,
+          "p90": 455,
+          "p95": 493,
+          "p99": 524,
+          "mean": 424,
+          "min": 383,
+          "max": 532,
+          "stddev": 41
+        },
+        "tokensPerSec": {
+          "p50": 22,
+          "p90": 26,
+          "p95": 26,
+          "p99": 26,
+          "mean": 23,
+          "min": 19,
+          "max": 26,
+          "stddev": 2
+        },
+        "sampleText": "ボス戦頑張って、絶対勝てるよ！"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 469,
+          "p90": 649,
+          "p95": 1217,
+          "p99": 1671,
+          "mean": 602,
+          "min": 415,
+          "max": 1784,
+          "stddev": 396
+        },
+        "totalLatency": {
+          "p50": 769,
+          "p90": 1435,
+          "p95": 4047,
+          "p99": 6137,
+          "mean": 1361,
+          "min": 671,
+          "max": 6660,
+          "stddev": 1767
+        },
+        "tokensPerSec": {
+          "p50": 23,
+          "p90": 25,
+          "p95": 26,
+          "p99": 27,
+          "mean": 21,
+          "min": 3,
+          "max": 27,
+          "stddev": 6
+        },
+        "sampleText": "ボス戦、頑張って！君ならできる！"
+      }
+    },
+    {
+      "id": "trans_ja_en",
+      "category": "translation",
+      "name": "Translation: Japanese -> English",
+      "prompt": "Target language: English\nText to translate: \"今日は配信ありがとうございます！応援しています\"",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 326,
+          "p90": 359,
+          "p95": 361,
+          "p99": 363,
+          "mean": 324,
+          "min": 289,
+          "max": 363,
+          "stddev": 27
+        },
+        "totalLatency": {
+          "p50": 382,
+          "p90": 432,
+          "p95": 436,
+          "p99": 439,
+          "mean": 388,
+          "min": 342,
+          "max": 440,
+          "stddev": 33
+        },
+        "tokensPerSec": {
+          "p50": 37,
+          "p90": 40,
+          "p95": 41,
+          "p99": 42,
+          "mean": 37,
+          "min": 32,
+          "max": 42,
+          "stddev": 3
+        },
+        "sampleText": "Thank you for the stream today! I'm supporting you LUL"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 504,
+          "p90": 658,
+          "p95": 660,
+          "p99": 660,
+          "mean": 514,
+          "min": 399,
+          "max": 661,
+          "stddev": 86
+        },
+        "totalLatency": {
+          "p50": 775,
+          "p90": 1167,
+          "p95": 1693,
+          "p99": 2113,
+          "mean": 932,
+          "min": 660,
+          "max": 2218,
+          "stddev": 444
+        },
+        "tokensPerSec": {
+          "p50": 19,
+          "p90": 24,
+          "p95": 24,
+          "p99": 24,
+          "mean": 19,
+          "min": 7,
+          "max": 24,
+          "stddev": 5
+        },
+        "sampleText": "Thank you for the stream today! I'm cheering you on."
+      }
+    },
+    {
+      "id": "trans_en_es",
+      "category": "translation",
+      "name": "Translation: English -> Spanish",
+      "prompt": "Target language: Spanish\nText to translate: \"Hello everyone in twitch chat! Hope you are having a wonderful stream.\"",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 349,
+          "p90": 397,
+          "p95": 403,
+          "p99": 407,
+          "mean": 349,
+          "min": 284,
+          "max": 408,
+          "stddev": 37
+        },
+        "totalLatency": {
+          "p50": 423,
+          "p90": 451,
+          "p95": 452,
+          "p99": 453,
+          "mean": 419,
+          "min": 368,
+          "max": 453,
+          "stddev": 25
+        },
+        "tokensPerSec": {
+          "p50": 43,
+          "p90": 46,
+          "p95": 47,
+          "p99": 49,
+          "mean": 43,
+          "min": 40,
+          "max": 49,
+          "stddev": 3
+        },
+        "sampleText": "¡Hola a todos en el chat de Twitch! Espero que estén teniendo un stream maravilloso."
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 666,
+          "p90": 794,
+          "p95": 1007,
+          "p99": 1177,
+          "mean": 722,
+          "min": 585,
+          "max": 1219,
+          "stddev": 170
+        },
+        "totalLatency": {
+          "p50": 992,
+          "p90": 1241,
+          "p95": 1484,
+          "p99": 1678,
+          "mean": 1068,
+          "min": 857,
+          "max": 1727,
+          "stddev": 235
+        },
+        "tokensPerSec": {
+          "p50": 23,
+          "p90": 25,
+          "p95": 26,
+          "p99": 27,
+          "mean": 22,
+          "min": 13,
+          "max": 27,
+          "stddev": 4
+        },
+        "sampleText": "¡Hola a todos en el chat de Twitch! Espero que estén disfrutando mucho del stream."
+      }
+    },
+    {
+      "id": "trans_slang",
+      "category": "translation",
+      "name": "Translation: Twitch Chat Slang / Emotes",
+      "prompt": "Target language: Japanese\nText to translate: \"LFG let's go chat gg!\"",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 327,
+          "p90": 413,
+          "p95": 532,
+          "p99": 627,
+          "mean": 362,
+          "min": 292,
+          "max": 651,
+          "stddev": 102
+        },
+        "totalLatency": {
+          "p50": 400,
+          "p90": 500,
+          "p95": 618,
+          "p99": 712,
+          "mean": 437,
+          "min": 354,
+          "max": 736,
+          "stddev": 106
+        },
+        "tokensPerSec": {
+          "p50": 21,
+          "p90": 24,
+          "p95": 24,
+          "p99": 24,
+          "mean": 20,
+          "min": 12,
+          "max": 25,
+          "stddev": 4
+        },
+        "sampleText": "LFG 行くぞチャット gg!"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 1198,
+          "p90": 1556,
+          "p95": 2267,
+          "p99": 2836,
+          "mean": 1366,
+          "min": 930,
+          "max": 2978,
+          "stddev": 554
+        },
+        "totalLatency": {
+          "p50": 1488,
+          "p90": 1844,
+          "p95": 2586,
+          "p99": 3179,
+          "mean": 1642,
+          "min": 1175,
+          "max": 3328,
+          "stddev": 577
+        },
+        "tokensPerSec": {
+          "p50": 53,
+          "p90": 57,
+          "p95": 59,
+          "p99": 60,
+          "mean": 50,
+          "min": 21,
+          "max": 61,
+          "stddev": 10
+        },
+        "sampleText": "LFG、行くぞチャット！GG！"
+      }
+    },
+    {
+      "id": "trans_same_lang",
+      "category": "translation",
+      "name": "Translation: Same-Language Detection",
+      "prompt": "Target language: Spanish\nText to translate: \"Buenas noches a todos\"",
+      "gemini": {
+        "model": "gemini-flash-lite-latest",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 352,
+          "p90": 401,
+          "p95": 401,
+          "p99": 401,
+          "mean": 358,
+          "min": 296,
+          "max": 402,
+          "stddev": 36
+        },
+        "totalLatency": {
+          "p50": 391,
+          "p90": 452,
+          "p95": 453,
+          "p99": 454,
+          "mean": 400,
+          "min": 332,
+          "max": 454,
+          "stddev": 40
+        },
+        "tokensPerSec": {
+          "p50": 8,
+          "p90": 8,
+          "p95": 9,
+          "p99": 9,
+          "mean": 8,
+          "min": 7,
+          "max": 9,
+          "stddev": 1
+        },
+        "sampleText": "SAME_LANGUAGE"
+      },
+      "openai": {
+        "model": "gpt-5.6-luna",
+        "sampleCount": 10,
+        "ttft": {
+          "p50": 560,
+          "p90": 635,
+          "p95": 650,
+          "p99": 662,
+          "mean": 584,
+          "min": 535,
+          "max": 665,
+          "stddev": 43
+        },
+        "totalLatency": {
+          "p50": 784,
+          "p90": 851,
+          "p95": 868,
+          "p99": 881,
+          "mean": 794,
+          "min": 708,
+          "max": 885,
+          "stddev": 52
+        },
+        "tokensPerSec": {
+          "p50": 9,
+          "p90": 9,
+          "p95": 10,
+          "p99": 10,
+          "mean": 9,
+          "min": 8,
+          "max": 10,
+          "stddev": 1
+        },
+        "sampleText": "SAME_LANGUAGE"
+      }
+    }
+  ]
+}
