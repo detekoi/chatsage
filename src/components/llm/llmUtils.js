@@ -65,12 +65,19 @@ function stripMetaThoughts(text) {
 
 export function removeMarkdownAsterisks(text) {
   if (text == null) return '';
+  // Markdown links: [visible text](url) → visible text
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // Leftover parenthesised URLs from citation wrappers: (https://…) → ''
+  text = text.replace(/\(https?:\/\/[^)]+\)/g, '');
+  // Bold: **text** → text
   // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
-  // Remove *italics*
+  // Italic: *text* → text
   // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*([^\*]+)\*/g, '$1');
-  return text;
+  // Collapse multiple spaces left by removals
+  text = text.replace(/ {2,}/g, ' ');
+  return text.trim();
 }
 
 /**

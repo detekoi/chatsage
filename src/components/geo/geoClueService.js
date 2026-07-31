@@ -1,29 +1,6 @@
-import { getGeminiClient, safeParseJsonResponse } from '../llm/geminiClient.js';
+import { generateStructuredJson } from '../llm/geminiClient.js';
 import logger from '../../lib/logger.js';
-import { Type as GenAIType } from '@google/genai';
-import { searchTool } from '../llm/gemini/tools.js';
-
-const GeoClueSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        clue_text: {
-            type: GenAIType.STRING,
-            description: "The engaging clue sentence (approx 200-350 characters). Focused on sensory details and subtle hints, NOT revealing the name."
-        }
-    },
-    required: ["clue_text"]
-};
-
-const GeoRevealSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        reveal_text: {
-            type: GenAIType.STRING,
-            description: "The summary paragraph (2-4 sentences). Fun, informative facts about the location."
-        }
-    },
-    required: ["reveal_text"]
-};
+import { GeoClueSchema, GeoRevealSchema } from '../llm/schemaUtils.js';
 
 /**
  * Generates the initial clue for a location using Structured Output.
@@ -37,20 +14,14 @@ Difficulty: ${difficulty}
 - Do NOT reveal the location name.
 - Return a single engaging sentence in JSON.${languageDirective}`;
 
-    const model = getGeminiClient();
     try {
-        const tools = (mode === 'game') ? searchTool : undefined;
-
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            tools: tools,
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: GeoClueSchema
-            }
+        const parsed = await generateStructuredJson({
+            prompt,
+            schema: GeoClueSchema,
+            schemaName: 'geo_initial_clue',
+            tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
         });
 
-        const parsed = safeParseJsonResponse(result, '[GeoClue - Initial]');
         return parsed?.clue_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating initial clue');
@@ -79,20 +50,14 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
 - Do NOT give away the answer directly.
 - Return a single engaging sentence in JSON.${languageDirective}`;
 
-    const model = getGeminiClient();
     try {
-        const tools = (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? searchTool : undefined;
-
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            tools: tools,
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: GeoClueSchema
-            }
+        const parsed = await generateStructuredJson({
+            prompt,
+            schema: GeoClueSchema,
+            schemaName: 'geo_followup_clue',
+            tools: (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? [{ googleSearch: {} }] : undefined
         });
 
-        const parsed = safeParseJsonResponse(result, '[GeoClue - FollowUp]');
         return parsed?.clue_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating follow-up clue');
@@ -122,20 +87,14 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
 - Engaging for Twitch chat.
 - Return a short paragraph (2-4 sentences) in JSON.${languageDirective}`;
 
-    const model = getGeminiClient();
     try {
-        const tools = (mode === 'game') ? searchTool : undefined;
-
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            tools: tools,
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: GeoRevealSchema
-            }
+        const parsed = await generateStructuredJson({
+            prompt,
+            schema: GeoRevealSchema,
+            schemaName: 'geo_final_reveal',
+            tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
         });
 
-        const parsed = safeParseJsonResponse(result, '[GeoClue - Reveal]');
         return parsed?.reveal_text || null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating final reveal');

@@ -1,5 +1,6 @@
 // scripts/verify-summarizer.js
-// End-to-end check of the map/reduce summarization flow using Gemini
+// End-to-end check of the map/reduce summarization flow through the LLM facade.
+// Provider-aware: run with LLM_PROVIDER=openai (or gemini, the default).
 
 import dotenv from 'dotenv';
 import logger from '../src/lib/logger.js';

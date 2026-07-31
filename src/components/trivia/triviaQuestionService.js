@@ -1,66 +1,9 @@
 // src/components/trivia/triviaQuestionService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient, safeParseJsonResponse, safeExtractText } from '../llm/geminiClient.js';
-import { Type as GenAIType } from '@google/genai';
+import { generateStructuredJson } from '../llm/geminiClient.js';
+import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerificationSchema } from '../llm/schemaUtils.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
-
-// --- Schemas ---
-
-const TriviaQuestionSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        question: {
-            type: GenAIType.STRING,
-            description: "The trivia question to ask."
-        },
-        correct_answer: {
-            type: GenAIType.STRING,
-            description: "The single, most accurate, AND VERY CONCISE answer (ideally a proper noun, specific term, or 1-3 key words). Avoid full sentences or overly descriptive phrases; these belong in the 'explanation'."
-        },
-        alternate_answers: {
-            type: GenAIType.ARRAY,
-            description: "Alternative correct and VERY CONCISE answers or common, acceptable variations (each ideally 1-3 key words).",
-            items: { type: GenAIType.STRING }
-        },
-        explanation: {
-            type: GenAIType.STRING,
-            description: "Brief explanation of why the answer is correct, can include more descriptive details that are not part of the concise answer."
-        },
-        difficulty: {
-            type: GenAIType.STRING,
-            description: "The difficulty level of this question (easy, normal, hard).",
-            enum: ["easy", "normal", "hard"]
-        },
-        search_used: {
-            type: GenAIType.BOOLEAN,
-            description: "Whether external search was required to ensure accuracy."
-        },
-        category: {
-            type: GenAIType.STRING,
-            description: "A specific category for the answer (e.g., Person, Location, Event, Work Title, Scientific Term). Keep generic and domain-agnostic."
-        }
-    },
-    required: ["question", "correct_answer", "explanation", "difficulty", "search_used", "category"]
-};
-
-// Localized schema adds correct_answer_english for answer verification when generating in non-English
-const LocalizedTriviaQuestionSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        ...TriviaQuestionSchema.properties,
-        correct_answer_english: {
-            type: GenAIType.STRING,
-            description: "The correct answer translated to English. Used for answer verification. Must be concise (1-3 words)."
-        },
-        alternate_answers_english: {
-            type: GenAIType.ARRAY,
-            description: "The alternate answers translated to English for verification.",
-            items: { type: GenAIType.STRING }
-        }
-    },
-    required: [...TriviaQuestionSchema.required, "correct_answer_english"]
-};
 
 // --- Helper: Extract current game from context ---
 function getGameFromContext(channelName) {
@@ -78,7 +21,7 @@ function getGameFromContext(channelName) {
 
 
 /**
- * Generates a trivia question based on topic and difficulty using Gemini Structured Output.
+ * Generates a trivia question based on topic and difficulty using Structured Output.
  * Automatically enables search for specific topics.
  * 
  * @param {string} topic
@@ -90,8 +33,6 @@ function getGameFromContext(channelName) {
  * @returns {Promise<object|null>}
  */
 export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = [], language = null) {
-    const model = getGeminiClient();
-
     let specificTopic = topic;
     if (topic && topic.toLowerCase() === 'game' && channelName) {
         specificTopic = getGameFromContext(channelName);
@@ -133,7 +74,7 @@ ${exclusionInstructionText}
 Be precise about entity types and relationships. Do not reveal the correct answer (or any alias) in the question text.
 Keep 'correct_answer' concise (1-3 words).
 Also set a generic 'category' describing the answer type (e.g., Person, Location, Event, Work Title, Scientific Term).
-Only use Google Search if the question requires very recent or obscure facts that may be beyond general knowledge.${languageDirective}`;
+Only use web search if the question requires very recent or obscure facts that may be beyond general knowledge.${languageDirective}`;
 
     // Select schema based on whether we need the English answer fields
     const activeSchema = language ? LocalizedTriviaQuestionSchema : TriviaQuestionSchema;
@@ -141,18 +82,15 @@ Only use Google Search if the question requires very recent or obscure facts tha
     try {
         logger.debug({ topic: specificTopic, language }, `[TriviaService] Generating question via Structured Output.`);
 
-        // Always provide Google Search tool — Gemini auto-decides whether to use it
-
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.7,
-                responseMimeType: "application/json",
-                responseSchema: activeSchema
-            }
+        const { parsed, searchUsed: groundingSearchUsed } = await generateStructuredJson({
+            prompt,
+            schema: activeSchema,
+            schemaName: 'trivia_question',
+            temperature: 0.7,
+            tools: [{ googleSearch: {} }],
+            returnMeta: true
         });
 
-        const parsed = safeParseJsonResponse(result, '[TriviaService - Generate]');
         if (!parsed) {
             return null;
         }
@@ -188,16 +126,15 @@ Only use Google Search if the question requires very recent or obscure facts tha
             return null;
         }
 
-        // Derive searchUsed from actual response grounding metadata
-        const actuallySearched = search_used || !!(result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
-
         const questionObject = {
             question: question,
             answer: correct_answer,
             alternateAnswers: alternate_answers || [],
             explanation: explanation || "No explanation provided.",
             difficulty: actualDiff || difficulty,
-            searchUsed: actuallySearched,
+            // Cross-check the model's self-reported flag against provider metadata
+            // (grounding metadata / web_search_call items) — models misreport this.
+            searchUsed: !!search_used || groundingSearchUsed,
             verified: true, // Structured output = implicitly verified
             topic: isGeneralTopic ? 'general' : specificTopic,
             category: category || "",
@@ -211,7 +148,7 @@ Only use Google Search if the question requires very recent or obscure facts tha
             logger.debug(`[TriviaService] Localized answer: "${correct_answer}" (English: "${parsed.correct_answer_english}")`);
         }
 
-        logger.info(`[TriviaService] Successfully generated question (search=${actuallySearched}, lang=${language || 'en'}). Q: "${question}", A: "${correct_answer}"`);
+        logger.info(`[TriviaService] Successfully generated question (search=${!!search_used}, lang=${language || 'en'}). Q: "${question}", A: "${correct_answer}"`);
         return questionObject;
 
     } catch (error) {
@@ -231,8 +168,6 @@ Only use Google Search if the question requires very recent or obscure facts tha
  * @returns {Promise<object>}
  */
 export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers = [], question = "", topic = "") {
-    const model = getGeminiClient();
-
     if (!correctAnswer || !userAnswer) {
         return { is_correct: false, confidence: 1.0, reasoning: "Missing answer to verify", search_used: false };
     }
@@ -280,16 +215,6 @@ export async function verifyAnswer(correctAnswer, userAnswer, alternateAnswers =
     }
 
     // 2. Structured Verification via LLM
-    const VerificationSchema = {
-        type: GenAIType.OBJECT,
-        properties: {
-            is_correct: { type: GenAIType.BOOLEAN },
-            confidence: { type: GenAIType.NUMBER },
-            reasoning: { type: GenAIType.STRING }
-        },
-        required: ["is_correct", "confidence", "reasoning"]
-    };
-
     const prompt = `Topic: ${topic || 'general'}
 Question: "${question}"
 Correct Answer: "${correctAnswer}"
@@ -303,16 +228,13 @@ Verify if the Player's Answer is correct.
 Return STRICT JSON.`;
 
     try {
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.0,
-                responseMimeType: 'application/json',
-                responseSchema: VerificationSchema
-            }
+        const parsed = await generateStructuredJson({
+            prompt,
+            schema: TriviaVerificationSchema,
+            schemaName: 'trivia_verification',
+            temperature: 0.0
         });
 
-        const parsed = safeParseJsonResponse(result, '[TriviaService - Verify]');
         if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[TriviaService] Verified via Structured Output.');
             return {
@@ -345,9 +267,9 @@ Return STRICT JSON.`;
  * Generates an explanation for a trivia answer.
  */
 export async function generateExplanation(question, answer, topic = "general") {
-    const model = getGeminiClient();
+    const { generateText } = await import('../llm/geminiClient.js');
     const prompt = `Provide a brief, interesting explanation for this trivia answer:
-    
+
 Question: ${question}
 Answer: ${answer}
 Topic: ${topic}
@@ -355,12 +277,8 @@ Topic: ${topic}
 Your explanation should be informative, engaging, and around 1-2 sentences long.`;
 
     try {
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7 }
-        });
-        const extractedText = safeExtractText(result, '[TriviaService - Explanation]');
-        return extractedText?.trim() || `The correct answer is ${answer}.`;
+        const explanation = await generateText(prompt, { temperature: 0.7 });
+        return explanation?.trim() || `The correct answer is ${answer}.`;
     } catch (error) {
         logger.error({ err: error }, 'Error generating explanation');
         return `The correct answer is ${answer}.`;

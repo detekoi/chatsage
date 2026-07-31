@@ -1,10 +1,10 @@
 // tests/unit/customCommands/promptResolver.test.js
 import { resolvePrompt, formatHistoryForPrompt } from '../../../src/components/customCommands/promptResolver.js';
-import { generateLiteContent } from '../../../src/components/llm/gemini/core.js';
+import { generateLiteContent } from '../../../src/components/llm/llmClient.js';
 import { smartTruncate } from '../../../src/components/llm/llmUtils.js';
 import { getRecentInferences, logInference } from '../../../src/components/llm/inferenceHistoryStorage.js';
 
-jest.mock('../../../src/components/llm/gemini/core.js', () => ({
+jest.mock('../../../src/components/llm/llmClient.js', () => ({
     generateLiteContent: jest.fn()
 }));
 

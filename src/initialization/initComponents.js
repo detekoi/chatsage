@@ -8,7 +8,7 @@ import { initializeAutoChatStorage } from '../components/context/autoChatStorage
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../components/llm/conversationStorage.js';
-import { initializeGeminiClient } from '../components/llm/geminiClient.js';
+import { initializeLlmClient } from '../components/llm/geminiClient.js';
 import { initializeHelixClient } from '../components/twitch/helixClient.js';
 import { initializeContextManager } from '../components/context/contextManager.js';
 
@@ -106,8 +106,8 @@ export async function initializeStorageComponents() {
  * @returns {Promise<void>}
  */
 export async function initializeClients() {
-    logger.info('Initializing Gemini Client...');
-    initializeGeminiClient(config.gemini);
+    logger.info('Initializing LLM Client...');
+    initializeLlmClient(config);
 
     logger.info('Initializing Twitch Helix Client...');
     await initializeHelixClient(config.twitch);

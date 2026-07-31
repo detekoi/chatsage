@@ -58,13 +58,24 @@ describe('Config Loader', () => {
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_BOT_USERNAME/);
         });
 
-        test('should throw error when GEMINI_API_KEY is missing', async () => {
+        test('should throw error when GEMINI_API_KEY is missing and provider is gemini', async () => {
+            process.env.LLM_PROVIDER = 'gemini';
             process.env.TWITCH_BOT_USERNAME = 'testbot';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
             process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*GEMINI_API_KEY/);
+        });
+
+        test('should throw error when OPENAI_API_KEY is missing and provider is openai', async () => {
+            process.env.LLM_PROVIDER = 'openai';
+            process.env.TWITCH_BOT_USERNAME = 'testbot';
+            process.env.TWITCH_CLIENT_ID = 'test-client-id';
+            process.env.TWITCH_CLIENT_SECRET = 'test-secret';
+            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
+
+            await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*OPENAI_API_KEY/);
         });
 
         test('should throw error when TWITCH_CLIENT_ID is missing', async () => {

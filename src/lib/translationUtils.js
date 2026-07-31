@@ -1,6 +1,6 @@
-import { Type } from "@google/genai";
 import logger from './logger.js';
-import { generateLiteContent } from '../components/llm/gemini/core.js';
+import { generateLiteContent } from '../components/llm/llmClient.js';
+import { TranslateCommandSchema, TranslationResponseSchema } from '../components/llm/schemaUtils.js';
 
 // Translation cache with LRU-style eviction and time-based expiration
 const translationCache = new Map();
@@ -20,6 +20,8 @@ if (process.env.NODE_ENV !== 'test') {
         }
         logger.debug(`Translation cache cleanup: ${translationCache.size} entries remaining`);
     }, 4 * 60 * 60 * 1000); // Clean up every 4 hours
+    // Don't let the sweep timer keep short-lived processes (scripts, jest workers) alive
+    cleanupIntervalId.unref?.();
 }
 
 // Export cleanup function for tests
@@ -42,28 +44,6 @@ export const COMMON_LANGUAGES = [
     'vietnamese', 'thai', 'swedish', 'danish', 'norwegian',
     'finnish', 'greek', 'czech', 'hungarian', 'romanian'
 ];
-
-// Schema for translate command parsing
-const TranslateCommandSchema = {
-    type: Type.OBJECT,
-    properties: {
-        action: {
-            type: Type.STRING,
-            description: "The action to take: 'enable' to start translation, 'stop' to stop for one user, 'stop_all' to stop all translations"
-        },
-        targetUser: {
-            type: Type.STRING,
-            nullable: true,
-            description: "The username to target, or null if targeting self"
-        },
-        language: {
-            type: Type.STRING,
-            nullable: true,
-            description: "The target language for translation, or null for stop actions"
-        }
-    },
-    required: ['action']
-};
 
 /**
  * Heuristic fallback for parsing translate commands when LLM fails
@@ -117,7 +97,6 @@ function parseTranslateCommandHeuristic(commandText, _invokingUsername) {
 
 /**
  * Parse a translate command using LLM with chat context
- * Uses gemini-flash-lite-latest for speed and cost efficiency
  *
  * @param {string} commandText - The command arguments (everything after "!translate")
  * @param {string} invokingUsername - The username of the person who invoked the command
@@ -178,7 +157,7 @@ Return JSON only.`;
 
 
 /**
- * Translates text using a single gemini-flash-lite-latest call.
+ * Translates text using LLM lite content call.
  * Uses structured JSON output for both same-language detection and translation in one round-trip.
  * @param {string} textToTranslate - The text to translate
  * @param {string} targetLanguage - The target language
@@ -197,32 +176,15 @@ export async function translateText(textToTranslate, targetLanguage) {
     // Check cache first
     const cachedEntry = translationCache.get(cacheKey);
     if (cachedEntry && (now - cachedEntry.timestamp < CACHE_EXPIRY_MS)) {
-        // Move to end (LRU behavior)
         translationCache.delete(cacheKey);
         translationCache.set(cacheKey, cachedEntry);
         logger.debug(`[TranslationCache] Cache hit for: "${textToTranslate.substring(0, 30)}..."`);
         return cachedEntry.translation;
     }
 
-    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via flash-lite');
+    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via lite model');
 
     let translatedText = null;
-
-    // Structured output schema for combined detection + translation
-    const TranslationResponseSchema = {
-        type: Type.OBJECT,
-        properties: {
-            same_language: {
-                type: Type.BOOLEAN,
-                description: `True if the text is already written in ${targetLanguage}`
-            },
-            translated_text: {
-                type: Type.STRING,
-                description: `The text translated into ${targetLanguage}. Empty string if same_language is true.`
-            }
-        },
-        required: ['same_language', 'translated_text']
-    };
 
     // Attempt 1: Structured JSON output for reliable detection + translation
     try {
@@ -252,7 +214,6 @@ ${textToTranslate}`;
                 }
                 translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
             } catch (parseErr) {
-                // JSON parse failed — treat raw text as translation
                 logger.debug({ err: parseErr }, 'Failed to parse structured response, using raw text.');
                 translatedText = responseText.trim() || null;
             }
@@ -286,13 +247,10 @@ ${textToTranslate}`;
         return null;
     }
 
-    // Only remove quotation marks if they surround the entire message
     let cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
-    // Safety: strip markdown bold/italic injected by translation LLM
     cleanedText = cleanedText.replace(/\*\*/g, '').trim();
 
-    // Similarity safeguard: if the "translation" is nearly identical to the input,
-    // the LLM likely didn't actually translate — treat as same language.
+    // Similarity safeguard: if the "translation" is nearly identical to the input, treat as same language
     const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const normOriginal = normalize(textToTranslate);
     const normTranslated = normalize(cleanedText);
@@ -312,7 +270,6 @@ ${textToTranslate}`;
 
     // Cache the successful translation
     if (cleanedText && cleanedText.length > 0) {
-        // Implement LRU eviction if cache is full
         if (translationCache.size >= MAX_CACHE_SIZE) {
             const oldestKey = translationCache.keys().next().value;
             translationCache.delete(oldestKey);
