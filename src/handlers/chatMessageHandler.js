@@ -158,11 +158,9 @@ export async function handleChatMessage(channel, tags, message) {
         wasTranslateCommand
     });
 
-    if (wasTranslated) {
-        return;
-    }
-
     // --- Mention or Reply-to-Bot Check ---
+    // Note: we do NOT gate on wasTranslated so that @mentions / replies
+    // to the bot still get an AI response even when translation is active.
     if (!wasTranslateCommand && !wasGeoCommand && !wasTriviaCommand && !wasRiddleCommand && !wasStopRequest) {
         await handleBotMention({
             message,
