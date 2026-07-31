@@ -156,7 +156,17 @@ export async function generateLiteContent(prompt, options = {}) {
         // Grounded responses can contain multiple parts (text + thought signatures),
         // so join all text parts rather than taking only the first.
         const joinedParts = candidate?.content?.parts?.filter(p => p.text).map(p => p.text).join('');
-        return result?.text ?? (joinedParts || null);
+        const text = result?.text ?? (joinedParts || null);
+
+        if (!text) {
+            logger.warn({
+                finishReason: candidate?.finishReason,
+                hasCandidates: !!result?.candidates?.length,
+                partsLength: candidate?.content?.parts?.length ?? 0,
+                promptFeedback: result?.promptFeedback
+            }, '[generateLiteContent] Text extraction failed — response diagnostics attached.');
+        }
+        return text;
     } catch (error) {
         logger.error({ err: error }, 'generateLiteContent failed');
         return null;

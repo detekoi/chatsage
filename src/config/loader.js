@@ -25,13 +25,9 @@ function loadConfig() {
         'TWITCH_BOT_USERNAME',
         'TWITCH_CLIENT_ID',
         'TWITCH_CLIENT_SECRET',
+        'GEMINI_API_KEY',
+        'OPENAI_API_KEY',
     ];
-
-    if (provider === 'openai') {
-        requiredEnvVars.push('OPENAI_API_KEY');
-    } else {
-        requiredEnvVars.push('GEMINI_API_KEY');
-    }
 
 
     const missingEnvVars = requiredEnvVars.filter(key => !(key in process.env) || process.env[key] === '');

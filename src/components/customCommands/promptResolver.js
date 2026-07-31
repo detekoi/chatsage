@@ -116,7 +116,8 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         // Ad-lib prompts skip the search entirely, so latency/cost is unaffected.
         const responseText = await generateLiteContent(fullPrompt, {
             systemInstruction: systemInstruction,
-            tools: [{ googleSearch: {} }]
+            tools: [{ googleSearch: {} }],
+            model: 'main'
         });
 
         if (!responseText) {
@@ -141,7 +142,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
 
         return cleanText;
     } catch (error) {
-        logger.error({ err: error, prompt }, '[PromptResolver] Error resolving prompt via Gemini');
+        logger.error({ err: error, prompt }, '[PromptResolver] Error resolving prompt via LLM');
         return null;
     }
 }

@@ -87,11 +87,12 @@ async function main() {
         const { markEventSubReady } = await import('./components/twitch/eventsub.js');
         markEventSubReady();
 
-        // --- Initialize Emote Describer (uses the active LLM provider's key) ---
-        const emoteLlmApiKey = config.llm?.provider === 'openai'
-            ? config.openai?.apiKey
-            : config.gemini?.apiKey;
-        initEmoteDescriber(emoteLlmApiKey);
+        // --- Initialize Emote Describer ---
+        // The emote describer uses getGenAIInstance() (Gemini) for structured emote
+        // description and describeImages() (OpenAI Luna) for image analysis.
+        // Both clients are initialized by initializeLlmClient(), so pass the Gemini key
+        // for the validation guard (emote descriptions use Gemini Flash Lite directly).
+        initEmoteDescriber(config.gemini?.apiKey);
         initEmoteDescriptionStore();
 
         // Log Secret Manager status for monitoring

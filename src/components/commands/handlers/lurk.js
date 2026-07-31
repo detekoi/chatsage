@@ -58,7 +58,8 @@ const lurkHandler = {
             const fullPrompt = `${chatContext}\nTASK: ${prompt}${emoteHint}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
 
             let llmResponse = await generateLiteContent(fullPrompt, {
-                multimodalParts: emoteImageParts
+                multimodalParts: emoteImageParts,
+                model: 'main'
             }) || '';
 
 

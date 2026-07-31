@@ -18,125 +18,106 @@ import { toGeminiSchema } from './schemaUtils.js';
 export { buildContextPrompt } from './gemini/prompts.js';
 
 /**
- * Initializes the LLM client based on config.llm.provider.
- * Backwards-compatible signature accepts either full config object or gemini config.
+ * Initializes BOTH LLM clients for the 2-model routing architecture.
+ * Both providers are required — missing either key is a fatal startup error.
+ *
+ * - Gemini Flash Lite: Translation, summarization, botlang detection, emote description
+ * - OpenAI Luna: All other functionalities (ask, search, games, check-ins, commands)
  */
 export function initializeLlmClient(appConfig = config) {
-    const provider = (appConfig.llm?.provider || config.llm?.provider || 'gemini').toLowerCase();
+    const openaiConfig = appConfig.openai || config.openai;
+    const geminiConfig = appConfig.gemini || appConfig;
 
-    if (provider === 'openai') {
-        logger.info('Initializing LLM Client with provider: OpenAI');
-        const openaiConfig = appConfig.openai || config.openai;
-        openAiCore.initializeOpenAiClient(openaiConfig);
-    } else {
-        logger.info('Initializing LLM Client with provider: Gemini');
-        const geminiConfig = appConfig.gemini || appConfig;
-        geminiCore.initializeGeminiClient(geminiConfig);
+    // Fail-fast: both providers are required for the 2-model architecture.
+    if (!openaiConfig?.apiKey) {
+        throw new Error('OPENAI_API_KEY is required for 2-model routing (Primary tier). Set it in environment variables.');
     }
+    if (!geminiConfig?.apiKey) {
+        throw new Error('GEMINI_API_KEY is required for 2-model routing (Speed tier). Set it in environment variables.');
+    }
+
+    logger.info('Initializing OpenAI client (Primary tier: gpt-5.6-luna)');
+    openAiCore.initializeOpenAiClient(openaiConfig);
+
+    logger.info('Initializing Gemini client (Speed tier: gemini-flash-lite-latest)');
+    geminiCore.initializeGeminiClient(geminiConfig);
 }
 
 export function initializeGeminiClient(configOrGeminiConfig) {
     return initializeLlmClient(configOrGeminiConfig);
 }
 
-function isOpenAi() {
-    return (config.llm?.provider || 'gemini').toLowerCase() === 'openai';
-}
-
 export function getGenAIInstance() {
-    if (isOpenAi()) {
-        return openAiCore.getOpenAiInstance();
-    }
     return geminiCore.getGenAIInstance();
 }
 
-// Gemini-only legacy accessor. Callers needing provider-agnostic generation
-// must use generateText / generateStructuredJson / describeImages instead.
 export function getGeminiClient() {
     return geminiCore.getGeminiClient();
 }
 
+/**
+ * One-shot generation helper.
+ * By default (no model option or model='lite'), routes to Gemini Flash Lite for speed (~360ms).
+ * If model='main', routes to OpenAI Luna for personality & quality (~1s),
+ * explicitly setting modelId and reasoningEffort to main-tier values.
+ */
 export function generateLiteContent(prompt, options = {}) {
-    if (isOpenAi()) {
-        return openAiCore.generateLiteContent(prompt, options);
+    if (options.model === 'main' || options.provider === 'openai') {
+        return openAiCore.generateLiteContent(prompt, {
+            ...options,
+            modelId: options.modelId || config.openai.modelId,
+            reasoningEffort: options.reasoningEffort || config.openai.reasoningEffort,
+        });
     }
     return geminiCore.generateLiteContent(prompt, options);
 }
 
 export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null, botLanguage = null) {
-    if (isOpenAi()) {
-        return openAiChat.getOrCreateChatSession(channelName, initialContext, chatHistory, botLanguage);
-    }
-    return geminiChat.getOrCreateChatSession(channelName, initialContext, chatHistory, botLanguage);
+    return openAiChat.getOrCreateChatSession(channelName, initialContext, chatHistory, botLanguage);
 }
 
 export function resetChatSession(channelName) {
-    if (isOpenAi()) {
-        return openAiChat.resetChatSession(channelName);
-    }
-    return geminiChat.resetChatSession(channelName);
+    return openAiChat.resetChatSession(channelName);
 }
 
 export function clearChatSession(channelOrSessionId) {
-    if (isOpenAi()) {
-        return openAiChat.clearChatSession(channelOrSessionId);
-    }
-    return geminiChat.clearChatSession(channelOrSessionId);
+    return openAiChat.clearChatSession(channelOrSessionId);
 }
 
 export function generateStandardResponse(contextPrompt, userQuery, options = {}) {
-    if (isOpenAi()) {
-        return openAiGen.generateStandardResponse(contextPrompt, userQuery, options);
-    }
-    return geminiGen.generateStandardResponse(contextPrompt, userQuery, options);
+    return openAiGen.generateStandardResponse(contextPrompt, userQuery, options);
 }
 
 export function generateSearchResponse(contextPrompt, userQuery, options = {}) {
-    if (isOpenAi()) {
-        return openAiGen.generateSearchResponse(contextPrompt, userQuery, options);
-    }
-    return geminiGen.generateSearchResponse(contextPrompt, userQuery, options);
+    return openAiGen.generateSearchResponse(contextPrompt, userQuery, options);
 }
 
 export function generateUnifiedResponse(contextPrompt, userQuery, options = {}) {
-    if (isOpenAi()) {
-        return openAiGen.generateUnifiedResponse(contextPrompt, userQuery, options);
-    }
-    return geminiGen.generateUnifiedResponse(contextPrompt, userQuery, options);
+    return openAiGen.generateUnifiedResponse(contextPrompt, userQuery, options);
 }
 
 export function summarizeText(textToSummarize, targetCharLength = 400, options = {}) {
-    if (isOpenAi()) {
-        return openAiGen.summarizeText(textToSummarize, targetCharLength, options);
-    }
     return geminiGen.summarizeText(textToSummarize, targetCharLength, options);
 }
 
 export function fetchIanaTimezoneForLocation(locationName) {
-    if (isOpenAi()) {
-        return openAiGen.fetchIanaTimezoneForLocation(locationName);
-    }
-    return geminiGen.fetchIanaTimezoneForLocation(locationName);
+    return openAiGen.fetchIanaTimezoneForLocation(locationName);
 }
 
 export function decideSearchWithStructuredOutput(contextPrompt, userQuery) {
-    if (isOpenAi()) {
-        return openAiDec.decideSearchWithStructuredOutput(contextPrompt, userQuery);
-    }
-    return geminiDec.decideSearchWithStructuredOutput(contextPrompt, userQuery);
+    return openAiDec.decideSearchWithStructuredOutput(contextPrompt, userQuery);
 }
 
+// safeExtractText / safeParseJsonResponse are re-exported for backward compatibility
+// via geminiClient.js, but no production caller imports them from this facade.
+// All real callers use the provider-specific utils directly.
+// Delegate to Gemini utils since that's the only provider that returns raw
+// result objects through generateLiteContent (OpenAI paths extract text internally).
 export function safeExtractText(result, logContext = 'llm') {
-    if (isOpenAi()) {
-        return openAiUtils.safeExtractText(result, logContext);
-    }
     return geminiUtils.safeExtractText(result, logContext);
 }
 
 export function safeParseJsonResponse(result, logContext = 'llm') {
-    if (isOpenAi()) {
-        return openAiUtils.safeParseJsonResponse(result, logContext);
-    }
     return geminiUtils.safeParseJsonResponse(result, logContext);
 }
 
@@ -144,6 +125,7 @@ export function safeParseJsonResponse(result, logContext = 'llm') {
 
 /**
  * Generates structured JSON output using standard JSON schemas.
+ * Main model defaults to OpenAI Luna; lite model routes to Gemini Flash Lite.
  */
 export async function generateStructuredJson({
     prompt,
@@ -156,16 +138,38 @@ export async function generateStructuredJson({
     multimodalParts,
     returnMeta = false
 }) {
-    if (isOpenAi()) {
-        // Pass the plain schema through — openai/core.js applies the strict
-        // conversion exactly once.
+    if (model === 'lite') {
+        const geminiModel = geminiCore.getGeminiClient();
+        const geminiSchema = toGeminiSchema(schema);
+        const parts = [{ text: prompt }, ...(multimodalParts || [])];
+        const genConfig = {
+            responseMimeType: 'application/json',
+            responseSchema: geminiSchema
+        };
+        if (temperature !== undefined) genConfig.temperature = temperature;
+
+        const result = await geminiModel.generateContent({
+            model: config.gemini.liteModelId,
+            contents: [{ role: 'user', parts }],
+            ...(systemInstruction ? { systemInstruction } : {}),
+            ...(tools ? { tools } : {}),
+            generationConfig: genConfig
+        });
+
+        const parsed = geminiUtils.safeParseJsonResponse(result, `[StructuredJson:${schemaName}]`);
+        if (returnMeta) {
+            const searchUsed = !!(result?.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
+            return { parsed, searchUsed };
+        }
+        return parsed;
+    } else {
         const { text, response } = await openAiCore.generateLiteContentWithResponse(prompt, {
             systemInstruction,
             responseSchema: schema,
             schemaName,
             temperature,
-            modelId: model === 'lite' ? config.openai.liteModelId : config.openai.modelId,
-            reasoningEffort: model === 'lite' ? undefined : config.openai.reasoningEffort,
+            modelId: config.openai.modelId,
+            reasoningEffort: config.openai.reasoningEffort,
             tools,
             multimodalParts
         });
@@ -182,44 +186,13 @@ export async function generateStructuredJson({
             return { parsed, searchUsed };
         }
         return parsed;
-    } else {
-        const geminiModel = geminiCore.getGeminiClient();
-        const geminiSchema = toGeminiSchema(schema);
-        const parts = [{ text: prompt }, ...(multimodalParts || [])];
-        const genConfig = {
-            responseMimeType: 'application/json',
-            responseSchema: geminiSchema
-        };
-        if (temperature !== undefined) genConfig.temperature = temperature;
-
-        const result = await geminiModel.generateContent({
-            model: model === 'lite' ? config.gemini.liteModelId : config.gemini.modelId,
-            contents: [{ role: 'user', parts }],
-            ...(systemInstruction ? { systemInstruction } : {}),
-            ...(tools ? { tools } : {}),
-            generationConfig: genConfig
-        });
-
-        const parsed = geminiUtils.safeParseJsonResponse(result, `[StructuredJson:${schemaName}]`);
-        if (returnMeta) {
-            const searchUsed = !!(result?.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
-            return { parsed, searchUsed };
-        }
-        return parsed;
     }
 }
 
 /**
- * Provider-agnostic plain-text generation on the main (or lite) model.
- * @param {string} prompt
- * @param {object} [options]
- * @param {string} [options.systemInstruction]
- * @param {number} [options.temperature] - Applied on Gemini only (unsupported by OpenAI reasoning models)
- * @param {number} [options.maxOutputTokens]
- * @param {boolean} [options.webSearch] - Enable the provider's web search tool
- * @param {'main'|'lite'} [options.model='main']
- * @param {Array} [options.multimodalParts] - Gemini-style parts ({text}/{inlineData})
- * @returns {Promise<string|null>}
+ * Plain-text generation helper.
+ * options.model === 'lite' -> Gemini Flash Lite
+ * options.model === 'main' (default) -> OpenAI Luna
  */
 export async function generateText(prompt, {
     systemInstruction,
@@ -229,72 +202,39 @@ export async function generateText(prompt, {
     model = 'main',
     multimodalParts
 } = {}) {
-    if (isOpenAi()) {
-        return openAiCore.generateLiteContent(prompt, {
+    if (model === 'lite') {
+        return geminiCore.generateLiteContent(prompt, {
             systemInstruction,
+            temperature,
             maxOutputTokens,
             multimodalParts,
-            modelId: model === 'lite' ? config.openai.liteModelId : config.openai.modelId,
-            reasoningEffort: model === 'lite' ? undefined : config.openai.reasoningEffort,
-            ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
+            ...(webSearch ? { tools: [{ googleSearch: {} }] } : {})
         });
     }
 
-    const geminiModel = geminiCore.getGeminiClient();
-    const parts = [{ text: prompt }, ...(multimodalParts || [])];
-    const genConfig = {};
-    if (temperature !== undefined) genConfig.temperature = temperature;
-    if (maxOutputTokens) genConfig.maxOutputTokens = maxOutputTokens;
-
-    const result = await geminiModel.generateContent({
-        model: model === 'lite' ? config.gemini.liteModelId : config.gemini.modelId,
-        contents: [{ role: 'user', parts }],
-        ...(systemInstruction ? { systemInstruction } : {}),
-        ...(webSearch ? { tools: [{ googleSearch: {} }] } : {}),
-        ...(Object.keys(genConfig).length > 0 ? { generationConfig: genConfig } : {})
+    return openAiCore.generateLiteContent(prompt, {
+        systemInstruction,
+        maxOutputTokens,
+        multimodalParts,
+        modelId: config.openai.modelId,
+        reasoningEffort: config.openai.reasoningEffort,
+        ...(webSearch ? { tools: [{ type: 'web_search' }] } : {})
     });
-
-    const text = geminiUtils.safeExtractText(result, '[GenerateText]');
-    if (!text) {
-        const candidate = result?.candidates?.[0];
-        logger.warn({
-            finishReason: candidate?.finishReason,
-            hasCandidates: !!result?.candidates?.length,
-            partsLength: candidate?.content?.parts?.length ?? 0,
-            promptFeedback: result?.promptFeedback
-        }, '[GenerateText] Text extraction failed — response diagnostics attached.');
-    }
-    return text;
 }
 
 /**
- * Image description helper normalizing inlineData vs input_image across providers.
- * `thinkingLevel` maps to Gemini thinkingConfig / OpenAI reasoning effort;
- * `temperature` applies on Gemini only (unsupported by OpenAI reasoning models).
+ * Image description via OpenAI Luna.
+ * Note: `temperature` is intentionally NOT accepted — OpenAI reasoning models
+ * control sampling via reasoningEffort, not temperature. Callers that previously
+ * passed temperature should use thinkingLevel (mapped to reasoningEffort) instead.
  */
-export async function describeImages({ parts, prompt, systemInstruction, modelId, temperature, maxOutputTokens, thinkingLevel }) {
-    if (isOpenAi()) {
-        const responseText = await openAiCore.generateLiteContent(prompt, {
-            systemInstruction,
-            multimodalParts: parts,
-            modelId: modelId || config.openai.modelId,
-            maxOutputTokens,
-            ...(thinkingLevel ? { reasoningEffort: thinkingLevel } : {})
-        });
-        return responseText;
-    } else {
-        const geminiModel = geminiCore.getGeminiClient();
-        const contents = [{ role: 'user', parts: [...(parts || []), { text: prompt }] }];
-        const genConfig = {};
-        if (temperature !== undefined) genConfig.temperature = temperature;
-        if (maxOutputTokens) genConfig.maxOutputTokens = maxOutputTokens;
-        if (thinkingLevel) genConfig.thinkingConfig = { thinkingLevel };
-        const result = await geminiModel.generateContent({
-            model: modelId || config.gemini.modelId,
-            contents,
-            ...(systemInstruction ? { systemInstruction } : {}),
-            ...(Object.keys(genConfig).length > 0 ? { generationConfig: genConfig } : {})
-        });
-        return geminiUtils.safeExtractText(result, '[DescribeImages]');
-    }
+export async function describeImages({ parts, prompt, systemInstruction, modelId, maxOutputTokens, thinkingLevel }) {
+    const responseText = await openAiCore.generateLiteContent(prompt, {
+        systemInstruction,
+        multimodalParts: parts,
+        modelId: modelId || config.openai.modelId,
+        maxOutputTokens,
+        ...(thinkingLevel ? { reasoningEffort: thinkingLevel } : {})
+    });
+    return responseText;
 }

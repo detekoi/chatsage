@@ -2,7 +2,7 @@
 // Uses LLM Vision to describe Twitch emotes visually for LLM context enrichment.
 // Works directly with EventSub message fragments. Supports animated emotes via sharp.
 import sharp from 'sharp';
-import { getGenAIInstance, describeImages } from '../components/llm/geminiClient.js';
+import { getGenAIInstance } from '../components/llm/geminiClient.js';
 import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';
@@ -34,16 +34,15 @@ let emoteDescriptionsDb = null;
 
 export function initEmoteDescriber(apiKey) {
     if (!apiKey) {
-        logger.warn('LLM API key for the active provider not set — emote description feature disabled');
+        logger.warn('Gemini API key not set — emote description feature disabled');
         return false;
     }
     try {
         const client = getGenAIInstance();
         if (!client) {
-            throw new Error('Shared LLM client not initialized');
+            throw new Error('Gemini client not initialized — required for emote descriptions');
         }
-        const activeModel = config.llm?.provider === 'openai' ? openaiModel : geminiModel;
-        logger.info('Emote describer initialized (provider: %s, model: %s)', config.llm?.provider || 'gemini', activeModel);
+        logger.info('Emote describer initialized (structured: Gemini/%s, vision: OpenAI/%s)', geminiModel, openaiModel);
         return true;
     } catch (error) {
         logger.error({ err: error }, 'Failed to initialize emote describer');
@@ -233,11 +232,11 @@ export async function describeSingleEmote(emoteId, emoteName, isAnimated = false
         const contents = [...imageParts, { text: prompt }];
         const effectiveTimeout = animatedSuccess ? animatedTimeoutMs : timeoutMs;
 
-        const activeModel = config.llm?.provider === 'openai' ? (openaiModel || 'gpt-5.6-luna') : (geminiModel || 'gemini-flash-lite-latest');
+        // Emote descriptions use Gemini Flash Lite directly for structured JSON output.
+        // This is faster and cheaper than routing through OpenAI for small emote images.
+        const activeModel = geminiModel || 'gemini-flash-lite-latest';
 
-        const workPromise = config.llm?.provider === 'openai'
-            ? describeImages({ parts: imageParts, prompt, systemInstruction: SYSTEM_INSTRUCTION, modelId: activeModel })
-            : genAI.models.generateContent({
+        const workPromise = genAI.models.generateContent({
                 model: activeModel,
                 contents,
                 config: {
