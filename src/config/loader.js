@@ -99,7 +99,6 @@ function loadConfig() {
         // Emote Description (Vision)
         emote: {
             geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-flash-lite-latest',
-            openaiModel: process.env.EMOTE_OPENAI_MODEL || 'gpt-5.6-luna',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
             animatedTimeoutMs: 12000,

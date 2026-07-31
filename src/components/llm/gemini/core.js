@@ -138,11 +138,14 @@ export async function generateLiteContent(prompt, options = {}) {
     if (options.tools) {
         config.tools = options.tools;
     }
+    if (options.thinkingLevel) {
+        config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+    }
 
     try {
         const result = await retryWithBackoff(async () => {
             return await genAI.models.generateContent({
-                model: configuredLiteModelId,
+                model: options.modelId || configuredLiteModelId,
                 contents: [{ role: 'user', parts }],
                 ...(Object.keys(config).length > 0 ? { config } : {})
             });

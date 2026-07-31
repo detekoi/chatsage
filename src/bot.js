@@ -89,7 +89,7 @@ async function main() {
 
         // --- Initialize Emote Describer ---
         // The emote describer uses getGenAIInstance() (Gemini) for structured emote
-        // description and describeImages() (OpenAI Luna) for image analysis.
+        // description and describeImages() (Gemini Flash Lite) for image analysis.
         // Both clients are initialized by initializeLlmClient(), so pass the Gemini key
         // for the validation guard (emote descriptions use Gemini Flash Lite directly).
         initEmoteDescriber(config.gemini?.apiKey);

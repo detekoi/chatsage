@@ -7,7 +7,7 @@ import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';
 
-const { geminiModel, openaiModel, cdnUrl, timeoutMs, animatedTimeoutMs } = config.emote;
+const { geminiModel, cdnUrl, timeoutMs, animatedTimeoutMs } = config.emote;
 const EMOTE_IMAGE_FORMAT = 'static/dark/3.0';
 const ANIMATED_EMOTE_IMAGE_FORMAT = 'animated/dark/3.0';
 
@@ -42,7 +42,7 @@ export function initEmoteDescriber(apiKey) {
         if (!client) {
             throw new Error('Gemini client not initialized — required for emote descriptions');
         }
-        logger.info('Emote describer initialized (structured: Gemini/%s, vision: OpenAI/%s)', geminiModel, openaiModel);
+        logger.info('Emote describer initialized (model: Gemini/%s)', geminiModel);
         return true;
     } catch (error) {
         logger.error({ err: error }, 'Failed to initialize emote describer');

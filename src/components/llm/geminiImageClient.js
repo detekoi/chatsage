@@ -18,11 +18,11 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
             : imageData;
 
         const parts = [{ inlineData: { mimeType, data: base64Data } }];
-        // describeImages() routes to OpenAI Luna — always use the OpenAI model ID.
-        const modelId = config.openai.modelId;
+        // describeImages() routes to Gemini Flash Lite
+        const modelId = config.gemini.liteModelId;
 
         logger.info({ promptLength: prompt.length }, 'Generating image analysis response');
-        const text = await describeImages({ parts, prompt, modelId, thinkingLevel: 'high' });
+        const text = await describeImages({ parts, prompt, modelId });
 
         if (text && text.trim().length > 0) {
             return text.trim();
@@ -31,7 +31,7 @@ export async function analyzeImage(imageData, prompt, mimeType = 'image/jpeg') {
         // Targeted single retry for sparse/truncated responses, with a raised
         // token ceiling so the retry doesn't hit the same MAX_TOKENS failure.
         const shortPrompt = 'Briefly describe the scene in ≤ 140 characters. Plain text only.';
-        const retryText = await describeImages({ parts, prompt: shortPrompt, modelId, thinkingLevel: 'high', maxOutputTokens: 4096 });
+        const retryText = await describeImages({ parts, prompt: shortPrompt, modelId, maxOutputTokens: 4096 });
         return retryText?.trim() || null;
     } catch (error) {
         logger.error({ err: error }, 'Error during image analysis');

@@ -223,18 +223,15 @@ export async function generateText(prompt, {
 }
 
 /**
- * Image description via OpenAI Luna.
- * Note: `temperature` is intentionally NOT accepted — OpenAI reasoning models
- * control sampling via reasoningEffort, not temperature. Callers that previously
- * passed temperature should use thinkingLevel (mapped to reasoningEffort) instead.
+ * Image description via Gemini Flash Lite (gemini-flash-lite-latest).
  */
 export async function describeImages({ parts, prompt, systemInstruction, modelId, maxOutputTokens, thinkingLevel }) {
-    const responseText = await openAiCore.generateLiteContent(prompt, {
+    const responseText = await geminiCore.generateLiteContent(prompt, {
         systemInstruction,
         multimodalParts: parts,
-        modelId: modelId || config.openai.modelId,
+        modelId: modelId || config.gemini.liteModelId,
         maxOutputTokens,
-        ...(thinkingLevel ? { reasoningEffort: thinkingLevel } : {})
+        ...(thinkingLevel ? { thinkingLevel } : {})
     });
     return responseText;
 }
