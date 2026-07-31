@@ -39,7 +39,7 @@ import { initializeAutoChatStorage } from '../../../src/components/context/autoC
 import { initializeCommandStateManager } from '../../../src/components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../../../src/components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../../../src/components/llm/conversationStorage.js';
-import { initializeGeminiClient } from '../../../src/components/llm/geminiClient.js';
+import { initializeGeminiClient, initializeLlmClient } from '../../../src/components/llm/geminiClient.js';
 import { initializeHelixClient } from '../../../src/components/twitch/helixClient.js';
 import { initializeContextManager } from '../../../src/components/context/contextManager.js';
 import { initializeCommandProcessor } from '../../../src/components/commands/commandProcessor.js';
@@ -248,7 +248,7 @@ describe('Component Initialization', () => {
 
             await initializeClients();
 
-            expect(initializeGeminiClient).toHaveBeenCalledWith(geminiConfig);
+            expect(initializeLlmClient).toHaveBeenCalledWith(config);
             expect(initializeHelixClient).toHaveBeenCalledWith(config.twitch);
         });
 
@@ -359,7 +359,7 @@ describe('Component Initialization', () => {
             expect(initializeSecretManager).toHaveBeenCalled();
             expect(initializeFirestore).toHaveBeenCalled();
             expect(initializeChannelManager).toHaveBeenCalled();
-            expect(initializeGeminiClient).toHaveBeenCalled();
+            expect(initializeLlmClient).toHaveBeenCalled();
             expect(initializeHelixClient).toHaveBeenCalled();
             expect(initializeContextManager).toHaveBeenCalled();
             expect(initializeGeoGameManager).toHaveBeenCalled();

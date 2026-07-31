@@ -1,19 +1,12 @@
-import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 import { getGeminiClient, generateLiteContent } from './core.js';
 import { safeExtractText, safeParseJsonResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
+import { TimezoneSchema, SummarySchema, toGeminiSchema } from '../schemaUtils.js';
 
-// --- UPDATED: Timezone Lookup with Structured Output ---
-const TimezoneSchema = {
-    type: Type.OBJECT,
-    properties: {
-        iana_timezone: { type: Type.STRING, description: "Valid IANA timezone string (e.g. 'America/New_York') or 'UNKNOWN'." }
-    },
-    required: ["iana_timezone"]
-};
+const geminiTimezoneSchema = toGeminiSchema(TimezoneSchema);
 
 /**
  * Uses the LLM to infer a valid IANA timezone for a given location string.
@@ -36,7 +29,7 @@ Return STRICT JSON.`;
             generationConfig: {
                 temperature: 0.0,
                 responseMimeType: 'application/json',
-                responseSchema: TimezoneSchema
+                responseSchema: geminiTimezoneSchema
             }
         });
 
@@ -234,14 +227,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
     }
 }
 
-// --- UPDATED: Summarize Text with Structured Output ---
-const SummarySchema = {
-    type: Type.OBJECT,
-    properties: {
-        summary: { type: Type.STRING }
-    },
-    required: ["summary"]
-};
+const geminiSummarySchema = toGeminiSchema(SummarySchema);
 
 export async function summarizeText(textToSummarize, targetCharLength = 400, _options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || !textToSummarize.trim()) return null;
@@ -252,7 +238,7 @@ Text: ${textToSummarize}`;
     try {
         const responseText = await generateLiteContent(prompt, {
             ..._options,
-            responseSchema: SummarySchema
+            responseSchema: geminiSummarySchema
         });
 
         if (responseText) {

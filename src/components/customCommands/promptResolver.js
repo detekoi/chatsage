@@ -1,6 +1,6 @@
 // src/components/customCommands/promptResolver.js
 import logger from '../../lib/logger.js';
-import { generateLiteContent } from '../llm/gemini/core.js';
+import { generateLiteContent } from '../llm/llmClient.js';
 import { smartTruncate } from '../llm/llmUtils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';

@@ -1,18 +1,17 @@
 // src/lib/geminiEmoteDescriber.js
-// Uses Google Gemini Flash Lite to describe Twitch emotes visually for LLM context enrichment.
+// Uses LLM Vision to describe Twitch emotes visually for LLM context enrichment.
 // Works directly with EventSub message fragments. Supports animated emotes via sharp.
 import sharp from 'sharp';
-import { getGenAIInstance } from '../components/llm/geminiClient.js';
+import { getGenAIInstance, describeImages } from '../components/llm/geminiClient.js';
 import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';
 
-const { geminiModel, cdnUrl, timeoutMs, animatedTimeoutMs } = config.emote;
+const { geminiModel, openaiModel, cdnUrl, timeoutMs, animatedTimeoutMs } = config.emote;
 const EMOTE_IMAGE_FORMAT = 'static/dark/3.0';
 const ANIMATED_EMOTE_IMAGE_FORMAT = 'animated/dark/3.0';
 
 // System instruction for emote descriptions in LLM chat context.
-// Adapted from TTS version: framing is for "understanding" rather than "reading aloud".
 const SYSTEM_INSTRUCTION = `You are a visual assistant that describes Twitch emotes so a chat AI can understand them. Your goal is precise, context-rich visual descriptions.
 
 Rules:
@@ -33,30 +32,13 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const EMOTE_DESCRIPTIONS_COLLECTION = 'emoteDescriptions';
 let emoteDescriptionsDb = null;
 
-let genAIInstance = null;
-function getGenAI() {
-    if (genAIInstance) return genAIInstance;
-    try {
-        genAIInstance = getGenAIInstance();
-        return genAIInstance;
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * Initialize the Gemini client for emote descriptions.
- * Call once during bot startup if GEMINI_API_KEY is available.
- * @param {string} apiKey - The Gemini API key
- * @returns {boolean} Whether initialization succeeded
- */
 export function initEmoteDescriber(apiKey) {
     if (!apiKey) {
         logger.warn('GEMINI_API_KEY not set — emote description feature disabled');
         return false;
     }
     try {
-        const client = getGenAI();
+        const client = getGenAIInstance();
         if (!client) {
             throw new Error('Shared GenAI client not initialized');
         }
@@ -68,12 +50,6 @@ export function initEmoteDescriber(apiKey) {
     }
 }
 
-/**
- * Initialize the Firestore reference for persistent emote description storage (L2 cache).
- * Uses the shared Firestore instance from lib/firestore.js.
- * Call once during bot startup (after initializeFirestore).
- * @returns {boolean}
- */
 export function initEmoteDescriptionStore() {
     try {
         emoteDescriptionsDb = getFirestore();
@@ -85,17 +61,10 @@ export function initEmoteDescriptionStore() {
     }
 }
 
-
-/**
- * Extract unique emotes from EventSub message fragments.
- * Captures format metadata (animated/static) from the fragment.
- * @param {Array<{type: string, text: string, emote?: {id: string, owner_id?: string, format?: string[]}}>} fragments
- * @returns {Array<{id: string, name: string, count: number, isAnimated: boolean}>} Deduplicated emote entries
- */
 export function extractEmotesFromFragments(fragments) {
     if (!Array.isArray(fragments) || fragments.length === 0) return [];
 
-    const emoteCounts = new Map(); // emoteId -> { name, count, isAnimated }
+    const emoteCounts = new Map();
 
     for (const frag of fragments) {
         if (frag.type !== 'emote' || !frag.emote?.id) continue;
@@ -118,35 +87,14 @@ export function extractEmotesFromFragments(fragments) {
     }));
 }
 
-// ---------------------------------------------------------------------------
-// Image fetching: static PNG + animated GIF frame extraction
-// ---------------------------------------------------------------------------
-
-/**
- * Get the static emote image URL from a Twitch emote ID.
- * @param {string} emoteId
- * @returns {string}
- */
 export function getEmoteImageUrl(emoteId) {
     return `${cdnUrl}/${emoteId}/${EMOTE_IMAGE_FORMAT}`;
 }
 
-/**
- * Get the animated emote GIF URL from a Twitch emote ID.
- * @param {string} emoteId
- * @returns {string}
- */
 export function getAnimatedEmoteUrl(emoteId) {
     return `${cdnUrl}/${emoteId}/${ANIMATED_EMOTE_IMAGE_FORMAT}`;
 }
 
-/**
- * Fetch an emote image with fallback logic and timeouts.
- * Tries animated first if requested, falls back to static.
- * @param {string} emoteId
- * @param {boolean} isAnimated
- * @returns {Promise<{data: Buffer, mimeType: string, wasAnimated: boolean} | null>}
- */
 async function fetchBestEffortEmoteImage(emoteId, isAnimated) {
     if (isAnimated) {
         const frameStrip = await fetchAnimatedEmoteFrames(emoteId);
@@ -161,11 +109,6 @@ async function fetchBestEffortEmoteImage(emoteId, isAnimated) {
     return null;
 }
 
-/**
- * Fetch an emote image as bytes (static PNG).
- * @param {string} emoteId
- * @returns {Promise<{data: Buffer, mimeType: string} | null>}
- */
 async function fetchEmoteImage(emoteId) {
     try {
         const url = getEmoteImageUrl(emoteId);
@@ -176,7 +119,6 @@ async function fetchEmoteImage(emoteId) {
         }
         const arrayBuffer = await response.arrayBuffer();
         const contentType = response.headers.get('content-type') || 'image/png';
-        // Use actual content type. If twitch returns image/gif for a static path, pass it as image/gif.
         return {
             data: Buffer.from(arrayBuffer),
             mimeType: contentType,
@@ -187,14 +129,7 @@ async function fetchEmoteImage(emoteId) {
     }
 }
 
-/**
- * Fetch an animated emote GIF and return it as a single tall vertical strip PNG.
- * All frames are stacked top-to-bottom by libvips and sent to Gemini,
- * which can interpret the full animation context from the strip.
- * @param {string} emoteId
- * @returns {Promise<{data: Buffer, mimeType: string} | null>}
- */
-async function fetchAnimatedEmoteFrames(emoteId) {
+export async function fetchAnimatedEmoteFrames(emoteId) {
     const pipelineStart = Date.now();
     try {
         const url = getAnimatedEmoteUrl(emoteId);
@@ -222,17 +157,7 @@ async function fetchAnimatedEmoteFrames(emoteId) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Cache: L1 (in-memory) + L2 (Firestore)
-// ---------------------------------------------------------------------------
-
-/**
- * Get a cached description for an emote, checking L1 then L2.
- * @param {string} emoteId
- * @returns {Promise<string | null>}
- */
 async function getCachedDescription(emoteId) {
-    // L1: in-memory cache
     const cached = descriptionCache.get(emoteId);
     if (cached && (Date.now() - cached.cachedAt) < CACHE_TTL_MS) {
         return cached.description;
@@ -241,7 +166,6 @@ async function getCachedDescription(emoteId) {
         descriptionCache.delete(emoteId);
     }
 
-    // L2: Firestore persistent cache
     if (emoteDescriptionsDb) {
         try {
             const doc = await emoteDescriptionsDb
@@ -251,7 +175,6 @@ async function getCachedDescription(emoteId) {
             if (doc.exists) {
                 const data = doc.data();
                 if (data.description) {
-                    // Populate L1 from L2 hit
                     descriptionCache.set(emoteId, { description: data.description, cachedAt: Date.now() });
                     logger.debug({ emoteId, emoteName: data.emoteName }, 'Emote description loaded from Firestore cache');
                     return data.description;
@@ -265,17 +188,9 @@ async function getCachedDescription(emoteId) {
     return null;
 }
 
-/**
- * Cache a description in L1 and fire-and-forget to L2 (Firestore).
- * @param {string} emoteId
- * @param {string} description
- * @param {string} [emoteName]
- */
 function cacheDescription(emoteId, description, emoteName) {
-    // L1: in-memory
     descriptionCache.set(emoteId, { description, cachedAt: Date.now() });
 
-    // L2: Firestore fire-and-forget
     if (emoteDescriptionsDb) {
         const data = { description, emoteName: emoteName || null, updatedAt: FieldValue.serverTimestamp() };
         emoteDescriptionsDb
@@ -286,28 +201,18 @@ function cacheDescription(emoteId, description, emoteName) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Gemini description
-// ---------------------------------------------------------------------------
-
-/**
- * Describe a single emote using Gemini vision with structured JSON output.
- * For animated emotes, fetches the GIF, extracts a frame strip via sharp,
- * and uses a motion-aware prompt. Falls back to static PNG on failure.
- *
- * @param {string} emoteId
- * @param {string} emoteName - The text name of the emote (e.g. "LUL")
- * @param {boolean} [isAnimated=false] - Whether the emote has an animated variant
- * @returns {Promise<string | null>}
- */
-async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
+export async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
     const cached = await getCachedDescription(emoteId);
     if (cached) return cached;
 
-    const genAI = getGenAI();
+    let genAI;
+    try {
+        genAI = getGenAIInstance();
+    } catch (_) {
+        return null;
+    }
     if (!genAI) return null;
 
-    // Fetch the best available image format for this emote
     const emoteImageData = await fetchBestEffortEmoteImage(emoteId, isAnimated);
     if (!emoteImageData) {
         logger.info({ emoteId, emoteName }, 'Emote image fetch failed — cannot describe');
@@ -320,7 +225,6 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
     const animatedSuccess = emoteImageData.wasAnimated;
 
     try {
-        // Chat-adapted prompts: focus on meaning/sentiment rather than pure visual description
         const prompt = animatedSuccess
             ? `This is a vertical animation strip of the Twitch emote "${emoteName}" — all frames are stacked top-to-bottom in sequence. Describe what happens across the animation in 2-8 words. Include the emotional intent or sentiment (e.g. excitement, sarcasm, celebration). Focus on the action or transformation depicted. Be concise. No word "emote".`
             : `Describe this Twitch emote named "${emoteName}" in 2-8 words. Include the emotional intent or sentiment it conveys (e.g. sarcasm, hype, sadness). Use the emote name as a clue to identify the subject — but do not echo the raw emote token verbatim in your reply (individual meaningful words from the name are fine). Be concise. No word "emote".`;
@@ -328,14 +232,12 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
         const contents = [...imageParts, { text: prompt }];
         const effectiveTimeout = animatedSuccess ? animatedTimeoutMs : timeoutMs;
 
-        let timeoutId;
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('Gemini timeout')), effectiveTimeout);
-        });
+        const activeModel = config.llm?.provider === 'openai' ? (openaiModel || 'gpt-5.6-luna') : (geminiModel || 'gemini-flash-lite-latest');
 
-        const response = await Promise.race([
-            genAI.models.generateContent({
-                model: geminiModel,
+        const workPromise = config.llm?.provider === 'openai'
+            ? describeImages({ parts: imageParts, prompt, systemInstruction: SYSTEM_INSTRUCTION, modelId: activeModel })
+            : genAI.models.generateContent({
+                model: activeModel,
                 contents,
                 config: {
                     systemInstruction: SYSTEM_INSTRUCTION,
@@ -348,17 +250,35 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
                         required: ['description'],
                     },
                 },
-            }),
-            timeoutPromise,
-        ]).finally(() => {
-            clearTimeout(timeoutId);
+            }).then(response => response?.text);
+
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('LLM emote description timeout')), effectiveTimeout);
         });
 
-        const parsed = JSON.parse(response.text);
-        const description = parsed?.description?.trim().replace(/[.!?,;:]+$/g, '');
+        let textResponse;
+        try {
+            textResponse = await Promise.race([workPromise, timeoutPromise]);
+        } finally {
+            clearTimeout(timeoutId);
+            // If the timeout won the race, the work promise may still reject later — keep it handled.
+            workPromise.catch(() => {});
+        }
+
+        let description;
+        if (textResponse) {
+            try {
+                const parsed = JSON.parse(textResponse);
+                description = parsed?.description?.trim().replace(/[.!?,;:]+$/g, '');
+            } catch (_) {
+                description = textResponse?.trim().replace(/[.!?,;:]+$/g, '');
+            }
+        }
+
         if (description) {
             cacheDescription(emoteId, description, emoteName);
-            logger.debug({ emoteId, emoteName, isAnimated, animatedSuccess, description }, 'Emote described by Gemini');
+            logger.debug({ emoteId, emoteName, isAnimated, animatedSuccess, description }, 'Emote described by LLM');
             return description;
         }
         return null;
@@ -368,17 +288,13 @@ async function describeSingleEmote(emoteId, emoteName, isAnimated = false) {
     }
 }
 
-/**
- * Get a standalone emote context string for use as LLM context.
- * Extracts emotes from EventSub message fragments, describes them via Gemini,
- * and returns a bracketed annotation string.
- *
- * @param {Object} tags - Message tags (must contain .fragments from EventSub)
- * @param {string} _message - Unused (kept for call-site compatibility)
- * @returns {Promise<string | null>} Context string like "[Emotes in message: Kappa = smirking face]", or null
- */
 export async function getEmoteContextString(tags, _message) {
-    const genAI = getGenAI();
+    let genAI;
+    try {
+        genAI = getGenAIInstance();
+    } catch (_) {
+        return null;
+    }
     if (!genAI || !tags?.fragments) return null;
 
     const emotes = extractEmotesFromFragments(tags.fragments);
@@ -406,16 +322,6 @@ export async function getEmoteContextString(tags, _message) {
     }
 }
 
-/**
- * Fetch emote images as inline data parts for direct multimodal LLM input.
- * No Gemini API call — just fetches the images and labels them.
- * Reuses existing image fetch logic (static PNG + animated frame strip).
- *
- * @param {Object} tags - Message tags with .fragments from EventSub
- * @returns {Promise<Array<{inlineData: {mimeType: string, data: string}} | {text: string}>>}
- *   Array of Gemini content parts: one text label + one inlineData per emote.
- *   Returns empty array if no emotes found or all fetches fail.
- */
 export async function getEmoteImageParts(tags) {
     if (!tags?.fragments) return [];
 
@@ -434,11 +340,9 @@ export async function getEmoteImageParts(tags) {
         const successful = fetchResults.filter(r => r.imageData);
         if (successful.length === 0) return [];
 
-        // Build a text label summarizing which emotes are attached
         const emoteNames = successful.map(r => r.name).join(', ');
         parts.push({ text: `[Emote images in this message: ${emoteNames}]` });
 
-        // Add each emote image with its own label
         for (const result of successful) {
             parts.push({ text: `Emote Name: ${result.name}` });
             parts.push({
@@ -457,5 +361,4 @@ export async function getEmoteImageParts(tags) {
     }
 }
 
-// For testing
 export { descriptionCache as _descriptionCache };

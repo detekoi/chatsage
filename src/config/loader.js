@@ -19,13 +19,19 @@ if (fs.existsSync(envPath)) {
  * Loads, validates, and exports application configuration.
  */
 function loadConfig() {
+    const provider = (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+
     const requiredEnvVars = [
         'TWITCH_BOT_USERNAME',
-        'GEMINI_API_KEY',
         'TWITCH_CLIENT_ID',
         'TWITCH_CLIENT_SECRET',
-        // GEMINI_MODEL_ID has a default, so not strictly required here
     ];
+
+    if (provider === 'openai') {
+        requiredEnvVars.push('OPENAI_API_KEY');
+    } else {
+        requiredEnvVars.push('GEMINI_API_KEY');
+    }
 
 
     const missingEnvVars = requiredEnvVars.filter(key => !(key in process.env) || process.env[key] === '');
@@ -42,6 +48,20 @@ function loadConfig() {
 
 
     const config = {
+        // LLM Engine Selection
+        llm: {
+            provider,
+        },
+
+        // OpenAI API
+        openai: {
+            apiKey: process.env.OPENAI_API_KEY,
+            modelId: process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna',
+            liteModelId: process.env.OPENAI_LITE_MODEL_ID || 'gpt-5.6-luna',
+            reasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'low',
+            liteReasoningEffort: process.env.OPENAI_LITE_REASONING_EFFORT || 'minimal',
+        },
+
         // Twitch Bot Account
         twitch: {
             username: process.env.TWITCH_BOT_USERNAME,
@@ -80,9 +100,10 @@ function loadConfig() {
             internalToken: process.env.WEBUI_INTERNAL_TOKEN || null,
         },
 
-        // Emote Description (Gemini Vision)
+        // Emote Description (Vision)
         emote: {
             geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-flash-lite-latest',
+            openaiModel: process.env.EMOTE_OPENAI_MODEL || 'gpt-5.6-luna',
             cdnUrl: 'https://static-cdn.jtvnw.net/emoticons/v2',
             timeoutMs: 8000,
             animatedTimeoutMs: 12000,

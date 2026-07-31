@@ -1,11 +1,11 @@
 // tests/unit/lib/translationUtils.test.js
 
 jest.mock('../../../src/lib/logger.js');
-jest.mock('../../../src/components/llm/gemini/core.js');
+jest.mock('../../../src/components/llm/llmClient.js');
 
 import * as translationUtils from '../../../src/lib/translationUtils.js';
 import logger from '../../../src/lib/logger.js';
-import { generateLiteContent } from '../../../src/components/llm/gemini/core.js';
+import { generateLiteContent } from '../../../src/components/llm/llmClient.js';
 
 const { translateText, cleanupTranslationUtils, SAME_LANGUAGE } = translationUtils;
 

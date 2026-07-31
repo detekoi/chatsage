@@ -1,10 +1,12 @@
-import { Type } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { getGeminiClient } from './core.js';
 import { safeParseJsonResponse } from './utils.js';
+import { SearchDecisionSchema, toGeminiSchema } from '../schemaUtils.js';
+
+const geminiSearchDecisionSchema = toGeminiSchema(SearchDecisionSchema);
 
 // Lightweight keyword-based fallback when strict LLM call fails
-function inferSearchNeedByHeuristic(userQuery) {
+export function inferSearchNeedByHeuristic(userQuery) {
     if (!userQuery || typeof userQuery !== 'string') return { searchNeeded: false, reasoning: 'Invalid query' };
     const q = userQuery.toLowerCase();
     const searchKeywords = [
@@ -32,15 +34,6 @@ export async function decideSearchWithStructuredOutput(contextPrompt, userQuery)
     if (!userQuery?.trim()) return { searchNeeded: false, reasoning: 'Empty query' };
     const model = getGeminiClient();
 
-    const SearchDecisionSchema = {
-        type: Type.OBJECT,
-        properties: {
-            searchNeeded: { type: Type.BOOLEAN },
-            reasoning: { type: Type.STRING }
-        },
-        required: ['searchNeeded', 'reasoning']
-    };
-
     const prompt = `${contextPrompt}
 
 User request: "${userQuery}"
@@ -60,7 +53,7 @@ Output JSON only.`;
             generationConfig: {
                 temperature: 0,
                 responseMimeType: 'application/json',
-                responseSchema: SearchDecisionSchema
+                responseSchema: geminiSearchDecisionSchema
             }
         });
 

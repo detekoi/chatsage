@@ -1,8 +1,8 @@
 // src/components/riddle/riddleService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getGeminiClient, safeParseJsonResponse } from '../llm/geminiClient.js';
-import { Type as GenAIType } from '@google/genai';
+import { generateStructuredJson } from '../llm/geminiClient.js';
+import { RiddleSchema, LocalizedRiddleSchema, RiddleVerificationSchema } from '../llm/schemaUtils.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
 const META_CONCEPT_BLACKLIST = [
@@ -11,54 +11,6 @@ const META_CONCEPT_BLACKLIST = [
     'thought', 'idea', 'concept', 'mind', 'brain',
     'yes', 'no', 'maybe', 'idk', 'dunno', 'ok', 'okay', 'yep', 'yup', 'nope', 'nah'
 ];
-
-// --- Schema ---
-const RiddleSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        riddle_question: {
-            type: GenAIType.STRING,
-            description: "The text of the riddle, focusing on metaphorical or puzzling descriptions rather than direct factual statements."
-        },
-        riddle_answer: {
-            type: GenAIType.STRING,
-            description: "The single, concise, common answer to the riddle. MUST be a concrete, common, guessable thing."
-        },
-        keywords: {
-            type: GenAIType.ARRAY,
-            description: "An array of 3-5 core keywords or short phrases. These keywords MUST be specific, concrete, and discriminative.",
-            items: { type: GenAIType.STRING }
-        },
-        difficulty_generated: {
-            type: GenAIType.STRING,
-            description: "The assessed difficulty of the generated riddle (easy, normal, hard).",
-            enum: ["easy", "normal", "hard"]
-        },
-        explanation: {
-            type: GenAIType.STRING,
-            description: "A brief, fun, 1-2 sentence explanation for Twitch chat."
-        },
-        search_used: {
-            type: GenAIType.BOOLEAN,
-            description: "True if web search was used to generate or verify the riddle, false otherwise."
-        }
-    },
-    required: ["riddle_question", "riddle_answer", "keywords", "difficulty_generated", "explanation", "search_used"]
-};
-
-// Localized schema adds riddle_answer_english for answer verification when generating in non-English
-const LocalizedRiddleSchema = {
-    type: GenAIType.OBJECT,
-    properties: {
-        ...RiddleSchema.properties,
-        riddle_answer_english: {
-            type: GenAIType.STRING,
-            description: "The riddle answer translated to English. Used for answer verification. Must be concise (1-2 words)."
-        }
-    },
-    required: [...RiddleSchema.required, "riddle_answer_english"]
-};
-
 
 // Helper: prune excluded keyword sets to keep prompt small
 function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
@@ -115,7 +67,6 @@ function pruneExcludedKeywordSets(excludedKeywordSets, options = {}) {
  * Generates a riddle using Structured Output and Search Grounding.
  */
 export async function generateRiddle(topic, difficulty, excludedKeywordSets = [], channelName, excludedAnswers = [], language = null) {
-    const model = getGeminiClient();
     let actualTopic = topic;
     let promptDetails = `Difficulty: ${difficulty}.`;
 
@@ -166,8 +117,6 @@ These have been used recently or are banned. Pick something COMPLETELY DIFFERENT
     }
     const fullExclusionInstructions = `${keywordExclusionInstruction}${answerExclusionInstruction}\n\nRequirement: Each riddle must have a UNIQUE, CONCRETE answer.`;
 
-
-
     // Add language directive if generating in a non-English language
     const languageDirective = language
         ? `\nLANGUAGE: Generate the riddle_question, riddle_answer, and explanation entirely in ${language}. Also provide riddle_answer_english with the English translation of the answer for verification purposes.`
@@ -176,7 +125,7 @@ These have been used recently or are banned. Pick something COMPLETELY DIFFERENT
     const prompt = `You are a riddle crafter for a Twitch chat game. Create a riddle about "${actualTopic}" that is CLEVER but GUESSABLE.
 ${promptDetails}
 ${fullExclusionInstructions}
-Only use Google Search if the riddle requires very recent or obscure facts that may be beyond general knowledge.
+Only use web search if the riddle requires very recent or obscure facts that may be beyond general knowledge.
 
 CORE PRINCIPLE: The riddle should be solvable by someone familiar with the topic.
 MANDATORY ANSWER REQUIREMENTS:
@@ -198,20 +147,16 @@ Return JSON matching the schema.${languageDirective}`;
     const activeSchema = language ? LocalizedRiddleSchema : RiddleSchema;
 
     try {
-        // Always provide Google Search tool — Gemini auto-decides whether to use it
-
         logger.debug({ topic: actualTopic, language }, `[RiddleService] Generating riddle via Structured Output.`);
 
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.75,
-                responseMimeType: "application/json",
-                responseSchema: activeSchema
-            }
+        const args = await generateStructuredJson({
+            prompt,
+            schema: activeSchema,
+            schemaName: 'riddle',
+            temperature: 0.75,
+            tools: [{ googleSearch: {} }]
         });
 
-        const args = safeParseJsonResponse(result, '[RiddleService - Generate]');
         if (!args) {
             return null;
         }
@@ -232,18 +177,13 @@ Return JSON matching the schema.${languageDirective}`;
             return null;
         }
 
-        // Derive searchUsed from actual response grounding metadata
-        const actuallySearched = args.search_used || !!(result.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length);
-
-        logger.info(`[RiddleService] Riddle generated for topic "${actualTopic}" (search=${actuallySearched}, lang=${language || 'en'}). Q: "${args.riddle_question}", A: "${args.riddle_answer}"`);
-
         const riddleObject = {
             question: args.riddle_question,
             answer: args.riddle_answer,
             keywords: args.keywords,
             difficulty: args.difficulty_generated || difficulty,
             explanation: args.explanation || "No explanation provided.",
-            searchUsed: actuallySearched,
+            searchUsed: !!args.search_used,
             topic: actualTopic,
             requestedTopic: topic,
             language: language || null
@@ -267,8 +207,6 @@ Return JSON matching the schema.${languageDirective}`;
  * Verifies a user's answer to a riddle using Structured Output.
  */
 export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuestion, originalTopic = null) {
-    const model = getGeminiClient();
-
     // Blacklist check
     const normalizedUserGuess = userAnswer.toLowerCase().trim();
     if (META_CONCEPT_BLACKLIST.includes(normalizedUserGuess)) {
@@ -281,16 +219,6 @@ export async function verifyRiddleAnswer(correctAnswer, userAnswer, riddleQuesti
     if (normalize(userAnswer) === normalize(correctAnswer)) {
         return { isCorrect: true, reasoning: "Exact match.", confidence: 1.0 };
     }
-
-    const VerificationSchema = {
-        type: GenAIType.OBJECT,
-        properties: {
-            is_correct: { type: GenAIType.BOOLEAN },
-            confidence: { type: GenAIType.NUMBER },
-            reasoning: { type: GenAIType.STRING }
-        },
-        required: ["is_correct", "confidence", "reasoning"]
-    };
 
     const prompt = `Riddle: "${riddleQuestion}"
 Correct Answer: "${correctAnswer}"
@@ -311,16 +239,13 @@ REJECT if the guess is:
 Return STRICT JSON.`;
 
     try {
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.0,
-                responseMimeType: 'application/json',
-                responseSchema: VerificationSchema
-            }
+        const parsed = await generateStructuredJson({
+            prompt,
+            schema: RiddleVerificationSchema,
+            schemaName: 'riddle_verification',
+            temperature: 0.0
         });
 
-        const parsed = safeParseJsonResponse(result, '[RiddleService - Verify]');
         if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[RiddleService] Verified answer via Structured Output.');
             return {
@@ -333,8 +258,5 @@ Return STRICT JSON.`;
         logger.error({ err: error }, '[RiddleService] Error utilizing structured verification.');
     }
 
-    // Fallback?
-    // In this specific task, simplified fallback is acceptable if LLM fails completely, but usually Gemini doesn't fail structured output repeatedly.
-    // We'll trust the LLM or return false on error for safety.
     return { isCorrect: false, reasoning: "Error in verification.", confidence: 0.0 };
 }
