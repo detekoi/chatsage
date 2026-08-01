@@ -127,6 +127,9 @@ export async function executeWithFlexFallback(apiCallFn, basePayload, options = 
 
         if (stdPayload.config && typeof stdPayload.config === 'object') {
             flexPayload.config = { ...stdPayload.config, serviceTier: 'flex' };
+            if (options.timeout) {
+                flexPayload.config.httpOptions = { timeout: options.timeout };
+            }
             stdPayload.config = { ...stdPayload.config };
             delete stdPayload.config.serviceTier;
         }
@@ -139,5 +142,9 @@ export async function executeWithFlexFallback(apiCallFn, basePayload, options = 
     }
 
     const payload = serviceTier ? { ...basePayload, service_tier: serviceTier } : basePayload;
+    if (payload.config && typeof payload.config === 'object') {
+        if (serviceTier) payload.config.serviceTier = serviceTier;
+        if (options.timeout) payload.config.httpOptions = { timeout: options.timeout };
+    }
     return await retryWithBackoff(() => apiCallFn(payload, reqOpts), operationName);
 }

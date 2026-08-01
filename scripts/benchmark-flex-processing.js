@@ -241,7 +241,8 @@ async function callGeminiFlexOrStandard(testCase, modelId, serviceTier, enableFa
     const makeCall = async (tierToUse) => {
         const streamConfig = {
             systemInstruction: testCase.systemInstruction ? { parts: [{ text: testCase.systemInstruction }] } : undefined,
-            temperature: testCase.temperature || 0.7
+            temperature: testCase.temperature || 0.7,
+            httpOptions: { timeout: TIMEOUT_MS }
         };
         if (tierToUse && tierToUse !== 'auto') {
             streamConfig.serviceTier = tierToUse;
