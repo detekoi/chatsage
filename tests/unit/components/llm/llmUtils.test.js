@@ -127,19 +127,19 @@ describe('llmUtils', () => {
             expect(result).toBe('Check out Wikipedia for more.');
         });
 
-        it('should strip OpenAI web search citation format', () => {
+        it('should strip OpenAI web search citation format and keep domain', () => {
             const result = removeMarkdownAsterisks('She won an Emmy. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Lushious_Massacr?utm_source=openai))');
             expect(result).toBe('She won an Emmy. (en.wikipedia.org)');
         });
 
-        it('should strip parenthesised bare URLs', () => {
-            const result = removeMarkdownAsterisks('Source (https://example.com/page)');
-            expect(result).toBe('Source');
+        it('should convert parenthesised full URLs to just the domain', () => {
+            const result = removeMarkdownAsterisks('Source (https://www.example.com/page/stuff?q=1)');
+            expect(result).toBe('Source (example.com)');
         });
 
         it('should collapse leftover whitespace from removals', () => {
             const result = removeMarkdownAsterisks('word  (https://x.com)  end');
-            expect(result).toBe('word end');
+            expect(result).toBe('word (x.com) end');
         });
     });
 

@@ -580,6 +580,16 @@ async function sendAdNotification(channelName, type, seconds, prefetchedText) {
         // Ad notifications are independent of auto-chat mode - only check ads category
         if (!cfg || cfg.categories?.ads !== true) return;
 
+        // Distributed dedup: prevent duplicate sends when multiple Cloud Run instances
+        // are polling the same ad schedule. 5-min TTL ensures the next scheduled ad
+        // (typically every 15–60 min) won't be blocked.
+        const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+        const dedupKey = `ad-notify:${channelName}:${type}`;
+        if (await isDuplicateEvent(dedupKey, null, 5 * 60 * 1000, true)) {
+            logger.info({ channelName, type }, '[AutoChatManager] Ad notification already sent by another instance — skipping');
+            return;
+        }
+
         let text = prefetchedText;
         if (!text) {
             // No prefetched text — generate on the fly as fallback

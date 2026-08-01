@@ -1,7 +1,7 @@
 // src/components/customCommands/promptResolver.js
 import logger from '../../lib/logger.js';
 import { generateLiteContent } from '../llm/llmClient.js';
-import { smartTruncate } from '../llm/llmUtils.js';
+import { smartTruncate, removeMarkdownAsterisks } from '../llm/llmUtils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';
 
@@ -125,10 +125,8 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             return null;
         }
 
-        // Clean up formatting that Twitch doesn't support
-        let cleanText = responseText.trim();
-        cleanText = cleanText.replace(/\*\*/g, ''); // Remove bold asterisks
-        cleanText = cleanText.replace(/_ /g, ' '); // Sometime models try italics
+        // Clean up formatting that Twitch doesn't support (markdown links, bold, italic, citations)
+        let cleanText = removeMarkdownAsterisks(responseText);
 
         // Truncate to fit in Twitch chat
         if (cleanText.length > MAX_IRC_MESSAGE_LENGTH) {

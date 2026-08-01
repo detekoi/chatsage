@@ -67,8 +67,18 @@ export function removeMarkdownAsterisks(text) {
   if (text == null) return '';
   // Markdown links: [visible text](url) → visible text
   text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-  // Leftover parenthesised URLs from citation wrappers: (https://…) → ''
-  text = text.replace(/\(https?:\/\/[^)]+\)/g, '');
+  // Parenthesised full URLs → parenthesised top domain: (https://www.example.com/path) → (example.com)
+  text = text.replace(/\(https?:\/\/[^)]+\)/g, (match) => {
+    try {
+      const url = match.slice(1, -1);
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      return `(${hostname})`;
+    } catch {
+      return ''; // malformed URL, strip it
+    }
+  });
+  // Parenthesised domain+path → just domain: (example.com/path/stuff) → (example.com)
+  text = text.replace(/\(([a-z0-9.-]+\.[a-z]{2,})\/[^)]*\)/gi, '($1)');
   // Bold: **text** → text
   // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
