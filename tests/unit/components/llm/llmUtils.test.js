@@ -122,24 +122,24 @@ describe('llmUtils', () => {
             expect(result).toBe('');
         });
 
-        it('should strip markdown links and keep visible text', () => {
+        it('should convert markdown links to parenthesised clean URLs without tracking params', () => {
             const result = removeMarkdownAsterisks('Check out [Wikipedia](https://en.wikipedia.org/wiki/Test?utm_source=openai) for more.');
-            expect(result).toBe('Check out Wikipedia for more.');
+            expect(result).toBe('Check out (https://en.wikipedia.org/wiki/Test) for more.');
         });
 
-        it('should strip OpenAI web search citation format and keep domain', () => {
+        it('should convert OpenAI web search citation format to clean parenthesised full URL', () => {
             const result = removeMarkdownAsterisks('She won an Emmy. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Lushious_Massacr?utm_source=openai))');
-            expect(result).toBe('She won an Emmy. (en.wikipedia.org)');
+            expect(result).toBe('She won an Emmy. (https://en.wikipedia.org/wiki/Lushious_Massacr)');
         });
 
-        it('should convert parenthesised full URLs to just the domain', () => {
-            const result = removeMarkdownAsterisks('Source (https://www.example.com/page/stuff?q=1)');
-            expect(result).toBe('Source (example.com)');
+        it('should clean tracking parameters from parenthesised full URLs', () => {
+            const result = removeMarkdownAsterisks('Source (https://www.example.com/page/stuff?utm_source=test&q=1)');
+            expect(result).toBe('Source (https://www.example.com/page/stuff?q=1)');
         });
 
         it('should collapse leftover whitespace from removals', () => {
             const result = removeMarkdownAsterisks('word  (https://x.com)  end');
-            expect(result).toBe('word (x.com) end');
+            expect(result).toBe('word (https://x.com/) end');
         });
     });
 

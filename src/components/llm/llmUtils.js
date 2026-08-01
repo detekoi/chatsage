@@ -63,22 +63,34 @@ function stripMetaThoughts(text) {
 }
 
 
+function stripTrackingParams(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const keysToRemove = [];
+    for (const key of u.searchParams.keys()) {
+      if (key.startsWith('utm_') || key === 'gclid' || key === 'fbclid' || key === 'ref') {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => u.searchParams.delete(k));
+    return u.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
 export function removeMarkdownAsterisks(text) {
   if (text == null) return '';
-  // Markdown links: [visible text](url) → visible text
-  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-  // Parenthesised full URLs → parenthesised top domain: (https://www.example.com/path) → (example.com)
-  text = text.replace(/\(https?:\/\/[^)]+\)/g, (match) => {
-    try {
-      const url = match.slice(1, -1);
-      const hostname = new URL(url).hostname.replace(/^www\./, '');
-      return `(${hostname})`;
-    } catch {
-      return ''; // malformed URL, strip it
-    }
+  // Markdown links (with optional surrounding parens like ([text](url))): convert to parenthesized clean URL
+  text = text.replace(/\(?\[([^\]]+)\]\((https?:\/\/[^)]+)\)\)?/g, (match, linkText, url) => {
+    return `(${stripTrackingParams(url)})`;
   });
-  // Parenthesised domain+path → just domain: (example.com/path/stuff) → (example.com)
-  text = text.replace(/\(([a-z0-9.-]+\.[a-z]{2,})\/[^)]*\)/gi, '($1)');
+  // Fallback for non-HTTP markdown links: [text](link) → text
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // Parenthesised full URLs: clean tracking params
+  text = text.replace(/\((https?:\/\/[^)]+)\)/g, (match, url) => {
+    return `(${stripTrackingParams(url)})`;
+  });
   // Bold: **text** → text
   // eslint-disable-next-line no-useless-escape
   text = text.replace(/\*\*([^\*]+)\*\*/g, '$1');
