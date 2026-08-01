@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import logger from '../../../lib/logger.js';
-import { retryWithBackoff } from '../retryUtils.js';
+import { retryWithBackoff, retryWithFlexFallback, executeWithFlexFallback } from '../retryUtils.js';
 import { toOpenAiStrictSchema } from '../schemaUtils.js';
 import { extractRefusal } from './utils.js';
 
@@ -157,9 +157,12 @@ export async function generateLiteContentWithResponse(prompt, options = {}) {
     }
 
     try {
-        const response = await retryWithBackoff(async () => {
-            return await openaiClient.responses.create(requestPayload);
-        }, 'openai.generateLiteContent');
+        const response = await executeWithFlexFallback(
+            (payload, reqOpts) => openaiClient.responses.create(payload, reqOpts),
+            requestPayload,
+            options,
+            'openai.generateLiteContent'
+        );
 
         // Check for content filter / refusal
         const refusal = extractRefusal(response);

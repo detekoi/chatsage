@@ -46,6 +46,25 @@ describe('OpenAI Core Module', () => {
             expect(result).toBe('Test completion text');
         });
 
+        test('should pass service_tier and timeout options to responses.create when provided', async () => {
+            const instance = getOpenAiInstance();
+            const spy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
+                output_text: 'Flex response'
+            });
+
+            const result = await generateLiteContent('Flex query', {
+                serviceTier: 'flex',
+                timeout: 900000
+            });
+            expect(result).toBe('Flex response');
+            expect(spy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    service_tier: 'flex'
+                }),
+                { timeout: 900000 }
+            );
+        });
+
         test('should return null on content refusal', async () => {
             const instance = getOpenAiInstance();
             jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({

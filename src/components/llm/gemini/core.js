@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import logger from '../../../lib/logger.js';
-import { retryWithBackoff } from './utils.js';
+import { retryWithBackoff, retryWithFlexFallback, resolveServiceTier, executeWithFlexFallback } from './utils.js';
 
 let genAI = null;
 let generativeModel = null; // Wrapper that mirrors old API (generateContent/startChat)
@@ -31,20 +31,26 @@ export function initializeGeminiClient(geminiConfig) {
         // - startChat(options) → ai.chats.create({ model, config, history })
         generativeModel = {
             async generateContent(params) {
-                return await retryWithBackoff(async () => {
-                    const { generationConfig, systemInstruction, tools, toolConfig, ...rest } = params || {};
-                    const config = {};
-                    if (generationConfig && typeof generationConfig === 'object') Object.assign(config, generationConfig);
-                    if (systemInstruction) config.systemInstruction = systemInstruction;
-                    if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
-                    if (toolConfig) config.toolConfig = toolConfig;
+                const { generationConfig, systemInstruction, tools, toolConfig, serviceTier, service_tier, model, ...rest } = params || {};
+                const config = {};
+                if (generationConfig && typeof generationConfig === 'object') Object.assign(config, generationConfig);
+                if (systemInstruction) config.systemInstruction = systemInstruction;
+                if (tools) config.tools = Array.isArray(tools) ? tools : [tools];
+                if (toolConfig) config.toolConfig = toolConfig;
 
-                    return await genAI.models.generateContent({
-                        model: params.model || configuredModelId,
-                        ...rest,
-                        ...(Object.keys(config).length > 0 ? { config } : {})
-                    });
-                }, 'generateContent');
+                const modelId = model || configuredModelId;
+                const basePayload = {
+                    model: modelId,
+                    ...rest,
+                    ...(Object.keys(config).length > 0 ? { config } : {})
+                };
+
+                return await executeWithFlexFallback(
+                    (payload) => genAI.models.generateContent(payload),
+                    basePayload,
+                    params,
+                    'generateContent'
+                );
             },
             startChat(options = {}) {
                 const { systemInstruction, tools, generationConfig, history = [] } = options;
@@ -141,15 +147,20 @@ export async function generateLiteContent(prompt, options = {}) {
     if (options.thinkingLevel) {
         config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
     }
-
     try {
-        const result = await retryWithBackoff(async () => {
-            return await genAI.models.generateContent({
-                model: options.modelId || configuredLiteModelId,
-                contents: [{ role: 'user', parts }],
-                ...(Object.keys(config).length > 0 ? { config } : {})
-            });
-        }, 'generateLiteContent');
+        const modelId = options.modelId || configuredLiteModelId;
+        const basePayload = {
+            model: modelId,
+            contents: [{ role: 'user', parts }],
+            ...(Object.keys(config).length > 0 ? { config } : {})
+        };
+
+        const result = await executeWithFlexFallback(
+            (payload) => genAI.models.generateContent(payload),
+            basePayload,
+            options,
+            'generateLiteContent'
+        );
         const candidate = result?.candidates?.[0];
         if (candidate?.finishReason === 'SAFETY') {
             logger.warn('Content generation blocked due to SAFETY finishReason.');

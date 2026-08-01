@@ -16,7 +16,8 @@
 
         "trigger:stream-online": "node scripts/trigger-stream-online.js",
         "export:emails": "node scripts/export-mailing-list.js",
-        "benchmark:latency": "node scripts/benchmark-latency.js"
+        "benchmark:latency": "node scripts/benchmark-latency.js",
+        "benchmark:flex": "node scripts/benchmark-flex-processing.js"
     },
     "keywords": [
         "twitch",

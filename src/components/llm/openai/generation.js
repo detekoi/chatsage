@@ -5,7 +5,7 @@ import { safeExtractText, safeParseJsonResponse } from './utils.js';
 import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../gemini/prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
 import { TimezoneSchema, SummarySchema } from '../schemaUtils.js';
-import { retryWithBackoff } from '../retryUtils.js';
+import { retryWithBackoff, executeWithFlexFallback } from '../retryUtils.js';
 import { toOpenAiStrictSchema } from '../schemaUtils.js';
 
 const strictTimezoneSchema = toOpenAiStrictSchema(TimezoneSchema);
@@ -114,15 +114,18 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
         : [{ role: 'user', content: contentParts }];
 
     try {
-        const initialResponse = await retryWithBackoff(async () => {
-            return await openai.responses.create({
+        const initialResponse = await executeWithFlexFallback(
+            (payload, reqOpts) => openai.responses.create(payload, reqOpts),
+            {
                 model,
                 input: inputPayload,
                 instructions: standardSystemInstruction,
                 tools: standardAnswerTools,
                 reasoning: { effort: reasoningEffort }
-            });
-        }, 'generateStandardResponse');
+            },
+            options,
+            'generateStandardResponse'
+        );
 
         // Check for function call in response.output
         const toolCalls = initialResponse.output?.filter(item => item.type === 'function_call') || [];
@@ -131,8 +134,9 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             const functionResult = await handleFunctionCall(call);
 
             if (functionResult) {
-                const followupResponse = await retryWithBackoff(async () => {
-                    return await openai.responses.create({
+                const followupResponse = await executeWithFlexFallback(
+                    (payload, reqOpts) => openai.responses.create(payload, reqOpts),
+                    {
                         model,
                         previous_response_id: initialResponse.id,
                         instructions: standardSystemInstruction,
@@ -143,8 +147,10 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                             output: JSON.stringify(functionResult)
                         }],
                         reasoning: { effort: reasoningEffort }
-                    });
-                }, 'generateStandardResponse.followup');
+                    },
+                    options,
+                    'generateStandardResponse.followup'
+                );
 
                 const followupText = safeExtractText(followupResponse, 'standard-followup');
                 return followupText?.trim() || null;

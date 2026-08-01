@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 
-export { MAX_RETRIES, BASE_RETRY_DELAY_MS, isRetryableError, sleep, retryWithBackoff } from '../retryUtils.js';
+export { MAX_RETRIES, BASE_RETRY_DELAY_MS, isRetryableError, sleep, retryWithBackoff, retryWithFlexFallback, resolveServiceTier, executeWithFlexFallback } from '../retryUtils.js';
 
 // Helper to extract text from Gemini responses in a robust way
 export function extractTextFromResponse(response, candidate, logContext = 'response') {

@@ -71,3 +71,73 @@ export async function retryWithBackoff(fn, operationName = 'LLM API call') {
 
     throw lastError;
 }
+
+/**
+ * Extracts and normalizes service tier string ('flex', 'auto', or undefined) from options.
+ */
+export function resolveServiceTier(options = {}) {
+    if (!options || typeof options !== 'object') return undefined;
+    return options.serviceTier || options.service_tier || undefined;
+}
+
+/**
+ * Retry helper for Flex processing requests.
+ * Retries Flex request with exponential backoff on retryable errors.
+ * If Flex capacity is exhausted or fails after retries, falls back to standard processing.
+ *
+ * @param {Function} flexFn - Async function executing the request on Flex tier
+ * @param {Function} standardFn - Async fallback function executing on Standard tier
+ * @param {string} operationName - Name of the operation for logging
+ * @returns {Promise} Result of the successful call
+ */
+export async function retryWithFlexFallback(flexFn, standardFn, operationName = 'Flex LLM Call') {
+    try {
+        return await retryWithBackoff(flexFn, `${operationName} (Flex)`);
+    } catch (error) {
+        if (typeof standardFn === 'function') {
+            const status = error?.status || error?.response?.status || error?.statusCode;
+            logger.warn({
+                operation: operationName,
+                err: { message: error?.message, status }
+            }, `${operationName}: Flex processing tier failed (${status || error?.message || 'error'}). Falling back to standard tier.`);
+            return await retryWithBackoff(standardFn, `${operationName} (Standard Fallback)`);
+        }
+        throw error;
+    }
+}
+
+/**
+ * Helper to execute an LLM API call, automatically handling payload splitting and
+ * fallback to Standard tier when serviceTier is 'flex'.
+ *
+ * @param {Function} apiCallFn - Async function (payload, requestOptions) => Promise
+ * @param {Object} basePayload - Request payload or config object
+ * @param {Object} [options={}] - Options object containing serviceTier/service_tier and optional timeout
+ * @param {string} [operationName='LLM Call'] - Name of the operation for logging
+ * @returns {Promise<any>}
+ */
+export async function executeWithFlexFallback(apiCallFn, basePayload, options = {}, operationName = 'LLM Call') {
+    const serviceTier = resolveServiceTier(options);
+    const reqOpts = options.timeout ? { timeout: options.timeout } : undefined;
+
+    if (serviceTier === 'flex') {
+        const flexPayload = { ...basePayload, service_tier: 'flex' };
+        const stdPayload = { ...basePayload };
+        delete stdPayload.service_tier;
+
+        if (stdPayload.config && typeof stdPayload.config === 'object') {
+            flexPayload.config = { ...stdPayload.config, serviceTier: 'flex' };
+            stdPayload.config = { ...stdPayload.config };
+            delete stdPayload.config.serviceTier;
+        }
+
+        return await retryWithFlexFallback(
+            () => apiCallFn(flexPayload, reqOpts),
+            () => apiCallFn(stdPayload, reqOpts),
+            operationName
+        );
+    }
+
+    const payload = serviceTier ? { ...basePayload, service_tier: serviceTier } : basePayload;
+    return await retryWithBackoff(() => apiCallFn(payload, reqOpts), operationName);
+}
