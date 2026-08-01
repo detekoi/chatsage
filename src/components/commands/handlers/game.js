@@ -163,7 +163,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
 
 Rules: focus on in-game elements only (ignore overlays), fix only clear factual errors, output 1–2 sentences of plain text. Reply with the refined description only.`;
 
-            const searchResult = await generateSearchResponse(contextPrompt, verificationQuery, { thinkingLevel: 'high' });
+            const searchResult = await generateSearchResponse(contextPrompt, verificationQuery, { thinkingLevel: 'medium' });
 
             if (searchResult && searchResult.trim().length > 0) {
                 verifiedAnalysisResult = searchResult;
@@ -270,13 +270,13 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
         logger.info(`[${channelName}] Fetching additional info for game: "${gameName}"`);
 
         // First try with search
-        let responseText = await generateSearchResponse(contextPrompt, gameQuery, { thinkingLevel: 'high' });
+        let responseText = await generateSearchResponse(contextPrompt, gameQuery, { thinkingLevel: 'medium' });
         logger.info(`[${channelName}] Search response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
 
         // If search fails, try standard response as fallback
         if (!responseText?.trim()) {
             logger.warn(`[${channelName}] Search response failed for "${gameName}", trying standard response`);
-            responseText = await generateStandardResponse(contextPrompt, gameQuery, { thinkingLevel: 'high' });
+            responseText = await generateStandardResponse(contextPrompt, gameQuery, { thinkingLevel: 'medium' });
             logger.info(`[${channelName}] Standard response for "${gameName}": ${responseText ? `"${responseText.substring(0, 100)}..."` : 'null/empty'}`);
         }
 
@@ -415,7 +415,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         let searchResultText = null;
         const maxRetries = 3;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-            searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { thinkingLevel: 'high' });
+            searchResultText = await generateSearchResponse(contextPrompt, helpSearchQuery, { thinkingLevel: 'medium' });
             if (searchResultText && searchResultText.trim().length > 0) {
                 logger.info(`[${channelName}] Search successful on attempt ${attempt + 1}.`);
                 break;
