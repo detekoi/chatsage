@@ -9,7 +9,8 @@ jest.mock('../../../src/components/llm/llmClient.js', () => ({
 }));
 
 jest.mock('../../../src/components/llm/llmUtils.js', () => ({
-    smartTruncate: jest.fn((text, max) => text.substring(0, max))
+    smartTruncate: jest.fn((text, max) => text.substring(0, max)),
+    removeMarkdownAsterisks: jest.fn(text => text ? text.replace(/\*\*/g, '') : text)
 }));
 
 jest.mock('../../../src/components/llm/inferenceHistoryStorage.js', () => ({

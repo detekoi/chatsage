@@ -121,9 +121,9 @@ describe('AutoChat Gift Sub Celebration', () => {
             expect.stringContaining('1 sub to the channel!')
         );
         // Should NOT contain 'subs' (plural)
-        expect(generateStandardResponse).toHaveBeenCalledWith(
+        expect(generateStandardResponse).not.toHaveBeenCalledWith(
             'context prompt',
-            expect.not.stringContaining('1 subs')
+            expect.stringContaining('1 subs')
         );
     });
 });

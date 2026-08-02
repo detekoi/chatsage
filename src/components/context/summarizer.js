@@ -60,7 +60,7 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment,
             ? `Previous context summary:\n${priorSummary}\n\nNew chat messages to incorporate:\n${formatted}`
             : formatted;
         try {
-            const single = await summarizeText(prompt, reduceTargetChars);
+            const single = await summarizeText(prompt, reduceTargetChars, { serviceTier: 'flex' });
             if (single && single.trim()) {
                 logger.info(`[${channelName}] Single-pass summary generated (${single.length} chars).`);
                 return single.trim();
@@ -79,7 +79,7 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment,
     try {
         chunkSummaries = await Promise.all(
             formattedChunks.map((chunkText, idx) =>
-                summarizeText(`Segment ${idx + 1} of ${formattedChunks.length}\n\n${chunkText}`, mapTargetChars)
+                summarizeText(`Segment ${idx + 1} of ${formattedChunks.length}\n\n${chunkText}`, mapTargetChars, { serviceTier: 'flex' })
                     .then(s => (s ? s.trim() : ''))
                     .catch(err => {
                         logger.error({ err, channel: channelName, chunkIndex: idx }, 'Error summarizing chunk.');
@@ -111,7 +111,8 @@ async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment,
     try {
         const finalSummary = await summarizeText(
             reducePrompt,
-            reduceTargetChars
+            reduceTargetChars,
+            { serviceTier: 'flex' }
         );
 
         if (finalSummary && finalSummary.trim()) {

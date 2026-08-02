@@ -102,11 +102,13 @@ describe('summarizer.triggerSummarizationIfNeeded', () => {
         // Verify chunk summaries were called with correct parameters
         expect(summarizeText).toHaveBeenNthCalledWith(1,
             expect.stringContaining('Segment 1 of 3'),
-            220 // mapTargetChars
+            220, // mapTargetChars
+            { serviceTier: 'flex' }
         );
         expect(summarizeText).toHaveBeenNthCalledWith(4,
             expect.stringContaining('Combine these chunk summaries'),
-            450 // reduceTargetChars
+            450, // reduceTargetChars
+            { serviceTier: 'flex' }
         );
 
         expect(logger.info).toHaveBeenCalledWith(
