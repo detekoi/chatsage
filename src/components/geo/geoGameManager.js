@@ -1,5 +1,6 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
@@ -173,6 +174,8 @@ async function _resetGameToIdle(gameState) {
     newState.initiatorUsername = null;
     newState.streakMap = new Map();
     newState.guessCache = new Map();
+    // Reset multi-round fields
+    defaultPrefetchCache.clear(`geo:${gameState.channelName}`);
     newState.totalRounds = 1;
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
@@ -369,112 +372,193 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     }
 }
 
+/**
+ * Prefetches the next location and initial clue in the background while the current round is in progress.
+ * @param {Object} gameState - Game state object.
+ */
+async function _prefetchNextLocation(gameState) {
+    const { channelName, mode } = gameState;
+    logger.info(`[GeoGame][${channelName}] Prefetching next location and initial clue in background...`);
+    const key = `geo:${channelName}`;
+
+    defaultPrefetchCache.prefetch(key, async () => {
+        try {
+            let combinedExcludedLocations = new Set([...gameState.gameSessionExcludedLocations]);
+            if (gameState.targetLocation?.name) {
+                combinedExcludedLocations.add(gameState.targetLocation.name);
+            }
+
+            try {
+                const recentGlobal = await getRecentLocations(channelName, 50);
+                recentGlobal.forEach(loc => combinedExcludedLocations.add(loc));
+            } catch (error) {
+                logger.error({ err: error, channel: channelName }, "[GeoGame] Failed to fetch recent global locations for prefetch, proceeding without them.");
+            }
+            const excludedArray = Array.from(combinedExcludedLocations);
+
+            const gameTitleForSelect = mode === 'game' ? gameState.gameTitleScope : null;
+            const sessionRegionForSelect = mode === 'real' ? gameState.sessionRegionScope : null;
+
+            let selectedLocation = null;
+            let retries = 0;
+            while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
+                const locationAttempt = await selectLocation(
+                    mode,
+                    gameState.config,
+                    gameTitleForSelect,
+                    excludedArray,
+                    sessionRegionForSelect
+                );
+                if (locationAttempt?.name && !_isLocationTooSimilar(locationAttempt.name, excludedArray)) {
+                    selectedLocation = locationAttempt;
+                }
+                retries++;
+            }
+
+            if (!selectedLocation) {
+                logger.warn(`[GeoGame][${channelName}] Prefetch failed to select a location.`);
+                return null;
+            }
+
+            const clueScope = mode === 'game' ? gameState.gameTitleScope : null;
+            const firstClue = await generateInitialClue(
+                selectedLocation.name,
+                gameState.config.difficulty,
+                mode,
+                clueScope,
+                gameState.botLanguage || null
+            );
+
+            if (!firstClue) {
+                logger.warn(`[GeoGame][${channelName}] Prefetch failed to generate initial clue.`);
+                return null;
+            }
+
+            if (['started', 'inProgress', 'selecting', 'guessed', 'timeout', 'ending'].includes(gameState.state)) {
+                logger.info(`[GeoGame][${channelName}] Prefetched location & clue ready: ${selectedLocation.name}`);
+                return {
+                    targetLocation: { name: selectedLocation.name, alternateNames: selectedLocation.alternateNames || [] },
+                    firstClue
+                };
+            }
+            return null;
+        } catch (error) {
+            logger.error({ err: error, channel: channelName }, "[GeoGame] Error prefetching next location.");
+            return null;
+        }
+    });
+}
+
 // --- NEW FUNCTION: Start Next Round ---
 async function _startNextRound(gameState) {
-    // Should only be called when gameState.state is 'ending' after a round conclusion
     logger.info(`[GeoGame][${gameState.channelName}] Starting next round (${gameState.currentRound}/${gameState.totalRounds}).`);
-    gameState.state = 'selecting'; // Transition state
+    gameState.state = 'selecting';
 
-    // 1. Select Location (excluding session locations and recent global locations)
+    // 1. Check for prefetched location + initial clue
+    const prefetchKey = `geo:${gameState.channelName}`;
+    const prefetched = await defaultPrefetchCache.getOrAwait(prefetchKey, async () => null, 15000);
+
+    if (gameState.state === 'ending' || gameState.state === 'idle') {
+        logger.warn(`[GeoGame][${gameState.channelName}] Game state changed to ${gameState.state} during prefetch await. Aborting round start.`);
+        return;
+    }
+
     let selectedLocation = null;
-    let retries = 0;
-    let combinedExcludedLocations = new Set([...gameState.gameSessionExcludedLocations]); // Start with session exclusions
+    let firstClue = null;
 
-    try {
-        // Fetch recent global locations for the channel
-        const recentGlobal = await getRecentLocations(gameState.channelName, 50);
-        recentGlobal.forEach(loc => combinedExcludedLocations.add(loc));
-    } catch (error) {
-        logger.error({ err: error, channel: gameState.channelName }, "[GeoGame] Failed to fetch recent global locations for next round, proceeding without them.");
-    }
-    const excludedArray = Array.from(combinedExcludedLocations);
-    logger.debug(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} exclusions: ${excludedArray.join(', ') || 'None'}`);
-
-    // Determine game title scope and session region scope for selectLocation
-    const gameTitleForSelect = gameState.mode === 'game' ? gameState.gameTitleScope : null;
-    const sessionRegionForSelect = gameState.mode === 'real' ? gameState.sessionRegionScope : null;
-
-    while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
-        if (retries > 0) {
-            logger.warn(`[GeoGame][${gameState.channelName}] Retrying location selection for round ${gameState.currentRound} (Attempt ${retries + 1})...`);
-            await new Promise(resolve => setTimeout(resolve, 500 * retries));
+    if (prefetched && prefetched.targetLocation?.name && prefetched.firstClue) {
+        selectedLocation = prefetched.targetLocation;
+        firstClue = prefetched.firstClue;
+        logger.info(`[GeoGame][${gameState.channelName}] Using prefetched location for round ${gameState.currentRound}: ${selectedLocation.name}`);
+    } else {
+        let retries = 0;
+        let combinedExcludedLocations = new Set([...gameState.gameSessionExcludedLocations]);
+        try {
+            const recentGlobal = await getRecentLocations(gameState.channelName, 50);
+            recentGlobal.forEach(loc => combinedExcludedLocations.add(loc));
+        } catch (error) {
+            logger.error({ err: error, channel: gameState.channelName }, "[GeoGame] Failed to fetch recent global locations for next round, proceeding without them.");
         }
-        // Pass the appropriate scope to selectLocation
-        const locationAttempt = await selectLocation(
-            gameState.mode,
-            gameState.config,
-            gameTitleForSelect,
-            excludedArray,
-            sessionRegionForSelect // Pass session scope
-        );
-        if (locationAttempt?.name && !_isLocationTooSimilar(locationAttempt.name, excludedArray)) {
-            selectedLocation = locationAttempt;
-        } else if (locationAttempt?.name) {
-            logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned an excluded location ("${locationAttempt.name}") for round ${gameState.currentRound}. Retrying.`);
-        } else {
-            logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned null/invalid name for round ${gameState.currentRound}. Retrying.`);
-        }
-        retries++;
-    }
+        const excludedArray = Array.from(combinedExcludedLocations);
 
-    if (!selectedLocation) {
-        logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to select location for round ${gameState.currentRound} after retries. Ending game prematurely.`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not find a suitable new location for round ${gameState.currentRound}. Ending the game.`);
-        // Use transitionToEnding with a specific reason to trigger cleanup/reporting
-        await _transitionToEnding(gameState, "location_error"); // Pass a unique reason
-        return; // Stop processing this round start
+        const gameTitleForSelect = gameState.mode === 'game' ? gameState.gameTitleScope : null;
+        const sessionRegionForSelect = gameState.mode === 'real' ? gameState.sessionRegionScope : null;
+
+        while (!selectedLocation && retries < MAX_LOCATION_SELECT_RETRIES) {
+            if (retries > 0) {
+                logger.warn(`[GeoGame][${gameState.channelName}] Retrying location selection for round ${gameState.currentRound} (Attempt ${retries + 1})...`);
+                await new Promise(resolve => setTimeout(resolve, 500 * retries));
+            }
+            const locationAttempt = await selectLocation(
+                gameState.mode,
+                gameState.config,
+                gameTitleForSelect,
+                excludedArray,
+                sessionRegionForSelect
+            );
+            if (locationAttempt?.name && !_isLocationTooSimilar(locationAttempt.name, excludedArray)) {
+                selectedLocation = locationAttempt;
+            } else if (locationAttempt?.name) {
+                logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned an excluded location ("${locationAttempt.name}") for round ${gameState.currentRound}. Retrying.`);
+            } else {
+                logger.warn(`[GeoGame][${gameState.channelName}] selectLocation returned null/invalid name for round ${gameState.currentRound}. Retrying.`);
+            }
+            retries++;
+        }
+
+        if (!selectedLocation) {
+            logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to select location for round ${gameState.currentRound} after retries. Ending game prematurely.`);
+            enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not find a suitable new location for round ${gameState.currentRound}. Ending the game.`);
+            await _transitionToEnding(gameState, "location_error");
+            return;
+        }
+
+        const clueScope = gameState.mode === 'game' ? gameState.gameTitleScope : null;
+        firstClue = await generateInitialClue(selectedLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null);
+        if (!firstClue) {
+            logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
+            enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`);
+            await _transitionToEnding(gameState, "clue_error");
+            return;
+        }
     }
 
     gameState.targetLocation = { name: selectedLocation.name, alternateNames: selectedLocation.alternateNames || [] };
-    gameState.gameSessionExcludedLocations.add(selectedLocation.name); // Add to session exclusion list
-    logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} location selected: ${gameState.targetLocation.name}`);
-
-    // 2. Generate Initial Clue
-    // Pass the correct scope (game title for game mode, null for real mode as region is handled by selection)
-    const clueScope = gameState.mode === 'game' ? gameState.gameTitleScope : null;
-    const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null);
-    if (!firstClue) {
-        logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`);
-        await _transitionToEnding(gameState, "clue_error"); // Pass a unique reason
-        return; // Stop processing
-    }
-    gameState.clues = [firstClue]; // Reset clues array for the new round
+    gameState.gameSessionExcludedLocations.add(selectedLocation.name);
+    gameState.clues = [firstClue];
     gameState.currentClueIndex = 0;
-    logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} first clue generated.`);
+    logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} target set to ${gameState.targetLocation.name}.`);
 
     // 3. Start Round Timers & Send Messages
-    gameState.startTime = Date.now(); // Start time for *this round*
-    gameState.state = 'started'; // Mark as formally started before sending message
+    gameState.startTime = Date.now();
+    gameState.state = 'started';
 
-    // Send "Starting Round X of Y" message
     const nextRoundMessage = formatStartNextRoundMessage(gameState.currentRound, gameState.totalRounds);
     enqueueMessage(`#${gameState.channelName}`, nextRoundMessage);
 
-    // Small delay before sending the first clue
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Check if state changed during the delay (e.g., manual stop)
     if (gameState.state !== 'started') {
         logger.warn(`[GeoGame][${gameState.channelName}] Game state changed to ${gameState.state} before first clue of round ${gameState.currentRound} could be sent. Aborting round.`);
-        // If stopped, _transitionToEnding should have already been called. If not, trigger it.
         if (gameState.state !== 'ending') {
             await _transitionToEnding(gameState, "stopped_during_delay");
         }
-        return; // Stop processing
+        return;
     }
 
-    const clueMessage = formatClueMessage(1, firstClue); // Clue #1 for Round 1
-    // Skip translation if clue was generated natively in the target language
+    const clueMessage = formatClueMessage(1, firstClue);
     enqueueMessage(`#${gameState.channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
-    // Transition to 'inProgress' for the new round
     gameState.state = 'inProgress';
-    gameState.guessCache.clear(); // Clear cache for the new round
+    gameState.guessCache.clear();
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} transitioned to inProgress.`);
 
-    // 4. Schedule Subsequent Clues and Round End Timer (same logic as before)
-    _scheduleNextClue(gameState); // Uses gameState.config.clueIntervalSeconds
+    _scheduleNextClue(gameState);
+
+    // Trigger prefetch for next round if multi-round
+    if (gameState.currentRound < gameState.totalRounds) {
+        _prefetchNextLocation(gameState);
+    }
 
     const roundDurationMs = gameState.config.roundDurationMinutes * 60 * 1000;
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} end timer scheduled for ${gameState.config.roundDurationMinutes} minutes (${roundDurationMs}ms).`);
@@ -735,6 +819,12 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         }, roundDurationMs);
 
         logger.info(`[GeoGame][${channelName}] Game started successfully (Round 1/${gameState.totalRounds}). Target: ${gameState.targetLocation.name}. First clue sent.`);
+
+        // Trigger prefetch for round 2 if multi-round
+        if (gameState.totalRounds > 1) {
+            _prefetchNextLocation(gameState);
+        }
+
         return { success: true, message: "" }; // Success, no direct user message needed here
 
     } catch (error) {
@@ -878,6 +968,9 @@ function stopGame(channelName) {
     }
 
     logger.info(`[GeoGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}. Manually ending game session from state: ${gameState.state}.`);
+
+    // Clear any prefetched location
+    defaultPrefetchCache.clear(`geo:${channelName}`);
 
     // Transition to the ending sequence with "stopped" reason.
     // _transitionToEnding will handle reporting scores (if multi-round) and resetting.

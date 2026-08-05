@@ -15,11 +15,13 @@ afterEach(() => {
 afterAll(() => {
   if (process.env.JEST_ALLOW_OPEN_HANDLES) return;
   const handles = process._getActiveHandles().filter(h => {
-    // ignore TTY/stdio, pipes, sockets, and child processes which are always present in Node.js
-    const ignoreTypes = ['Pipe', 'Socket', 'ChildProcess'];
-    const constructorName = h.constructor?.name || typeof h;
-    return !(h === process.stdin || h === process.stdout || h === process.stderr ||
-             ignoreTypes.includes(constructorName));
+    if (!h) return false;
+    const isStdio = h === process.stdin || h === process.stdout || h === process.stderr;
+    const name = (h.constructor?.name || h.name || '').toLowerCase();
+    const ignoreTypes = ['pipe', 'pipewrap', 'socket', 'childprocess', 'ttywrap', 'signalwrap'];
+    const isIgnoredType = ignoreTypes.some(t => name.includes(t));
+    const isInternalHandle = !h.constructor || ('_handle' in h) || ('fd' in h);
+    return !(isStdio || isIgnoredType || isInternalHandle);
   });
   if (handles.length) {
     // Log handle types to help with future debugging

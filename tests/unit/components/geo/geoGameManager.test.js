@@ -110,9 +110,14 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
             };
             activeGames.set(channelName, mockGameState);
         }
-         // Restore original selectLocation if it's used elsewhere or to avoid test pollution
+        // Restore original selectLocation if it's used elsewhere or to avoid test pollution
         jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(originalSelectLocation);
 
+    });
+
+    afterEach(() => {
+        geoGameManager.stopGame('testgeochannel');
+        activeGames.clear();
     });
 
     test('1. Bot language is English (en): translateText NOT called, validateGuess called with original guess', async () => {
