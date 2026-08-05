@@ -68,7 +68,7 @@ function buildSystemInstruction(language, isCheckin = false) {
  * @param {string|null} [options.chatContext=null] - Formatted recent chat messages for conversational flow.
  * @returns {Promise<string|null>} The generated response, or null on error/empty.
  */
-export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null } = {}) {
+export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = 'flex' } = {}) {
     if (!prompt) {
         return '';
     }
@@ -107,7 +107,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             fullPrompt += `\n\nNow complete the original task stated at the top of this prompt. The sections above are background context only.`;
         }
 
-        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length }, '[PromptResolver] Generating response for custom command prompt');
+        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length, serviceTier }, '[PromptResolver] Generating response for custom command prompt');
 
         const systemInstruction = buildSystemInstruction(language, isCheckin);
 
@@ -117,7 +117,8 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         const responseText = await generateLiteContent(fullPrompt, {
             systemInstruction: systemInstruction,
             tools: [{ googleSearch: {} }],
-            model: 'main'
+            model: 'main',
+            ...(serviceTier ? { serviceTier } : {})
         });
 
         if (!responseText) {

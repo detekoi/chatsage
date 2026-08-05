@@ -250,4 +250,47 @@ describe('timerManager tick', () => {
             { skipTranslation: false },
         );
     });
+
+    test('pre-caches upcoming prompt timer on Flex tier and uses pre-cached response when due', async () => {
+        const now = Date.now();
+        // Timer ran 13 minutes ago, interval 15m (due in 2 mins, within 3 min prefetch window)
+        addTimer({
+            name: 'hype',
+            type: 'prompt',
+            response: 'Hype up the stream',
+            intervalMinutes: 15,
+            lastRunAt: { toMillis: () => now - 13 * 60 * 1000 },
+        });
+
+        // First tick: timer is not due yet (13m < 15m), but is within prefetch lead (2m <= 3m).
+        // Trigger prefetch.
+        await _tick();
+
+        expect(resolvePrompt).toHaveBeenCalledWith(
+            'Hype up the stream',
+            null,
+            expect.stringContaining('Game: Planet Zoo'),
+            false,
+            expect.objectContaining({
+                channel: CHANNEL,
+                source: 'timer:hype',
+                serviceTier: 'flex',
+            }),
+        );
+        expect(enqueueMessage).not.toHaveBeenCalled();
+
+        // Advance runtime state so timer is now due (15 mins passed)
+        _getRuntime().get(CHANNEL).get('hype').lastRunAtMs = Date.now() - 16 * 60 * 1000;
+        getMessageCount.mockReturnValue(100);
+        _getRuntime().get(CHANNEL).get('hype').lastSeenMessageCount = 0;
+
+        resolvePrompt.mockClear();
+
+        // Second tick: timer is now due. fireTimer executes and uses the pre-cached result.
+        await _tick();
+
+        expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, 'AI generated message', { skipTranslation: false });
+        // resolvePrompt should NOT be called again because pre-cached result was used
+        expect(resolvePrompt).not.toHaveBeenCalled();
+    });
 });

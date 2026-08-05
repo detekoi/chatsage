@@ -6,6 +6,7 @@
 
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
 import { getMessageCount } from '../context/channelActivity.js';
 import { isStreamLive } from '../context/liveStatus.js';
@@ -24,6 +25,7 @@ const TICK_MS = 60 * 1000;
 // Offset the first tick so timer ticks interleave between auto-chat ticks
 // instead of both loops evaluating channels in the same instant.
 const START_DELAY_MS = 25 * 1000;
+const PREFETCH_LEAD_MS = 3 * 60 * 1000; // 3 minutes prefetch lead time
 
 let startTimeoutId = null;
 let intervalId = null;
@@ -36,7 +38,11 @@ const configCache = new Map(); // channelName -> Map<timerName, timerDoc>
 // Firing state, written only by the tick loop. Kept separate from configCache
 // so the bot's own lastRunAt Firestore writes echoing back through the
 // listener never clobber in-flight runtime state.
-const runtime = new Map(); // channelName -> Map<timerName, { lastRunAtMs, lastSeenMessageCount }>
+const runtime = new Map(); // channelName -> Map<timerName, { lastRunAtMs, lastSeenMessageCount, lastPrefetchAtMs }>
+
+function getTimerPrefetchKey(channelName, timerName) {
+    return `timer:${channelName}:${timerName}`;
+}
 
 function getChannelRuntime(channelName) {
     if (!runtime.has(channelName)) runtime.set(channelName, new Map());
@@ -49,10 +55,13 @@ function seedRuntime(channelName, timer) {
     channelRuntime.set(timer.name, {
         lastRunAtMs: timer.lastRunAt?.toMillis ? timer.lastRunAt.toMillis() : 0,
         lastSeenMessageCount: getMessageCount(channelName),
+        lastPrefetchAtMs: 0,
     });
 }
 
 function handleTimerChange({ type, channelName, timerName, timer }) {
+    defaultPrefetchCache.clear(getTimerPrefetchKey(channelName, timerName));
+
     if (type === 'removed') {
         configCache.get(channelName)?.delete(timerName);
         runtime.get(channelName)?.delete(timerName);
@@ -81,6 +90,27 @@ function isEligible(channelName, timer, nowMs) {
     return true;
 }
 
+async function generatePromptTimerOutput(channelName, timer, resolvedText) {
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    const llmContext = contextManager.getContextForLLM(channelName, 'system', 'timer');
+
+    const contextParts = [];
+    if (llmContext?.streamGame && llmContext.streamGame !== 'N/A') contextParts.push(`Game: ${llmContext.streamGame}`);
+    if (llmContext?.streamTitle) contextParts.push(`Title: ${llmContext.streamTitle}`);
+    if (llmContext?.streamStartedAt) {
+        contextParts.push(`Uptime: ${formatDuration(Date.now() - new Date(llmContext.streamStartedAt).getTime())}`);
+    }
+    const streamContextString = contextParts.length ? contextParts.join(' | ') : null;
+
+    return await resolvePrompt(resolvedText, botLanguage || null, streamContextString, false, {
+        channel: channelName,
+        source: timerSource(timer.name),
+        chatContext: llmContext?.recentChatHistory || null,
+        serviceTier: 'flex',
+    });
+}
+
 async function fireTimer(channelName, timer) {
     const contextManager = getContextManager();
     const channelRuntime = getChannelRuntime(channelName);
@@ -90,6 +120,7 @@ async function fireTimer(channelName, timer) {
     channelRuntime.set(timer.name, {
         lastRunAtMs: Date.now(),
         lastSeenMessageCount: getMessageCount(channelName),
+        lastPrefetchAtMs: 0, // Reset prefetch tracking for the next interval
     });
 
     const streamContext = contextManager.getStreamContextSnapshot(channelName);
@@ -105,22 +136,10 @@ async function fireTimer(channelName, timer) {
     let skipTranslation = false;
 
     if (timer.type === 'prompt') {
-        const botLanguage = contextManager.getBotLanguage(channelName);
-        const llmContext = contextManager.getContextForLLM(channelName, 'system', 'timer');
+        const key = getTimerPrefetchKey(channelName, timer.name);
+        const fetcher = () => generatePromptTimerOutput(channelName, timer, resolvedText);
 
-        const contextParts = [];
-        if (llmContext?.streamGame && llmContext.streamGame !== 'N/A') contextParts.push(`Game: ${llmContext.streamGame}`);
-        if (llmContext?.streamTitle) contextParts.push(`Title: ${llmContext.streamTitle}`);
-        if (llmContext?.streamStartedAt) {
-            contextParts.push(`Uptime: ${formatDuration(Date.now() - new Date(llmContext.streamStartedAt).getTime())}`);
-        }
-        const streamContextString = contextParts.length ? contextParts.join(' | ') : null;
-
-        finalOutput = await resolvePrompt(resolvedText, botLanguage || null, streamContextString, false, {
-            channel: channelName,
-            source: timerSource(timer.name),
-            chatContext: llmContext?.recentChatHistory || null,
-        });
+        finalOutput = await defaultPrefetchCache.getOrAwait(key, fetcher, 10000);
 
         if (!finalOutput) {
             // Unsolicited message — nobody is waiting on a reply, so skip silently.
@@ -129,6 +148,7 @@ async function fireTimer(channelName, timer) {
             return;
         }
 
+        const botLanguage = contextManager.getBotLanguage(channelName);
         if (botLanguage) {
             skipTranslation = true;
         }
@@ -166,10 +186,46 @@ async function tick() {
     tickInProgress = true;
     try {
         const nowMs = Date.now();
+        const contextManager = getContextManager();
+
         for (const [channelName, timers] of configCache) {
             try {
                 if (timers.size === 0) continue;
-                if (!isStreamLive(channelName)) continue;
+                if (!isStreamLive(channelName)) {
+                    defaultPrefetchCache.clearPrefix(`timer:${channelName}:`);
+                    continue;
+                }
+
+                // Check for upcoming prompt timers that should be pre-cached on Flex tier
+                for (const timer of timers.values()) {
+                    if (timer.type !== 'prompt' || timer.enabled === false) continue;
+                    const state = getChannelRuntime(channelName).get(timer.name);
+                    if (!state) continue;
+
+                    const intervalMs = (timer.intervalMinutes || DEFAULT_INTERVAL_MINUTES) * 60 * 1000;
+                    const prefetchLead = Math.min(intervalMs / 2, PREFETCH_LEAD_MS);
+                    const nextRunAtMs = state.lastRunAtMs ? state.lastRunAtMs + intervalMs : 0;
+                    const msUntilRun = nextRunAtMs - nowMs;
+                    const prefetchedRecently = state.lastPrefetchAtMs && (nowMs - state.lastPrefetchAtMs < intervalMs);
+
+                    const key = getTimerPrefetchKey(channelName, timer.name);
+                    if (nextRunAtMs > 0 && msUntilRun > 0 && msUntilRun <= prefetchLead && !prefetchedRecently && !defaultPrefetchCache.has(key)) {
+                        state.lastPrefetchAtMs = nowMs;
+                        logger.info({ channel: channelName, timer: timer.name, msUntilRun }, '[TimerManager] 🔄 Prefetching prompt timer on Flex tier...');
+                        const streamContext = contextManager.getStreamContextSnapshot(channelName);
+                        parseVariables(timer.response, {
+                            user: '',
+                            channel: channelName,
+                            args: [],
+                            useCount: timer.useCount || 0,
+                            streamContext,
+                        }).then((resolvedText) => {
+                            defaultPrefetchCache.prefetch(key, () => generatePromptTimerOutput(channelName, timer, resolvedText), intervalMs);
+                        }).catch((err) => {
+                            logger.warn({ err, channel: channelName, timer: timer.name }, '[TimerManager] Error parsing variables during prefetch');
+                        });
+                    }
+                }
 
                 const eligible = [...timers.values()].filter(t => isEligible(channelName, t, nowMs));
                 if (eligible.length === 0) continue;
@@ -233,6 +289,7 @@ export function stopTimerManager() {
         unsubscribeListener();
         unsubscribeListener = null;
     }
+    defaultPrefetchCache.clearAll();
     configCache.clear();
     runtime.clear();
     logger.info('[TimerManager] Stopped');
