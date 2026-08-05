@@ -1,6 +1,7 @@
 // src/components/trivia/triviaGameManager.js
 import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
+import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
 import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
@@ -216,6 +217,7 @@ async function _resetGameToIdle(gameState) {
     newState.initiatorUsername = null;
 
     // Reset multi-round fields
+    defaultPrefetchCache.clear(`trivia:${gameState.channelName}`);
     newState.totalRounds = 1;
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
@@ -505,10 +507,16 @@ async function _startNextRound(gameState) {
     logger.info(`[TriviaGame][${gameState.channelName}] Starting round ${gameState.currentRound}/${gameState.totalRounds}`);
     gameState.state = 'selecting';
 
-    // 1a. Use already-resolved prefetched question
-    if (gameState.prefetchedQuestion) {
-        const prefetched = gameState.prefetchedQuestion;
-        gameState.prefetchedQuestion = null;
+    // 1. Check for prefetched question (either pre-cached or in-flight)
+    const prefetchKey = `trivia:${gameState.channelName}`;
+    const prefetched = await defaultPrefetchCache.getOrAwait(prefetchKey, async () => null, MAX_PREFETCH_WAIT_MS);
+
+    if (gameState.state !== 'selecting') {
+        logger.info(`[TriviaGame][${gameState.channelName}] Game state changed from 'selecting' to '${gameState.state}' during prefetch await. Aborting round start.`);
+        return;
+    }
+
+    if (prefetched) {
         const qSig = _buildQuestionSignature(prefetched.question);
         if (!gameState.questionSignatureSet.has(qSig)) {
             gameState.currentQuestion = prefetched;
@@ -556,68 +564,6 @@ async function _startNextRound(gameState) {
             return;
         } else {
             logger.warn(`[TriviaGame][${gameState.channelName}] Prefetched question was a duplicate. Generating fresh.`);
-        }
-    }
-
-    // 1b. Prefetch still in-flight — wait for it before falling back to on-demand generation
-    if (gameState.prefetchPromise) {
-        logger.info(`[TriviaGame][${gameState.channelName}] Prefetch in-flight for round ${gameState.currentRound} — waiting up to ${MAX_PREFETCH_WAIT_MS}ms...`);
-        await Promise.race([
-            gameState.prefetchPromise,
-            new Promise(resolve => setTimeout(resolve, MAX_PREFETCH_WAIT_MS))
-        ]);
-
-        // Re-check: the prefetch may have resolved during the wait
-        if (gameState.prefetchedQuestion) {
-            const prefetched = gameState.prefetchedQuestion;
-            gameState.prefetchedQuestion = null;
-            const qSig = _buildQuestionSignature(prefetched.question);
-            if (!gameState.questionSignatureSet.has(qSig)) {
-                gameState.currentQuestion = prefetched;
-                gameState.questionSignatureSet.add(qSig);
-                logger.info(`[TriviaGame][${gameState.channelName}] Using prefetched question for round ${gameState.currentRound} (arrived during wait).`);
-
-                gameState.startTime = Date.now();
-                gameState.state = 'inProgress';
-                gameState.guessCache.clear();
-                gameState.processingQueue = [];
-
-                const questionMessage = formatQuestionMessage(
-                    gameState.currentRound,
-                    gameState.totalRounds,
-                    gameState.currentQuestion.question,
-                    gameState.currentQuestion.difficulty,
-                    gameState.config.questionTimeSeconds
-                );
-                enqueueMessage(`#${gameState.channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
-
-                const timeoutMs = gameState.config.questionTimeSeconds * 1000;
-                gameState.questionEndTimer = setTimeout(async () => {
-                    try {
-                        if (gameState.state === 'inProgress') {
-                            logger.info(`[TriviaGame][${gameState.channelName}] Round ${gameState.currentRound} timed out.`);
-                            gameState.state = 'timeout';
-                            await _transitionToEnding(gameState, "timeout");
-                        }
-                    } catch (error) {
-                        logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error in question timeout handler.`);
-                        if (gameState.state !== 'ending' && gameState.state !== 'idle') {
-                            await _transitionToEnding(gameState, "timer_error");
-                        }
-                    }
-                }, timeoutMs);
-
-                logger.info(`[TriviaGame][${gameState.channelName}] Round ${gameState.currentRound} started with ${timeoutMs}ms timer (prefetched, late).`);
-
-                if (gameState.currentRound < gameState.totalRounds) {
-                    _prefetchNextQuestion(gameState);
-                }
-                return;
-            } else {
-                logger.warn(`[TriviaGame][${gameState.channelName}] Prefetched question (late) was a duplicate. Generating fresh.`);
-            }
-        } else {
-            logger.warn(`[TriviaGame][${gameState.channelName}] Prefetch did not resolve in time or returned null. Generating on-demand.`);
         }
     }
 
@@ -770,9 +716,9 @@ async function _startNextRound(gameState) {
 async function _prefetchNextQuestion(gameState) {
     const channelName = gameState.channelName;
     logger.info(`[TriviaGame][${channelName}] Prefetching next question in background...`);
+    const key = `trivia:${channelName}`;
 
-    // Track the in-flight promise so _startNextRound can await it if needed
-    const prefetchWork = (async () => {
+    defaultPrefetchCache.prefetch(key, async () => {
         try {
             // Build exclusion lists from current session + current question
             const excludedQuestions = Array.from(gameState.gameSessionExcludedQuestions);
@@ -818,33 +764,26 @@ async function _prefetchNextQuestion(gameState) {
                 // Check for answer-too-similar
                 if (_isAnswerTooSimilar(question.answer, excludedAnswers)) {
                     logger.warn(`[TriviaGame][${channelName}] Prefetched question has repeat answer "${question.answer}". Discarding.`);
-                    gameState.prefetchedQuestion = null;
-                    return;
+                    return null;
                 }
 
                 // Only store if the game is still in progress (not stopped)
                 if (gameState.state === 'inProgress' || gameState.state === 'selecting' || gameState.state === 'guessed' || gameState.state === 'timeout' || gameState.state === 'ending') {
-                    gameState.prefetchedQuestion = question;
                     logger.info(`[TriviaGame][${channelName}] Prefetched question ready. Q: "${question.question.substring(0, 60)}..."`);
+                    return question;
                 } else {
                     logger.debug(`[TriviaGame][${channelName}] Game state changed to '${gameState.state}' during prefetch. Discarding prefetched question.`);
+                    return null;
                 }
             } else {
                 logger.warn(`[TriviaGame][${channelName}] Prefetch generated an invalid question. Will generate on-demand.`);
-                gameState.prefetchedQuestion = null;
+                return null;
             }
         } catch (error) {
             logger.error({ err: error }, `[TriviaGame][${channelName}] Error prefetching next question. Will generate on-demand.`);
-            gameState.prefetchedQuestion = null;
-        } finally {
-            // Clear the promise reference once the work is settled
-            if (gameState.prefetchPromise === prefetchWork) {
-                gameState.prefetchPromise = null;
-            }
+            return null;
         }
-    })();
-
-    gameState.prefetchPromise = prefetchWork;
+    });
 }
 
 /**
@@ -1267,6 +1206,7 @@ function stopGame(channelName) {
     logger.info(`[TriviaGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}.`);
 
     // Clear any prefetched question
+    defaultPrefetchCache.clear(`trivia:${channelName}`);
     gameState.prefetchedQuestion = null;
 
     // Transition to ending with "stopped" reason
