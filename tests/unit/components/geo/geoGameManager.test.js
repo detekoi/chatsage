@@ -2,7 +2,7 @@
 import { getGeoGameManager, activeGames } from '../../../../src/components/geo/geoGameManager.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
-import { validateGuess } from '../../../../src/components/geo/geoLocationService.js';
+import { validateGuess, selectLocation } from '../../../../src/components/geo/geoLocationService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 
@@ -41,6 +41,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
     let mockGameState;
 
     beforeEach(async () => {
+        jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
         jest.clearAllMocks();
 
         geoGameManager = getGeoGameManager();
@@ -67,10 +68,8 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
 
         // Setup: Start a game to make _handleGuess reachable
         const channelName = 'testgeochannel';
-        // Mock selectLocation for startGame to succeed
-        const { selectLocation: originalSelectLocation } = jest.requireActual('../../../../src/components/geo/geoLocationService.js');
-        const mockSelectLocation = jest.fn().mockResolvedValue({ name: 'Test Location', alternateNames: [] });
-        jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(mockSelectLocation);
+        // Configure selectLocation mock for startGame to succeed
+        selectLocation.mockResolvedValue({ name: 'Test Location', alternateNames: [] });
 
 
         await geoGameManager.startGame(channelName, 'real', null, 'testuser', 1);
@@ -110,14 +109,18 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
             };
             activeGames.set(channelName, mockGameState);
         }
-        // Restore original selectLocation if it's used elsewhere or to avoid test pollution
-        jest.spyOn(require('../../../../src/components/geo/geoLocationService.js'), 'selectLocation').mockImplementation(originalSelectLocation);
+        // Reset selectLocation mock for the actual tests (validateGuess is the one under test)
+        selectLocation.mockReset();
 
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         geoGameManager.stopGame('testgeochannel');
+        await Promise.resolve(); // Flush microtasks so _transitionToEnding schedules its fake timer
+        jest.runOnlyPendingTimers();
+        await Promise.resolve(); // Flush microtasks from _resetGameToIdle
         activeGames.clear();
+        jest.useRealTimers();
     });
 
     test('1. Bot language is English (en): translateText NOT called, validateGuess called with original guess', async () => {

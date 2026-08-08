@@ -150,8 +150,10 @@ async function _getOrCreateGameState(channelName) {
 function _clearTimers(gameState) {
     if (gameState.nextClueTimer) clearTimeout(gameState.nextClueTimer);
     if (gameState.roundEndTimer) clearTimeout(gameState.roundEndTimer);
+    if (gameState.transitionTimer) clearTimeout(gameState.transitionTimer);
     gameState.nextClueTimer = null;
     gameState.roundEndTimer = null;
+    gameState.transitionTimer = null;
 }
 
 // Function to fully reset the game state to idle, clearing multi-round info
@@ -175,7 +177,7 @@ async function _resetGameToIdle(gameState) {
     newState.streakMap = new Map();
     newState.guessCache = new Map();
     // Reset multi-round fields
-    defaultPrefetchCache.clear(`geo:${gameState.channelName}`);
+    defaultPrefetchCache.clearPrefix(`geo:${gameState.channelName}:`);
     newState.totalRounds = 1;
     newState.currentRound = 1;
     newState.gameSessionScores = new Map();
@@ -329,7 +331,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
             enqueueMessage(`#${gameState.channelName}`, `🏁 Game ended. Final Session Scores: ${sessionScoresMessage}`);
         }
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => {
+            _resetGameToIdle(gameState).catch(err => {
+                logger.error({ err, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Error resetting game state to idle.`);
+            });
+        }, MULTI_ROUND_DELAY_MS);
     } else if (isMultiRound && !isLastRound) {
         logger.info(`[GeoGame][${gameState.channelName}] Proceeding to round ${gameState.currentRound + 1}.`);
         gameState.currentRound++;
@@ -340,7 +346,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.guesses = [];
         gameState.winner = null;
         gameState.incorrectGuessReasons = [];
-        setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => {
+            _startNextRound(gameState).catch(err => {
+                logger.error({ err, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Error starting next round.`);
+            });
+        }, MULTI_ROUND_DELAY_MS);
     } else {
         logger.info(`[GeoGame][${gameState.channelName}] Game session finished. Reporting final results.`);
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
@@ -368,7 +378,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 enqueueMessage(`#${gameState.channelName}`, `Could not fetch the overall channel leaderboard.`);
             }
         }
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => {
+            _resetGameToIdle(gameState).catch(err => {
+                logger.error({ err, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Error resetting game state to idle.`);
+            });
+        }, MULTI_ROUND_DELAY_MS);
     }
 }
 
@@ -378,8 +392,9 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
  */
 async function _prefetchNextLocation(gameState) {
     const { channelName, mode } = gameState;
-    logger.info(`[GeoGame][${channelName}] Prefetching next location and initial clue in background...`);
-    const key = `geo:${channelName}`;
+    const nextRound = gameState.currentRound + 1;
+    logger.info(`[GeoGame][${channelName}] Prefetching next location and initial clue for round ${nextRound} in background...`);
+    const key = `geo:${channelName}:${gameState.gameSessionId}:${nextRound}`;
 
     defaultPrefetchCache.prefetch(key, async () => {
         try {
@@ -455,7 +470,7 @@ async function _startNextRound(gameState) {
     gameState.state = 'selecting';
 
     // 1. Check for prefetched location + initial clue
-    const prefetchKey = `geo:${gameState.channelName}`;
+    const prefetchKey = `geo:${gameState.channelName}:${gameState.gameSessionId}:${gameState.currentRound}`;
     const prefetched = await defaultPrefetchCache.getOrAwait(prefetchKey, async () => null, 15000);
 
     if (gameState.state === 'ending' || gameState.state === 'idle') {
@@ -970,7 +985,7 @@ function stopGame(channelName) {
     logger.info(`[GeoGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}. Manually ending game session from state: ${gameState.state}.`);
 
     // Clear any prefetched location
-    defaultPrefetchCache.clear(`geo:${channelName}`);
+    defaultPrefetchCache.clearPrefix(`geo:${channelName}:`);
 
     // Transition to the ending sequence with "stopped" reason.
     // _transitionToEnding will handle reporting scores (if multi-round) and resetting.
