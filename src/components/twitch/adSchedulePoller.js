@@ -4,12 +4,21 @@ import { notifyAdSoon, generateAdNotification } from '../autoChat/autoChatManage
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import config from '../../config/index.js';
 import { getSecretValue } from '../../lib/secretManager.js';
+import { isCloudTasksEnabled, scheduleTask, cancelTask, buildTaskId } from '../../lib/cloudTasks.js';
+import { isStreamLive } from '../context/liveStatus.js';
+
+// How far ahead of the ad break the warning is sent.
+const PRE_ROLL_MS = 60_000;
+// Tasks are delivered this much earlier than the warning so a cold start and
+// the LLM call still leave time to post at the right moment.
+const COLD_START_BUDGET_MS = 20_000;
 
 let timers = new Map(); // channel -> NodeJS.Timeout
 let prefetchTimers = new Map(); // channel -> NodeJS.Timeout (for prefetch)
 let intervalId = null; // background poll
 let notifiedAds = new Map(); // channel -> Set of ad timestamps we've already notified about
 let prefetchedMessages = new Map(); // channel -> prefetched message text
+let scheduledAdAt = new Map(); // channel -> ad timestamp of the pending Cloud Task
 
 /**
  * Fetches the ad schedule for a channel by calling the web UI's internal API.
@@ -116,6 +125,148 @@ function clearTimer(channelName) {
     prefetchedMessages.delete(channelName);
 }
 
+/**
+ * Enqueues a durable Cloud Task carrying the pre-ad warning.
+ *
+ * Unlike a setTimeout, the task survives this instance being scaled to zero:
+ * Cloud Tasks holds it and delivers it over HTTP at the scheduled time, cold
+ * starting the service if nothing is running.
+ *
+ * @param {string} channelName
+ * @param {number} adAtMs - Epoch ms of the ad break itself
+ * @returns {Promise<{scheduled: boolean, duplicate?: boolean, reason?: string}>}
+ */
+async function scheduleAdNotificationTask(channelName, adAtMs) {
+    // Drop any task still pending for a superseded ad time on this channel.
+    const previous = scheduledAdAt.get(channelName);
+    if (previous && previous !== adAtMs) {
+        await cancelTask(buildTaskId('ad', channelName, previous));
+    }
+
+    // Deliver early enough that a cold start plus the LLM call still finish
+    // before the warning is due.
+    const deliverAtMs = Math.max(Date.now() + 1_000, adAtMs - PRE_ROLL_MS - COLD_START_BUDGET_MS);
+
+    const result = await scheduleTask({
+        taskId: buildTaskId('ad', channelName, adAtMs),
+        payload: { kind: 'ad-notification', channelName, adAtMs },
+        deliverAtMs,
+    });
+
+    if (result.scheduled || result.duplicate) {
+        scheduledAdAt.set(channelName, adAtMs);
+    }
+    return result;
+}
+
+/**
+ * Local-dev fallback for when Cloud Tasks is not configured. Keeps the
+ * original in-process behaviour: a prefetch timer followed by a send timer.
+ */
+function scheduleAdNotificationInProcess(channelName, nextAd, fireIn, adTimestamp, channelNotifiedAds) {
+    const PREFETCH_LEAD_MS = 45_000;
+    const prefetchIn = Math.max(0, fireIn - PREFETCH_LEAD_MS);
+
+    prefetchTimers.set(channelName, setTimeout(async () => {
+        try {
+            logger.info({ channelName }, '[AdSchedule] 🔄 Prefetching ad notification message...');
+            const text = await generateAdNotification(channelName, 'warning', 60);
+            if (text) {
+                prefetchedMessages.set(channelName, text);
+                logger.info({ channelName, textLength: text.length }, '[AdSchedule] ✓ Ad notification prefetched successfully');
+            } else {
+                logger.warn({ channelName }, '[AdSchedule] Prefetch returned no text, will fall back to live generation');
+            }
+        } catch (e) {
+            logger.warn({ err: e, channelName }, '[AdSchedule] Prefetch failed, will fall back to live generation');
+        }
+    }, prefetchIn));
+
+    timers.set(channelName, setTimeout(async () => {
+        try {
+            // Use prefetched message if available, otherwise notifyAdSoon will generate live
+            const cachedText = prefetchedMessages.get(channelName) || null;
+            prefetchedMessages.delete(channelName);
+
+            logger.info({
+                channelName,
+                expectedAdAt: nextAd.toISOString(),
+                usedPrefetch: !!cachedText
+            }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
+
+            await notifyAdSoon(channelName, 60, cachedText);
+            logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
+        } catch (e) {
+            logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
+            // Remove from notified set on failure so it can retry
+            channelNotifiedAds.delete(adTimestamp);
+        }
+    }, fireIn));
+}
+
+/**
+ * Handles a delivered ad-notification Cloud Task.
+ *
+ * The task may have been queued 40 minutes ago on an instance that no longer
+ * exists, so every precondition is re-checked here rather than trusted from
+ * the payload.
+ *
+ * @param {Object} payload
+ * @param {string} payload.channelName
+ * @param {number} payload.adAtMs - Epoch ms of the ad break
+ * @returns {Promise<{sent: boolean, reason?: string}>}
+ */
+export async function handleAdNotificationTask({ channelName, adAtMs } = {}) {
+    if (!channelName || !Number.isFinite(adAtMs)) {
+        throw new Error('[AdSchedule] ad-notification task missing channelName or adAtMs');
+    }
+
+    scheduledAdAt.delete(channelName);
+
+    const cfg = await getChannelAutoChatConfig(channelName);
+    if (!cfg || cfg.categories?.ads !== true) {
+        logger.info({ channelName }, '[AdSchedule] Task delivered but ads are disabled, dropping');
+        return { sent: false, reason: 'ads-disabled' };
+    }
+
+    if (!isStreamLive(channelName)) {
+        logger.info({ channelName }, '[AdSchedule] Task delivered but stream is offline, dropping');
+        return { sent: false, reason: 'stream-offline' };
+    }
+
+    if (adAtMs - Date.now() <= 0) {
+        logger.warn({ channelName, adAt: new Date(adAtMs).toISOString() },
+            '[AdSchedule] Task delivered after the ad break had already started, dropping');
+        return { sent: false, reason: 'too-late' };
+    }
+
+    // Generate first, then hold until the warning is actually due. Doing it in
+    // this order keeps a slow cold start from pushing the message past its lead.
+    let text = null;
+    try {
+        text = await generateAdNotification(channelName, 'warning', Math.round(PRE_ROLL_MS / 1000));
+    } catch (e) {
+        logger.warn({ err: e, channelName }, '[AdSchedule] Generation failed, notifyAdSoon will retry live');
+    }
+
+    const waitMs = adAtMs - PRE_ROLL_MS - Date.now();
+    if (waitMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, COLD_START_BUDGET_MS)));
+    }
+
+    const secondsUntil = Math.max(1, Math.round((adAtMs - Date.now()) / 1000));
+    logger.info({
+        channelName,
+        adAt: new Date(adAtMs).toISOString(),
+        secondsUntil,
+        usedPrefetch: !!text
+    }, '[AdSchedule] 📢 Sending pre-ad notification now');
+
+    await notifyAdSoon(channelName, secondsUntil, text);
+    logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
+    return { sent: true };
+}
+
 export function startAdSchedulePoller() {
     if (intervalId) return intervalId;
     // This function now returns the intervalId so it can be cleared.
@@ -214,14 +365,15 @@ export function startAdSchedulePoller() {
                         }
                     }
 
-                    const fireIn = Math.max(0, msUntil - 60_000); // 60s before
+                    const fireIn = Math.max(0, msUntil - PRE_ROLL_MS);
                     const fireAt = new Date(Date.now() + fireIn);
                     logger.info({
                         channelName,
                         nextAdAt: nextAd.toISOString(),
                         secondsUntilAd: Math.floor(msUntil / 1000),
                         notificationWillFireAt: fireAt.toISOString(),
-                        secondsUntilNotification: Math.floor(fireIn / 1000)
+                        secondsUntilNotification: Math.floor(fireIn / 1000),
+                        durable: isCloudTasksEnabled()
                     }, '[AdSchedule] 🔔 Ad notification scheduled');
 
                     // Mark as notified IMMEDIATELY when scheduling (prevents race condition with next poller tick)
@@ -230,45 +382,15 @@ export function startAdSchedulePoller() {
                     // Clear existing timers before scheduling new ones
                     clearTimer(channelName);
 
-                    // Schedule prefetch timer ~45s before the send timer
-                    const PREFETCH_LEAD_MS = 45_000;
-                    const prefetchIn = Math.max(0, fireIn - PREFETCH_LEAD_MS);
-
-                    prefetchTimers.set(channelName, setTimeout(async () => {
-                        try {
-                            logger.info({ channelName }, '[AdSchedule] 🔄 Prefetching ad notification message...');
-                            const text = await generateAdNotification(channelName, 'warning', 60);
-                            if (text) {
-                                prefetchedMessages.set(channelName, text);
-                                logger.info({ channelName, textLength: text.length }, '[AdSchedule] ✓ Ad notification prefetched successfully');
-                            } else {
-                                logger.warn({ channelName }, '[AdSchedule] Prefetch returned no text, will fall back to live generation');
-                            }
-                        } catch (e) {
-                            logger.warn({ err: e, channelName }, '[AdSchedule] Prefetch failed, will fall back to live generation');
-                        }
-                    }, prefetchIn));
-
-                    timers.set(channelName, setTimeout(async () => {
-                        try {
-                            // Use prefetched message if available, otherwise notifyAdSoon will generate live
-                            const cachedText = prefetchedMessages.get(channelName) || null;
-                            prefetchedMessages.delete(channelName);
-
-                            logger.info({
-                                channelName,
-                                expectedAdAt: nextAd.toISOString(),
-                                usedPrefetch: !!cachedText
-                            }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
-
-                            await notifyAdSoon(channelName, 60, cachedText);
-                            logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
-                        } catch (e) {
-                            logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
-                            // Remove from notified set on failure so it can retry
+                    if (isCloudTasksEnabled()) {
+                        const result = await scheduleAdNotificationTask(channelName, adTimestamp);
+                        if (!result.scheduled && !result.duplicate) {
+                            // Nothing durable is pending, so allow a later tick to retry.
                             channelNotifiedAds.delete(adTimestamp);
                         }
-                    }, fireIn));
+                    } else {
+                        scheduleAdNotificationInProcess(channelName, nextAd, fireIn, adTimestamp, channelNotifiedAds);
+                    }
                 } catch (e) {
                     // Errors are already logged in fetchAdScheduleViaWebUI
                     logger.debug({ channelName, err: e.message }, '[AdSchedule] Skipping channel due to error');
@@ -293,4 +415,7 @@ export function stopAdSchedulePoller() {
     prefetchTimers.clear();
     prefetchedMessages.clear();
     notifiedAds.clear();
+    // Pending Cloud Tasks are deliberately left in the queue: they outlive this
+    // process by design, and handleAdNotificationTask re-validates on delivery.
+    scheduledAdAt.clear();
 }

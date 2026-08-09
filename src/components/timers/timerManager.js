@@ -8,7 +8,7 @@ import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
-import { getMessageCount } from '../context/channelActivity.js';
+import { getMessageCount, getLastMessageAt } from '../context/channelActivity.js';
 import { isStreamLive } from '../context/liveStatus.js';
 import { parseVariables, formatDuration } from '../customCommands/variableParser.js';
 import { resolvePrompt } from '../customCommands/promptResolver.js';
@@ -49,13 +49,25 @@ function getChannelRuntime(channelName) {
     return runtime.get(channelName);
 }
 
-function seedRuntime(channelName, timer) {
+/**
+ * @param {string} channelName
+ * @param {Object} timer
+ * @param {boolean} countBaselineValid - Whether lastSeenMessageCount can be
+ *   compared against the live counter. False when seeding at startup: the
+ *   counter only counts messages this process has seen, so a baseline taken at
+ *   boot says nothing about chat since the timer last fired on a previous
+ *   instance. On Cloud Run, where instances are recycled every ~15 minutes,
+ *   trusting it would restart the min-chat-lines requirement on every cold
+ *   start and could starve a timer indefinitely.
+ */
+function seedRuntime(channelName, timer, countBaselineValid = false) {
     const channelRuntime = getChannelRuntime(channelName);
     if (channelRuntime.has(timer.name)) return;
     channelRuntime.set(timer.name, {
         lastRunAtMs: timer.lastRunAt?.toMillis ? timer.lastRunAt.toMillis() : 0,
         lastSeenMessageCount: getMessageCount(channelName),
         lastPrefetchAtMs: 0,
+        countBaselineValid,
     });
 }
 
@@ -71,7 +83,8 @@ function handleTimerChange({ type, channelName, timerName, timer }) {
     if (!configCache.has(channelName)) configCache.set(channelName, new Map());
     configCache.get(channelName).set(timerName, timer);
     if (type === 'added') {
-        seedRuntime(channelName, timer);
+        // Added while running, so the live counter is a valid baseline.
+        seedRuntime(channelName, timer, true);
     }
     logger.debug(`[TimerManager] Timer ${timerName} ${type} for ${channelName}`);
 }
@@ -85,7 +98,15 @@ function isEligible(channelName, timer, nowMs) {
     if (nowMs - state.lastRunAtMs < intervalMs) return false;
 
     const minLines = timer.minChatLines ?? DEFAULT_MIN_CHAT_LINES;
-    if (getMessageCount(channelName) - state.lastSeenMessageCount < minLines) return false;
+    if (state.countBaselineValid) {
+        if (getMessageCount(channelName) - state.lastSeenMessageCount < minLines) return false;
+    } else if (getLastMessageAt(channelName) <= state.lastRunAtMs) {
+        // Restart-safe fallback. The message counter resets with the process,
+        // but lastMessageAt is seeded from persisted history, so "has chat
+        // spoken since this timer last fired" survives a cold start. It serves
+        // the same purpose as min-chat-lines: never post into a dead channel.
+        return false;
+    }
 
     return true;
 }
@@ -121,6 +142,8 @@ async function fireTimer(channelName, timer) {
         lastRunAtMs: Date.now(),
         lastSeenMessageCount: getMessageCount(channelName),
         lastPrefetchAtMs: 0, // Reset prefetch tracking for the next interval
+        // This process observed the fire, so the counter baseline is meaningful.
+        countBaselineValid: true,
     });
 
     const streamContext = contextManager.getStreamContextSnapshot(channelName);

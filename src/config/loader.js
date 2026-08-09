@@ -96,6 +96,16 @@ function loadConfig() {
             internalToken: process.env.WEBUI_INTERNAL_TOKEN || null,
         },
 
+        // Cloud Tasks (durable scheduling that survives scale-to-zero).
+        // When targetUrl is unset (local dev), schedulers fall back to in-process timers.
+        cloudTasks: {
+            projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || null,
+            location: process.env.CLOUD_TASKS_LOCATION || 'us-central1',
+            queue: process.env.CLOUD_TASKS_QUEUE || 'scheduled-messages',
+            targetUrl: process.env.CLOUD_TASKS_TARGET_URL || null,
+            invokerServiceAccount: process.env.CLOUD_TASKS_INVOKER_SA || null,
+        },
+
         // Emote Description (Vision)
         emote: {
             geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-flash-lite-latest',
