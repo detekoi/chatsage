@@ -7,18 +7,18 @@
 [![日本語](https://img.shields.io/badge/lang-日本語-violet?style=flat)](docs/README-ja.md)
 [![Русский](https://img.shields.io/badge/lang-Русский-lightcoral?style=flat)](docs/README-ru.md)
 
-# ChatSage
+# WildcatSage
 
-ChatSage is an AI-powered chatbot designed for Twitch chat environments in any language. It provides contextually relevant responses based on chat history, user queries, and real-time stream information (current game, title, tags).
+WildcatSage is an AI-powered chatbot for Twitch chat. WildcatSage generates contextually relevant responses from chat history, user queries, and real-time stream metadata (current game, title, and tags).
 
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE.md)
 
-> Important: Access to the cloud version of ChatSage is currently invite-only via an allow-list. The self-serve web dashboard is disabled for unapproved channels. If you'd like to try the bot, please contact me here: [Contact form](https://parfaitfair.com/#contact).
+> **IMPORTANT:** Access to the cloud version of WildcatSage is invite-only. Unapproved channels cannot access the management interface. If you want to try the bot, use [this contact form](https://parfaitfair.com/#contact).
 
 ## Table of Contents
 
-- [Features (Core Capabilities)](#features-core-capabilities)
-- [Adding ChatSage to Your Channel](#adding-chatsage-to-your-channel)
+- [Features](#features)
+- [Adding WildcatSage to Your Channel](#adding-wildcatsage-to-your-channel)
 - [Usage Examples](#usage-examples)
 - [Development Prerequisites](#development-prerequisites)
 - [Getting Started](#getting-started)
@@ -26,277 +26,265 @@ ChatSage is an AI-powered chatbot designed for Twitch chat environments in any l
 - [Configuration](#configuration)
 - [Twitch Token Management](#twitch-token-management)
 - [Docker](#docker)
+- [Deploying to Cloud Run](#deploying-to-cloud-run)
 
-## Features (Core Capabilities)
+## Features
 
-- Receives chat messages via Twitch EventSub webhooks and sends replies via the Twitch Helix API.
-- Fetches real-time stream context (game, title, tags, thumbnail images) using the Twitch Helix API.
-- Utilizes Google's Gemini 3 Flash LLM for natural language understanding and response generation (lightweight commands like `!lurk` and `!translate` use Gemini 3.1 Flash Lite for speed and cost efficiency).
-- Maintains conversation context (history and summaries) per channel.
-- Supports custom chat commands with permission levels.
-- Configurable bot language settings for multilingual channel support.
-- Configurable through environment variables.
-- Includes structured logging suitable for production environments.
-- Web-based channel management interface for streamers to add/remove the bot.
+- Receive chat messages through Twitch EventSub webhooks.
+- Send chat replies through the Twitch Helix API.
+- Fetch real-time stream metadata (game, title, tags, thumbnail images) through the Twitch Helix API.
+- Generate main responses with OpenAI GPT 5.6 Luna for reasoning, queries, games, check-ins, and commands.
+- Process speed-critical tasks (`!lurk`, `!translate`, summarization, emote descriptions) with Google Gemini 3.5 Flash Lite.
+- Maintain conversation history and summaries for each channel.
+- Execute custom chat commands with permission checks.
+- Support multilingual channels through configuration settings.
+- Read settings from environment variables.
+- Write structured JSON logs for production monitoring.
+- Provide a web interface for streamers to manage bot access.
 
-## Adding ChatSage to Your Channel
+## Adding WildcatSage to Your Channel
 
-Note: Only pre-approved channels on the allow-list can enable ChatSage. If you are not yet approved but want to try it, please reach out via the [Contact form](https://parfaitfair.com/#contact).
+> **NOTE:** Only approved channels on the allow-list can enable WildcatSage. If your channel is not approved, use [this contact form](https://parfaitfair.com/#contact) to request access.
 
-If your channel is approved, you can add or remove ChatSage using the web interface:
+If your channel is approved, follow these steps to add or remove WildcatSage:
 
-1. **Visit the ChatSage Management Portal**:
-   - Go to [ChatSage Management Portal](https://bot.wildcat.chat) (approved channels only)
-   - Click on "Login with Twitch"
+1. **Open the WildcatSage Management Portal:**
+   - Go to [bot.wildcat.chat](https://bot.wildcat.chat).
+   - Select **Login with Twitch**.
 
-2. **Authorize the Application**:
-   - You'll be redirected to Twitch to authorize ChatSage
-   - Grant the required permissions
-   - This process is secure and uses Twitch's OAuth flow
+2. **Authorize the Application:**
+   - Twitch prompts you to authorize WildcatSage.
+   - Grant the required permissions. The process uses standard Twitch OAuth 2.0.
 
-3. **Manage the Bot**:
-   - Once logged in, you'll see your dashboard
-   - Use the "Add Bot to My Channel" button to have ChatSage join your channel
-   - Use "Remove Bot from My Channel" if you want to remove it
+3. **Manage the Bot:**
+   - View your channel dashboard.
+   - Select **Add Bot to My Channel** to add WildcatSage to your channel.
+   - Select **Remove Bot from My Channel** to remove WildcatSage from your channel.
 
-4. **Bot Joining Time**:
-   - After adding the bot, it should join your channel within a few minutes
-   - If the bot doesn't join after 10 minutes, please try removing and adding again
-   - Important: if the bot is not responding, grant it mod status with the command "/mod ChatSageBot"
+4. **Bot Joining Time:**
+   - After you add the bot, WildcatSage joins your channel within a few minutes.
+   - If the bot does not join after 10 minutes, remove the bot and add it again.
+   - If the bot does not reply to chat, grant moderator status with the `/mod WildcatSageBot` command.
 
-5. **User Interaction**:
-   - Viewers can interact with ChatSage by mentioning it: `@ChatSageBot hello` (the username will be updated to reflect the new name, ChatSage, when Twitch allows me)
-   - Or by using various [commands](https://docs.wildcat.chat/botcommands.html) like `!ask`, `!translate`, etc.
+5. **User Interaction:**
+   - Viewers can talk to WildcatSage by mentioning the bot name: `@WildcatSageBot hello`.
+   - Viewers can use [bot commands](https://docs.wildcat.chat/botcommands.html) such as `!ask` and `!translate`.
 
 ## Usage Examples
 
 ### Chat Commands
 
-For a complete list of available commands and their usage, please visit [Bot Commands Documentation](https://docs.wildcat.chat/botcommands.html).
+For a full list of commands, read the [Bot Commands Documentation](https://docs.wildcat.chat/botcommands.html).
 
 ### Context-Aware Responses
 
-ChatSage understands the flow of conversation. For example, the `!lurk` command provides a polite, contextual send-off.
+WildcatSage reads the conversation context before it replies. For example, the `!lurk` command creates a personal send-off.
 
-**Scenario:** The chat is discussing making dinner.
+**Scenario:** The chat discusses making dinner.
+
 > **User:** `!lurk going to make some pasta`
 >
-> **ChatSageBot:** `@user, enjoy making the pasta! Hope it turns out delicious. We'll be here when you get back!`
-
-This demonstrates how the bot can craft personalized responses based on both the command and the user's provided reason.
+> **WildcatSageBot:** `@user, enjoy making the pasta! Hope it turns out delicious. We'll be here when you get back!`
 
 ## Development Prerequisites
 
-- Node.js (Version 22.0.0 or later recommended)
+Make sure that you install these tools on your computer:
+
+- Node.js (version 22.0.0 or later)
 - npm (or yarn)
 
 ## Getting Started
 
 1. **Clone the repository:**
 
-    ```bash
-    git clone [https://github.com/detekoi/chatsage.git](https://github.com/detekoi/chatsage.git)
-    cd chatsage
-    ```
+   ```bash
+   git clone https://github.com/detekoi/chatsage.git
+   cd chatsage
+   ```
 
 2. **Install dependencies:**
 
-    ```bash
-    npm install
-    ```
-
-    *(Or `yarn install` if you prefer Yarn)*
+   ```bash
+   npm install
+   ```
 
 3. **Configure environment variables:**
-    - Copy the example environment file:
+   - Copy the example environment file:
 
-        ```bash
-        cp .env.example .env
-        ```
+     ```bash
+     cp .env.example .env
+     ```
 
-    - Edit the `.env` file and fill in your credentials and settings. Refer to the comments within `.env.example` for details on each variable (Twitch bot username/token, Twitch application client ID/secret, Gemini API key, channels to join, etc.). **Do not commit your `.env` file.**
+   - Edit the `.env` file to add your API keys and credentials. Read the comments in `.env.example` for details on each variable. Do not commit your `.env` file to source control.
 
 ## Running the Bot
 
 - **Development:**
-    Uses Node's built-in watch mode for automatic restarts on file changes. Enables human-readable ("pretty") logs by default if `PINO_PRETTY_LOGGING=true` in `.env`.
+  Node watches files and restarts the bot automatically when code changes. If `PINO_PRETTY_LOGGING=true` in `.env`, the bot prints human-readable logs.
 
-    ```bash
-    npm run dev
-    ```
+  ```bash
+  npm run dev
+  ```
 
 - **Production:**
-    Runs the bot using standard `node`. Outputs structured JSON logs suitable for log aggregation systems.
+  Run the bot with standard Node.js. The bot outputs structured JSON logs.
 
-    ```bash
-    npm start
-    ```
+  ```bash
+  npm start
+  ```
 
 ## Configuration
 
-ChatSage is configured primarily through environment variables. The required and optional variables are documented in the `.env.example` file. Key variables include:
+Configure WildcatSage through environment variables. The `.env.example` file lists all required and optional variables:
 
-- `TWITCH_BOT_USERNAME`: Username for the bot's Twitch account.
-- `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback if Firestore channel management is unavailable.
-- `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channels list in Google Secret Manager. Used as fallback if Firestore channel management is unavailable.
-- `GEMINI_API_KEY`: Your API key for the Google Gemini service.
-- `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application (used for Helix API calls).
+- `TWITCH_BOT_USERNAME`: Username for the Twitch bot account.
+- `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback when Firestore is unavailable.
+- `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channel list in Google Secret Manager. Used as fallback when Firestore is unavailable.
+- `OPENAI_API_KEY`: API key for OpenAI services (GPT 5.6 Luna model).
+- `GEMINI_API_KEY`: API key for Google Gemini services (Gemini 3.5 Flash Lite model).
+- `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application.
 - `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
-- `STREAM_INFO_FETCH_INTERVAL_SECONDS`: How often to refresh stream context data.
-- `LOG_LEVEL`: Controls the verbosity of logs.
+- `STREAM_INFO_FETCH_INTERVAL_SECONDS`: Interval in seconds between stream metadata updates.
+- `LOG_LEVEL`: Log verbosity level.
 
-Ensure all required variables are set in your environment or `.env` file before running the bot.
+Make sure that you set all required variables in your environment or `.env` file before you start the bot.
 
 ## Twitch Token Management
 
-ChatSage uses a secure token refresh mechanism to maintain authentication with Twitch:
+### Bot Authentication Setup
 
-### Bot Authentication
+1. **Prerequisites for Token Generation:**
+   - Register an application in the [Twitch Developer Console](https://dev.twitch.tv/console/). Note your **Client ID** and **Client Secret**.
+   - In your Twitch Application settings, add `http://localhost:3000` as an OAuth Redirect URL.
+   - Install the [Twitch CLI](https://dev.twitch.tv/docs/cli/install).
 
-1. **Prerequisites for Token Generation**:
-    - **Twitch Application**: Ensure you have registered an application on the [Twitch Developer Console](https://dev.twitch.tv/console/). Note your **Client ID** and generate a **Client Secret**.
-    - **OAuth Redirect URI**: In your Twitch Application settings, add `http://localhost:3000` as an OAuth Redirect URL. The Twitch CLI specifically uses this as the first redirect URL by default.
-    - **Twitch CLI**: Install the [Twitch CLI](https://dev.twitch.tv/docs/cli/install) on your local machine.
+2. **Configure Twitch CLI:**
+   - Open a terminal.
+   - Run `twitch configure`.
+   - Enter your **Client ID** and **Client Secret** when prompted.
 
-2. **Configure Twitch CLI**:
-    - Open your terminal or command prompt.
-    - Run `twitch configure`.
-    - When prompted, enter the **Client ID** and **Client Secret** from your Twitch Application.
+3. **Generate User Access Token and Refresh Token:**
+   - Run this command in your terminal:
 
-3. **Generate User Access Token and Refresh Token using Twitch CLI**:
-    - Run the following command in your terminal. Replace `<your_scopes>` with a space-separated list of scopes required for your bot. For ChatSage, you need at least `user:read:chat` and `user:write:chat`.
+     ```bash
+     twitch token -u -s 'user:read:chat user:write:chat'
+     ```
 
-        ```bash
-        twitch token -u -s 'user:read:chat user:write:chat'
-        ```
+   - Copy the generated URL from the terminal output and paste it into your browser.
+   - Log in to Twitch with the account that the bot uses.
+   - Authorize the application for the requested scopes.
+   - Twitch redirects your browser to `http://localhost:3000`. The Twitch CLI captures the authorization code and exchanges it for tokens.
+   - The CLI prints the access token and refresh token in your terminal.
 
-        *(You can add other scopes if your bot's custom commands need them, e.g., `channel:manage:polls channel:read:subscriptions`)*
-    - The CLI will output a URL. Copy this URL and paste it into your web browser.
-    - Log in to Twitch using the **Twitch account you want the bot to use**.
-    - Authorize your application for the requested scopes.
-    - After authorization, Twitch will redirect your browser to `http://localhost:3000`. The CLI, which temporarily runs a local server, will capture the authorization code and exchange it for tokens.
-    - The CLI will then print the `User Access Token`, `Refresh Token`, `Expires At` (for the access token), and the `Scopes` granted.
+4. **Store the Refresh Token in Secret Manager:**
+   - Copy the refresh token from the Twitch CLI output.
+   - Create a secret in Google Secret Manager and paste the refresh token.
+   - Copy the resource name of the secret (for example, `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`).
+   - Set the resource name as the value for `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` in your `.env` file or Cloud Run settings.
+   - Grant the `Secret Manager Secret Accessor` IAM role to the service account that runs WildcatSage.
 
-4. **Store the Refresh Token Securely**:
-    - From the Twitch CLI output, copy the **Refresh Token**. This is the crucial token your bot needs for long-term authentication.
-    - Store this Refresh Token securely in Google Secret Manager.
+5. **Authentication Flow in WildcatSage:**
+   - When WildcatSage starts, `auth.js` reads the refresh token from Google Secret Manager.
+   - WildcatSage uses the refresh token, `TWITCH_CLIENT_ID`, and `TWITCH_CLIENT_SECRET` to request an access token from Twitch.
+   - WildcatSage uses the access token to authenticate API calls and EventSub webhooks.
+   - When the access token expires, WildcatSage automatically requests a new access token with the refresh token.
+   - If the refresh token becomes invalid, generate a new refresh token with the Twitch CLI and update Secret Manager.
 
-5. **Google Secret Manager Setup**:
-    - Create a Google Cloud Project if you don't have one.
-    - Enable the Secret Manager API in your project.
-    - Create a new secret in Secret Manager to store the Twitch Refresh Token you just obtained.
-    - Note the **Resource Name** of this secret. It will look like `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`.
-    - Set this full resource name as the value for the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` environment variable in your bot's configuration (e.g., in your `.env` file or Cloud Run environment variables).
-    - Ensure the service account running your ChatSage application (whether locally via ADC or in Cloud Run) has the "Secret Manager Secret Accessor" IAM role for this secret.
+### Channel Management Web Interface
 
-6. **Authentication Flow in ChatSage**:
-    - On startup, ChatSage (specifically `auth.js`) will use the `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` to fetch the stored refresh token from Google Secret Manager.
-    - It will then use this refresh token, along with your application's `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`, to obtain a fresh, short-lived OAuth Access Token from Twitch.
-    - This access token is used to authenticate with the Twitch Helix API for sending chat messages and subscribing to EventSub webhooks.
-    - If the access token expires or becomes invalid, the bot will use the refresh token to automatically obtain a new one.
-    - If the refresh token itself becomes invalid (e.g., revoked by Twitch, user password change), the application will log a critical error, and you will need to repeat the token generation process (Steps 3-4) to get a new refresh token.
+The web interface uses a separate OAuth flow to manage channels:
 
-### Channel Management Web UI
+1. **Firebase Setup:**
+   - Firebase Functions and Hosting run the web interface.
+   - Streamers authenticate through Twitch OAuth 2.0.
+   - Adding or removing the bot updates a Firestore collection.
+   - WildcatSage checks Firestore periodically to update the list of active channels.
 
-The [web interface](https://github.com/detekoi/chatsage-web-ui) uses a separate OAuth flow to allow streamers to manage the bot in their channel:
-
-1. **Firebase Functions Setup**:
-    - The web UI is built with Firebase Functions and Hosting.
-    - It uses Twitch OAuth to authenticate streamers.
-    - When a streamer adds or removes the bot, it updates a Firestore collection.
-    - The bot periodically checks this collection to determine which channels to join or leave.
-
-2. **Environment Variables for Web UI**:
-    - `TWITCH_CLIENT_ID`: Twitch application client ID.
-    - `TWITCH_CLIENT_SECRET`: Twitch application client secret.
-    - `CALLBACK_URL`: The OAuth callback URL (your deployed function URL).
-    - `FRONTEND_URL`: The URL of your web interface.
-    - `JWT_SECRET_KEY`: Secret for signing authentication tokens.
-    - `SESSION_COOKIE_SECRET`: Secret for session cookies.
-
-This approach provides better security by using standard OAuth flows and official tools, and not storing sensitive tokens directly in configuration files where possible. It also gives streamers control over adding or removing the bot from their channel.
+2. **Environment Variables for Web Interface:**
+   - `TWITCH_CLIENT_ID`: Twitch application client ID.
+   - `TWITCH_CLIENT_SECRET`: Twitch application client secret.
+   - `CALLBACK_URL`: Deployed function URL for OAuth callbacks.
+   - `FRONTEND_URL`: URL of the web interface.
+   - `JWT_SECRET_KEY`: Secret key for JWT signatures.
+   - `SESSION_COOKIE_SECRET`: Secret key for session cookies.
 
 <details>
 <summary><strong>EventSub for Serverless Deployment (Optional)</strong></summary>
 
-This project supports Twitch's EventSub to enable a "scale-to-zero" serverless deployment on platforms like Google Cloud Run. This significantly reduces hosting costs by only running the bot when a channel it's in is live.
+WildcatSage supports Twitch EventSub for scale-to-zero serverless deployments on Google Cloud Run. Scale-to-zero reduces hosting costs because instances run only when a channel is live.
 
 ### Overview
 
-- **How it works:** The bot subscribes to `stream.online` events. When a streamer goes live, Twitch sends a webhook that starts the bot instance. The bot stays active while the stream is live and scales down to zero instances when all monitored channels are offline.
-- **Cost Savings:** This model can reduce hosting costs significantly.
+- **How it works:** WildcatSage subscribes to `stream.online` events. When a streamer goes live, Twitch sends a webhook event to start a service instance. The instance runs while streams are live, and scales to zero instances when all channels are offline.
+- **Cost reduction:** You pay only for compute time used during active streams.
 
 ### Required Environment Variables
 
-To enable this feature, set the following in your deployment environment (e.g., Cloud Run):
+Set these environment variables in your deployment environment (for example, Cloud Run):
 
-- `LAZY_CONNECT=true`: Enables the scale-to-zero logic.
-- `TWITCH_EVENTSUB_SECRET`: A long, random, secret string you create to secure your webhook endpoint.
-- `PUBLIC_URL`: The public-facing URL of your deployed service (e.g., `https://your-service.a.run.app`).
+- `LAZY_CONNECT=true`: Enable scale-to-zero behavior.
+- `TWITCH_EVENTSUB_SECRET`: Secret string to authenticate incoming webhooks.
+- `PUBLIC_URL`: Public HTTPS URL of your deployed service.
 
 ### Setup Process
 
 1. **Deploy with EventSub Variables:**
-    Deploy your application with the environment variables listed above. For Cloud Run, you would use `gcloud run deploy` with `--set-env-vars`.
+   Deploy your service with the environment variables listed above.
 
 2. **Subscribe to Events:**
-    After deploying, run the management script to subscribe all your channels to the `stream.online` event.
+   Run the management script to subscribe all channels to `stream.online` events:
 
-    ```bash
-    node scripts/manage-eventsub.js subscribe-all
-    ```
+   ```bash
+   node scripts/manage-eventsub.js subscribe-all
+   ```
 
 3. **Verify Subscriptions:**
-    You can check that the subscriptions were created successfully:
+   List active subscriptions to confirm setup:
 
-    ```bash
-    node scripts/manage-eventsub.js list
-    ```
-
-This setup ensures the bot only consumes resources when it needs to be active in a live channel.
+   ```bash
+   node scripts/manage-eventsub.js list
+   ```
 
 </details>
 
 ## Docker
 
-A `Dockerfile` is provided for building a container image of the application.
+Build and run WildcatSage inside a Docker container:
 
 1. **Build the image:**
 
-    ```bash
-    docker build -t chatsage:latest .
-    ```
+   ```bash
+   docker build -t wildcatsage:latest .
+   ```
 
 2. **Run the container:**
-    You need to pass the environment variables to the container. One way is using an environment file:
+   Pass your environment variables file to the container:
 
-    ```bash
-    docker run --rm --env-file ./.env -it chatsage:latest
-    ```
+   ```bash
+   docker run --rm --env-file ./.env -it wildcatsage:latest
+   ```
 
-    *(Ensure your `.env` file is populated correctly)*
+## Deploying to Cloud Run
 
-## Deploying to Cloud Run (locally)
-
-For a local deploy that mirrors the GitHub Actions workflow, use the portable script:
+To deploy to Cloud Run from a local machine, use the deployment script:
 
 ```bash
-scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service chatsage
+scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service wildcatsage
 ```
 
-Notes:
+**Notes:**
 
-- The script uses the same env and secret mappings as `.github/workflows/deploy-cloud-run.yml`.
-- You must be authenticated with `gcloud` and have access to the project’s secrets.
-- On first deploy, `PUBLIC_URL` can be empty. After deploy, the script prints the URL; set `PUBLIC_URL` to that value and redeploy for EventSub callbacks.
+- The script uses the same environment and secret mappings as `.github/workflows/deploy-cloud-run.yml`.
+- Make sure that you authenticate with `gcloud` and grant permissions for Google Secret Manager before deployment.
+- On your first deployment, leave `PUBLIC_URL` empty. After deployment finishes, copy the service URL printed by the script, set `PUBLIC_URL` to that value, and run the script again.
 
-Examples:
+**Examples:**
 
 ```bash
-# First deploy
+# First deployment
 scripts/deploy-cloud-run.sh
 
-# After you get the URL, redeploy with PUBLIC_URL set
-PUBLIC_URL="https://chatsage-XXXX-uc.a.run.app" \
-  scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service chatsage
+# Redeploy after setting PUBLIC_URL
+PUBLIC_URL="https://wildcatsage-XXXX-uc.a.run.app" \
+  scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service wildcatsage
 ```
