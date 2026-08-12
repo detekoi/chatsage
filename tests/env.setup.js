@@ -28,7 +28,16 @@ const placeholders = {
     WEBUI_INTERNAL_TOKEN: 'test-internal-token',
 };
 
-// Only fill gaps: a real value supplied by the shell, .env, or CI always wins.
+// Only fill gaps: a value already exported by the shell or by CI wins, because the
+// guard below skips any key that is already set.
+//
+// This does NOT defer to .env for these keys, and that is deliberate. setupFiles runs
+// before a test imports loader.js, so the placeholders are in process.env by the time
+// loader.js calls dotenv.config(), and dotenv does not override existing variables.
+// The values below are therefore what tests see even when .env defines the same key,
+// which is what makes a local `npm test` exercise the same values as CI rather than
+// whatever happens to sit in a developer's .env.
+//
 // loadConfig() treats an empty string as missing too, so test the value rather than
 // just key presence.
 for (const [key, value] of Object.entries(placeholders)) {
