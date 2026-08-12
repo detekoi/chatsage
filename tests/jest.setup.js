@@ -7,38 +7,21 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Nothing global to flush; tests using fake timers should flush locally.
-  jest.useRealTimers();
-});
-
-// Safety net: fail fast if handles remain (except when explicitly allowed).
-afterAll(() => {
-  if (process.env.JEST_ALLOW_OPEN_HANDLES) return;
-  const handles = process._getActiveHandles().filter(h => {
-    if (!h) return false;
-    const isStdio = h === process.stdin || h === process.stdout || h === process.stderr;
-    const name = (h.constructor?.name || h.name || '').toLowerCase();
-    const ignoreTypes = ['pipe', 'pipewrap', 'socket', 'childprocess', 'ttywrap', 'signalwrap'];
-    const isIgnoredType = ignoreTypes.some(t => name.includes(t));
-    const isInternalHandle = !h.constructor || ('_handle' in h) || ('fd' in h);
-    return !(isStdio || isIgnoredType || isInternalHandle);
-  });
-  if (handles.length) {
-    // Log handle types to help with future debugging
-    console.error('OPEN HANDLES:', handles.map(h => h.constructor?.name || typeof h));
-    throw new Error(`Found ${handles.length} open handle(s). Close them or call unref() in your code/tests.`);
-  }
-});
-
-// More aggressive cleanup after each test
-afterEach(() => {
-  // Clear all timers to prevent hanging
+  // Tests using fake timers should flush locally; this just restores the default.
   jest.clearAllTimers();
+  jest.useRealTimers();
 
-  // Run pending promises to ensure async operations complete
+  // Run pending promises to ensure async operations complete.
   return new Promise(resolve => {
     setImmediate(() => {
       resolve();
     });
   });
 });
+
+// A previous afterAll hook here tried to fail suites that leaked open handles.
+// It could never fire: its filter discarded anything with an `fd` (every real
+// socket and server) and timers do not appear in process._getActiveHandles() at
+// all, so the survivor count was always zero even while CI reported "worker
+// process has failed to exit gracefully". Run `jest --detectOpenHandles` to
+// chase a leak instead.

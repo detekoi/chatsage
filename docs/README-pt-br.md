@@ -121,8 +121,7 @@ Para uma lista completa dos comandos disponíveis e seu uso, visite a [Documenta
 O ChatSage é configurado principalmente através de variáveis de ambiente. As variáveis obrigatórias e opcionais estão documentadas no arquivo `.env.example`. As variáveis chave incluem:
 
 * `TWITCH_BOT_USERNAME`: Nome de usuário para a conta Twitch do bot.
-* `TWITCH_CHANNELS`: Lista de canais separados por vírgula para entrar. Usado como fallback se o gerenciamento de canais do Firestore não estiver disponível.
-* `TWITCH_CHANNELS_SECRET_NAME`: Nome do recurso para a lista de canais no Google Secret Manager. Usado como fallback se o gerenciamento de canais do Firestore não estiver disponível.
+* `TWITCH_CHANNELS`: Lista de canais separados por vírgula para entrar, no desenvolvimento local. Em produção, o bot carrega sua lista de canais do Firestore.
 * `GEMINI_API_KEY`: Sua chave de API para o serviço Google Gemini.
 * `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credenciais para seu aplicativo Twitch registrado (usado para chamadas da API Twitch Helix).
 * `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Nome do recurso para o token de atualização no Google Secret Manager.
@@ -212,7 +211,6 @@ Este projeto suporta o EventSub da Twitch para permitir uma implantação "scale
 
 Para habilitar este recurso, defina o seguinte em seu ambiente de implantação (por exemplo, Cloud Run):
 
-- `LAZY_CONNECT=true`: Habilita a lógica de scale-to-zero.
 - `TWITCH_EVENTSUB_SECRET`: Uma string secreta longa e aleatória que você cria para proteger seu endpoint de webhook.
 - `PUBLIC_URL`: A URL pública do seu serviço implantado (por exemplo, `https://your-service.a.run.app`).
 

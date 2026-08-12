@@ -138,8 +138,7 @@ Make sure that you install these tools on your computer:
 Configure WildcatSage through environment variables. The `.env.example` file lists all required and optional variables:
 
 - `TWITCH_BOT_USERNAME`: Username for the Twitch bot account.
-- `TWITCH_CHANNELS`: Comma-separated list of channels to join. Used as fallback when Firestore is unavailable.
-- `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channel list in Google Secret Manager. Used as fallback when Firestore is unavailable.
+- `TWITCH_CHANNELS`: Comma-separated list of channels to join in local development. In production the bot loads its channel list from Firestore.
 - `OPENAI_API_KEY`: API key for OpenAI services (GPT 5.6 Luna model).
 - `GEMINI_API_KEY`: API key for Google Gemini services (Gemini 3.5 Flash Lite model).
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application.
@@ -222,7 +221,6 @@ WildcatSage supports Twitch EventSub for scale-to-zero serverless deployments on
 
 Set these environment variables in your deployment environment (for example, Cloud Run):
 
-- `LAZY_CONNECT=true`: Enable scale-to-zero behavior.
 - `TWITCH_EVENTSUB_SECRET`: Secret string to authenticate incoming webhooks.
 - `PUBLIC_URL`: Public HTTPS URL of your deployed service.
 
@@ -266,25 +264,13 @@ Build and run WildcatSage inside a Docker container:
 
 ## Deploying to Cloud Run
 
-To deploy to Cloud Run from a local machine, use the deployment script:
-
-```bash
-scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service wildcatsage
-```
+Deployment is automated through `.github/workflows/deploy-cloud-run.yml`. Pushing to `main` runs
+the unit tests and then deploys to Cloud Run, authenticating with Workload Identity Federation and
+mapping secrets from Google Secret Manager. Pushes to other branches run the tests only.
 
 **Notes:**
 
-- The script uses the same environment and secret mappings as `.github/workflows/deploy-cloud-run.yml`.
-- Make sure that you authenticate with `gcloud` and grant permissions for Google Secret Manager before deployment.
-- On your first deployment, leave `PUBLIC_URL` empty. After deployment finishes, copy the service URL printed by the script, set `PUBLIC_URL` to that value, and run the script again.
-
-**Examples:**
-
-```bash
-# First deployment
-scripts/deploy-cloud-run.sh
-
-# Redeploy after setting PUBLIC_URL
-PUBLIC_URL="https://wildcatsage-XXXX-uc.a.run.app" \
-  scripts/deploy-cloud-run.sh --project streamsage-bot --region us-central1 --service wildcatsage
-```
+- Environment values and secret mappings live in the workflow, which is the single source of truth
+  for what the deployed service receives.
+- On a first deployment into a new project, deploy once, copy the service URL that Cloud Run prints,
+  then set `PUBLIC_URL` in the workflow to that value and deploy again.

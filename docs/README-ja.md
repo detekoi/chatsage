@@ -121,8 +121,7 @@ ChatSageは、あらゆる言語のTwitchチャット環境向けに設計され
 ChatSageは主に環境変数を通じて設定されます。必須およびオプションの変数は、`.env.example`ファイルに記載されています。主要な変数には以下が含まれます：
 
 *   `TWITCH_BOT_USERNAME`: ボットのTwitchアカウントのユーザー名。
-*   `TWITCH_CHANNELS`: 参加するチャンネルのコンマ区切りリスト。Firestoreチャンネル管理が利用できない場合のフォールバックとして使用されます。
-*   `TWITCH_CHANNELS_SECRET_NAME`: Google Secret Manager内のチャンネルリストのリソース名。Firestoreチャンネル管理が利用できない場合のフォールバックとして使用されます。
+*   `TWITCH_CHANNELS`: ローカル開発で参加するチャンネルのコンマ区切りリスト。本番環境では、ボットはチャンネルリストをFirestoreから読み込みます。
 *   `GEMINI_API_KEY`: Google GeminiサービスのAPIキー。
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: 登録済みのTwitchアプリケーションの認証情報（Helix API呼び出しに使用）。
 *   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Google Secret Manager内のリフレッシュトークンのリソース名。
@@ -212,7 +211,6 @@ ChatSageは、Twitchとの認証を維持するために安全なトークン更
 
 この機能を有効にするには、デプロイメント環境（例：Cloud Run）で以下を設定します。
 
-- `LAZY_CONNECT=true`：スケールトゥゼロのロジックを有効にします。
 - `TWITCH_EVENTSUB_SECRET`：Webhookエンドポイントを保護するために作成する、長くてランダムな秘密の文字列。
 - `PUBLIC_URL`：デプロイされたサービスの公開URL（例：`https://your-service.a.run.app`）。
 

@@ -7,12 +7,16 @@ on:
       - 'docs/**'
       - 'scripts/**'
 
+# Least privilege by default. The deploy job overrides this with the id-token
+# write permission it needs for Workload Identity Federation.
+permissions:
+  contents: read
+
 env:
   GCP_PROJECT_ID: 'streamsage-bot'
   GCP_REGION: 'us-central1'
   CLOUD_RUN_SERVICE_NAME: 'chatsage'
   TWITCH_BOT_USERNAME: 'WildcatSage'
-  TWITCH_CHANNELS_SECRET_NAME: 'projects/907887386166/secrets/twitch-channels/versions/latest'
   LLM_PROVIDER: 'gemini'
   GEMINI_MODEL_ID: 'gemini-3-flash-preview'
   GEMINI_LITE_MODEL_ID: 'gemini-flash-lite-latest'
@@ -23,11 +27,8 @@ env:
   NODE_ENV: 'production'
   PINO_PRETTY_LOGGING: 'false'
   TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME: 'projects/907887386166/secrets/TWITCH_BOT_REFRESH_TOKEN/versions/latest'
-  LAZY_CONNECT: 'false'
   PUBLIC_URL: 'https://chatsage-907887386166.us-central1.run.app'
   GOOGLE_CLOUD_PROJECT: 'streamsage-bot'
-  EVENTSUB_BYPASS: '0'
-  ALLOWED_CHANNELS_SECRET_NAME: 'projects/907887386166/secrets/allowed-channels/versions/latest'
   WEBUI_BASE_URL: 'https://api.wildcat.chat'
   WEBUI_INTERNAL_TOKEN: 'projects/907887386166/secrets/webui-internal-token/versions/latest'
   # Durable scheduling. Cloud Run runs with min-instances=0, so work that must
@@ -59,6 +60,9 @@ jobs:
   deploy:
     name: Build and Deploy to Cloud Run
     needs: test
+    # This workflow triggers on every push with no branch filter, so without this
+    # guard a push to any feature branch would deploy to production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
@@ -97,7 +101,7 @@ jobs:
             --max-instances=10 \
             --memory 512Mi \
             --cpu-boost \
-            --set-env-vars="NODE_ENV=${{ env.NODE_ENV }},LOG_LEVEL=${{ env.LOG_LEVEL }},PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }},LLM_PROVIDER=${{ env.LLM_PROVIDER }},TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }},TWITCH_CHANNELS_SECRET_NAME=${{ env.TWITCH_CHANNELS_SECRET_NAME }},GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }},GEMINI_LITE_MODEL_ID=${{ env.GEMINI_LITE_MODEL_ID }},OPENAI_MODEL_ID=${{ env.OPENAI_MODEL_ID }},OPENAI_LITE_MODEL_ID=${{ env.OPENAI_LITE_MODEL_ID }},STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }},PUBLIC_URL=${{ env.PUBLIC_URL }},LAZY_CONNECT=${{ env.LAZY_CONNECT }},TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }},GOOGLE_CLOUD_PROJECT=${{ env.GOOGLE_CLOUD_PROJECT }},WEBUI_BASE_URL=${{ env.WEBUI_BASE_URL }},WEBUI_INTERNAL_TOKEN=${{ env.WEBUI_INTERNAL_TOKEN }},ALLOWED_CHANNELS_SECRET_NAME=${{ env.ALLOWED_CHANNELS_SECRET_NAME }},CLOUD_TASKS_QUEUE=${{ env.CLOUD_TASKS_QUEUE }},CLOUD_TASKS_INVOKER_SA=${{ env.CLOUD_TASKS_INVOKER_SA }},CLOUD_TASKS_TARGET_URL=${{ env.PUBLIC_URL }}/internal/scheduled-task" \
+            --set-env-vars="NODE_ENV=${{ env.NODE_ENV }},LOG_LEVEL=${{ env.LOG_LEVEL }},PINO_PRETTY_LOGGING=${{ env.PINO_PRETTY_LOGGING }},LLM_PROVIDER=${{ env.LLM_PROVIDER }},TWITCH_BOT_USERNAME=${{ env.TWITCH_BOT_USERNAME }},GEMINI_MODEL_ID=${{ env.GEMINI_MODEL_ID }},GEMINI_LITE_MODEL_ID=${{ env.GEMINI_LITE_MODEL_ID }},OPENAI_MODEL_ID=${{ env.OPENAI_MODEL_ID }},OPENAI_LITE_MODEL_ID=${{ env.OPENAI_LITE_MODEL_ID }},STREAM_INFO_FETCH_INTERVAL_SECONDS=${{ env.STREAM_INFO_FETCH_INTERVAL_SECONDS }},PUBLIC_URL=${{ env.PUBLIC_URL }},TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME=${{ env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME }},GOOGLE_CLOUD_PROJECT=${{ env.GOOGLE_CLOUD_PROJECT }},WEBUI_BASE_URL=${{ env.WEBUI_BASE_URL }},WEBUI_INTERNAL_TOKEN=${{ env.WEBUI_INTERNAL_TOKEN }},CLOUD_TASKS_QUEUE=${{ env.CLOUD_TASKS_QUEUE }},CLOUD_TASKS_INVOKER_SA=${{ env.CLOUD_TASKS_INVOKER_SA }},CLOUD_TASKS_TARGET_URL=${{ env.PUBLIC_URL }}/internal/scheduled-task" \
             --set-secrets="GEMINI_API_KEY=STREAM_SAGE_GEMINI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,TWITCH_CLIENT_ID=TWITCH_CLIENT_ID:latest,TWITCH_CLIENT_SECRET=TWITCH_CLIENT_SECRET:latest,TWITCH_EVENTSUB_SECRET=twitch-eventsub-secret:latest,TWITCH_BOT_REFRESH_TOKEN=TWITCH_BOT_REFRESH_TOKEN:latest" \
             --labels="managed-by=github-actions,commit-sha=${{ github.sha }}" \
             --format="get(status.url)")

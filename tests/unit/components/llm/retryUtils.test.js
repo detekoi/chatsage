@@ -1,6 +1,5 @@
 import {
     resolveServiceTier,
-    retryWithBackoff,
     retryWithFlexFallback,
     executeWithFlexFallback
 } from '../../../../src/components/llm/retryUtils.js';

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import logger from '../../../lib/logger.js';
-import { retryWithBackoff, retryWithFlexFallback, executeWithFlexFallback } from '../retryUtils.js';
+import { executeWithFlexFallback } from '../retryUtils.js';
 import { toOpenAiStrictSchema } from '../schemaUtils.js';
 import { extractRefusal } from './utils.js';
 

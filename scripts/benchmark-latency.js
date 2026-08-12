@@ -281,7 +281,7 @@ async function callOpenAiStream(tc) {
                     tokenCountEstimate = chunk.response.usage.output_tokens;
                 }
             }
-        } catch (respErr) {
+        } catch (_respErr) {
             const messages = [];
             if (tc.systemInstruction) messages.push({ role: 'system', content: tc.systemInstruction });
             messages.push({ role: 'user', content: tc.prompt });
