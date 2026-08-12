@@ -466,7 +466,7 @@ async function runBenchmark() {
         console.log(`══════════════════════════════════════════════════════════════════════════`);
         for (const res of benchmarkResults) {
             console.log(`📌 Case: [${res.category.toUpperCase()}] ${res.name}`);
-            for (const [mId, mData] of Object.entries(res.models)) {
+            for (const mData of Object.values(res.models)) {
                 console.log(`   • ${mData.modelLabel.padEnd(45)} Standard p50: ${String(mData.standard.totalLatency.p50).padStart(5)}ms | Flex p50: ${String(mData.flex.totalLatency.p50).padStart(5)}ms`);
             }
         }

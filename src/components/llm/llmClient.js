@@ -2,16 +2,13 @@ import config from '../../config/loader.js';
 import logger from '../../lib/logger.js';
 
 import * as geminiCore from './gemini/core.js';
-import * as geminiChat from './gemini/chat.js';
 import * as geminiGen from './gemini/generation.js';
-import * as geminiDec from './gemini/decision.js';
 import * as geminiUtils from './gemini/utils.js';
 
 import * as openAiCore from './openai/core.js';
 import * as openAiChat from './openai/chat.js';
 import * as openAiGen from './openai/generation.js';
 import * as openAiDec from './openai/decision.js';
-import * as openAiUtils from './openai/utils.js';
 
 import { toGeminiSchema } from './schemaUtils.js';
 

@@ -149,7 +149,10 @@ export async function handleChatMessage(channel, tags, message) {
 
     // --- Automatic Translation Logic ---
     const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
-    const wasTranslated = await handleAutoTranslation({
+    // The result is deliberately discarded: the mention/reply check below does not
+    // gate on whether the message was translated, so @mentions and replies to the
+    // bot still get an AI response while translation is active.
+    await handleAutoTranslation({
         message,
         cleanChannel,
         lowerUsername,
@@ -160,8 +163,6 @@ export async function handleChatMessage(channel, tags, message) {
     });
 
     // --- Mention or Reply-to-Bot Check ---
-    // Note: we do NOT gate on wasTranslated so that @mentions / replies
-    // to the bot still get an AI response even when translation is active.
     if (!wasTranslateCommand && !wasGeoCommand && !wasTriviaCommand && !wasRiddleCommand && !wasStopRequest) {
         await handleBotMention({
             message,

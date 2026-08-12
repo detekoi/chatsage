@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import logger from '../../../lib/logger.js';
-import { retryWithBackoff, retryWithFlexFallback, resolveServiceTier, executeWithFlexFallback } from './utils.js';
+import { retryWithBackoff, executeWithFlexFallback } from './utils.js';
 
 let genAI = null;
 let generativeModel = null; // Wrapper that mirrors old API (generateContent/startChat)
