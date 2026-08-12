@@ -139,7 +139,6 @@ Configure WildcatSage through environment variables. The `.env.example` file lis
 
 - `TWITCH_BOT_USERNAME`: Username for the Twitch bot account.
 - `TWITCH_CHANNELS`: Comma-separated list of channels to join in local development. In production the bot loads its channel list from Firestore.
-- `TWITCH_CHANNELS_SECRET_NAME`: Resource name for the channel list in Google Secret Manager. Read by `scripts/migrate-channels-to-firestore.js`; the running bot does not read it.
 - `OPENAI_API_KEY`: API key for OpenAI services (GPT 5.6 Luna model).
 - `GEMINI_API_KEY`: API key for Google Gemini services (Gemini 3.5 Flash Lite model).
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application.

@@ -122,7 +122,6 @@ ChatSageは主に環境変数を通じて設定されます。必須およびオ
 
 *   `TWITCH_BOT_USERNAME`: ボットのTwitchアカウントのユーザー名。
 *   `TWITCH_CHANNELS`: 参加するチャンネルのコンマ区切りリスト。Firestoreチャンネル管理が利用できない場合のフォールバックとして使用されます。
-*   `TWITCH_CHANNELS_SECRET_NAME`: Google Secret Manager内のチャンネルリストのリソース名。Firestoreチャンネル管理が利用できない場合のフォールバックとして使用されます。
 *   `GEMINI_API_KEY`: Google GeminiサービスのAPIキー。
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: 登録済みのTwitchアプリケーションの認証情報（Helix API呼び出しに使用）。
 *   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Google Secret Manager内のリフレッシュトークンのリソース名。

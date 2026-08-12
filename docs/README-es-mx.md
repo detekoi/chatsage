@@ -122,7 +122,6 @@ ChatSage se configura principalmente a través de variables de entorno. Las vari
 
 * `TWITCH_BOT_USERNAME`: Nombre de usuario para la cuenta de Twitch del bot.
 * `TWITCH_CHANNELS`: Lista de canales a los que unirse, separados por comas. Se utiliza como alternativa si la gestión de canales de Firestore no está disponible.
-* `TWITCH_CHANNELS_SECRET_NAME`: Nombre del recurso para la lista de canales en Google Secret Manager. Se utiliza como alternativa si la gestión de canales de Firestore no está disponible.
 * `GEMINI_API_KEY`: Tu clave API para el servicio Google Gemini.
 * `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credenciales para tu aplicación de Twitch registrada (utilizadas para llamadas a la API Helix).
 * `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Nombre del recurso para el token de actualización en Google Secret Manager.

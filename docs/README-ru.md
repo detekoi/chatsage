@@ -122,7 +122,6 @@ ChatSage настраивается в основном через переме�
 
 *   `TWITCH_BOT_USERNAME`: Имя пользователя для аккаунта Twitch бота.
 *   `TWITCH_CHANNELS`: Список каналов для подключения через запятую. Используется в качестве запасного варианта, если управление каналами Firestore недоступно.
-*   `TWITCH_CHANNELS_SECRET_NAME`: Имя ресурса для списка каналов в Google Secret Manager. Используется в качестве запасного варианта, если управление каналами Firestore недоступно.
 *   `GEMINI_API_KEY`: Ваш ключ API для сервиса Google Gemini.
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Учетные данные для вашего зарегистрированного приложения Twitch (используются для вызовов Helix API).
 *   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Имя ресурса для токена обновления в Google Secret Manager.
