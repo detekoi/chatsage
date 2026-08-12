@@ -21,17 +21,14 @@ describe('Ad Schedule Poller', () => {
         jest.clearAllMocks();
         jest.useFakeTimers();
         stopAdSchedulePoller(); // Clean up any existing intervals
-
-        // Default mocks
-        process.env.WEBUI_BASE_URL = 'https://mock-webui.example.com';
-        process.env.WEBUI_INTERNAL_TOKEN = 'mock-token-value';
+        // The poller reads config.webui, which loader.js captures from the environment at
+        // import time — setting process.env here would be a no-op. tests/env.setup.js
+        // supplies WEBUI_BASE_URL and WEBUI_INTERNAL_TOKEN before any import runs.
     });
 
     afterEach(() => {
         stopAdSchedulePoller();
         jest.useRealTimers();
-        delete process.env.WEBUI_BASE_URL;
-        delete process.env.WEBUI_INTERNAL_TOKEN;
     });
 
     test('should poll for ad schedules when stream is live and ads enabled', async () => {

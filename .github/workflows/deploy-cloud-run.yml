@@ -59,6 +59,9 @@ jobs:
   deploy:
     name: Build and Deploy to Cloud Run
     needs: test
+    # This workflow triggers on every push with no branch filter, so without this
+    # guard a push to any feature branch would deploy to production.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'

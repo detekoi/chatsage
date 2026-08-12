@@ -32,9 +32,9 @@ describe('ad notification Cloud Task', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         stopAdSchedulePoller();
-
-        process.env.WEBUI_BASE_URL = 'https://mock-webui.example.com';
-        process.env.WEBUI_INTERNAL_TOKEN = 'mock-token-value';
+        // config.webui is captured from the environment when loader.js is imported, so
+        // assigning process.env here would not reach it. tests/env.setup.js supplies
+        // WEBUI_BASE_URL and WEBUI_INTERNAL_TOKEN before any import runs.
 
         getChannelAutoChatConfig.mockResolvedValue({ mode: 'off', categories: { ads: true } });
         isStreamLive.mockReturnValue(true);
@@ -49,8 +49,6 @@ describe('ad notification Cloud Task', () => {
 
     afterEach(() => {
         stopAdSchedulePoller();
-        delete process.env.WEBUI_BASE_URL;
-        delete process.env.WEBUI_INTERNAL_TOKEN;
     });
 
     describe('handleAdNotificationTask', () => {
