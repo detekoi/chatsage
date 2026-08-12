@@ -122,7 +122,7 @@ Eine vollständige Liste der verfügbaren Befehle und deren Verwendung findest d
 ChatSage wird hauptsächlich über Umgebungsvariablen konfiguriert. Die erforderlichen und optionalen Variablen sind in der Datei `.env.example` dokumentiert. Wichtige Variablen sind:
 
 * `TWITCH_BOT_USERNAME`: Benutzername für das Twitch-Konto des Bots.
-* `TWITCH_CHANNELS`: Durch Kommas getrennte Liste der Kanäle, denen beigetreten werden soll. Wird als Fallback verwendet, wenn die Firestore-Kanalverwaltung nicht verfügbar ist.
+* `TWITCH_CHANNELS`: Durch Kommas getrennte Liste der Kanäle, denen in der lokalen Entwicklung beigetreten werden soll. In der Produktion lädt der Bot seine Kanalliste aus Firestore.
 * `GEMINI_API_KEY`: Dein API-Schlüssel für den Google Gemini-Dienst.
 * `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Anmeldeinformationen für deine registrierte Twitch-Anwendung (verwendet für Helix-API-Aufrufe).
 * `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Ressourcenname für das Aktualisierungstoken im Google Secret Manager.
