@@ -7,12 +7,10 @@ const projectRoot = process.cwd();
 const envPath = path.resolve(projectRoot, '.env');
 
 // Check if the .env file actually exists at that path before trying to load it
+// Absent (CI, Cloud Run), the process relies on system environment variables.
 if (fs.existsSync(envPath)) {
     console.log(`[ConfigLoader] Loading .env file from: ${envPath}`); // Optional: for debugging
     dotenv.config({ path: envPath });
-} else {
-    // Optional: Log if not found, relying on environment variables instead
-    // console.warn(`[ConfigLoader] .env file not found at ${envPath}. Relying on system environment variables.`);
 }
 
 /**
@@ -39,8 +37,6 @@ function loadConfig() {
     }
     // Channel list is now loaded from Firestore in src/bot.js. Env-based channel
     // configuration is optional and no longer enforced here.
-
-    // REMOVED OAuth token validation - No longer loaded directly
 
 
     const config = {
@@ -83,10 +79,6 @@ function loadConfig() {
             logLevel: process.env.LOG_LEVEL || 'info',
             prettyLog: process.env.PINO_PRETTY_LOGGING === 'true',
             nodeEnv: process.env.NODE_ENV || 'development',
-            // Optional allow-list: if present and non-empty, only these broadcaster IDs are allowed
-            allowedBroadcasterIds: process.env.ALLOWED_CHANNELS
-                ? process.env.ALLOWED_CHANNELS.split(',').map(id => id.trim()).filter(Boolean)
-                : [],
         },
 
 

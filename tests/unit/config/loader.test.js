@@ -213,12 +213,6 @@ describe('Config Loader', () => {
             const config = await loadConfig();
             expect(config.twitch.channels).toEqual([]);
         });
-
-        test('should parse ALLOWED_CHANNELS into allowedBroadcasterIds', async () => {
-            process.env.ALLOWED_CHANNELS = 'Id1,Id2,Id3';
-            const config = await loadConfig();
-            expect(config.app.allowedBroadcasterIds).toEqual(['Id1', 'Id2', 'Id3']);
-        });
     });
 
     describe('EventSub Secret Handling', () => {
@@ -355,7 +349,6 @@ describe('Config Loader', () => {
             expect(config.app).toHaveProperty('logLevel');
             expect(config.app).toHaveProperty('prettyLog');
             expect(config.app).toHaveProperty('nodeEnv');
-            expect(config.app).toHaveProperty('allowedBroadcasterIds');
         });
 
         test('should have correct webui configuration structure', async () => {
