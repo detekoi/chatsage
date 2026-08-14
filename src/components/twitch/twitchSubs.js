@@ -275,7 +275,7 @@ export async function subscribeChannelRaid(broadcasterUserId) {
     return await makeHelixRequest('post', '/eventsub/subscriptions', body);
 }
 
-export async function subscribeChannelAdBreakBegin(broadcasterUserId, userAccessToken) {
+export async function subscribeChannelAdBreakBegin(broadcasterUserId) {
     const { publicUrl, eventSubSecret } = config.twitch;
     if (!publicUrl || !eventSubSecret) {
         logger.error('Missing PUBLIC_URL or TWITCH_EVENTSUB_SECRET in config');
@@ -287,8 +287,10 @@ export async function subscribeChannelAdBreakBegin(broadcasterUserId, userAccess
         condition: { broadcaster_user_id: broadcasterUserId },
         transport: { method: 'webhook', callback: `${publicUrl}/twitch/event`, secret: eventSubSecret }
     };
-    // Must use a broadcaster user token with channel:read:ads
-    const result = await makeHelixRequest('post', '/eventsub/subscriptions', body, userAccessToken || undefined);
+    // Webhook transport requires an app access token — Twitch rejects the request
+    // outright if a user token is supplied. The channel:read:ads scope is
+    // satisfied by the broadcaster having authorized the app, not by this call.
+    const result = await makeHelixRequest('post', '/eventsub/subscriptions', body);
     if (result.success) {
         logger.info({ broadcasterUserId }, 'Successfully subscribed to channel.ad_break.begin');
         clearEventSubSubscriptionsCache(); // Clear cache after creating subscription
@@ -569,7 +571,7 @@ export async function subscribeAllManagedChannels() {
     }
 }
 
-export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId, enabled, userAccessToken) {
+export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId, enabled) {
     try {
         const subsRes = await getEventSubSubscriptions(`Check ad break subscription for broadcaster ${broadcasterUserId}`);
         const subs = subsRes?.data?.data || [];
@@ -580,7 +582,7 @@ export async function ensureAdBreakSubscriptionForBroadcaster(broadcasterUserId,
                 logger.info({ broadcasterUserId }, 'Ad break subscription already exists');
                 return { success: true, already: true };
             }
-            return await subscribeChannelAdBreakBegin(broadcasterUserId, userAccessToken);
+            return await subscribeChannelAdBreakBegin(broadcasterUserId);
         } else {
             for (const sub of existing) {
                 try { await deleteEventSubSubscription(sub.id); } catch (e) { /* ignore */ }

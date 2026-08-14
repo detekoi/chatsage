@@ -177,6 +177,19 @@ export async function eventSubHandler(req, res, rawBody) {
         return;
     }
 
+    // Twitch revokes a subscription when the broadcaster revokes authorization or
+    // changes their password, when the user is removed, when the callback fails
+    // too often, or when the type version is retired. Nothing recreates a revoked
+    // subscription automatically, so log it loudly rather than dropping it.
+    if (messageType === 'revocation') {
+        logger.error({
+            type: notification.subscription?.type,
+            status: notification.subscription?.status,
+            condition: notification.subscription?.condition
+        }, '[EventSub] Subscription revoked by Twitch — these events stop arriving until it is recreated');
+        return;
+    }
+
     if (messageType === 'notification') {
         const isChat = notification.subscription?.type === 'channel.chat.message';
         if (!(await shouldProcessEvent(req, isChat))) {
@@ -404,8 +417,11 @@ export async function eventSubHandler(req, res, rawBody) {
                 const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
 
-                const isAutomatic = event?.is_automatic === true;
-                const duration = event?.duration_seconds || event?.duration || 60;
+                // Twitch types both of these as strings in the ad_break.begin v1
+                // payload, so `=== true` never matched and every scheduled ad was
+                // treated as manual.
+                const isAutomatic = String(event?.is_automatic) === 'true';
+                const duration = Number(event?.duration_seconds ?? event?.duration) || 60;
 
                 logger.info({
                     channelName: channelName.toLowerCase(),

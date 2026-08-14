@@ -12,6 +12,12 @@ const PRE_ROLL_MS = 60_000;
 // Tasks are delivered this much earlier than the warning so a cold start and
 // the LLM call still leave time to post at the right moment.
 const COLD_START_BUDGET_MS = 20_000;
+// The channel.ad_break.begin subscription — the only source of manual "ads are
+// running now" announcements — is created by the dashboard when the ads toggle
+// is switched on, and Twitch revokes it whenever the broadcaster's
+// authorization changes. Nothing recreated it, so re-assert it from here.
+const ADBREAK_ENSURE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const ADBREAK_ENSURE_RETRY_MS = 10 * 60 * 1000;
 
 let timers = new Map(); // channel -> NodeJS.Timeout
 let prefetchTimers = new Map(); // channel -> NodeJS.Timeout (for prefetch)
@@ -19,6 +25,7 @@ let intervalId = null; // background poll
 let notifiedAds = new Map(); // channel -> Set of ad timestamps we've already notified about
 let prefetchedMessages = new Map(); // channel -> prefetched message text
 let scheduledAdAt = new Map(); // channel -> ad timestamp of the pending Cloud Task
+let adBreakEnsuredAt = new Map(); // channel -> epoch ms the ad_break subscription was last confirmed
 
 /**
  * Fetches the ad schedule for a channel by calling the web UI's internal API.
@@ -114,6 +121,51 @@ async function fetchAdScheduleViaWebUI(channelName, retryCount = 0) {
 
         // Don't throw, return null to continue processing other channels
         return null;
+    }
+}
+
+/**
+ * Re-asserts the channel.ad_break.begin EventSub subscription for a channel that
+ * has ad notifications enabled.
+ *
+ * The web UI owns this because creating the subscription needs an app access
+ * token plus proof that the broadcaster granted channel:read:ads, and it holds
+ * both. Without the subscription the scheduled pre-roll warning still fires
+ * (it comes from the ad schedule endpoint) but manually started ad breaks are
+ * announced nowhere.
+ *
+ * @param {string} channelName
+ */
+async function ensureAdBreakSubscription(channelName) {
+    if (Date.now() - (adBreakEnsuredAt.get(channelName) || 0) < ADBREAK_ENSURE_INTERVAL_MS) return;
+
+    if (!config.webui?.baseUrl || !config.webui?.internalToken) return;
+
+    // Hold off the next attempt before making the call so a failing endpoint is
+    // not retried on every 30s tick.
+    adBreakEnsuredAt.set(channelName, Date.now() - ADBREAK_ENSURE_INTERVAL_MS + ADBREAK_ENSURE_RETRY_MS);
+
+    try {
+        const internalToken = await getSecretValue(config.webui.internalToken);
+        if (!internalToken) {
+            throw new Error('Failed to retrieve internal bot token from Secret Manager');
+        }
+
+        const axios = (await import('axios')).default;
+        await axios.post(
+            `${config.webui.baseUrl}/internal/eventsub/adbreak/ensure`,
+            { channelLogin: channelName, adsEnabled: true },
+            { headers: { 'Authorization': `Bearer ${internalToken}` }, timeout: 15000 }
+        );
+
+        adBreakEnsuredAt.set(channelName, Date.now());
+        logger.debug({ channelName }, '[AdSchedule] channel.ad_break.begin subscription confirmed');
+    } catch (e) {
+        logger.warn({
+            channelName,
+            error: e.message,
+            status: e.response?.status
+        }, '[AdSchedule] Could not confirm channel.ad_break.begin subscription — manual ad breaks may go unannounced');
     }
 }
 
@@ -295,6 +347,10 @@ export function startAdSchedulePoller() {
                     adsEnabled: cfg?.categories?.ads
                 }, '[AdSchedule] Checking ads configuration for channel');
                 if (!cfg || cfg.categories?.ads !== true) { clearTimer(channelName); logger.debug({ channelName }, '[AdSchedule] Skipping - ads disabled'); continue; }
+                // Manual ad breaks arrive over EventSub rather than the schedule
+                // endpoint, so the subscription has to exist even on ticks where
+                // no scheduled ad is pending.
+                await ensureAdBreakSubscription(channelName);
                 // Fetch schedule via web UI
                 try {
                     const adScheduleData = await fetchAdScheduleViaWebUI(channelName);
@@ -415,6 +471,7 @@ export function stopAdSchedulePoller() {
     prefetchTimers.clear();
     prefetchedMessages.clear();
     notifiedAds.clear();
+    adBreakEnsuredAt.clear();
     // Pending Cloud Tasks are deliberately left in the queue: they outlive this
     // process by design, and handleAdNotificationTask re-validates on delivery.
     scheduledAdAt.clear();
