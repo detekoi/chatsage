@@ -47,6 +47,14 @@ export function buildContextPrompt(context) {
         ? context.moderators.join(', ')
         : null;
     const modsLine = moderators ? `\nChannel moderators: ${moderators}` : '';
-    const pronounsLine = context.userPronouns?.display ? `\nUser pronouns: ${context.userPronouns.display} (use ${context.userPronouns.display.toLowerCase()} when referring to this user)` : '';
+    // Pronouns are grammar guidance. The earlier phrasing showed the display string
+    // ("He/Him") and said "use he/him", which reads as an instruction to write that
+    // label. Give the inflected forms and name whose they are, so the line's purpose
+    // is unambiguous.
+    const grammar = context.userPronouns?.grammar;
+    const pronounSubject = context.username || 'the user being responded to';
+    const pronounsLine = grammar
+        ? `\n\nPronoun grammar for ${pronounSubject}: use ${grammar.subject}/${grammar.object}/${grammar.possessive} for third-person references.`
+        : '';
     return `Channel: ${channelName}${bioLine}${modsLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}${pronounsLine}`;
 }

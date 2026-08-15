@@ -51,6 +51,39 @@ describe('gemini/prompts.js', () => {
             expect(prompt).toContain('Chat summary: No summary available.');
             expect(prompt).toContain('Recent chat messages (each line shows username: message):\nNo recent messages.');
         });
+
+        it('should render pronouns as inflected forms, not the display label', () => {
+            const context = {
+                channelName: 'testchannel',
+                username: 'TurboIceHusky',
+                userPronouns: {
+                    display: 'He/Him',
+                    grammar: { display: 'He/Him', subject: 'he', object: 'him', possessive: 'his' }
+                }
+            };
+
+            const prompt = buildContextPrompt(context);
+
+            expect(prompt).toContain('Pronoun grammar for TurboIceHusky: use he/him/his for third-person references.');
+            // The display label must never appear — that is what leaked into chat.
+            expect(prompt).not.toContain('He/Him');
+        });
+
+        it('should omit the pronoun line when no grammar forms are available', () => {
+            const prompt = buildContextPrompt({
+                channelName: 'testchannel',
+                username: 'someuser',
+                userPronouns: { display: 'He/Him' }
+            });
+
+            expect(prompt).not.toContain('Pronoun grammar');
+        });
+
+        it('should omit the pronoun line when the user has no pronouns set', () => {
+            const prompt = buildContextPrompt({ channelName: 'testchannel', username: 'someuser' });
+
+            expect(prompt).not.toContain('Pronoun grammar');
+        });
     });
 });
 
