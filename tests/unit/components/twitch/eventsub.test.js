@@ -36,9 +36,10 @@ describe('EventSub Phantom Entry Cleanup', () => {
 });
 
 describe('EventSub Ad Break Routing', () => {
-    // Twitch types both is_automatic and duration_seconds as strings in the
-    // channel.ad_break.begin v1 payload:
-    // https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channeladbreakbegin
+    // The docs type is_automatic and duration_seconds as strings
+    // (https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channeladbreakbegin)
+    // but observed webhook deliveries carry a real boolean and a real number.
+    // Both shapes are exercised here because the handler has to survive either.
     let mockRes;
     let oldBypass;
 
@@ -84,21 +85,27 @@ describe('EventSub Ad Break Routing', () => {
         }
     });
 
-    test('announces a manually started ad break', async () => {
-        const rawBody = adBreakBody({ is_automatic: 'false', duration_seconds: '60' });
+    test.each([
+        ['boolean payload (as delivered)', false, 60],
+        ['string payload (as documented)', 'false', '60']
+    ])('announces a manually started ad break — %s', async (_label, isAutomatic, durationSeconds) => {
+        const rawBody = adBreakBody({ is_automatic: isAutomatic, duration_seconds: durationSeconds });
 
-        await eventSubHandler(adBreakReq('ad-msg-1'), mockRes, rawBody);
+        await eventSubHandler(adBreakReq(`ad-manual-${_label}`), mockRes, rawBody);
 
         expect(notifyAdBreak).toHaveBeenCalledTimes(1);
         expect(notifyAdBreak).toHaveBeenCalledWith('testchannel', expect.objectContaining({
-            is_automatic: 'false'
+            is_automatic: isAutomatic
         }));
     });
 
-    test('stays silent on a scheduled ad break, which the poller already warned about', async () => {
-        const rawBody = adBreakBody({ is_automatic: 'true', duration_seconds: '90' });
+    test.each([
+        ['boolean payload (as delivered)', true, 120],
+        ['string payload (as documented)', 'true', '90']
+    ])('stays silent on a scheduled ad break, which the poller already warned about — %s', async (_label, isAutomatic, durationSeconds) => {
+        const rawBody = adBreakBody({ is_automatic: isAutomatic, duration_seconds: durationSeconds });
 
-        await eventSubHandler(adBreakReq('ad-msg-2'), mockRes, rawBody);
+        await eventSubHandler(adBreakReq(`ad-auto-${_label}`), mockRes, rawBody);
 
         expect(notifyAdBreak).not.toHaveBeenCalled();
     });

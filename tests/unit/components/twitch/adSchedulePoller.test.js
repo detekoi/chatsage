@@ -627,6 +627,56 @@ describe('Ad Schedule Poller', () => {
         expect(generateAdNotification).toHaveBeenCalledWith('testchannel', 'warning', 60);
     });
 
+    test('keeps the pending warning when a poll fails between scheduling and firing', async () => {
+        // Arrange - ad 3 minutes out, so the send timer is 120s away and survives
+        // a failed poll 30s later.
+        const nextAdTime = new Date(Date.now() + 180_000);
+        const mockChannelStates = new Map([
+            ['testchannel', { streamContext: { game: 'Test Game' } }]
+        ]);
+
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => mockChannelStates,
+        });
+
+        getChannelAutoChatConfig.mockResolvedValue({
+            mode: 'medium',
+            categories: { ads: true }
+        });
+
+        generateAdNotification.mockResolvedValue('Ads in about a minute!');
+
+        const scheduleResponse = {
+            data: {
+                success: true,
+                data: { data: [{ next_ad_at: nextAdTime.toISOString(), duration: 60 }] }
+            }
+        };
+
+        const serverError = {
+            response: { status: 500 },
+            message: 'Request failed with status code 500'
+        };
+
+        axios.get
+            .mockResolvedValueOnce(scheduleResponse)   // poll 1: schedules the warning
+            .mockRejectedValueOnce(serverError)        // poll 2: initial attempt
+            .mockRejectedValueOnce(serverError)        // poll 2: retry 1
+            .mockRejectedValueOnce(serverError)        // poll 2: retry 2, retries now exhausted
+            .mockResolvedValue(scheduleResponse);      // poll 3 onwards: recovered
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000);  // poll 1: schedules
+        await jest.advanceTimersByTimeAsync(30_000);  // poll 2: fails (plus internal retries)
+        await jest.advanceTimersByTimeAsync(120_000); // past the send timer
+
+        // Assert - the warning still went out. Before this fix the failed poll
+        // cleared the timer while the ad stayed in notifiedAds, so no later poll
+        // rescheduled it and the warning was lost.
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads in about a minute!');
+    });
+
     // Note: Testing missing config requires mocking the config module,
     // which is complex due to how the config loader works.
     // The defensive check in adSchedulePoller.js prevents crashes if config is missing.
