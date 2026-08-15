@@ -34,18 +34,19 @@ const channelNameToIdMap = new Map();
 // Twitch User ID → Channel login name (lowercase) reverse mapping
 const channelIdToNameMap = new Map();
 
+/**
+ * Both forms of an identifier are indexed directly, so a lookup needs no
+ * name → ID resolution step: register() adds a channel's login name to the name
+ * set whenever it adds its ID to the ID set, and every removal path takes both
+ * out together.
+ */
 function matches(identifier, ids, names) {
-  const normalized = String(identifier).trim();
+    const normalized = String(identifier).trim();
 
-  // Direct match against broadcaster IDs
-  if (ids.has(normalized)) return true;
+    // Direct match against broadcaster IDs
+    if (ids.has(normalized)) return true;
 
-  const lower = normalized.toLowerCase();
-  if (names.has(lower)) return true;
-
-  // Fallback: resolve login name to broadcaster ID via cache
-  const mappedId = channelNameToIdMap.get(lower);
-  return Boolean(mappedId && ids.has(mappedId));
+    return names.has(normalized.toLowerCase());
 }
 
 /**
@@ -62,8 +63,8 @@ function matches(identifier, ids, names) {
  * The allowed set is populated from Firestore managedChannels by channelManager.
  */
 export function isChannelAllowed(identifier) {
-  if (!identifier) return false;
-  return matches(identifier, allowedBroadcasterIds, allowedChannelNames);
+    if (!identifier) return false;
+    return matches(identifier, allowedBroadcasterIds, allowedChannelNames);
 }
 
 /**
@@ -73,31 +74,47 @@ export function isChannelAllowed(identifier) {
  * Fails closed for the same reason isChannelAllowed does.
  */
 export function isChannelActive(identifier) {
-  if (!identifier) return false;
-  return matches(identifier, activeBroadcasterIds, activeChannelNames);
+    if (!identifier) return false;
+    return matches(identifier, activeBroadcasterIds, activeChannelNames);
+}
+
+/**
+ * Drop a login name this broadcaster ID no longer goes by. A rename arrives as
+ * a modified document carrying the same ID and a new channelName; without this
+ * the old name would stay allowed and active for the life of the process, and
+ * whoever claims the freed handle next would inherit that access.
+ */
+function forgetPreviousName(id, currentName) {
+    const previousName = channelIdToNameMap.get(id);
+    if (!previousName || previousName === currentName) return;
+
+    allowedChannelNames.delete(previousName);
+    activeChannelNames.delete(previousName);
+    channelNameToIdMap.delete(previousName);
 }
 
 function register({ name, twitchUserId, isActive }) {
-  // Callers that predate the approved/active split only ever passed active
-  // channels, so an absent flag means active.
-  const active = isActive !== false;
-  const id = twitchUserId ? String(twitchUserId) : null;
-  const lower = name ? String(name).trim().toLowerCase() : null;
+    // Callers that predate the approved/active split only ever passed active
+    // channels, so an absent flag means active.
+    const active = isActive !== false;
+    const id = twitchUserId ? String(twitchUserId) : null;
+    const lower = name ? String(name).trim().toLowerCase() : null;
 
-  if (!id && !lower) return;
+    if (!id && !lower) return;
 
-  if (id) {
-    allowedBroadcasterIds.add(id);
-    if (active) activeBroadcasterIds.add(id);
-  }
-  if (lower) {
-    allowedChannelNames.add(lower);
-    if (active) activeChannelNames.add(lower);
-  }
-  if (id && lower) {
-    channelNameToIdMap.set(lower, id);
-    channelIdToNameMap.set(id, lower);
-  }
+    if (id) {
+        allowedBroadcasterIds.add(id);
+        if (active) activeBroadcasterIds.add(id);
+    }
+    if (lower) {
+        allowedChannelNames.add(lower);
+        if (active) activeChannelNames.add(lower);
+    }
+    if (id && lower) {
+        forgetPreviousName(id, lower);
+        channelNameToIdMap.set(lower, id);
+        channelIdToNameMap.set(id, lower);
+    }
 }
 
 /**
@@ -107,15 +124,15 @@ function register({ name, twitchUserId, isActive }) {
  * @param {Array<{name: string, twitchUserId: string|null, isActive?: boolean}>} channels
  */
 export function updateAllowedChannels(channels) {
-  allowedBroadcasterIds.clear();
-  allowedChannelNames.clear();
-  activeBroadcasterIds.clear();
-  activeChannelNames.clear();
-  channelNameToIdMap.clear();
-  channelIdToNameMap.clear();
-  for (const ch of channels) {
-    register(ch);
-  }
+    allowedBroadcasterIds.clear();
+    allowedChannelNames.clear();
+    activeBroadcasterIds.clear();
+    activeChannelNames.clear();
+    channelNameToIdMap.clear();
+    channelIdToNameMap.clear();
+    for (const ch of channels) {
+        register(ch);
+    }
 }
 
 /**
@@ -123,50 +140,60 @@ export function updateAllowedChannels(channels) {
  * switched on. Used by channelManager's real-time listener.
  */
 export function addAllowedChannel(channelName, twitchUserId) {
-  register({ name: channelName, twitchUserId, isActive: false });
+    register({ name: channelName, twitchUserId, isActive: false });
 }
 
 /**
- * Switch a channel's bot on or off in the cache. Approval is untouched either
- * way — a deactivated channel remains on the allow-list.
+ * Switch a channel's bot on or off in the cache, approving it on the way if it
+ * is not known yet. Approval is untouched when switching off — a deactivated
+ * channel remains on the allow-list.
  */
 export function setChannelActive(channelName, twitchUserId, active) {
-  register({ name: channelName, twitchUserId, isActive: false });
+    register({ name: channelName, twitchUserId, isActive: !!active });
+    if (active) return;
 
-  const id = twitchUserId ? String(twitchUserId) : null;
-  const lower = channelName ? String(channelName).trim().toLowerCase() : null;
+    const id = twitchUserId ? String(twitchUserId) : null;
+    const lower = channelName ? String(channelName).trim().toLowerCase() : null;
 
-  if (active) {
-    if (id) activeBroadcasterIds.add(id);
-    if (lower) activeChannelNames.add(lower);
-  } else {
     if (id) activeBroadcasterIds.delete(id);
     if (lower) activeChannelNames.delete(lower);
-  }
 }
 
 /**
  * Remove a channel from every cache. This revokes approval, so it is only for
  * a managedChannels document that has actually been deleted — deactivating the
  * bot calls setChannelActive instead.
+ *
+ * Either identifier alone is enough: each is used to recover the other, so a
+ * caller that knows only the name cannot leave the ID behind, or vice versa.
  */
 export function removeAllowedChannel(channelName, twitchUserId) {
-  if (twitchUserId) {
-    const id = String(twitchUserId);
-    allowedBroadcasterIds.delete(id);
-    activeBroadcasterIds.delete(id);
-    const mappedName = channelIdToNameMap.get(id);
-    if (mappedName) {
-      allowedChannelNames.delete(mappedName);
-      activeChannelNames.delete(mappedName);
-      channelNameToIdMap.delete(mappedName);
+    const names = new Set();
+    const ids = new Set();
+
+    if (twitchUserId) {
+        ids.add(String(twitchUserId));
     }
-    channelIdToNameMap.delete(id);
-  }
-  if (channelName) {
-    const lower = String(channelName).trim().toLowerCase();
-    allowedChannelNames.delete(lower);
-    activeChannelNames.delete(lower);
-    channelNameToIdMap.delete(lower);
-  }
+    if (channelName) {
+        names.add(String(channelName).trim().toLowerCase());
+    }
+    for (const id of ids) {
+        const mappedName = channelIdToNameMap.get(id);
+        if (mappedName) names.add(mappedName);
+    }
+    for (const name of names) {
+        const mappedId = channelNameToIdMap.get(name);
+        if (mappedId) ids.add(mappedId);
+    }
+
+    for (const id of ids) {
+        allowedBroadcasterIds.delete(id);
+        activeBroadcasterIds.delete(id);
+        channelIdToNameMap.delete(id);
+    }
+    for (const name of names) {
+        allowedChannelNames.delete(name);
+        activeChannelNames.delete(name);
+        channelNameToIdMap.delete(name);
+    }
 }

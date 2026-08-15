@@ -32,6 +32,10 @@ function _getDb() {
     return getFirestore();
 }
 
+// Login names that were active as of the most recent full Firestore fetch, i.e.
+// the set EventSub was subscribed for at startup. Null until the first fetch.
+let lastFetchedActiveNames = null;
+
 /**
  * Retrieves all active managed channels from Firestore, and refreshes the
  * allow-list cache from the whole collection along the way.
@@ -69,6 +73,12 @@ export async function getActiveManagedChannels() {
 
         const activeChannels = channels.filter(ch => ch.isActive);
         const channelNames = activeChannels.map(ch => ch.name);
+
+        // Baseline for the listener's initial snapshot: these are the channels
+        // startup subscribes to, so anything that differs by the time the
+        // listener attaches was changed in between and still needs syncing.
+        lastFetchedActiveNames = new Set(channelNames);
+
         logger.info(`[ChannelManager] Successfully fetched ${channelNames.length} active managed channels (${channels.length} approved).`);
         logger.debug(`[ChannelManager] Active channels: ${channelNames.join(', ')}`);
 
@@ -168,6 +178,21 @@ export async function syncChannelWithEventSub(channelName, isActive, twitchUserI
 
 
 /**
+ * Picks out the initial-snapshot documents whose active state no longer matches
+ * what the startup fetch subscribed, so only those are synced with EventSub.
+ * Returns nothing when no fetch has run — there is no baseline to compare with,
+ * and re-syncing every channel would mean a Helix call per channel on boot.
+ */
+function changesMissedDuringStartup(changes) {
+    if (!lastFetchedActiveNames) return [];
+    return changes
+        .filter(change => lastFetchedActiveNames.has(change.channelName.toLowerCase()) !== change.isActive)
+        // Every initial-snapshot entry arrives as 'added', but these documents are
+        // ones that changed after startup read them, so they are reported as such.
+        .map(change => ({ ...change, type: 'modified' }));
+}
+
+/**
  * Sets up a listener for changes to the managedChannels collection.
  * When channels are added/modified, subscribes/unsubscribes EventSub accordingly.
  * @returns {Function} Unsubscribe function to stop listening for changes
@@ -195,17 +220,16 @@ export function listenForChannelChanges() {
                         if (!devChannel) {
                             removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
                         }
+                    } else if (channelData.isActive) {
+                        setChannelActive(channelData.channelName, channelData.twitchUserId, true);
+                    } else if (!isInitialSnapshot && !devChannel) {
+                        setChannelActive(channelData.channelName, channelData.twitchUserId, false);
                     } else {
+                        // Approve without switching off: on the initial snapshot a legacy
+                        // duplicate doc could otherwise switch off a channel the active doc
+                        // just switched on, and dev-mode channels configured in .env are
+                        // isActive:false in Firestore by design.
                         addAllowedChannel(channelData.channelName, channelData.twitchUserId);
-                        if (channelData.isActive) {
-                            setChannelActive(channelData.channelName, channelData.twitchUserId, true);
-                        } else if (!isInitialSnapshot && !devChannel) {
-                            // Skip deactivation on the initial snapshot, where a legacy
-                            // duplicate doc could switch off a channel the active doc just
-                            // switched on, and for dev-mode channels configured in .env
-                            // (they are isActive:false in Firestore by design).
-                            setChannelActive(channelData.channelName, channelData.twitchUserId, false);
-                        }
                     }
 
                     // Skip EventSub syncing for inactive dev-mode channels (they are explicitly managed by dev mode boot)
@@ -227,29 +251,38 @@ export function listenForChannelChanges() {
                 }
             });
 
-            // Skip EventSub sync on initial snapshot — subscribeAllManagedChannels()
-            // already handled these during startup. Allow-list updates above still run.
+            // The initial snapshot mostly repeats what subscribeAllManagedChannels()
+            // subscribed during startup, so it syncs nothing by default. The exception
+            // is a channel switched on or off between that fetch and this listener
+            // attaching: no other event covers that window, and the channel would stay
+            // wrongly subscribed — or wrongly silent — until the next restart.
+            let changesToSync = changes;
             if (isInitialSnapshot) {
                 isInitialSnapshot = false;
-                logger.info(`[ChannelManager] Initial snapshot: ${changes.length} channels loaded (skipping EventSub sync)`);
-                return;
+                changesToSync = changesMissedDuringStartup(changes);
+                logger.info(
+                    `[ChannelManager] Initial snapshot: ${changes.length} channels loaded, ` +
+                    `${changesToSync.length} changed since the startup fetch`
+                );
             }
 
-            if (changes.length > 0) {
-                logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);
+            if (changesToSync.length > 0) {
+                logger.info(`[ChannelManager] Detected ${changesToSync.length} channel management changes.`);
 
                 // Process the VALID changes
-                changes.forEach(async (change) => {
-                    if (change.type === 'added' || change.type === 'modified') {
-                        // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
-                        // Pass stored twitchUserId to avoid login-name lookups that break on renames
-                        syncChannelWithEventSub(change.channelName, change.isActive, change.channelData?.twitchUserId)
-                            .catch(err => {
-                                logger.error({ err, channel: change.channelName, docId: change.docId },
-                                    `[ChannelManager] Error processing channel change via listener`);
-                            });
-                    }
-                    // Optionally handle 'removed' type if needed
+                changesToSync.forEach(change => {
+                    // A deleted document is a deactivation as far as Twitch is concerned:
+                    // without this its subscriptions keep delivering webhooks that every
+                    // handler then discards.
+                    const shouldBeSubscribed = change.type === 'removed' ? false : change.isActive;
+
+                    // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
+                    // Pass stored twitchUserId to avoid login-name lookups that break on renames
+                    syncChannelWithEventSub(change.channelName, shouldBeSubscribed, change.channelData?.twitchUserId)
+                        .catch(err => {
+                            logger.error({ err, channel: change.channelName, docId: change.docId },
+                                `[ChannelManager] Error processing channel change via listener`);
+                        });
                 });
             }
         }, error => {

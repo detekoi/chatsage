@@ -60,21 +60,19 @@ export async function initializeChannels() {
     } else {
         logger.info('Cloud environment detected or not development. Loading channels from Firestore.');
         const managedChannels = await getActiveManagedChannels();
-        if (managedChannels && managedChannels.length > 0) {
-            config.twitch.channels = managedChannels.map(ch => ch.name.toLowerCase());
-            // Preserve { name, twitchUserId } for pre-seeding broadcaster IDs
-            config.twitch.channelsWithIds = managedChannels;
+        config.twitch.channels = (managedChannels || []).map(ch => ch.name.toLowerCase());
+        // Preserve { name, twitchUserId } for pre-seeding broadcaster IDs
+        config.twitch.channelsWithIds = managedChannels || [];
+
+        if (config.twitch.channels.length > 0) {
             logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
         } else {
-            logger.fatal('No active channels found in Firestore managedChannels collection. Cannot proceed.');
-            process.exit(1);
+            // Standby rather than exit. Every channel being switched off is a legitimate
+            // state, and exiting here made it unrecoverable: the Firestore listener that
+            // picks up the next activation is started later in the boot sequence, so a
+            // bot that quits now can never learn that a channel came back.
+            logger.warn('No active channels found in Firestore managedChannels collection. Waiting for a channel to be activated.');
         }
-    }
-
-    // Ensure channels are populated before proceeding
-    if (!config.twitch.channels || config.twitch.channels.length === 0) {
-        logger.fatal('FATAL: No Twitch channels configured to join. Exiting.');
-        process.exit(1);
     }
 }
 

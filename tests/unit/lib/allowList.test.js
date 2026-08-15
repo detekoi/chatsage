@@ -152,5 +152,39 @@ describe('allowList (Firestore-backed cache)', () => {
             expect(isChannelAllowed('alice')).toBe(false);
             expect(isChannelAllowed('111')).toBe(false);
         });
+
+        it('removes the mapped ID when given only a login name', () => {
+            updateAllowedChannels([{ name: 'alice', twitchUserId: '111' }]);
+            removeAllowedChannel('alice', null);
+            expect(isChannelAllowed('alice')).toBe(false);
+            expect(isChannelAllowed('111')).toBe(false);
+            expect(isChannelActive('111')).toBe(false);
+        });
+    });
+
+    describe('renames', () => {
+        // A rename arrives as a modified document: same twitchUserId, new channelName.
+        it('stops allowing the login name a broadcaster has left behind', () => {
+            updateAllowedChannels([{ name: 'oldname', twitchUserId: '111', isActive: true }]);
+            expect(isChannelActive('oldname')).toBe(true);
+
+            setChannelActive('newname', '111', true);
+
+            expect(isChannelAllowed('newname')).toBe(true);
+            expect(isChannelActive('newname')).toBe(true);
+            expect(isChannelAllowed('oldname')).toBe(false);
+            expect(isChannelActive('oldname')).toBe(false);
+            expect(isChannelAllowed('111')).toBe(true);
+        });
+
+        it('does not resurrect the old name through a later removal by ID', () => {
+            updateAllowedChannels([{ name: 'oldname', twitchUserId: '111', isActive: true }]);
+            setChannelActive('newname', '111', true);
+            removeAllowedChannel(null, '111');
+
+            expect(isChannelAllowed('newname')).toBe(false);
+            expect(isChannelAllowed('oldname')).toBe(false);
+            expect(isChannelAllowed('111')).toBe(false);
+        });
     });
 });
