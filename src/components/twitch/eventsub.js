@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { isChannelAllowed } from './channelManager.js';
+import { isChannelActive } from './channelManager.js';
 import { isDevChannel } from '../../lib/devChannels.js';
 import { getContextManager } from '../context/contextManager.js';
 
@@ -61,6 +61,10 @@ function pruneOldProcessedIds(nowTs) {
  * intentional to prevent the production bot from subscribing to test channels).
  * Falls back to the Firestore-backed allowlist for all other channels.
  *
+ * The production path checks isActive rather than mere approval: a channel that
+ * deactivated the bot stays on the allow-list, but must not be acted on, and a
+ * stale EventSub subscription can outlive the deactivation that unsubscribed it.
+ *
  * @param {string} broadcasterId - Twitch User ID of the broadcaster
  * @param {string} channelLogin  - Broadcaster login name (lowercase)
  * @returns {Promise<boolean>}
@@ -68,7 +72,7 @@ function pruneOldProcessedIds(nowTs) {
 async function isEventAllowed(broadcasterId, channelLogin) {
     if (isDevChannel(channelLogin)) return true;
     // Firestore-backed allowlist (production path)
-    return isChannelAllowed(broadcasterId || channelLogin);
+    return isChannelActive(broadcasterId || channelLogin);
 }
 
 // Per-channel farewell deduplication: guards against duplicate stream.offline

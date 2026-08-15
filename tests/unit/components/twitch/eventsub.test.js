@@ -1,7 +1,7 @@
 // tests/unit/components/twitch/eventsub.test.js
 import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
-import { isChannelAllowed } from '../../../../src/components/twitch/channelManager.js';
+import { isChannelActive } from '../../../../src/components/twitch/channelManager.js';
 import { notifySubscription, notifyGiftSubs, notifyAdBreak } from '../../../../src/components/autoChat/autoChatManager.js';
 
 // Mock entire modules
@@ -74,7 +74,7 @@ describe('EventSub Ad Break Routing', () => {
             end: jest.fn().mockReturnThis()
         };
 
-        isChannelAllowed.mockResolvedValue(true);
+        isChannelActive.mockResolvedValue(true);
     });
 
     afterEach(() => {
@@ -160,7 +160,7 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
             end: jest.fn().mockReturnThis()
         };
 
-        isChannelAllowed.mockResolvedValue(true);
+        isChannelActive.mockResolvedValue(true);
     });
 
     afterEach(() => {

@@ -5,7 +5,7 @@
 import logger from '../lib/logger.js';
 import config from '../config/index.js';
 import { processMessage as processCommand } from '../components/commands/commandProcessor.js';
-import { isChannelAllowed } from '../components/twitch/channelManager.js';
+import { isChannelActive } from '../components/twitch/channelManager.js';
 import { isDevChannel } from '../lib/devChannels.js';
 import { recordChatMessage } from '../components/context/channelActivity.js';
 import { getContextManager } from '../components/context/contextManager.js';
@@ -42,15 +42,16 @@ export async function handleChatMessage(channel, tags, message) {
 
     const cleanChannel = channel.substring(1);
 
-    // Enforce allow-list
+    // Enforce allow-list. Approval alone is not enough — a channel that switched
+    // the bot off stays approved, but the bot must not respond in it.
     try {
         // Dev channels configured via TWITCH_CHANNELS are always allowed in development
         let allowed = isDevChannel(cleanChannel);
         if (!allowed) {
-            allowed = await isChannelAllowed(cleanChannel);
+            allowed = await isChannelActive(cleanChannel);
         }
         if (!allowed) {
-            logger.warn(`[ChatHandler] Received message in disallowed channel ${cleanChannel}. Ignoring.`);
+            logger.warn(`[ChatHandler] Received message in inactive or disallowed channel ${cleanChannel}. Ignoring.`);
             return;
         }
     } catch (allowErr) {

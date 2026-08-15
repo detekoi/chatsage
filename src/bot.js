@@ -120,9 +120,9 @@ async function main() {
 
         // --- Start Lifecycle Manager ---
         // LifecycleManager.startMonitoring() sets up the Firestore channel change listener internally.
-        // This MUST run before the dev-mode subscription code below, because the
-        // Firestore listener's initial snapshot calls removeAllowedChannel() for
-        // inactive channels — if we addAllowedChannel() before this, it gets undone.
+        // This MUST run before the dev-mode code below: the listener's initial snapshot
+        // rebuilds the caches from Firestore, where dev channels are isActive:false, so
+        // switching one on before this point would be undone.
         logger.info('Initializing Lifecycle Manager...');
         const lifecycle = LifecycleManager.get();
         await lifecycle.startMonitoring();
@@ -130,14 +130,14 @@ async function main() {
         // --- Dev mode: subscribe test channels from TWITCH_CHANNELS env var ---
         // Test channels (e.g. parfaittest) must stay isActive:false in Firestore
         // to prevent the production bot from also subscribing. In local dev,
-        // we subscribe them explicitly and add them to the allowlist.
+        // we subscribe them explicitly and switch them on locally.
         // This runs AFTER the lifecycle manager so the initial Firestore snapshot
-        // doesn't undo the addAllowedChannel() call.
+        // doesn't undo the setChannelActive() call.
         if (hasDevChannels()) {
             try {
                 const { getUsersByLogin } = await import('./components/twitch/helixClient.js');
                 const { subscribeStreamOnline, subscribeStreamOffline, subscribeChannelChatMessage } = await import('./components/twitch/twitchSubs.js');
-                const { addAllowedChannel } = await import('./lib/allowList.js');
+                const { setChannelActive } = await import('./lib/allowList.js');
                 logger.info({ channels: config.twitch.channels }, '[Dev] Subscribing TWITCH_CHANNELS to EventSub...');
                 for (const channelName of config.twitch.channels) {
                     const users = await getUsersByLogin([channelName]);
@@ -146,7 +146,7 @@ async function main() {
                         logger.warn({ channelName }, '[Dev] Could not resolve channel to user ID, skipping');
                         continue;
                     }
-                    addAllowedChannel(channelName, userId);
+                    setChannelActive(channelName, userId, true);
                     await subscribeStreamOnline(userId);
                     await subscribeStreamOffline(userId);
                     await subscribeChannelChatMessage(userId);
