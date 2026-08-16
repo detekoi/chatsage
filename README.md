@@ -50,7 +50,7 @@ If your channel is approved, follow these steps to add or remove WildcatSage:
 
 1. **Open the WildcatSage Management Portal:**
    - Go to [bot.wildcat.chat](https://bot.wildcat.chat).
-   - Select **Login with Twitch**.
+   - Select **Sign in with Twitch**.
 
 2. **Authorize the Application:**
    - Twitch prompts you to authorize WildcatSage.
@@ -58,8 +58,8 @@ If your channel is approved, follow these steps to add or remove WildcatSage:
 
 3. **Manage the Bot:**
    - View your channel dashboard.
-   - Select **Add Bot to My Channel** to add WildcatSage to your channel.
-   - Select **Remove Bot from My Channel** to remove WildcatSage from your channel.
+   - Select **Add bot to my channel** to add WildcatSage to your channel.
+   - Select **Remove bot from my channel** to remove WildcatSage from your channel.
 
 4. **Bot Joining Time:**
    - After you add the bot, WildcatSage joins your channel within a few minutes.
@@ -170,7 +170,7 @@ Make sure that you set all required variables in your environment or `.env` file
      ```
 
    - Copy the generated URL from the terminal output and paste it into your browser.
-   - Log in to Twitch with the account that the bot uses.
+   - Sign in to Twitch with the account that the bot uses.
    - Authorize the application for the requested scopes.
    - Twitch redirects your browser to `http://localhost:3000`. The Twitch CLI captures the authorization code and exchanges it for tokens.
    - The CLI prints the access token and refresh token in your terminal.
