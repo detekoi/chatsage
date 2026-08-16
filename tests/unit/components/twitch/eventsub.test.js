@@ -1,8 +1,8 @@
 // tests/unit/components/twitch/eventsub.test.js
 import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
-import { isChannelAllowed } from '../../../../src/components/twitch/channelManager.js';
-import { notifySubscription, notifyGiftSubs } from '../../../../src/components/autoChat/autoChatManager.js';
+import { isChannelActive } from '../../../../src/components/twitch/channelManager.js';
+import { notifySubscription, notifyGiftSubs, notifyAdBreak } from '../../../../src/components/autoChat/autoChatManager.js';
 
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -35,44 +35,114 @@ describe('EventSub Phantom Entry Cleanup', () => {
     });
 });
 
-describe('EventSub Ad Break Event Structure', () => {
-    test('should have correct structure for channel.ad_break.begin event payload', () => {
-        // This test verifies the event payload structure matches Twitch API docs
-        // Based on https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channeladbreakbegin
-        const mockEvent = {
+describe('EventSub Ad Break Routing', () => {
+    // The docs type is_automatic and duration_seconds as strings
+    // (https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channeladbreakbegin)
+    // but observed webhook deliveries carry a real boolean and a real number.
+    // Both shapes are exercised here because the handler has to survive either.
+    let mockRes;
+    let oldBypass;
+
+    const adBreakBody = (event) => JSON.stringify({
+        subscription: { type: 'channel.ad_break.begin' },
+        event: {
             broadcaster_user_name: 'TestChannel',
             broadcaster_user_login: 'testchannel',
             broadcaster_user_id: '12345',
-            duration_seconds: '60',
             started_at: '2025-01-15T10:00:00Z',
-            is_automatic: 'true',
-            requester_user_id: '12345',
             requester_user_login: 'testchannel',
-            requester_user_name: 'TestChannel'
-        };
-
-        // Assert all required fields are present
-        expect(mockEvent).toHaveProperty('broadcaster_user_name');
-        expect(mockEvent).toHaveProperty('broadcaster_user_login');
-        expect(mockEvent).toHaveProperty('duration_seconds');
-        expect(mockEvent).toHaveProperty('started_at');
-        expect(mockEvent).toHaveProperty('is_automatic');
-
-        // Verify field types match Twitch API (strings, not numbers)
-        expect(typeof mockEvent.duration_seconds).toBe('string');
-        expect(typeof mockEvent.is_automatic).toBe('string');
-
-        // Verify values
-        expect(mockEvent.duration_seconds).toBe('60');
-        expect(mockEvent.is_automatic).toBe('true');
+            ...event
+        }
     });
 
-    test('should handle both automatic and manual ad breaks', () => {
-        const automaticAd = { is_automatic: 'true', duration_seconds: '90' };
-        const manualAd = { is_automatic: 'false', duration_seconds: '60' };
+    const adBreakReq = (id) => ({
+        headers: {
+            'twitch-eventsub-message-type': 'notification',
+            'twitch-eventsub-message-id': id,
+            'twitch-eventsub-message-timestamp': new Date().toISOString()
+        }
+    });
 
-        expect(automaticAd.is_automatic).toBe('true');
-        expect(manualAd.is_automatic).toBe('false');
+    beforeEach(() => {
+        jest.clearAllMocks();
+        oldBypass = process.env.EVENTSUB_BYPASS;
+        process.env.EVENTSUB_BYPASS = 'true';
+        markEventSubReady();
+
+        mockRes = {
+            writeHead: jest.fn().mockReturnThis(),
+            end: jest.fn().mockReturnThis()
+        };
+
+        isChannelActive.mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        if (oldBypass === undefined) {
+            delete process.env.EVENTSUB_BYPASS;
+        } else {
+            process.env.EVENTSUB_BYPASS = oldBypass;
+        }
+    });
+
+    test.each([
+        ['boolean payload (as delivered)', false, 60],
+        ['string payload (as documented)', 'false', '60']
+    ])('announces a manually started ad break — %s', async (_label, isAutomatic, durationSeconds) => {
+        const rawBody = adBreakBody({ is_automatic: isAutomatic, duration_seconds: durationSeconds });
+
+        await eventSubHandler(adBreakReq(`ad-manual-${_label}`), mockRes, rawBody);
+
+        expect(notifyAdBreak).toHaveBeenCalledTimes(1);
+        expect(notifyAdBreak).toHaveBeenCalledWith('testchannel', expect.objectContaining({
+            is_automatic: isAutomatic
+        }));
+    });
+
+    test.each([
+        ['boolean payload (as delivered)', true, 120],
+        ['string payload (as documented)', 'true', '90']
+    ])('stays silent on a scheduled ad break, which the poller already warned about — %s', async (_label, isAutomatic, durationSeconds) => {
+        const rawBody = adBreakBody({ is_automatic: isAutomatic, duration_seconds: durationSeconds });
+
+        await eventSubHandler(adBreakReq(`ad-auto-${_label}`), mockRes, rawBody);
+
+        expect(notifyAdBreak).not.toHaveBeenCalled();
+    });
+});
+
+describe('EventSub Revocation', () => {
+    test('acknowledges a revocation message without processing it as a notification', async () => {
+        const mockRes = {
+            writeHead: jest.fn().mockReturnThis(),
+            end: jest.fn().mockReturnThis()
+        };
+        const req = {
+            headers: {
+                'twitch-eventsub-message-type': 'revocation',
+                'twitch-eventsub-message-id': 'revoke-msg-1',
+                'twitch-eventsub-message-timestamp': new Date().toISOString()
+            }
+        };
+        const rawBody = JSON.stringify({
+            subscription: {
+                type: 'channel.ad_break.begin',
+                status: 'authorization_revoked',
+                condition: { broadcaster_user_id: '12345' }
+            }
+        });
+
+        const oldBypass = process.env.EVENTSUB_BYPASS;
+        process.env.EVENTSUB_BYPASS = 'true';
+        try {
+            await eventSubHandler(req, mockRes, rawBody);
+        } finally {
+            if (oldBypass === undefined) delete process.env.EVENTSUB_BYPASS;
+            else process.env.EVENTSUB_BYPASS = oldBypass;
+        }
+
+        expect(mockRes.writeHead).toHaveBeenCalledWith(200);
+        expect(notifyAdBreak).not.toHaveBeenCalled();
     });
 });
 
@@ -90,7 +160,7 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
             end: jest.fn().mockReturnThis()
         };
 
-        isChannelAllowed.mockResolvedValue(true);
+        isChannelActive.mockResolvedValue(true);
     });
 
     afterEach(() => {

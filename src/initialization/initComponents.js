@@ -5,6 +5,8 @@ import { initializeSecretManager, validateSecretManager } from '../lib/secretMan
 import { initializeChannelManager, getActiveManagedChannels } from '../components/twitch/channelManager.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
+import { initializePersonaStorage, loadAllChannelPersonas, publishBotDefaults } from '../components/context/personaStorage.js';
+import { BOT_CORE_INSTRUCTION, DEFAULT_BOT_PERSONA } from '../components/llm/gemini/prompts.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../components/llm/conversationStorage.js';
@@ -60,21 +62,19 @@ export async function initializeChannels() {
     } else {
         logger.info('Cloud environment detected or not development. Loading channels from Firestore.');
         const managedChannels = await getActiveManagedChannels();
-        if (managedChannels && managedChannels.length > 0) {
-            config.twitch.channels = managedChannels.map(ch => ch.name.toLowerCase());
-            // Preserve { name, twitchUserId } for pre-seeding broadcaster IDs
-            config.twitch.channelsWithIds = managedChannels;
+        config.twitch.channels = (managedChannels || []).map(ch => ch.name.toLowerCase());
+        // Preserve { name, twitchUserId } for pre-seeding broadcaster IDs
+        config.twitch.channelsWithIds = managedChannels || [];
+
+        if (config.twitch.channels.length > 0) {
             logger.info(`Loaded ${config.twitch.channels.length} channels from Firestore.`);
         } else {
-            logger.fatal('No active channels found in Firestore managedChannels collection. Cannot proceed.');
-            process.exit(1);
+            // Standby rather than exit. Every channel being switched off is a legitimate
+            // state, and exiting here made it unrecoverable: the Firestore listener that
+            // picks up the next activation is started later in the boot sequence, so a
+            // bot that quits now can never learn that a channel came back.
+            logger.warn('No active channels found in Firestore managedChannels collection. Waiting for a channel to be activated.');
         }
-    }
-
-    // Ensure channels are populated before proceeding
-    if (!config.twitch.channels || config.twitch.channels.length === 0) {
-        logger.fatal('FATAL: No Twitch channels configured to join. Exiting.');
-        process.exit(1);
     }
 }
 
@@ -90,6 +90,13 @@ export async function initializeStorageComponents() {
 
     logger.info('Initializing Auto-Chat Storage...');
     await initializeAutoChatStorage();
+
+    logger.info('Initializing Persona Storage...');
+    await initializePersonaStorage();
+    await loadAllChannelPersonas();
+    // Publishes the default persona and immutable core for the dashboard to read,
+    // so the web UI never keeps its own copy of the text. Non-fatal on failure.
+    await publishBotDefaults(DEFAULT_BOT_PERSONA, BOT_CORE_INSTRUCTION);
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();

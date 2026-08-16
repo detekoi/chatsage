@@ -174,6 +174,10 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const userPronouns = grammar ? { display: grammar.display, grammar } : null;
 
         // a. Get context (merged or single-channel)
+        // personaScope tells the chat session which channel(s) the persona comes
+        // from. It is separate from chatSessionKey because a shared session keys
+        // on a sessionId, which is not a channel and cannot resolve a persona.
+        let personaScope;
         if (sessionId) {
             // Shared chat session - use merged context
             const session = sharedChatManager.getSession(sessionId);
@@ -186,12 +190,17 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
             const channelLogins = session.participants.map(p => p.broadcaster_user_login);
             llmContext = contextManager.getMergedContextForLLM(channelLogins, displayName, userMessage, userPronouns);
             chatSessionKey = sessionId; // Use session ID as chat key
-            
+            personaScope = {
+                hostChannelId: session.hostChannelId,
+                participants: session.participants,
+            };
+
             logger.debug({ sessionId, channels: channelLogins }, `Using merged context for shared session`);
         } else {
             // Single channel context
             llmContext = contextManager.getContextForLLM(cleanChannel, displayName, userMessage, userPronouns);
             chatSessionKey = cleanChannel;
+            personaScope = { channelName: cleanChannel };
         }
 
         if (!llmContext) {
@@ -213,7 +222,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // c. Use persistent chat session, passing context and (if applicable) history for initialization
         // Also pass botLanguage so the system instruction includes the native-language directive
         const botLanguage = contextManager.getBotLanguage(cleanChannel) || null;
-        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory, botLanguage);
+        const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory, botLanguage, personaScope);
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
         // Include emote images as inline multimodal parts if present
         const messageParts = [{ text: messageForChat }, ...emoteImageParts];

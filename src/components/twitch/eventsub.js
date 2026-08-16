@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { isChannelAllowed } from './channelManager.js';
+import { isChannelActive } from './channelManager.js';
 import { isDevChannel } from '../../lib/devChannels.js';
 import { getContextManager } from '../context/contextManager.js';
 
@@ -61,6 +61,10 @@ function pruneOldProcessedIds(nowTs) {
  * intentional to prevent the production bot from subscribing to test channels).
  * Falls back to the Firestore-backed allowlist for all other channels.
  *
+ * The production path checks isActive rather than mere approval: a channel that
+ * deactivated the bot stays on the allow-list, but must not be acted on, and a
+ * stale EventSub subscription can outlive the deactivation that unsubscribed it.
+ *
  * @param {string} broadcasterId - Twitch User ID of the broadcaster
  * @param {string} channelLogin  - Broadcaster login name (lowercase)
  * @returns {Promise<boolean>}
@@ -68,7 +72,7 @@ function pruneOldProcessedIds(nowTs) {
 async function isEventAllowed(broadcasterId, channelLogin) {
     if (isDevChannel(channelLogin)) return true;
     // Firestore-backed allowlist (production path)
-    return isChannelAllowed(broadcasterId || channelLogin);
+    return isChannelActive(broadcasterId || channelLogin);
 }
 
 // Per-channel farewell deduplication: guards against duplicate stream.offline
@@ -174,6 +178,19 @@ export async function eventSubHandler(req, res, rawBody) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end(notification.challenge);
         logger.info('✅ EventSub webhook verification challenge responded');
+        return;
+    }
+
+    // Twitch revokes a subscription when the broadcaster revokes authorization or
+    // changes their password, when the user is removed, when the callback fails
+    // too often, or when the type version is retired. Nothing recreates a revoked
+    // subscription automatically, so log it loudly rather than dropping it.
+    if (messageType === 'revocation') {
+        logger.error({
+            type: notification.subscription?.type,
+            status: notification.subscription?.status,
+            condition: notification.subscription?.condition
+        }, '[EventSub] Subscription revoked by Twitch — these events stop arriving until it is recreated');
         return;
     }
 
@@ -404,8 +421,11 @@ export async function eventSubHandler(req, res, rawBody) {
                 const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
 
-                const isAutomatic = event?.is_automatic === true;
-                const duration = event?.duration_seconds || event?.duration || 60;
+                // Twitch types both of these as strings in the ad_break.begin v1
+                // payload, so `=== true` never matched and every scheduled ad was
+                // treated as manual.
+                const isAutomatic = String(event?.is_automatic) === 'true';
+                const duration = Number(event?.duration_seconds ?? event?.duration) || 60;
 
                 logger.info({
                     channelName: channelName.toLowerCase(),

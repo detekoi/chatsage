@@ -69,8 +69,8 @@ export function generateLiteContent(prompt, options = {}) {
     return geminiCore.generateLiteContent(prompt, options);
 }
 
-export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null, botLanguage = null) {
-    return openAiChat.getOrCreateChatSession(channelName, initialContext, chatHistory, botLanguage);
+export function getOrCreateChatSession(sessionKey, initialContext = null, chatHistory = null, botLanguage = null, personaScope = {}) {
+    return openAiChat.getOrCreateChatSession(sessionKey, initialContext, chatHistory, botLanguage, personaScope);
 }
 
 export function resetChatSession(channelName) {

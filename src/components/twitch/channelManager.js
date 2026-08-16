@@ -1,7 +1,7 @@
 // src/components/twitch/channelManager.js
 import { getFirestore } from '../../lib/firestore.js';
 import logger from '../../lib/logger.js';
-import { updateAllowedChannels, addAllowedChannel, removeAllowedChannel, isChannelAllowed as _isAllowed } from '../../lib/allowList.js';
+import { updateAllowedChannels, addAllowedChannel, setChannelActive, removeAllowedChannel, isChannelAllowed as _isAllowed, isChannelActive as _isActive } from '../../lib/allowList.js';
 import { isDevChannel } from '../../lib/devChannels.js';
 
 // Collection name (must match the name used in chatsage-web-ui)
@@ -32,18 +32,27 @@ function _getDb() {
     return getFirestore();
 }
 
+// Login names that were active as of the most recent full Firestore fetch, i.e.
+// the set EventSub was subscribed for at startup. Null until the first fetch.
+let lastFetchedActiveNames = null;
+
 /**
- * Retrieves all active managed channels from Firestore.
- * @returns {Promise<Array<{name: string, twitchUserId: string|null}>>} Array of channel objects.
+ * Retrieves all active managed channels from Firestore, and refreshes the
+ * allow-list cache from the whole collection along the way.
+ *
+ * The read is deliberately unfiltered: approval to use the service is the
+ * document existing, not isActive, so a channel that has switched the bot off
+ * still belongs on the allow-list. Only the returned list — the channels the
+ * bot actually runs in — is narrowed to the active ones.
+ *
+ * @returns {Promise<Array<{name: string, twitchUserId: string|null}>>} Array of active channel objects.
  */
 export async function getActiveManagedChannels() {
     const dbInstance = _getDb();
-    logger.info("[ChannelManager] Fetching active managed channels from Firestore...");
+    logger.info("[ChannelManager] Fetching managed channels from Firestore...");
 
     try {
-        const snapshot = await dbInstance.collection(MANAGED_CHANNELS_COLLECTION)
-            .where('isActive', '==', true)
-            .get();
+        const snapshot = await dbInstance.collection(MANAGED_CHANNELS_COLLECTION).get();
 
         const channels = [];
         snapshot.forEach(doc => {
@@ -51,7 +60,8 @@ export async function getActiveManagedChannels() {
             if (data && typeof data.channelName === 'string') {
                 channels.push({
                     name: data.channelName.toLowerCase(),
-                    twitchUserId: data.twitchUserId || null
+                    twitchUserId: data.twitchUserId || null,
+                    isActive: !!data.isActive
                 });
             } else {
                 logger.warn({ docId: doc.id }, `[ChannelManager] Document in managedChannels missing valid 'channelName'. Skipping.`);
@@ -61,11 +71,18 @@ export async function getActiveManagedChannels() {
         // Populate the allow-list cache from Firestore (the single source of truth)
         updateAllowedChannels(channels);
 
-        const channelNames = channels.map(ch => ch.name);
-        logger.info(`[ChannelManager] Successfully fetched ${channelNames.length} active managed channels.`);
+        const activeChannels = channels.filter(ch => ch.isActive);
+        const channelNames = activeChannels.map(ch => ch.name);
+
+        // Baseline for the listener's initial snapshot: these are the channels
+        // startup subscribes to, so anything that differs by the time the
+        // listener attaches was changed in between and still needs syncing.
+        lastFetchedActiveNames = new Set(channelNames);
+
+        logger.info(`[ChannelManager] Successfully fetched ${channelNames.length} active managed channels (${channels.length} approved).`);
         logger.debug(`[ChannelManager] Active channels: ${channelNames.join(', ')}`);
 
-        return channels;
+        return activeChannels;
     } catch (error) {
         logger.error({ err: error }, "[ChannelManager] Error fetching active managed channels.");
         throw new ChannelManagerError("Failed to fetch active managed channels.", error);
@@ -73,14 +90,27 @@ export async function getActiveManagedChannels() {
 }
 
 /**
- * Checks whether a given channel is allowed (active) according to the in-memory
- * cache populated from Firestore managedChannels.
+ * Checks whether a given channel is approved to use the service according to
+ * the in-memory cache populated from Firestore managedChannels. Approved is not
+ * the same as switched on — a channel that deactivated the bot stays approved.
  * Accepts either a Twitch User ID or a channel login name.
  * @param {string} identifier - The Twitch User ID or channel name.
- * @returns {Promise<boolean>} True if channel is allowed; false otherwise.
+ * @returns {Promise<boolean>} True if channel is approved; false otherwise.
  */
 export async function isChannelAllowed(identifier) {
     return _isAllowed(identifier);
+}
+
+/**
+ * Checks whether the bot is currently switched on for a channel
+ * (managedChannels.isActive). This is the check for anything that acts in a
+ * channel; isChannelAllowed only answers whether the channel is approved.
+ * Accepts either a Twitch User ID or a channel login name.
+ * @param {string} identifier - The Twitch User ID or channel name.
+ * @returns {Promise<boolean>} True if the bot is active for the channel.
+ */
+export async function isChannelActive(identifier) {
+    return _isActive(identifier);
 }
 
 /**
@@ -148,6 +178,21 @@ export async function syncChannelWithEventSub(channelName, isActive, twitchUserI
 
 
 /**
+ * Picks out the initial-snapshot documents whose active state no longer matches
+ * what the startup fetch subscribed, so only those are synced with EventSub.
+ * Returns nothing when no fetch has run — there is no baseline to compare with,
+ * and re-syncing every channel would mean a Helix call per channel on boot.
+ */
+function changesMissedDuringStartup(changes) {
+    if (!lastFetchedActiveNames) return [];
+    return changes
+        .filter(change => lastFetchedActiveNames.has(change.channelName.toLowerCase()) !== change.isActive)
+        // Every initial-snapshot entry arrives as 'added', but these documents are
+        // ones that changed after startup read them, so they are reported as such.
+        .map(change => ({ ...change, type: 'modified' }));
+}
+
+/**
  * Sets up a listener for changes to the managedChannels collection.
  * When channels are added/modified, subscribes/unsubscribes EventSub accordingly.
  * @returns {Function} Unsubscribe function to stop listening for changes
@@ -169,12 +214,22 @@ export function listenForChannelChanges() {
                     const normName = channelData.channelName.toLowerCase();
                     const devChannel = isDevChannel(normName);
 
-                    // Update allow-list cache in real-time
-                    if (channelData.isActive && channelData.twitchUserId) {
+                    // Update the caches in real-time. Every document is approved,
+                    // active or not; only a deleted document revokes approval.
+                    if (change.type === 'removed') {
+                        if (!devChannel) {
+                            removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
+                        }
+                    } else if (channelData.isActive) {
+                        setChannelActive(channelData.channelName, channelData.twitchUserId, true);
+                    } else if (!isInitialSnapshot && !devChannel) {
+                        setChannelActive(channelData.channelName, channelData.twitchUserId, false);
+                    } else {
+                        // Approve without switching off: on the initial snapshot a legacy
+                        // duplicate doc could otherwise switch off a channel the active doc
+                        // just switched on, and dev-mode channels configured in .env are
+                        // isActive:false in Firestore by design.
                         addAllowedChannel(channelData.channelName, channelData.twitchUserId);
-                    } else if (!channelData.isActive && !isInitialSnapshot && !devChannel) {
-                        // Skip removals on initial snapshot or for dev-mode channels configured in .env
-                        removeAllowedChannel(channelData.channelName, channelData.twitchUserId);
                     }
 
                     // Skip EventSub syncing for inactive dev-mode channels (they are explicitly managed by dev mode boot)
@@ -196,29 +251,38 @@ export function listenForChannelChanges() {
                 }
             });
 
-            // Skip EventSub sync on initial snapshot — subscribeAllManagedChannels()
-            // already handled these during startup. Allow-list updates above still run.
+            // The initial snapshot mostly repeats what subscribeAllManagedChannels()
+            // subscribed during startup, so it syncs nothing by default. The exception
+            // is a channel switched on or off between that fetch and this listener
+            // attaching: no other event covers that window, and the channel would stay
+            // wrongly subscribed — or wrongly silent — until the next restart.
+            let changesToSync = changes;
             if (isInitialSnapshot) {
                 isInitialSnapshot = false;
-                logger.info(`[ChannelManager] Initial snapshot: ${changes.length} channels loaded (skipping EventSub sync)`);
-                return;
+                changesToSync = changesMissedDuringStartup(changes);
+                logger.info(
+                    `[ChannelManager] Initial snapshot: ${changes.length} channels loaded, ` +
+                    `${changesToSync.length} changed since the startup fetch`
+                );
             }
 
-            if (changes.length > 0) {
-                logger.info(`[ChannelManager] Detected ${changes.length} channel management changes.`);
+            if (changesToSync.length > 0) {
+                logger.info(`[ChannelManager] Detected ${changesToSync.length} channel management changes.`);
 
                 // Process the VALID changes
-                changes.forEach(async (change) => {
-                    if (change.type === 'added' || change.type === 'modified') {
-                        // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
-                        // Pass stored twitchUserId to avoid login-name lookups that break on renames
-                        syncChannelWithEventSub(change.channelName, change.isActive, change.channelData?.twitchUserId)
-                            .catch(err => {
-                                logger.error({ err, channel: change.channelName, docId: change.docId },
-                                    `[ChannelManager] Error processing channel change via listener`);
-                            });
-                    }
-                    // Optionally handle 'removed' type if needed
+                changesToSync.forEach(change => {
+                    // A deleted document is a deactivation as far as Twitch is concerned:
+                    // without this its subscriptions keep delivering webhooks that every
+                    // handler then discards.
+                    const shouldBeSubscribed = change.type === 'removed' ? false : change.isActive;
+
+                    // Sync channel with EventSub (subscribe if active, unsubscribe if inactive)
+                    // Pass stored twitchUserId to avoid login-name lookups that break on renames
+                    syncChannelWithEventSub(change.channelName, shouldBeSubscribed, change.channelData?.twitchUserId)
+                        .catch(err => {
+                            logger.error({ err, channel: change.channelName, docId: change.docId },
+                                `[ChannelManager] Error processing channel change via listener`);
+                        });
                 });
             }
         }, error => {

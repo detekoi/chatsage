@@ -1,5 +1,6 @@
 // src/components/twitch/sharedChatManager.js
 import logger from '../../lib/logger.js';
+import { resetChatSession } from '../llm/llmClient.js';
 
 /**
  * Manages shared chat session state for Twitch collab streams.
@@ -42,6 +43,10 @@ export function addSession(sessionId, hostChannelId, participants = []) {
         channelToSession.set(channelId, sessionId);
     }
 
+    // This doubles as an update path, so drop any chat session built from an
+    // earlier participant list and its now-stale persona blend.
+    resetChatSession(sessionId);
+
     logger.info({
         sessionId,
         hostChannelId,
@@ -80,6 +85,11 @@ export function updateSession(sessionId, participants = []) {
         channelToSession.set(channelId, sessionId);
     }
 
+    // The session's system instruction blends every participant's persona and is
+    // baked in when the chat session is created, so a channel joining or leaving
+    // would otherwise leave the bot running a blend that no longer matches the room.
+    resetChatSession(sessionId);
+
     logger.info({
         sessionId,
         participantCount: channelIds.size,
@@ -104,6 +114,9 @@ export function removeSession(sessionId) {
     }
 
     activeSessions.delete(sessionId);
+
+    // Drop the blended-persona chat session along with the shared session itself.
+    resetChatSession(sessionId);
 
     const channelLogins = session.participants.map(p => p.broadcaster_user_login);
     logger.info({

@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 import { getOpenAiInstance, getConfiguredModelId, getConfiguredReasoningEffort, formatOpenAiContent } from './core.js';
 import { safeExtractText, safeParseJsonResponse } from './utils.js';
-import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../gemini/prompts.js';
+import { buildSystemInstruction } from '../gemini/prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
 import { TimezoneSchema, SummarySchema } from '../schemaUtils.js';
 import { retryWithBackoff, executeWithFlexFallback } from '../retryUtils.js';
@@ -101,7 +101,7 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
     const reasoningEffort = resolveReasoningEffort(options);
     const botLanguage = options.botLanguage || null;
 
-    let standardSystemInstruction = `${CHAT_SAGE_SYSTEM_INSTRUCTION}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date.\n- Do NOT use 'getCurrentTime' for general facts.`;
+    let standardSystemInstruction = `${buildSystemInstruction(options.channelName)}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date.\n- Do NOT use 'getCurrentTime' for general facts.`;
     if (botLanguage) {
         standardSystemInstruction += `\n\nCRITICAL LANGUAGE REQUIREMENT: You MUST write every response entirely in ${botLanguage}, even though the stream context and chat history are in another language.`;
     }
@@ -166,7 +166,9 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
 }
 
 // --- Search Response ---
-const SEARCH_SYSTEM_INSTRUCTION = `${CHAT_SAGE_SYSTEM_INSTRUCTION}
+// A function rather than a module constant: the persona layer is per-channel now,
+// so this cannot be resolved once at import time.
+const buildSearchSystemInstruction = (channelName) => `${buildSystemInstruction(channelName)}
 
 CRITICAL FOR !search COMMAND: Your training knowledge about world events, product releases, announcements, and anything time-sensitive is UNRELIABLE and likely OUTDATED. You MUST use the web search tool to fetch current, real-world information before answering. Do NOT answer from memory for any factual or recent-events query — always search first, then answer based on what you find.`;
 
@@ -177,7 +179,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
     const reasoningEffort = resolveReasoningEffort(options);
     const botLanguage = options.botLanguage || null;
 
-    let searchSystemInstruction = SEARCH_SYSTEM_INSTRUCTION;
+    let searchSystemInstruction = buildSearchSystemInstruction(options.channelName);
     if (botLanguage) {
         searchSystemInstruction += `\n\nCRITICAL LANGUAGE REQUIREMENT: You MUST write every response entirely in ${botLanguage}, even though the stream context and chat history are in another language.`;
     }
@@ -258,7 +260,7 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
     const reasoningEffort = resolveReasoningEffort(options);
     const botLanguage = options.botLanguage || null;
 
-    let unifiedSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+    let unifiedSystemInstruction = buildSystemInstruction(options.channelName);
     if (botLanguage) {
         unifiedSystemInstruction += `\n\nCRITICAL LANGUAGE REQUIREMENT: You MUST write every response entirely in ${botLanguage}, even though the stream context and chat history are in another language.`;
     }

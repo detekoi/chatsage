@@ -55,11 +55,13 @@ describe('AutoChat Gift Sub Celebration', () => {
         // Assert prompt contents
         expect(generateStandardResponse).toHaveBeenCalledWith(
             'context prompt',
-            expect.stringContaining('An anonymous gifter just gifted 5 subs to the channel!')
+            expect.stringContaining('An anonymous gifter just gifted 5 subs to the channel!'),
+            expect.objectContaining({ channelName: CHANNEL })
         );
         expect(generateStandardResponse).toHaveBeenCalledWith(
             'context prompt',
-            expect.stringContaining('Do NOT list individual recipients.')
+            expect.stringContaining('Do NOT list individual recipients.'),
+            expect.objectContaining({ channelName: CHANNEL })
         );
         expect(enqueueAnnouncement).toHaveBeenCalledWith(`#${CHANNEL}`, 'Thanks for the subs!', 'green');
     });
@@ -74,7 +76,8 @@ describe('AutoChat Gift Sub Celebration', () => {
 
         expect(generateStandardResponse).toHaveBeenCalledWith(
             'context prompt',
-            expect.stringContaining("GifterGuy just gifted 10 subs to the channel! They have gifted 42 total in this channel.")
+            expect.stringContaining("GifterGuy just gifted 10 subs to the channel! They have gifted 42 total in this channel."),
+            expect.objectContaining({ channelName: CHANNEL })
         );
         expect(enqueueAnnouncement).toHaveBeenCalledWith(`#${CHANNEL}`, 'Thanks for the subs!', 'green');
     });
@@ -118,7 +121,8 @@ describe('AutoChat Gift Sub Celebration', () => {
 
         expect(generateStandardResponse).toHaveBeenCalledWith(
             'context prompt',
-            expect.stringContaining('1 sub to the channel!')
+            expect.stringContaining('1 sub to the channel!'),
+            expect.objectContaining({ channelName: CHANNEL })
         );
         // Should NOT contain 'subs' (plural)
         expect(generateStandardResponse).not.toHaveBeenCalledWith(

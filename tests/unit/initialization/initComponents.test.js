@@ -158,29 +158,30 @@ describe('Component Initialization', () => {
             );
         });
 
-        test('should exit when no channels found in Firestore', async () => {
+        // Exiting here used to be unrecoverable: the Firestore listener that would
+        // notice a channel coming back is started later in the boot sequence.
+        test('should stand by, not exit, when no channels are active in Firestore', async () => {
             process.env.K_SERVICE = 'test-service';
             getActiveManagedChannels.mockResolvedValue([]);
 
             await initializeChannels();
 
-            expect(logger.fatal).toHaveBeenCalledWith(
-                'No active channels found in Firestore managedChannels collection. Cannot proceed.'
+            expect(logger.warn).toHaveBeenCalledWith(
+                'No active channels found in Firestore managedChannels collection. Waiting for a channel to be activated.'
             );
-            expect(process.exit).toHaveBeenCalledWith(1);
+            expect(process.exit).not.toHaveBeenCalled();
+            expect(config.twitch.channels).toEqual([]);
         });
 
-        test('should exit when channels array is empty after initialization', async () => {
+        test('should stand by when the Firestore fetch yields nothing at all', async () => {
             process.env.K_SERVICE = 'test-service';
             getActiveManagedChannels.mockResolvedValue(null);
-            config.twitch.channels = [];
 
             await initializeChannels();
 
-            expect(logger.fatal).toHaveBeenCalledWith(
-                'FATAL: No Twitch channels configured to join. Exiting.'
-            );
-            expect(process.exit).toHaveBeenCalledWith(1);
+            expect(process.exit).not.toHaveBeenCalled();
+            expect(config.twitch.channels).toEqual([]);
+            expect(config.twitch.channelsWithIds).toEqual([]);
         });
 
         test('should convert channel names to lowercase from Firestore', async () => {
@@ -386,18 +387,20 @@ describe('Component Initialization', () => {
             // The important thing is that process.exit was called
         });
 
-        test('should stop initialization on channel loading failure', async () => {
+        test('should finish initialization with no active channels to load', async () => {
             // Reset all mocks
             getActiveManagedChannels.mockResolvedValue([]);
             process.env.K_SERVICE = 'test-service';
 
             await initializeAllComponents();
 
+            // Nothing to join yet, but the rest of the bot — including the Firestore
+            // listener that picks up the next activation — still has to come up.
             expect(initializeSecretManager).toHaveBeenCalled();
             expect(initializeChannelManager).toHaveBeenCalled();
-            expect(process.exit).toHaveBeenCalledWith(1);
-            // Note: process.exit doesn't actually stop execution in tests, so other functions may still be called
-            // The important thing is that process.exit was called
+            expect(initializeContextManager).toHaveBeenCalled();
+            expect(startAdSchedulePoller).toHaveBeenCalled();
+            expect(process.exit).not.toHaveBeenCalled();
         });
     });
 });

@@ -149,7 +149,13 @@ describe('llmUtils', () => {
 
             expect(getContextManager).toHaveBeenCalled();
             expect(buildContextPrompt).toHaveBeenCalled();
-            expect(getOrCreateChatSession).toHaveBeenCalledWith('testchannel', 'Mock context prompt', expect.anything(), null);
+            expect(getOrCreateChatSession).toHaveBeenCalledWith(
+                'testchannel',
+                'Mock context prompt',
+                expect.anything(),
+                null,
+                { channelName: 'testchannel' }
+            );
             expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Mock LLM response', { replyToId: null, skipTranslation: false });
             expect(logger.info).toHaveBeenCalledWith(
                 { channel: 'testchannel', user: 'testuser', trigger: 'mention' },

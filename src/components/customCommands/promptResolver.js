@@ -2,7 +2,7 @@
 import logger from '../../lib/logger.js';
 import { generateLiteContent } from '../llm/llmClient.js';
 import { smartTruncate, removeMarkdownAsterisks } from '../llm/llmUtils.js';
-import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../llm/gemini/prompts.js';
+import { buildSystemInstruction } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';
 
 // Extra context added only for check-in commands to prevent the LLM from
@@ -38,10 +38,12 @@ export function formatHistoryForPrompt(responses) {
  * Builds the system instruction, optionally appending a language directive.
  * @param {string|null} language - Target language, or null/undefined for English.
  * @param {boolean} isCheckin - Whether this is a check-in command.
+ * @param {string|null} channel - Channel name, for the per-channel persona.
  * @returns {string} The full system instruction.
  */
-function buildSystemInstruction(language, isCheckin = false) {
-    const base = isCheckin ? CHAT_SAGE_SYSTEM_INSTRUCTION + CHECKIN_HINT : CHAT_SAGE_SYSTEM_INSTRUCTION;
+function buildResolverSystemInstruction(language, isCheckin = false, channel = null) {
+    const persona = buildSystemInstruction(channel);
+    const base = isCheckin ? persona + CHECKIN_HINT : persona;
     if (!language) {
         return base;
     }
@@ -109,7 +111,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
 
         logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length, serviceTier }, '[PromptResolver] Generating response for custom command prompt');
 
-        const systemInstruction = buildSystemInstruction(language, isCheckin);
+        const systemInstruction = buildResolverSystemInstruction(language, isCheckin, channel);
 
         // Google Search grounding is attached but dynamic: the model only searches
         // when the prompt asks for current info (e.g. "look up...", "search for...").
