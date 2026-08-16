@@ -197,3 +197,31 @@ export function removeAllowedChannel(channelName, twitchUserId) {
         channelNameToIdMap.delete(name);
     }
 }
+
+/**
+ * Resolves a channel login name to its Twitch broadcaster ID.
+ *
+ * Config keyed by broadcaster ID (channelPersonas) has to be reachable from the
+ * hot path, which only ever has channel names — IRC gives names, not IDs. The
+ * mapping is already maintained here from managedChannels and refreshed by its
+ * onSnapshot listener, so this stays a synchronous in-memory lookup.
+ *
+ * @param {string} channelName - Channel login name, with or without '#'.
+ * @returns {string|null} Broadcaster ID, or null for a channel whose document
+ *   predates twitchUserId or is not yet loaded.
+ */
+export function getBroadcasterIdForChannel(channelName) {
+    if (!channelName) return null;
+    const lower = String(channelName).trim().toLowerCase().replace(/^#/, '');
+    return channelNameToIdMap.get(lower) || null;
+}
+
+/**
+ * Reverse of getBroadcasterIdForChannel.
+ * @param {string} twitchUserId
+ * @returns {string|null} Lowercase channel login name, or null if unknown.
+ */
+export function getChannelNameForBroadcasterId(twitchUserId) {
+    if (!twitchUserId) return null;
+    return channelIdToNameMap.get(String(twitchUserId)) || null;
+}

@@ -5,6 +5,8 @@ import { initializeSecretManager, validateSecretManager } from '../lib/secretMan
 import { initializeChannelManager, getActiveManagedChannels } from '../components/twitch/channelManager.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
+import { initializePersonaStorage, loadAllChannelPersonas, publishBotDefaults } from '../components/context/personaStorage.js';
+import { BOT_CORE_INSTRUCTION, DEFAULT_BOT_PERSONA } from '../components/llm/gemini/prompts.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../components/llm/conversationStorage.js';
@@ -88,6 +90,13 @@ export async function initializeStorageComponents() {
 
     logger.info('Initializing Auto-Chat Storage...');
     await initializeAutoChatStorage();
+
+    logger.info('Initializing Persona Storage...');
+    await initializePersonaStorage();
+    await loadAllChannelPersonas();
+    // Publishes the default persona and immutable core for the dashboard to read,
+    // so the web UI never keeps its own copy of the text. Non-fatal on failure.
+    await publishBotDefaults(DEFAULT_BOT_PERSONA, BOT_CORE_INSTRUCTION);
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();

@@ -13,6 +13,12 @@ jest.mock('../../../src/components/autoChat/autoChatManager.js');
 jest.mock('../../../src/components/timers/timerManager.js');
 jest.mock('../../../src/components/twitch/adSchedulePoller.js');
 jest.mock('../../../src/components/twitch/channelManager.js');
+jest.mock('../../../src/components/context/personaStorage.js', () => ({
+    onPersonaChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/llm/llmClient.js', () => ({
+    resetChatSession: jest.fn(),
+}));
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/config/index.js', () => ({
     default: {

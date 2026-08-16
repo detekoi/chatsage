@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 import { getGeminiClient } from './core.js';
-import { CHAT_SAGE_SYSTEM_INSTRUCTION } from './prompts.js';
+import { buildSystemInstruction, buildSharedSystemInstruction } from './prompts.js';
 import { searchTool } from './tools.js';
 
 // --- NEW: Channel-scoped Chat Sessions ---
@@ -23,24 +23,34 @@ function _convertChatHistoryToGeminiHistory(chatHistory, maxMessages = 15) {
 /**
  * Returns an existing chat session for the given channel or creates a new one.
  * The session is initialized with the long-lived systemInstruction (persona) and optional initial history.
- * @param {string} channelName - Clean channel name without '#'
+ * @param {string} sessionKey - Cache key: a channel name, or a Twitch shared-chat
+ *   sessionId when several channels share one chat.
  * @param {string|null} initialContext - Optional context string to append to system instruction
  * @param {Array|null} chatHistory - Optional raw chat history array (recent messages) to seed history
  * @param {string|null} botLanguage - Optional target language for native-language generation
+ * @param {object} [personaScope] - Which channel(s) the persona comes from. Kept
+ *   separate from sessionKey because a shared session's key is a sessionId, not a
+ *   channel, and so cannot be used to look up a persona.
+ * @param {string|null} [personaScope.channelName] - Single-channel persona source.
+ * @param {string|null} [personaScope.hostChannelId] - Shared session host broadcaster ID.
+ * @param {Array|null} [personaScope.participants] - Shared session participants.
  * @returns {import('@google/genai').ChatSession}
  */
-export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null, botLanguage = null) {
-    if (!channelName || typeof channelName !== 'string') {
-        throw new Error('getOrCreateChatSession requires a valid channelName');
+export function getOrCreateChatSession(sessionKey, initialContext = null, chatHistory = null, botLanguage = null, personaScope = {}) {
+    if (!sessionKey || typeof sessionKey !== 'string') {
+        throw new Error('getOrCreateChatSession requires a valid sessionKey');
     }
-    if (channelChatSessions.has(channelName)) {
-        return channelChatSessions.get(channelName);
+    if (channelChatSessions.has(sessionKey)) {
+        return channelChatSessions.get(sessionKey);
     }
 
     const model = getGeminiClient();
 
     // Combine the base persona with the initial stream/chat context.
-    let finalSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+    const { channelName = null, hostChannelId = null, participants = null } = personaScope || {};
+    let finalSystemInstruction = participants
+        ? buildSharedSystemInstruction(hostChannelId, participants)
+        : buildSystemInstruction(channelName);
 
     // Append native language directive if botlang is set for this channel
     if (botLanguage) {
@@ -71,8 +81,8 @@ ${initialContext}`;
         }
     });
 
-    channelChatSessions.set(channelName, chat);
-    logger.info({ channelName, toolsEnabled: ['googleSearch'], hasInitialContext: !!initialContext, hasInitialHistory: initialHistory.length > 0, historyMessageCount: initialHistory.length, botLanguage: botLanguage || 'English (default)' }, 'Created new Gemini chat session for channel');
+    channelChatSessions.set(sessionKey, chat);
+    logger.info({ sessionKey, channelName, isShared: !!participants, toolsEnabled: ['googleSearch'], hasInitialContext: !!initialContext, hasInitialHistory: initialHistory.length > 0, historyMessageCount: initialHistory.length, botLanguage: botLanguage || 'English (default)' }, 'Created new Gemini chat session');
     return chat;
 }
 

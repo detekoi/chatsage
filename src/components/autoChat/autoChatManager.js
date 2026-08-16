@@ -147,7 +147,7 @@ async function maybeSendGreeting(channelName) {
 
     const contextPrompt = buildContextPrompt(context);
     const prompt = `The stream just went live. Write one warm, concise greeting for chat. ≤25 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' }) || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName }) || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'primary');
         recordAutoText(state, text);
@@ -188,15 +188,15 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
         ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}".${imageCtx} ${baseConstraints} Ask ONE open-ended question that makes a specific connection or invites a story about "${newGame}". Must end with a question mark. Avoid generic questions.`
         : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}".${imageCtx} ${baseConstraints} ${style}. Make it specific to "${newGame}" and, if relevant, connect it to "${prevGame}". Avoid generic hype or fact-dumps.`;
     // Prefer creative riff first; fall back to grounded if needed
-    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-        || await generateSearchResponse(contextPrompt, prompt);
+    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     // Constraint guard: if failed question constraint, try alternate once
     if (text && (requireQuestion && !endsWithQuestion(text))) {
         prompt = requireQuestion
             ? `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Ask ONE playful, open question specific to "${newGame}". ≤26 words. Must end with a question mark. No trivia phrasing.`
             : `Streamer switched from "${prevGame || 'Unknown'}" to "${newGame}". ${baseConstraints} Add ONE witty, conversational riff (no facts lecture) about "${newGame}". ≤26 words. No "did you know".`;
-        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-            || await generateSearchResponse(contextPrompt, prompt);
+        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+            || await generateSearchResponse(contextPrompt, prompt, { channelName });
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
@@ -239,12 +239,12 @@ async function maybeHandleLull(channelName) {
     let prompt = requireQuestion
         ? `Chat is quiet. Based on "${topic}",${imageCtx} ${baseConstraints} Ask ONE open-ended question that invites a short story or opinion (not yes/no, not trivia). Must end with a question mark.`
         : `Chat is quiet. Based on "${topic}",${imageCtx} ${baseConstraints} ${style}. Make it feel like a natural nudge, not a forced icebreaker. No trivia tone or filler.`;
-    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-        || await generateSearchResponse(contextPrompt, prompt);
+    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text && (requireQuestion && !endsWithQuestion(text))) {
         prompt = `Chat is quiet. On "${topic}", ${baseConstraints} Ask ONE playful, open question (≤22 words). Must end with a question mark. No trivia phrasing.`;
-        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-            || await generateSearchResponse(contextPrompt, prompt);
+        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+            || await generateSearchResponse(contextPrompt, prompt, { channelName });
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
@@ -289,14 +289,14 @@ async function maybeHandleTopicShift(channelName) {
     let prompt = requireQuestion
         ? `Topic shifted.${imageCtx} ${baseConstraints} Ask ONE open-ended question that shows you noticed the pivot and, if relevant, connects the new topic to the prior one. Must end with a question mark.`
         : `Topic shifted.${imageCtx} ${baseConstraints} ${style}. If possible, connect the new topic to the prior one to show you followed the thread. Avoid generic hype or fact-dumps.`;
-    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-        || await generateSearchResponse(contextPrompt, prompt);
+    let text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text && (requireQuestion && !endsWithQuestion(text))) {
         prompt = requireQuestion
             ? `New topic. ${baseConstraints} Ask ONE playful, open question that builds on what was just said. ≤26 words. Must end with a question mark. No trivia phrasing.`
             : `New topic. ${baseConstraints} Add ONE light, witty remark (no facts lecture). ≤26 words. No "did you know".`;
-        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-            || await generateSearchResponse(contextPrompt, prompt);
+        text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+            || await generateSearchResponse(contextPrompt, prompt, { channelName });
     }
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
@@ -324,7 +324,7 @@ async function maybeSendFarewell(channelName) {
     const context = getContextManager().getContextForLLM(channelName, 'system', 'stream-offline');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `The stream just ended. Write one warm, concise farewell message for chat. ≤25 words. No emojis.`;
-    const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' }) || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName }) || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'primary');
         const state = getState(channelName);
@@ -349,8 +349,8 @@ async function maybeSendFollowCelebration(channelName) {
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-follow');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `A new follower joined the channel. Write ONE warm, concise celebration message using current stream/game and chat vibe. Do NOT reveal or guess the username. ≤22 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt)
-        || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
         const state = getState(channelName);
@@ -364,8 +364,8 @@ async function maybeSendSubscriptionCelebration(channelName) {
     const context = getContextManager().getContextForLLM(channelName, 'system', 'event-subscription');
     const contextPrompt = buildContextPrompt(context);
     const prompt = `A new subscription just happened. Write ONE short, hype thank-you that references current stream context. Do NOT reveal or guess the subscriber's username. ≤22 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt)
-        || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
         const state = getState(channelName);
@@ -393,8 +393,8 @@ async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumul
     const gifterPhrase = gifterName ? sanitizeForPrompt(gifterName) : 'An anonymous gifter';
     const cumulativePhrase = cumulativeTotal ? ` ${subjectPhrase} gifted ${cumulativeTotal} total in this channel.` : '';
     const prompt = `${gifterPhrase} just gifted ${total} sub${total > 1 ? 's' : ''} to the channel!${cumulativePhrase} Write ONE energetic thank-you that references current stream context and the gift count. Do NOT list individual recipients. ≤28 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt)
-        || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'green');
         const state = getState(channelName);
@@ -441,8 +441,8 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
     const prompt = raiderContext
         ? `A raid just arrived from ${safeRaider} with ${viewersPhrase}.${raiderContext}\n\nWrite ONE energetic welcome that naturally references what they were doing and finds a connection to our current stream. Invite raiders to hang out, but assure the streamer it's okay to "raid and run" or go rest. ≤35 words.`
         : `A raid just arrived from ${safeRaider} with ${viewersPhrase}. Write ONE energetic welcome that fits the current game/topic. Invite raiders to hang out, but assure the streamer it's okay to "raid and run" or go rest. ≤30 words.`;
-    const text = await generateStandardResponse(contextPrompt, prompt)
-        || await generateSearchResponse(contextPrompt, prompt);
+    const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
+        || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
         await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'orange');
         const state = getState(channelName);
@@ -558,8 +558,8 @@ export async function generateAdNotification(channelName, type, seconds) {
             ? `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`
             : `An ad break of ${secs} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
 
-        const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex' })
-            || await generateSearchResponse(contextPrompt, prompt);
+        const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+            || await generateSearchResponse(contextPrompt, prompt, { channelName });
         return text ? removeMarkdownAsterisks(text) : null;
     } catch (error) {
         logger.error({ err: error, channelName, type }, '[AutoChatManager] Error generating ad notification');

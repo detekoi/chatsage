@@ -1,6 +1,6 @@
 import logger from '../../../lib/logger.js';
 import { getOpenAiInstance, getConfiguredModelId, getConfiguredReasoningEffort, formatOpenAiContent } from './core.js';
-import { CHAT_SAGE_SYSTEM_INSTRUCTION } from '../gemini/prompts.js';
+import { buildSystemInstruction, buildSharedSystemInstruction } from '../gemini/prompts.js';
 import { searchTool } from './tools.js';
 import { retryWithBackoff } from '../retryUtils.js';
 import { safeExtractText } from './utils.js';
@@ -92,15 +92,31 @@ export class OpenAiChatSession {
     }
 }
 
-export function getOrCreateChatSession(channelName, initialContext = null, chatHistory = null, botLanguage = null) {
-    if (!channelName || typeof channelName !== 'string') {
-        throw new Error('getOrCreateChatSession requires a valid channelName');
+/**
+ * @param {string} sessionKey - Cache key. A channel name for a normal session,
+ *   or a Twitch shared-chat sessionId when several channels share one chat.
+ * @param {string|null} initialContext
+ * @param {Array|null} chatHistory
+ * @param {string|null} botLanguage
+ * @param {object} [personaScope] - Which channel(s) the persona comes from. This
+ *   is deliberately separate from sessionKey: for a shared session the key is a
+ *   sessionId, not a channel, so it cannot be used to look up a persona.
+ * @param {string|null} [personaScope.channelName] - Single-channel persona source.
+ * @param {string|null} [personaScope.hostChannelId] - Shared session host broadcaster ID.
+ * @param {Array|null} [personaScope.participants] - Shared session participants.
+ */
+export function getOrCreateChatSession(sessionKey, initialContext = null, chatHistory = null, botLanguage = null, personaScope = {}) {
+    if (!sessionKey || typeof sessionKey !== 'string') {
+        throw new Error('getOrCreateChatSession requires a valid sessionKey');
     }
-    if (channelChatSessions.has(channelName)) {
-        return channelChatSessions.get(channelName);
+    if (channelChatSessions.has(sessionKey)) {
+        return channelChatSessions.get(sessionKey);
     }
 
-    let finalSystemInstruction = CHAT_SAGE_SYSTEM_INSTRUCTION;
+    const { channelName = null, hostChannelId = null, participants = null } = personaScope || {};
+    let finalSystemInstruction = participants
+        ? buildSharedSystemInstruction(hostChannelId, participants)
+        : buildSystemInstruction(channelName);
 
     if (botLanguage) {
         finalSystemInstruction += `\n\nCRITICAL LANGUAGE REQUIREMENT: You MUST write every response entirely in ${botLanguage}, even though the stream context and chat history are in another language.`;
@@ -117,17 +133,20 @@ ${initialContext}`;
         ? _convertChatHistoryToOpenAiHistory(chatHistory, 15)
         : [];
 
-    const session = new OpenAiChatSession(channelName, finalSystemInstruction, initialHistory);
-    channelChatSessions.set(channelName, session);
+    const session = new OpenAiChatSession(sessionKey, finalSystemInstruction, initialHistory);
+    channelChatSessions.set(sessionKey, session);
 
     logger.info({
+        sessionKey,
         channelName,
+        isShared: !!participants,
+        personaCount: participants ? participants.length : undefined,
         toolsEnabled: ['web_search'],
         hasInitialContext: !!initialContext,
         hasInitialHistory: initialHistory.length > 0,
         historyMessageCount: initialHistory.length,
         botLanguage: botLanguage || 'English (default)'
-    }, 'Created new OpenAI chat session for channel');
+    }, 'Created new OpenAI chat session');
 
     return session;
 }

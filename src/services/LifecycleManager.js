@@ -7,6 +7,10 @@ import { startAdSchedulePoller } from '../components/twitch/adSchedulePoller.js'
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
+import { onPersonaChanges } from '../components/context/personaStorage.js';
+import { resetChatSession } from '../components/llm/llmClient.js';
+import { getChannelNameForBroadcasterId } from '../lib/allowList.js';
+import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 
 class LifecycleManager {
     constructor() {
@@ -14,6 +18,7 @@ class LifecycleManager {
         this.isMonitoring = false;
         this.streamInfoIntervalId = null;
         this.channelChangeListener = null;
+        this.personaChangeListener = null;
         this._instance = null;
     }
 
@@ -66,6 +71,30 @@ class LifecycleManager {
             logger.info('LifecycleManager: Setting up Firestore channel listener...');
             // listenForChannelChanges now manages EventSub subscriptions, no IRC client needed
             this.channelChangeListener = listenForChannelChanges();
+
+            // 5. Setup Firestore Listener for persona changes
+            logger.info('LifecycleManager: Setting up Firestore persona listener...');
+            this.personaChangeListener = onPersonaChanges(({ twitchUserId }) => {
+                // The chat session bakes the system instruction in at construction,
+                // so a changed persona has to invalidate every session built from it.
+                const channelName = getChannelNameForBroadcasterId(twitchUserId);
+                if (channelName) {
+                    resetChatSession(channelName);
+                }
+
+                // A shared session blends several personas, so one change can
+                // invalidate more than one session. Sessions are few; scan them all.
+                for (const [sessionId, session] of sharedChatManager.getAllSessions()) {
+                    const participates = session.participants?.some(
+                        p => String(p.broadcaster_user_id) === String(twitchUserId)
+                    );
+                    if (participates) {
+                        resetChatSession(sessionId);
+                    }
+                }
+
+                logger.info({ twitchUserId, channelName }, 'LifecycleManager: Persona changed, chat sessions reset');
+            });
 
             this.isMonitoring = true;
             logger.info('LifecycleManager: Monitoring layer started successfully.');
