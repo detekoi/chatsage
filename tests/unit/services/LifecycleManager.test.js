@@ -1,18 +1,34 @@
 import LifecycleManager from '../../../src/services/LifecycleManager.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
-import { startStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
-import { startAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
-import { startTimerManager } from '../../../src/components/timers/timerManager.js';
-import { startAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
+import { startStreamInfoPolling, stopStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
+import { startAutoChatManager, stopAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
+import { startTimerManager, stopTimerManager } from '../../../src/components/timers/timerManager.js';
+import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
+import { listenForChannelChanges } from '../../../src/components/twitch/channelManager.js';
+import { onPersonaChanges } from '../../../src/components/context/personaStorage.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');
 jest.mock('../../../src/components/context/contextManager.js');
-jest.mock('../../../src/components/twitch/streamInfoPoller.js');
-jest.mock('../../../src/components/autoChat/autoChatManager.js');
-jest.mock('../../../src/components/timers/timerManager.js');
-jest.mock('../../../src/components/twitch/adSchedulePoller.js');
-jest.mock('../../../src/components/twitch/channelManager.js');
+jest.mock('../../../src/components/twitch/streamInfoPoller.js', () => ({
+    startStreamInfoPolling: jest.fn(),
+    stopStreamInfoPolling: jest.fn(),
+}));
+jest.mock('../../../src/components/autoChat/autoChatManager.js', () => ({
+    startAutoChatManager: jest.fn(),
+    stopAutoChatManager: jest.fn(),
+}));
+jest.mock('../../../src/components/timers/timerManager.js', () => ({
+    startTimerManager: jest.fn(),
+    stopTimerManager: jest.fn(),
+}));
+jest.mock('../../../src/components/twitch/adSchedulePoller.js', () => ({
+    startAdSchedulePoller: jest.fn(),
+    stopAdSchedulePoller: jest.fn(),
+}));
+jest.mock('../../../src/components/twitch/channelManager.js', () => ({
+    listenForChannelChanges: jest.fn(() => jest.fn()),
+}));
 jest.mock('../../../src/components/context/personaStorage.js', () => ({
     onPersonaChanges: jest.fn(() => jest.fn()),
 }));
@@ -69,6 +85,40 @@ describe('LifecycleManager', () => {
             await lifecycleManager.startMonitoring();
 
             expect(startStreamInfoPolling).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('stopMonitoring', () => {
+        test('should stop all pollers, managers, and unsubscribe listeners', async () => {
+            const mockUnsubChannel = jest.fn();
+            const mockUnsubPersona = jest.fn();
+            listenForChannelChanges.mockReturnValue(mockUnsubChannel);
+            onPersonaChanges.mockReturnValue(mockUnsubPersona);
+
+            await lifecycleManager.startMonitoring();
+            expect(lifecycleManager.isMonitoring).toBe(true);
+
+            lifecycleManager.activeStreams.add('testchannel');
+            lifecycleManager.stopMonitoring();
+
+            expect(mockUnsubChannel).toHaveBeenCalled();
+            expect(mockUnsubPersona).toHaveBeenCalled();
+            expect(stopStreamInfoPolling).toHaveBeenCalled();
+            expect(stopAdSchedulePoller).toHaveBeenCalled();
+            expect(stopTimerManager).toHaveBeenCalled();
+            expect(stopAutoChatManager).toHaveBeenCalled();
+            expect(lifecycleManager.activeStreams.size).toBe(0);
+            expect(lifecycleManager.isMonitoring).toBe(false);
+            expect(lifecycleManager.channelChangeListener).toBeNull();
+            expect(lifecycleManager.personaChangeListener).toBeNull();
+        });
+
+        test('should be a no-op if not monitoring', () => {
+            lifecycleManager.isMonitoring = false;
+            lifecycleManager.stopMonitoring();
+
+            expect(stopStreamInfoPolling).not.toHaveBeenCalled();
+            expect(stopAdSchedulePoller).not.toHaveBeenCalled();
         });
     });
 

@@ -1,9 +1,9 @@
 import config from '../config/index.js';
 import logger from '../lib/logger.js';
-import { startStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
-import { startAutoChatManager } from '../components/autoChat/autoChatManager.js';
-import { startTimerManager } from '../components/timers/timerManager.js';
-import { startAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
+import { startStreamInfoPolling, stopStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
+import { startAutoChatManager, stopAutoChatManager } from '../components/autoChat/autoChatManager.js';
+import { startTimerManager, stopTimerManager } from '../components/timers/timerManager.js';
+import { startAdSchedulePoller, stopAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
@@ -106,6 +106,71 @@ class LifecycleManager {
             logger.error({ err: error }, 'LifecycleManager: Failed to start monitoring layer.');
             throw error;
         }
+    }
+
+    /**
+     * Stops the monitoring layer: unsubscribes Firestore listeners, stops pollers and managers.
+     */
+    stopMonitoring() {
+        if (!this.isMonitoring) {
+            logger.debug('LifecycleManager: Monitoring is not running.');
+            return;
+        }
+
+        logger.info('LifecycleManager: Stopping monitoring layer...');
+
+        // 1. Unsubscribe Firestore persona listener
+        if (typeof this.personaChangeListener === 'function') {
+            try {
+                this.personaChangeListener();
+            } catch (err) {
+                logger.error({ err }, 'LifecycleManager: Error unsubscribing persona listener');
+            }
+            this.personaChangeListener = null;
+        }
+
+        // 2. Unsubscribe Firestore channel listener
+        if (typeof this.channelChangeListener === 'function') {
+            try {
+                this.channelChangeListener();
+            } catch (err) {
+                logger.error({ err }, 'LifecycleManager: Error unsubscribing channel listener');
+            }
+            this.channelChangeListener = null;
+        }
+
+        // 3. Stop Stream Info Poller
+        try {
+            stopStreamInfoPolling();
+            this.streamInfoIntervalId = null;
+        } catch (err) {
+            logger.error({ err }, 'LifecycleManager: Error stopping stream info polling');
+        }
+
+        // 4. Stop Ad Schedule Poller
+        try {
+            stopAdSchedulePoller();
+        } catch (err) {
+            logger.error({ err }, 'LifecycleManager: Error stopping ad schedule poller');
+        }
+
+        // 5. Stop Timer Manager
+        try {
+            stopTimerManager();
+        } catch (err) {
+            logger.error({ err }, 'LifecycleManager: Error stopping timer manager');
+        }
+
+        // 6. Stop Auto Chat Manager
+        try {
+            stopAutoChatManager();
+        } catch (err) {
+            logger.error({ err }, 'LifecycleManager: Error stopping auto chat manager');
+        }
+
+        this.activeStreams.clear();
+        this.isMonitoring = false;
+        logger.info('LifecycleManager: Monitoring layer stopped successfully.');
     }
 
     /**

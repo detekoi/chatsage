@@ -30,6 +30,14 @@ async function gracefulShutdown(signal) {
         shutdownTasks.push(closeHealthServer(global.healthServer));
     }
 
+    // Stop lifecycle manager (listeners, pollers, managers)
+    try {
+        logger.info('Stopping lifecycle manager...');
+        LifecycleManager.get().stopMonitoring();
+    } catch (error) {
+        logger.error({ err: error }, 'Error stopping lifecycle manager during shutdown.');
+    }
+
     // Clean up command state manager
     try {
         logger.info('Shutting down command state manager...');
