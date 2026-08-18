@@ -150,6 +150,7 @@ function checkViolations(text) {
     if (/\*\*/.test(text)) issues.push('contains **markdown**');
     if (/^(hey|hi|hello|yo)\b/i.test(text)) issues.push('starts with greeting');
     if (/as an ai/i.test(text)) issues.push('says "as an AI"');
+    if (/—|–|--/.test(text)) issues.push('contains em/en dash');
     return issues;
 }
 
