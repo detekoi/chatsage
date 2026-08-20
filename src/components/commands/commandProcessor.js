@@ -21,6 +21,8 @@ import { hasPermissionLevel } from '../../lib/permissions.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
+// Punctuation trailing a command name (e.g. "!lurk,") that should not stop the command from resolving
+const TRAILING_PUNCTUATION_REGEX = /[.,!?;:'"]+$/;
 // Simple duplicate suppression to avoid double responses when a message is processed twice rapidly
 const recentCommandInvocations = new Map(); // key -> timestamp ms
 const DUPLICATE_WINDOW_MS = 20000; // 20 seconds to reliably prevent double-fires
@@ -125,7 +127,7 @@ function initializeCommandProcessor() {
 /**
  * Parses a message to extract command name and arguments.
  * @param {string} message - The raw message content.
- * @returns {{command: string, args: string[]} | null} Parsed command and args, or null if not a command.
+ * @returns {{command: string, candidates: string[], args: string[]} | null} Parsed command, name candidates (raw first, punctuation-trimmed second), and args, or null if not a command.
  */
 function parseCommand(message) {
     if (!message.startsWith(COMMAND_PREFIX)) {
@@ -139,7 +141,12 @@ function parseCommand(message) {
         return null; // Just the prefix was typed
     }
 
-    return { command, args };
+    // Chatters often run a command inline in a sentence ("!lurk, back later"),
+    // leaving punctuation stuck to the name. Offer the trimmed name as a fallback.
+    const trimmed = command.replace(TRAILING_PUNCTUATION_REGEX, '');
+    const candidates = trimmed && trimmed !== command ? [command, trimmed] : [command];
+
+    return { command, candidates, args };
 }
 
 /**
@@ -173,16 +180,18 @@ async function processMessage(channelName, tags, message) {
         return false; // Not a command or just the prefix
     }
 
-    const { command, args } = parsed;
-    logger.debug({ command, args }, 'Parsed command');
+    const { candidates, args } = parsed;
+    logger.debug({ candidates, args }, 'Parsed command');
 
+    // Resolve against the first candidate that has a usable handler (raw name, then punctuation-trimmed)
+    const command = candidates.find(name => typeof commandHandlers[name]?.execute === 'function') ?? candidates[0];
     const handler = commandHandlers[command];
     logger.debug({ command, handlerExists: !!handler }, 'Command handler lookup result');
 
     if (!handler || typeof handler.execute !== 'function') {
         // No built-in handler found — check for custom commands
         logger.debug(`No built-in handler for: ${command}. Checking custom commands...`);
-        return await _tryCustomCommand(channelName, tags, command, args);
+        return await _tryCustomCommand(channelName, tags, candidates, args);
     }
 
     // --- Command Disabled Check ---
@@ -248,13 +257,22 @@ async function processMessage(channelName, tags, message) {
  * Tries to execute a custom command for the given channel.
  * @param {string} channelName - Channel name (without '#').
  * @param {object} tags - tmi.js message tags.
- * @param {string} command - Command name (without !).
+ * @param {string|string[]} commandCandidates - Command name(s) to try (without !), most literal first.
  * @param {string[]} args - Command arguments.
  * @returns {Promise<boolean>} True if a custom command was found and executed.
  */
-async function _tryCustomCommand(channelName, tags, command, args) {
+async function _tryCustomCommand(channelName, tags, commandCandidates, args) {
+    const candidates = Array.isArray(commandCandidates) ? commandCandidates : [commandCandidates];
+    let command = candidates[0]; // Declared outside the try so the catch can log it
     try {
-        const customCmd = await getCustomCommand(channelName, command);
+        let customCmd = null;
+        for (const candidate of candidates) {
+            customCmd = await getCustomCommand(channelName, candidate);
+            if (customCmd) {
+                command = candidate;
+                break;
+            }
+        }
         if (!customCmd) {
             return false; // No custom command found either
         }
