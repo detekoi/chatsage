@@ -573,6 +573,9 @@ export async function generateAdNotification(channelName, type, seconds) {
  * @param {'warning'|'starting'} type - Notification type: 'warning' for pre-ad alert, 'starting' for ad start
  * @param {number} seconds - For 'warning': seconds until ad. For 'starting': ad duration in seconds.
  * @param {string} [prefetchedText] - Optional pre-generated message text to send directly
+ * @param {string|number} [occurrenceId] - Identifies the specific ad break, so the
+ *   distributed dedup lock is scoped to it rather than to the whole channel.
+ *   Omit when the caller has no stable identifier for the occurrence.
  */
 async function sendAdNotification(channelName, type, seconds, prefetchedText, occurrenceId) {
     try {

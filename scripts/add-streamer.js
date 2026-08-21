@@ -10,11 +10,13 @@
  *   node scripts/add-streamer.js <username_or_user_id> [options]
  *
  * Options:
- *   --tts             Add only to ChatVibes TTS Bot (chatvibestts)
- *   --knowledge       Add only to ChatSage Knowledge Bot (streamsage-bot)
- *   --both            Add to both bots (default)
- *   --active          Set isActive: true immediately (default is false, requiring dashboard activation)
- *   --notes <text>    Custom notes to include in document
+ *   --tts             Add to ChatVibes TTS Bot (chatvibestts)
+ *   --knowledge       Add to ChatSage Knowledge Bot (streamsage-bot)
+ *   --both            Add to both bots (the default when neither is named)
+ *   --active          Set isActive: true immediately. Without it a new channel
+ *                     starts inactive and an existing one keeps its current
+ *                     state, so re-running never switches a live bot off.
+ *   --notes <text>    Custom notes. Omitting it leaves any existing note intact.
  */
 
 import { Firestore, FieldValue } from '@google-cloud/firestore';
@@ -53,10 +55,23 @@ function fetchTwitchUserInfo(usernameOrId) {
     });
 }
 
-async function addStreamerToProject(projectId, user, isActive = false, notes = 'Pre-approved by admin') {
+/**
+ * Adds or refreshes a streamer's managedChannels document.
+ *
+ * `isActive` is the live "bot is running in this channel" flag, so an existing
+ * value is never overwritten unless --active was passed explicitly. Re-running
+ * this script to refresh a display name must not silently switch a streamer's
+ * bot off. `notes` is preserved on the same principle.
+ *
+ * @param {string} projectId
+ * @param {{id: string, login: string, displayName: string}} user
+ * @param {boolean} [activate] - True only when --active was passed
+ * @param {string} [notes] - Set only when --notes was passed
+ */
+async function addStreamerToProject(projectId, user, activate, notes) {
     const db = new Firestore({ projectId });
     const docRef = db.collection('managedChannels').doc(user.id);
-    
+
     const existingSnap = await docRef.get();
     const existingData = existingSnap.exists ? existingSnap.data() : {};
 
@@ -66,14 +81,14 @@ async function addStreamerToProject(projectId, user, isActive = false, notes = '
         displayName: user.displayName,
         twitchDisplayName: user.displayName,
         twitchUserLogin: user.login,
-        isActive: isActive,
+        isActive: activate === true ? true : (existingData.isActive === true),
         addedBy: existingData.addedBy || 'admin',
         addedAt: existingData.addedAt || FieldValue.serverTimestamp(),
-        notes: notes,
+        notes: notes ?? existingData.notes ?? 'Pre-approved by admin',
     };
 
     await docRef.set(data, { merge: true });
-    return { projectId, docId: user.id, isNew: !existingSnap.exists };
+    return { projectId, docId: user.id, isNew: !existingSnap.exists, isActive: data.isActive };
 }
 
 async function main() {
@@ -84,22 +99,30 @@ async function main() {
     }
 
     const target = args[0];
-    const onlyTts = args.includes('--tts');
-    const onlyKnowledge = args.includes('--knowledge');
-    const isActive = args.includes('--active');
-    
-    const notesIdx = args.indexOf('--notes');
-    const notes = notesIdx !== -1 && args[notesIdx + 1] ? args[notesIdx + 1] : 'Pre-approved by admin';
+    const wantsTts = args.includes('--tts');
+    const wantsKnowledge = args.includes('--knowledge');
+    const activate = args.includes('--active') ? true : undefined;
 
-    const projects = [];
-    if (onlyTts) {
-        projects.push({ name: 'TTS Bot (ChatVibes)', id: 'chatvibestts' });
-    } else if (onlyKnowledge) {
-        projects.push({ name: 'Knowledge Bot (ChatSage)', id: 'streamsage-bot' });
-    } else {
-        projects.push({ name: 'TTS Bot (ChatVibes)', id: 'chatvibestts' });
-        projects.push({ name: 'Knowledge Bot (ChatSage)', id: 'streamsage-bot' });
+    // A bare --notes with no value, or one followed by another flag, means the
+    // operator supplied no text — fall through to the existing/default note
+    // rather than storing "--active" as the note.
+    const notesIdx = args.indexOf('--notes');
+    const notesValue = notesIdx !== -1 ? args[notesIdx + 1] : undefined;
+    const notes = notesValue && !notesValue.startsWith('-') ? notesValue : undefined;
+    if (notesIdx !== -1 && notes === undefined) {
+        console.error('❌ --notes requires a value, e.g. --notes "Partner tier"');
+        process.exit(1);
     }
+
+    const TTS = { name: 'TTS Bot (ChatVibes)', id: 'chatvibestts' };
+    const KNOWLEDGE = { name: 'Knowledge Bot (ChatSage)', id: 'streamsage-bot' };
+
+    // Selectors are additive, so --tts --knowledge targets both instead of
+    // silently dropping the second one.
+    const projects = [];
+    if (wantsTts) projects.push(TTS);
+    if (wantsKnowledge) projects.push(KNOWLEDGE);
+    if (projects.length === 0) projects.push(TTS, KNOWLEDGE);
 
     console.log(`🔍 Resolving Twitch user for: ${target}...`);
     let user;
@@ -111,12 +134,14 @@ async function main() {
         process.exit(1);
     }
 
-    console.log(`\n📝 Adding to allow-lists (isActive: ${isActive})...`);
+    console.log(activate
+        ? '\n📝 Adding to allow-lists and activating...'
+        : '\n📝 Adding to allow-lists (existing activation state preserved)...');
     for (const proj of projects) {
         try {
-            const result = await addStreamerToProject(proj.id, user, isActive, notes);
+            const result = await addStreamerToProject(proj.id, user, activate, notes);
             const status = result.isNew ? 'Created new doc' : 'Updated existing doc';
-            console.log(`  ✅ [${proj.name}] (${proj.id}) -> ${status} [ID: ${result.docId}]`);
+            console.log(`  ✅ [${proj.name}] (${proj.id}) -> ${status} [ID: ${result.docId}, isActive: ${result.isActive}]`);
         } catch (err) {
             console.error(`  ❌ [${proj.name}] (${proj.id}) -> Error: ${err.message}`);
         }
