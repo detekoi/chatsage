@@ -71,6 +71,14 @@ steps:
         --role="roles/cloudtasks.enqueuer" \
         --condition=None
 
+      # Grant Cloud Tasks Task Deleter role. Enqueuer cannot delete, so without
+      # this a superseded task (e.g. an ad warning obsoleted by a snooze) stays
+      # queued and fires at the old time.
+      gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+        --member="serviceAccount:$SERVICE_ACCOUNT" \
+        --role="roles/cloudtasks.taskDeleter" \
+        --condition=None
+
       # Configure Firestore TTL for distributed cache
       gcloud firestore fields ttls update expiresAt \
         --collection-group=processedEvents \

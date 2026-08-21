@@ -1,16 +1,18 @@
 // tests/unit/components/twitch/adSchedulePoller.test.js
-import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../../src/components/twitch/adSchedulePoller.js';
+import { startAdSchedulePoller, stopAdSchedulePoller, handleAdNotificationTask } from '../../../../src/components/twitch/adSchedulePoller.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { getChannelAutoChatConfig } from '../../../../src/components/context/autoChatStorage.js';
 import { notifyAdSoon, generateAdNotification } from '../../../../src/components/autoChat/autoChatManager.js';
 import axios from 'axios';
 import logger from '../../../../src/lib/logger.js';
+import { isStreamLive } from '../../../../src/components/context/liveStatus.js';
 
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/context/autoChatStorage.js');
 jest.mock('../../../../src/components/autoChat/autoChatManager.js');
 jest.mock('axios');
 jest.mock('../../../../src/lib/logger.js');
+jest.mock('../../../../src/components/context/liveStatus.js');
 jest.mock('../../../../src/lib/secretManager.js', () => ({
     getSecretValue: jest.fn().mockResolvedValue('mock-token'),
     initializeSecretManager: jest.fn(),
@@ -543,7 +545,7 @@ describe('Ad Schedule Poller', () => {
         await jest.advanceTimersByTimeAsync(120_000);
 
         // Assert - notifyAdSoon should be called with the prefetched text
-        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads coming up in about a minute, hang tight!');
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads coming up in about a minute, hang tight!', nextAdTime.getTime());
     });
 
     test('should fall back to live generation when prefetch returns null', async () => {
@@ -583,7 +585,7 @@ describe('Ad Schedule Poller', () => {
         await jest.advanceTimersByTimeAsync(120_000); // Past both prefetch + send
 
         // Assert - notifyAdSoon should be called with null (will fall back to live generation internally)
-        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, null);
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, null, nextAdTime.getTime());
     });
 
     test('should prefetch immediately when ad is less than 105s away', async () => {
@@ -674,7 +676,86 @@ describe('Ad Schedule Poller', () => {
         // Assert - the warning still went out. Before this fix the failed poll
         // cleared the timer while the ad stayed in notifiedAds, so no later poll
         // rescheduled it and the warning was lost.
-        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads in about a minute!');
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads in about a minute!', nextAdTime.getTime());
+    });
+
+    describe('handleAdNotificationTask stale-ad revalidation', () => {
+        // Cancelling a superseded Cloud Task is best effort — it can already be in
+        // flight, and for a long stretch the service account lacked the delete
+        // permission entirely — so the delivered task re-reads the live schedule.
+        const scheduleResponse = (nextAdAtMs) => ({
+            data: {
+                success: true,
+                data: { data: [{ next_ad_at: new Date(nextAdAtMs).toISOString(), duration: 60 }] }
+            }
+        });
+
+        beforeEach(() => {
+            isStreamLive.mockReturnValue(true);
+            getChannelAutoChatConfig.mockResolvedValue({ mode: 'medium', categories: { ads: true } });
+            generateAdNotification.mockResolvedValue('Ads in about a minute!');
+        });
+
+        test('drops the warning when the broadcaster snoozed the ad away', async () => {
+            const queuedAdAt = Date.now() + 80_000;
+            // Snooze pushes the ad back five minutes.
+            axios.get.mockResolvedValue(scheduleResponse(queuedAdAt + 300_000));
+
+            const result = await handleAdNotificationTask({ channelName: 'testchannel', adAtMs: queuedAdAt });
+
+            expect(result).toEqual({ sent: false, reason: 'ad-rescheduled' });
+            expect(notifyAdSoon).not.toHaveBeenCalled();
+            // The stale warning must not burn an LLM call either.
+            expect(generateAdNotification).not.toHaveBeenCalled();
+        });
+
+        test('drops the warning when no ad is scheduled any more', async () => {
+            axios.get.mockResolvedValue({ data: { success: true, data: { data: [] } } });
+
+            const result = await handleAdNotificationTask({
+                channelName: 'testchannel',
+                adAtMs: Date.now() + 80_000
+            });
+
+            expect(result).toEqual({ sent: false, reason: 'no-ad-scheduled' });
+            expect(notifyAdSoon).not.toHaveBeenCalled();
+        });
+
+        test('sends when the live schedule still agrees with the queued ad time', async () => {
+            const queuedAdAt = Date.now() + 80_000;
+            axios.get.mockResolvedValue(scheduleResponse(queuedAdAt));
+
+            const promise = handleAdNotificationTask({ channelName: 'testchannel', adAtMs: queuedAdAt });
+            await jest.advanceTimersByTimeAsync(30_000);
+
+            expect(await promise).toEqual({ sent: true });
+            expect(notifyAdSoon).toHaveBeenCalledWith(
+                'testchannel',
+                expect.any(Number),
+                'Ads in about a minute!',
+                queuedAdAt
+            );
+        });
+
+        test('sends anyway when the schedule cannot be re-read', async () => {
+            const queuedAdAt = Date.now() + 80_000;
+            axios.get.mockRejectedValue({
+                response: { status: 403, data: { message: 'Missing required scope: channel:read:ads' } }
+            });
+
+            const promise = handleAdNotificationTask({ channelName: 'testchannel', adAtMs: queuedAdAt });
+            await jest.advanceTimersByTimeAsync(30_000);
+
+            // A lookup failure says nothing about the ad, so the queued time stands
+            // rather than the warning being silently swallowed.
+            expect(await promise).toEqual({ sent: true });
+            expect(notifyAdSoon).toHaveBeenCalledWith(
+                'testchannel',
+                expect.any(Number),
+                'Ads in about a minute!',
+                queuedAdAt
+            );
+        });
     });
 
     // Note: Testing missing config requires mocking the config module,

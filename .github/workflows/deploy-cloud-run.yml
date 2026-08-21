@@ -34,6 +34,11 @@ env:
   # Durable scheduling. Cloud Run runs with min-instances=0, so work that must
   # outlive an idle instance (the pre-ad warning) is queued in Cloud Tasks and
   # delivered back over HTTP instead of held in a setTimeout.
+  #
+  # This workflow does not manage IAM; the runtime service account needs BOTH
+  # roles/cloudtasks.enqueuer and roles/cloudtasks.taskDeleter granted out of
+  # band. Enqueuer alone cannot delete, which leaves superseded tasks queued —
+  # a snoozed ad break then still fires its warning at the old time.
   CLOUD_TASKS_QUEUE: 'scheduled-messages'
   CLOUD_TASKS_INVOKER_SA: 'chatsage-tasks-invoker@streamsage-bot.iam.gserviceaccount.com'
 

@@ -574,17 +574,21 @@ export async function generateAdNotification(channelName, type, seconds) {
  * @param {number} seconds - For 'warning': seconds until ad. For 'starting': ad duration in seconds.
  * @param {string} [prefetchedText] - Optional pre-generated message text to send directly
  */
-async function sendAdNotification(channelName, type, seconds, prefetchedText) {
+async function sendAdNotification(channelName, type, seconds, prefetchedText, occurrenceId) {
     try {
         const cfg = await getChannelAutoChatConfig(channelName);
         // Ad notifications are independent of auto-chat mode - only check ads category
         if (!cfg || cfg.categories?.ads !== true) return;
 
         // Distributed dedup: prevent duplicate sends when multiple Cloud Run instances
-        // are polling the same ad schedule. 5-min TTL ensures the next scheduled ad
-        // (typically every 15–60 min) won't be blocked.
+        // are polling the same ad schedule. The key is scoped to the specific ad break
+        // where the caller knows it, because a snooze moves the ad only five minutes —
+        // a channel-wide key would let a stale warning latch the lock and suppress the
+        // corrected one that follows inside the TTL.
         const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
-        const dedupKey = `ad-notify:${channelName}:${type}`;
+        const dedupKey = occurrenceId
+            ? `ad-notify:${channelName}:${type}:${occurrenceId}`
+            : `ad-notify:${channelName}:${type}`;
         if (await isDuplicateEvent(dedupKey, null, 5 * 60 * 1000, true)) {
             logger.info({ channelName, type }, '[AutoChatManager] Ad notification already sent by another instance — skipping');
             return;
@@ -606,8 +610,8 @@ async function sendAdNotification(channelName, type, seconds, prefetchedText) {
 }
 
 // Public API - backwards compatible wrappers
-export async function notifyAdSoon(channelName, secondsUntil, prefetchedText) {
-    await sendAdNotification(channelName, 'warning', secondsUntil, prefetchedText);
+export async function notifyAdSoon(channelName, secondsUntil, prefetchedText, adAtMs) {
+    await sendAdNotification(channelName, 'warning', secondsUntil, prefetchedText, adAtMs);
 }
 
 export async function notifyAdBreak(channelName, adEvent) {

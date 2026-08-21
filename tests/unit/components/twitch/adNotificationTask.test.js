@@ -28,6 +28,14 @@ jest.mock('../../../../src/lib/secretManager.js', () => ({
 
 const CHANNEL = 'parfaitfair';
 
+// Shape returned by the web UI's /internal/ads/schedule passthrough.
+const scheduleResponse = (nextAdAtMs) => ({
+    data: {
+        success: true,
+        data: { data: [{ next_ad_at: new Date(nextAdAtMs).toISOString(), duration: 60 }] }
+    }
+});
+
 describe('ad notification Cloud Task', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -98,20 +106,28 @@ describe('ad notification Cloud Task', () => {
 
         test('still posts when generation fails, letting notifyAdSoon generate live', async () => {
             generateAdNotification.mockRejectedValue(new Error('LLM timeout'));
+            const adAtMs = Date.now() + 45_000;
+            axios.get.mockResolvedValue(scheduleResponse(adAtMs));
 
-            const result = await handleAdNotificationTask({ channelName: CHANNEL, adAtMs: Date.now() + 45_000 });
+            const result = await handleAdNotificationTask({ channelName: CHANNEL, adAtMs });
 
             expect(result).toEqual({ sent: true });
-            expect(notifyAdSoon).toHaveBeenCalledWith(CHANNEL, expect.any(Number), null);
+            // The ad time is passed through so the distributed dedup key is scoped to
+            // this specific ad break rather than the channel.
+            expect(notifyAdSoon).toHaveBeenCalledWith(CHANNEL, expect.any(Number), null, adAtMs);
         });
 
         test('generates before waiting so a cold start cannot eat the lead time', async () => {
             jest.useFakeTimers();
             try {
                 // 70s out: the warning is due in 10s, so the handler must wait.
-                const promise = handleAdNotificationTask({ channelName: CHANNEL, adAtMs: Date.now() + 70_000 });
+                const adAtMs = Date.now() + 70_000;
+                axios.get.mockResolvedValue(scheduleResponse(adAtMs));
+                const promise = handleAdNotificationTask({ channelName: CHANNEL, adAtMs });
 
-                await Promise.resolve();
+                // Flush the schedule re-read that now precedes generation, without
+                // advancing the clock into the wait itself.
+                await jest.advanceTimersByTimeAsync(0);
                 expect(generateAdNotification).toHaveBeenCalled();
                 expect(notifyAdSoon).not.toHaveBeenCalled();
 

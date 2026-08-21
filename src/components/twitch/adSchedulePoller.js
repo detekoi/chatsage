@@ -24,6 +24,10 @@ const ADBREAK_ENSURE_RETRY_MS = 10 * 60 * 1000;
 // tearing the timer down there would drop the warning for good — the ad is
 // already in notifiedAds, so no later tick would reschedule it.
 const FETCH_FAILED = Symbol('ad-schedule-fetch-failed');
+// How far the live schedule may drift from the ad time a task was queued for and
+// still be considered the same ad break. A snooze moves the ad by five minutes,
+// so anything past this is a different occurrence, not jitter.
+const AD_TIME_DRIFT_TOLERANCE_MS = 15_000;
 
 let timers = new Map(); // channel -> NodeJS.Timeout
 let prefetchTimers = new Map(); // channel -> NodeJS.Timeout (for prefetch)
@@ -128,6 +132,67 @@ async function fetchAdScheduleViaWebUI(channelName, retryCount = 0) {
         // Don't throw, so the remaining channels still get processed
         return FETCH_FAILED;
     }
+}
+
+/**
+ * Normalises next_ad_at into epoch ms.
+ *
+ * Twitch documents the field as an RFC3339 string but the live API returns a
+ * Unix timestamp in seconds, so both are accepted.
+ *
+ * @param {string|number|null|undefined} nextAdAt
+ * @returns {number|null} Epoch ms, or null if absent/unparseable
+ */
+function parseNextAdAt(nextAdAt) {
+    if (!nextAdAt) return null;
+
+    let parsed;
+    if (typeof nextAdAt === 'string') {
+        parsed = new Date(nextAdAt);
+        if (isNaN(parsed.getTime())) {
+            const unixTime = parseInt(nextAdAt, 10);
+            if (!isNaN(unixTime)) parsed = new Date(unixTime * 1000);
+        }
+    } else if (typeof nextAdAt === 'number') {
+        parsed = new Date(nextAdAt * 1000);
+    }
+
+    return parsed && !isNaN(parsed.getTime()) ? parsed.getTime() : null;
+}
+
+/**
+ * Re-reads the live ad schedule to confirm a queued warning still matches the
+ * broadcaster's next ad.
+ *
+ * Twitch publishes no "ad schedule changed" event — snoozing is only visible by
+ * polling — so a task queued up to 40 minutes ago can be describing an ad break
+ * that has since been pushed back five minutes.
+ *
+ * @param {string} channelName
+ * @param {number} adAtMs - Ad time the task was queued for
+ * @returns {Promise<{ok: boolean, adAtMs?: number, reason?: string, currentAdAtMs?: number|null}>}
+ */
+async function confirmAdStillScheduled(channelName, adAtMs) {
+    const adScheduleData = await fetchAdScheduleViaWebUI(channelName);
+
+    // A lookup failure says nothing about the ad. The queued time is still the
+    // best information available, so send rather than silently swallow it.
+    if (adScheduleData === FETCH_FAILED) {
+        logger.warn({ channelName }, '[AdSchedule] Could not re-verify ad time at delivery, sending on the queued time');
+        return { ok: true, adAtMs };
+    }
+
+    const currentAdAtMs = adScheduleData ? parseNextAdAt(adScheduleData.next_ad_at) : null;
+    if (currentAdAtMs === null) {
+        return { ok: false, reason: 'no-ad-scheduled', currentAdAtMs };
+    }
+
+    if (Math.abs(currentAdAtMs - adAtMs) > AD_TIME_DRIFT_TOLERANCE_MS) {
+        return { ok: false, reason: 'ad-rescheduled', currentAdAtMs };
+    }
+
+    // Prefer the freshly read time so the countdown reflects any small drift.
+    return { ok: true, adAtMs: currentAdAtMs };
 }
 
 /**
@@ -252,7 +317,7 @@ function scheduleAdNotificationInProcess(channelName, nextAd, fireIn, adTimestam
                 usedPrefetch: !!cachedText
             }, '[AdSchedule] 📢 Sending pre-ad notification now (60s warning)');
 
-            await notifyAdSoon(channelName, 60, cachedText);
+            await notifyAdSoon(channelName, 60, cachedText, adTimestamp);
             logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
         } catch (e) {
             logger.error({ err: e, channelName }, '[AdSchedule] ✗ Pre-alert failed');
@@ -298,6 +363,22 @@ export async function handleAdNotificationTask({ channelName, adAtMs } = {}) {
         return { sent: false, reason: 'too-late' };
     }
 
+    // The broadcaster may have snoozed since this task was queued, which moves
+    // the ad five minutes later. Cancelling the superseded task is best effort —
+    // it can already be in flight — so the authoritative check happens here.
+    const confirmation = await confirmAdStillScheduled(channelName, adAtMs);
+    if (!confirmation.ok) {
+        logger.info({
+            channelName,
+            queuedAdAt: new Date(adAtMs).toISOString(),
+            currentAdAt: confirmation.currentAdAtMs ? new Date(confirmation.currentAdAtMs).toISOString() : null,
+            reason: confirmation.reason
+        }, '[AdSchedule] Ad moved since this task was queued, dropping the stale warning');
+        return { sent: false, reason: confirmation.reason };
+    }
+
+    const confirmedAdAtMs = confirmation.adAtMs;
+
     // Generate first, then hold until the warning is actually due. Doing it in
     // this order keeps a slow cold start from pushing the message past its lead.
     let text = null;
@@ -307,20 +388,20 @@ export async function handleAdNotificationTask({ channelName, adAtMs } = {}) {
         logger.warn({ err: e, channelName }, '[AdSchedule] Generation failed, notifyAdSoon will retry live');
     }
 
-    const waitMs = adAtMs - PRE_ROLL_MS - Date.now();
+    const waitMs = confirmedAdAtMs - PRE_ROLL_MS - Date.now();
     if (waitMs > 0) {
         await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, COLD_START_BUDGET_MS)));
     }
 
-    const secondsUntil = Math.max(1, Math.round((adAtMs - Date.now()) / 1000));
+    const secondsUntil = Math.max(1, Math.round((confirmedAdAtMs - Date.now()) / 1000));
     logger.info({
         channelName,
-        adAt: new Date(adAtMs).toISOString(),
+        adAt: new Date(confirmedAdAtMs).toISOString(),
         secondsUntil,
         usedPrefetch: !!text
     }, '[AdSchedule] 📢 Sending pre-ad notification now');
 
-    await notifyAdSoon(channelName, secondsUntil, text);
+    await notifyAdSoon(channelName, secondsUntil, text, confirmedAdAtMs);
     logger.info({ channelName }, '[AdSchedule] ✓ Pre-ad notification sent successfully');
     return { sent: true };
 }
@@ -380,30 +461,15 @@ export function startAdSchedulePoller() {
                         continue;
                     }
 
-                    // Parse timestamp - handle both RFC3339 and Unix timestamp formats
-                    let nextAd;
-                    if (typeof nextAdAt === 'string') {
-                        // Try RFC3339 first, fall back to Unix timestamp
-                        nextAd = new Date(nextAdAt);
-                        if (isNaN(nextAd.getTime())) {
-                            // Might be Unix timestamp as string
-                            const unixTime = parseInt(nextAdAt, 10);
-                            if (!isNaN(unixTime)) {
-                                nextAd = new Date(unixTime * 1000);
-                            }
-                        }
-                    } else if (typeof nextAdAt === 'number') {
-                        // Unix timestamp as number
-                        nextAd = new Date(nextAdAt * 1000);
-                    }
-
-                    if (!nextAd || isNaN(nextAd.getTime())) {
+                    const nextAdMs = parseNextAdAt(nextAdAt);
+                    if (nextAdMs === null) {
                         clearTimer(channelName);
                         logger.warn({ channelName, nextAdAt }, '[AdSchedule] Invalid next_ad_at format');
                         continue;
                     }
+                    const nextAd = new Date(nextAdMs);
 
-                    const msUntil = nextAd.getTime() - Date.now();
+                    const msUntil = nextAdMs - Date.now();
                     if (msUntil <= 0) {
                         clearTimer(channelName);
                         logger.debug({ channelName, nextAdAt: nextAd.toISOString() }, '[AdSchedule] next_ad_at already passed');
