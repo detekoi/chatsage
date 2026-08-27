@@ -177,6 +177,7 @@ async function _resetGameToIdle(gameState) {
     newState.initiatorUsername = null;
     newState.streakMap = new Map();
     newState.guessCache = new Map();
+    newState.processingQueue = [];
     // Reset multi-round fields
     defaultPrefetchCache.clearPrefix(`geo:${gameState.channelName}:`);
     newState.totalRounds = 1;
@@ -596,6 +597,7 @@ async function _startNextRound(gameState) {
 
     gameState.state = 'inProgress';
     gameState.guessCache.clear();
+    gameState.processingQueue = []; // per-round: stale attempts must not decide this round
     logger.info(`[GeoGame][${gameState.channelName}] Round ${gameState.currentRound} transitioned to inProgress.`);
 
     _scheduleNextClue(gameState);
@@ -737,6 +739,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     gameState.streakMap = new Map();
     gameState.gameSessionScores = new Map();
     gameState.guessCache = new Map();
+    gameState.processingQueue = [];
     gameState.gameSessionExcludedLocations = new Set(); // Reset for the new game session
     _clearTimers(gameState); // Ensure no stray timers
 
@@ -835,6 +838,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         // Transition to 'inProgress'
         gameState.state = 'inProgress';
         gameState.guessCache.clear(); // Clear cache for the new round
+        gameState.processingQueue = []; // per-round: stale attempts must not decide this round
         logger.info(`[GeoGame][${channelName}] Game (Round 1) transitioned to inProgress.`);
 
         // 4. Schedule Subsequent Clues and Round End Timer (Round 1)
@@ -884,6 +888,28 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
 }
 
 
+/**
+ * Declares a winner from the queue, strictly in the order guesses arrived in chat.
+ * Returns without acting while an earlier guess is still being validated.
+ * @param {Object} gameState
+ */
+function _resolveGeoWinner(gameState) {
+    if (gameState.state !== 'inProgress') return;
+
+    for (const attempt of gameState.processingQueue) {
+        if (attempt.status === 'pending') return; // Wait for the earliest unresolved guess
+
+        if (attempt.status === 'correct') {
+            logger.info(`[GeoGame][${gameState.channelName}] Correct guess for round ${gameState.currentRound} by ${attempt.username}.`);
+            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            gameState.state = 'guessed';
+            const timeTakenMs = attempt.timestamp - gameState.startTime;
+            _transitionToEnding(gameState, "guessed", timeTakenMs);
+            return;
+        }
+    }
+}
+
 async function _handleGuess(channelName, username, displayName, guess) {
     const gameState = activeGames.get(channelName);
 
@@ -931,22 +957,25 @@ async function _handleGuess(channelName, username, displayName, guess) {
     }
     // End of added translation logic
 
+    // Record arrival order before awaiting, so validation latency cannot reorder guesses.
+    if (!gameState.processingQueue) gameState.processingQueue = [];
+    const attempt = { username, displayName, guess: trimmedGuess, timestamp: Date.now(), status: 'pending' };
+    gameState.processingQueue.push(attempt);
+
     try {
         const validationResult = await validateGuess(gameState.targetLocation.name, guessToVerify, gameState.targetLocation.alternateNames);
 
         if (gameState.state !== 'inProgress') {
             logger.debug(`[GeoGame][${channelName}] Game state changed to ${gameState.state} while validating guess from ${username} for round ${gameState.currentRound}. Ignoring result.`);
+            attempt.status = 'error';
             return;
         }
 
         if (validationResult && validationResult.is_correct) {
-            logger.info(`[GeoGame][${channelName}] Correct guess for round ${gameState.currentRound} "${trimmedGuess}" (verified as "${guessToVerify}") by ${username}. Confidence: ${validationResult.confidence || 'N/A'}`);
-            gameState.winner = { username, displayName };
-            gameState.state = 'guessed';
-
-            const timeTakenMs = Date.now() - gameState.startTime;
-            _transitionToEnding(gameState, "guessed", timeTakenMs);
+            logger.debug(`[GeoGame][${channelName}] Guess "${trimmedGuess}" (verified as "${guessToVerify}") by ${username} is correct. Confidence: ${validationResult.confidence || 'N/A'}`);
+            attempt.status = 'correct';
         } else {
+            attempt.status = 'incorrect';
             // Cache the incorrect guess to prevent re-verification
             gameState.guessCache.set(normalizedGuess, {
                 result: validationResult,
@@ -967,7 +996,10 @@ async function _handleGuess(channelName, username, displayName, guess) {
         }
     } catch (error) {
         logger.error({ err: error }, `[GeoGame][${channelName}] Error validating guess "${trimmedGuess}" (verified as "${guessToVerify}") from ${username} for round ${gameState.currentRound}.`);
+        attempt.status = 'error';
     }
+
+    _resolveGeoWinner(gameState);
 }
 
 

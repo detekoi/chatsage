@@ -405,5 +405,16 @@ export default {
         "common": {
             "None": "なし"
         }
+    },
+    "usage": {
+        "riddle": {
+            "Config": "使い方: !riddle config difficulty <easy|normal|hard> | questiontime <秒> | pointsbase <数値> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <数値> | keywordslimit <数値> | rounddelay <ミリ秒>"
+        },
+        "trivia": {
+            "Config": "使い方: !trivia config difficulty <easy|normal|hard> time <秒> duration <分> topic <リスト> scoring <true|false> points <値> timebonus <true|false> difficultymultiplier <true|false>"
+        },
+        "geo": {
+            "Config": "使い方: !geo config difficulty <easy|normal|hard> interval <秒> duration <分> region <リスト> game <リスト> scoring <真偽値> points <数値> timebonus <真偽値> difficultymultiplier <真偽値>"
+        }
     }
 };

@@ -80,7 +80,7 @@ const riddleHandler = {
             }
 
             case 'config':
-                await handleConfig(gameCtx, riddleManager, RIDDLE_CONFIG_SCHEMA, RIDDLE_CONFIG_USAGE, GAME_NAME);
+                await handleConfig(gameCtx, riddleManager, RIDDLE_CONFIG_SCHEMA, RIDDLE_CONFIG_USAGE, GAME_NAME, 'usage.riddle.Config');
                 break;
 
             case 'resetconfig':

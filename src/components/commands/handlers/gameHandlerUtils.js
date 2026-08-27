@@ -207,10 +207,12 @@ export async function handleReport(gameCtx, manager, gameName, commandName) {
  * @param {object} gameCtx - from extractGameContext.
  * @param {object} manager - must have .configureGame(channelName, options).
  * @param {Array} schema - config option definitions.
- * @param {string} usageMessage - usage hint to show when no valid options provided.
+ * @param {string} usageMessage - English usage hint to show when no valid options provided.
+ * @param {string|null} [usageKey=null] - Catalog key for usageMessage, so the hint is localized
+ *   like every other fixed string rather than going out in English.
  * @param {string} gameName - for log messages.
  */
-export async function handleConfig(gameCtx, manager, schema, usageMessage, gameName) {
+export async function handleConfig(gameCtx, manager, schema, usageMessage, gameName, usageKey = null) {
     const { channel, channelName, replyToId, isMod, args } = gameCtx;
 
     if (!isMod) {
@@ -249,7 +251,11 @@ export async function handleConfig(gameCtx, manager, schema, usageMessage, gameN
     }
 
     if (Object.keys(options).length === 0) {
-        await enqueueMessage(channel, usageMessage, { replyToId });
+        if (usageKey) {
+            await sendLocalized(channel, usageKey, {}, usageMessage, { replyToId });
+        } else {
+            await enqueueMessage(channel, usageMessage, { replyToId });
+        }
         return;
     }
 

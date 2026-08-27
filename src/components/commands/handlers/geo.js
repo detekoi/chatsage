@@ -155,7 +155,7 @@ const geoHandler = {
             return;
 
         } else if (subCommand === 'config') {
-            await handleConfig(gameCtx, geoManager, GEO_CONFIG_SCHEMA, GEO_CONFIG_USAGE, GAME_NAME);
+            await handleConfig(gameCtx, geoManager, GEO_CONFIG_SCHEMA, GEO_CONFIG_USAGE, GAME_NAME, 'usage.geo.Config');
             return;
 
         } else if (subCommand === 'resetconfig') {

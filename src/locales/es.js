@@ -405,5 +405,16 @@ export default {
         "common": {
             "None": "Ninguno"
         }
+    },
+    "usage": {
+        "riddle": {
+            "Config": "Uso: !riddle config difficulty <fácil|normal|difícil> | questiontime <seg> | pointsbase <núm> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <núm> | keywordslimit <núm> | rounddelay <ms>"
+        },
+        "trivia": {
+            "Config": "Uso: !trivia config difficulty <fácil|normal|difícil> time <segundos> duration <minutos> topic <lista> scoring <true|false> points <valor> timebonus <true|false> difficultymultiplier <true|false>"
+        },
+        "geo": {
+            "Config": "Uso: !geo config difficulty <fácil|normal|difícil> interval <segs> duration <mins> region <lista> game <lista> scoring <bool> points <núm> timebonus <bool> difficultymultiplier <bool>"
+        }
     }
 };

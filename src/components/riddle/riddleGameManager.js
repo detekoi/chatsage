@@ -25,7 +25,6 @@ import {
     saveRiddleKeywords, // To save keywords of successfully answered riddles
     getLeaderboard,
     clearLeaderboardData as clearRiddleLeaderboardData,
-    getMostRecentRiddlePlayed,
     flagRiddleAsProblem,
     getLatestCompletedSessionInfo,
     saveRecentAnswer,
@@ -168,6 +167,10 @@ async function _resetGameToIdle(gameState) {
     newState.gameSessionExcludedAnswers = [];
     newState.guessCache = new Map();
     newState.prefetchedRiddle = null;
+    newState.processingQueue = [];
+    // Per-user answer cooldowns are only meaningful within a game. Left alone they accumulate one
+    // entry per unique guesser for the lifetime of the process, since channel state is never freed.
+    newState.userLastGuessTime = {};
 }
 
 function _calculatePoints(gameState, timeElapsedMs) {
@@ -364,6 +367,7 @@ async function _startNextRound(gameState) {
             gameState.startTime = Date.now();
             gameState.state = 'inProgress';
             gameState.guessCache.clear();
+            gameState.processingQueue = []; // per-round: stale attempts must not decide this round
 
             const questionMsg = formatRiddleQuestionMessage(
                 gameState.currentRound,
@@ -462,6 +466,7 @@ async function _startNextRound(gameState) {
     gameState.startTime = Date.now();
     gameState.state = 'inProgress'; // Set state before sending message
     gameState.guessCache.clear(); // Clear cache for the new round
+    gameState.processingQueue = []; // per-round: stale attempts must not decide this round
 
     const questionMsg = formatRiddleQuestionMessage(
         gameState.currentRound,
@@ -549,6 +554,29 @@ async function _prefetchNextRiddle(gameState) {
     });
 }
 
+/**
+ * Declares a winner from the queue, strictly in the order answers arrived in chat.
+ * Returns without acting while an earlier attempt is still being verified, so a fast verification
+ * for a later answer cannot jump ahead of a slower one that was typed first.
+ * @param {Object} gameState
+ */
+async function _resolveRiddleWinner(gameState) {
+    if (gameState.state !== 'inProgress') return; // Round already ended
+
+    for (const attempt of gameState.processingQueue) {
+        if (attempt.status === 'pending') return; // Wait for the earliest unresolved answer
+
+        if (attempt.status === 'correct') {
+            logger.info(`[RiddleGameManager][${gameState.channelName}] Correct answer from ${attempt.displayName} for round ${gameState.currentRound}.`);
+            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            const timeTakenMs = attempt.timestamp - gameState.startTime;
+            await _transitionToEnding(gameState, "answered", timeTakenMs);
+            return;
+        }
+        // 'incorrect' or 'error': keep scanning later attempts
+    }
+}
+
 async function _handleAnswer(channelName, username, displayName, message) {
     const gameState = activeGames.get(channelName);
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentRiddle) {
@@ -574,6 +602,17 @@ async function _handleAnswer(channelName, username, displayName, message) {
     }
 
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
+
+    // Record arrival order before any awaiting, so verification latency cannot reorder answers.
+    if (!gameState.processingQueue) gameState.processingQueue = [];
+    const attempt = {
+        username: username.toLowerCase(),
+        displayName,
+        answer: userAnswer,
+        timestamp: Date.now(),
+        status: 'pending',
+    };
+    gameState.processingQueue.push(attempt);
 
     // Determine verification answer: use answerEnglish if available (native generation path)
     let verifyAgainstAnswer = gameState.currentRiddle.answer;
@@ -613,15 +652,15 @@ async function _handleAnswer(channelName, username, displayName, message) {
 
         if (gameState.state !== 'inProgress') {
             logger.debug(`[RiddleGameManager][${channelName}] Game state changed to ${gameState.state} while verifying answer for ${displayName}. Ignoring result.`);
+            attempt.status = 'error';
             return;
         }
 
         if (verification && verification.isCorrect) {
-            logger.info(`[RiddleGameManager][${channelName}] Correct answer from ${displayName} for round ${gameState.currentRound}. Confidence: ${verification.confidence.toFixed(2)}`);
-            gameState.winner = { username: username.toLowerCase(), displayName };
-            const timeTakenMs = Date.now() - gameState.startTime;
-            await _transitionToEnding(gameState, "answered", timeTakenMs);
+            logger.debug(`[RiddleGameManager][${channelName}] Answer from ${displayName} verified correct. Confidence: ${verification.confidence.toFixed(2)}`);
+            attempt.status = 'correct';
         } else {
+            attempt.status = 'incorrect';
             // Cache the incorrect answer to prevent re-verification
             gameState.guessCache.set(normalizedUserAnswer, {
                 result: verification,
@@ -631,7 +670,10 @@ async function _handleAnswer(channelName, username, displayName, message) {
         }
     } catch (error) {
         logger.error({ err: error }, `[RiddleGameManager][${channelName}] Error verifying answer from ${displayName}.`);
+        attempt.status = 'error';
     }
+
+    await _resolveRiddleWinner(gameState);
 }
 
 // --- Public API ---
@@ -662,6 +704,7 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     gameState.gameSessionExcludedKeywordSets = []; // Fresh set for new game
     gameState.gameSessionExcludedAnswers = [];
     gameState.guessCache = new Map();
+    gameState.processingQueue = [];
     gameState.currentRiddle = null;
     gameState.startTime = null;
     gameState.winner = null;
@@ -842,56 +885,7 @@ export async function clearLeaderboard(channelName) {
     }
 }
 
-/**
- * Gets the details of the last played riddle in a channel.
- * Used by the report command.
- * @param {string} channelName - Channel name (without #).
- * @returns {Promise<{question: string, answer: string, docId: string}|null>}
- */
-async function getLastPlayedRiddleDetails(channelName) {
-    try {
-        const riddleDetails = await getMostRecentRiddlePlayed(channelName);
-        if (riddleDetails) {
-            logger.info(`[RiddleGameManager][${channelName}] Last played riddle details fetched: Q: ${riddleDetails.question ? riddleDetails.question.substring(0, 30) : ''}...`);
-            return riddleDetails; // Contains docId, question, answer
-        }
-        logger.info(`[RiddleGameManager][${channelName}] No last played riddle found to report.`);
-        return null;
-    } catch (error) {
-        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error getting last played riddle details.`);
-        return null;
-    }
-}
 
-/**
- * Reports the last played riddle in the channel as problematic.
- * @param {string} channelName - Channel name (without #).
- * @param {string} reason - Reason for reporting.
- * @param {string} reportedByUsername - Username of the reporter.
- * @returns {Promise<{success: boolean, message: string}>}
- */
-async function reportLastRiddle(channelName, reason, reportedByUsername) {
-    logger.info(`[RiddleGameManager][${channelName}] Attempting to report last riddle. Reason: "${reason}", Reported by: ${reportedByUsername}`);
-    const lastRiddle = await getLastPlayedRiddleDetails(channelName);
-
-    if (!lastRiddle || !lastRiddle.docId) {
-        return { success: false, messageKey: 'result.riddle.ICouldnTFind', messageParams: {}, message: "I couldn't find a recently played riddle in this channel to report." };
-    }
-
-    if (!lastRiddle.question) {
-        logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
-        return { success: false, messageKey: 'result.riddle.LastRiddleFoundSeems', messageParams: {}, message: "The last riddle found seems incomplete and cannot be reported." };
-    }
-
-    try {
-        await flagRiddleAsProblem(lastRiddle.docId, reason, reportedByUsername);
-        logger.info(`[RiddleGameManager][${channelName}] Successfully reported riddle: "${lastRiddle.question.substring(0, 50)}..."`);
-        return { success: true, messageKey: 'result.riddle.ThanksFeedbackRiddleStarting', messageParams: { p1: lastRiddle.question.substring(0, 30) }, message: `Thanks for the feedback! The riddle starting with "${lastRiddle.question.substring(0, 30)}..." has been reported.` };
-    } catch (error) {
-        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting riddle via storage.`);
-        return { success: false, messageKey: 'result.riddle.SorryErrorOccurredWhile', messageParams: {}, message: "Sorry, an error occurred while trying to report the riddle." };
-    }
-}
 
 /**
  * Gets the singleton RiddleGameManager instance.
@@ -908,7 +902,6 @@ export function getRiddleGameManager() {
             resetChannelConfig: resetRiddleConfig,
             getCurrentGameInitiator,
             clearLeaderboard,
-            reportLastRiddle,
             initiateReportProcess,
             finalizeReportWithRoundNumber,
         };

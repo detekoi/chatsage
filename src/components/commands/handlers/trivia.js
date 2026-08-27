@@ -112,7 +112,7 @@ const trivia = {
             return;
 
         } else if (subCommand === 'config') {
-            await handleConfig(gameCtx, triviaManager, TRIVIA_CONFIG_SCHEMA, TRIVIA_CONFIG_USAGE, GAME_NAME);
+            await handleConfig(gameCtx, triviaManager, TRIVIA_CONFIG_SCHEMA, TRIVIA_CONFIG_USAGE, GAME_NAME, 'usage.trivia.Config');
             return;
 
         } else if (subCommand === 'resetconfig') {

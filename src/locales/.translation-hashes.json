@@ -337,7 +337,10 @@
     "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "fr": {
     "common.timeString": "af55bd7822fd103b",
@@ -661,7 +664,30 @@
     "change.geo.BasePoints": "9fc8cf4ab4b77be2",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "change.trivia.ScoreTrackingEnabled": "fd25c92b6a3233a4",
+    "change.trivia.ScoreTrackingDisabled": "d7166b9526ac5139",
+    "change.trivia.TimeBonusEnabled": "01032363bd83bc73",
+    "change.trivia.TimeBonusDisabled": "2e9be70efa35cf21",
+    "change.trivia.DifficultyMultiplierEnabled": "79f53ec098fe929a",
+    "change.trivia.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
+    "change.geo.ScoreTrackingEnabled": "fd25c92b6a3233a4",
+    "change.geo.ScoreTrackingDisabled": "d7166b9526ac5139",
+    "change.geo.TimeBonusScoringEnabled": "b22a197a079352dd",
+    "change.geo.TimeBonusScoringDisabled": "00946f96db2b6695",
+    "change.geo.DifficultyMultiplierScoringEnabled": "70c33b82e0d90acf",
+    "change.geo.DifficultyMultiplierScoringDisabled": "56ecfa937c466384",
+    "change.riddle.BasePoints": "dd7e7f1755e73c20",
+    "change.riddle.MaxRounds": "17f3fff10d81fe78",
+    "change.riddle.KeywordLimit": "c8a0d066b3626675",
+    "change.riddle.RoundDelay": "ea2174da33f4e6df",
+    "change.riddle.ScoreTrackingEnabled": "fd25c92b6a3233a4",
+    "change.riddle.ScoreTrackingDisabled": "d7166b9526ac5139",
+    "change.riddle.TimeBonusEnabled": "01032363bd83bc73",
+    "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "de": {
     "common.timeString": "af55bd7822fd103b",
@@ -1005,7 +1031,10 @@
     "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "it": {
     "common.timeString": "af55bd7822fd103b",
@@ -1343,7 +1372,10 @@
     "change.geo.InvalidClueIntervalMust": "cbeb2851b6546d7e",
     "change.geo.RoundDurationMinutes": "e8ca10610017703b",
     "change.geo.InvalidRoundDurationMust": "49214b1175cfb12f",
-    "change.geo.RegionRestrictionsUpdated": "d25a92dc5a74953a"
+    "change.geo.RegionRestrictionsUpdated": "d25a92dc5a74953a",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "pt": {
     "common.timeString": "af55bd7822fd103b",
@@ -1681,7 +1713,10 @@
     "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "ja": {
     "common.timeString": "af55bd7822fd103b",
@@ -2023,7 +2058,10 @@
     "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   },
   "ru": {
     "common.timeString": "af55bd7822fd103b",
@@ -2367,6 +2405,9 @@
     "change.riddle.TimeBonusDisabled": "2e9be70efa35cf21",
     "change.riddle.DifficultyMultiplierEnabled": "79f53ec098fe929a",
     "change.riddle.DifficultyMultiplierDisabled": "364f6365c6bd0bd4",
-    "change.common.None": "dc937b59892604f5"
+    "change.common.None": "dc937b59892604f5",
+    "usage.riddle.Config": "6254501c6bbaeb02",
+    "usage.trivia.Config": "d1696924bf6a8b28",
+    "usage.geo.Config": "31d12227d3f28e69"
   }
 }

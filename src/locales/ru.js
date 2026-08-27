@@ -405,5 +405,16 @@ export default {
         "common": {
             "None": "Нет"
         }
+    },
+    "usage": {
+        "riddle": {
+            "Config": "Использование: !riddle config difficulty <easy|normal|hard> | questiontime <сек> | pointsbase <число> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <число> | keywordslimit <число> | rounddelay <мс>"
+        },
+        "trivia": {
+            "Config": "Использование: !trivia config difficulty <easy|normal|hard> time <секунды> duration <минуты> topic <список> scoring <true|false> points <значение> timebonus <true|false> difficultymultiplier <true|false>"
+        },
+        "geo": {
+            "Config": "Использование: !geo config difficulty <easy|normal|hard> interval <сек> duration <мин> region <список> game <список> scoring <bool> points <число> timebonus <bool> difficultymultiplier <bool>"
+        }
     }
 };

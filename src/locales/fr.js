@@ -381,10 +381,10 @@ export default {
             "InvalidBasePointsMust": "Points de base invalides \"{pointsBase}\". Doit être compris entre 1 et 100.",
             "ScoreTrackingEnabled": "Suivi des scores activé",
             "ScoreTrackingDisabled": "Suivi des scores désactivé",
-            "TimeBonusScoringEnabled": "Bonus de temps au score activé",
-            "TimeBonusScoringDisabled": "Bonus de temps au score désactivé",
-            "DifficultyMultiplierScoringEnabled": "Multiplicateur de difficulté au score activé",
-            "DifficultyMultiplierScoringDisabled": "Multiplicateur de difficulté au score désactivé"
+            "TimeBonusScoringEnabled": "Calcul du bonus de temps activé",
+            "TimeBonusScoringDisabled": "Calcul du bonus de temps désactivé",
+            "DifficultyMultiplierScoringEnabled": "Calcul du multiplicateur de difficulté activé",
+            "DifficultyMultiplierScoringDisabled": "Calcul du multiplicateur de difficulté désactivé"
         },
         "riddle": {
             "Difficulty": "Difficulté définie sur {difficulty}",
@@ -394,7 +394,7 @@ export default {
             "BasePoints": "Points de base définis sur {value}",
             "MaxRounds": "Manches max définies sur {value}",
             "KeywordLimit": "Limite d'exclusion de mots-clés définie sur {value}",
-            "RoundDelay": "Délai entre les manches défini sur {value}ms",
+            "RoundDelay": "Délai de manche défini sur {value}ms",
             "ScoreTrackingEnabled": "Suivi des scores activé",
             "ScoreTrackingDisabled": "Suivi des scores désactivé",
             "TimeBonusEnabled": "Bonus de temps activé",
@@ -404,6 +404,17 @@ export default {
         },
         "common": {
             "None": "Aucun"
+        }
+    },
+    "usage": {
+        "riddle": {
+            "Config": "Utilisation : !riddle config difficulty <facile|normal|difficile> | questiontime <sec> | pointsbase <num> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <num> | keywordslimit <num> | rounddelay <ms>"
+        },
+        "trivia": {
+            "Config": "Utilisation : !trivia config difficulty <facile|normal|difficile> time <secondes> duration <minutes> topic <liste> scoring <true|false> points <valeur> timebonus <true|false> difficultymultiplier <true|false>"
+        },
+        "geo": {
+            "Config": "Utilisation : !geo config difficulty <facile|normal|difficile> interval <sec> duration <min> region <liste> game <liste> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>"
         }
     }
 };
