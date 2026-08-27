@@ -758,7 +758,7 @@ async function _prefetchNextQuestion(gameState) {
             if (gameState.currentQuestion?.answer) {
                 excludedAnswers.push(gameState.currentQuestion.answer.toLowerCase());
                 if (gameState.currentQuestion.alternateAnswers?.length > 0) {
-                    gameState.currentQuestion.alternateAnswers.forEach(alt => excludedAnswers.push(alt.toLowerCase()), { skipTranslation: isCatalogued(gameState.botLanguage) });
+                    gameState.currentQuestion.alternateAnswers.forEach(alt => excludedAnswers.push(alt.toLowerCase()));
                 }
             }
 

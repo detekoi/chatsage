@@ -3,7 +3,6 @@ import { sendMessage as helixSendMessage, sendAnnouncement as helixSendAnnouncem
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/geminiClient.js';
-import { I18nMessage, t } from './i18n.js';
 
 // --- Module State ---
 const messageQueue = [];
@@ -33,12 +32,11 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @returns {string} Truncated text with ellipsis if needed
  */
 /**
- * Whether a value can be queued: a non-blank string, or a deferred catalog message.
+ * Whether a value can be queued: a non-blank string.
  * @param {unknown} text
  * @returns {boolean}
  */
 function _isSendableText(text) {
-    if (text instanceof I18nMessage) return text.fallback.trim().length > 0;
     return typeof text === 'string' && text.trim().length > 0;
 }
 
@@ -232,38 +230,9 @@ async function _translateIfNeeded(channelName, text) {
 }
 
 /**
- * Resolves an I18nMessage against the channel's language.
- *
- * This is the single place the catalog-vs-LLM decision is made for deferred messages:
- *   - no bot language          -> English fallback, nothing to translate
- *   - catalog hit              -> localized string, translation skipped entirely
- *   - catalogue miss / no file -> English fallback, handed to the runtime translator as before
- *
- * @param {string} channelName Channel name without '#'.
- * @param {I18nMessage} message
- * @returns {{ text: string, localized: boolean }}
- */
-function _resolveI18nMessage(channelName, message) {
-    let botLanguage = null;
-    try {
-        botLanguage = getContextManager()?.getBotLanguage(channelName) || null;
-    } catch {
-        // Context manager not initialized yet (cold start) — fall back to English.
-    }
-    if (!botLanguage) return { text: message.fallback, localized: true };
-
-    const localized = t(message.key, message.params, botLanguage);
-    if (localized !== null) {
-        logger.debug({ key: message.key, botLanguage }, 'Resolved message from catalog; skipping LLM translation');
-        return { text: localized, localized: true };
-    }
-    return { text: message.fallback, localized: false };
-}
-
-/**
  * Shared preprocessing pipeline: translate, summarize, and truncate text.
  * @param {string} channel Channel name with '#'.
- * @param {string|I18nMessage} text Raw message text, or a deferred catalog message.
+ * @param {string} text Raw message text.
  * @param {boolean} skipTranslation If true, skips translation.
  * @param {boolean} skipLengthProcessing If true, skips summarization and truncation.
  * @param {string} label Log label ('Message' or 'Announcement') for observability.
@@ -272,13 +241,6 @@ function _resolveI18nMessage(channelName, message) {
 async function _preprocessText(channel, text, skipTranslation, skipLengthProcessing, label = 'Message') {
     const channelName = channel.substring(1); // Remove # prefix
     let finalText = text;
-
-    // A deferred catalog message resolves here; a catalog hit needs no further translation.
-    if (text instanceof I18nMessage) {
-        const resolved = _resolveI18nMessage(channelName, text);
-        finalText = resolved.text;
-        if (resolved.localized) skipTranslation = true;
-    }
 
     // Translate if needed (unless explicitly skipped)
     if (!skipTranslation) {
@@ -334,7 +296,7 @@ async function _preprocessText(channel, text, skipTranslation, skipLengthProcess
  * Translates the message if the channel has a language setting.
  * Summarizes message if it exceeds MAX_IRC_MESSAGE_LENGTH.
  * @param {string} channel Channel name with '#'.
- * @param {string|I18nMessage} text Message text, or a deferred catalog message from msg().
+ * @param {string} text Message text.
  * @param {object|boolean} [options={}] Optional params or legacy boolean for skipTranslation.
  * @param {string|null} [options.replyToId=null] The ID of the message to reply to.
  * @param {boolean} [options.skipTranslation=false] If true, skips translation.
@@ -412,7 +374,7 @@ async function waitForQueueEmpty() {
  * Announcements appear with a colored highlight bar in Twitch chat.
  * If the announcement API call fails, falls back to a regular chat message.
  * @param {string} channel Channel name with '#'.
- * @param {string|I18nMessage} text Announcement text, or a deferred catalog message from msg().
+ * @param {string} text Announcement text.
  * @param {string} [color='primary'] Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
  * @param {object} [options={}] Optional params.
  * @param {boolean} [options.skipTranslation=false] If true, skips translation.

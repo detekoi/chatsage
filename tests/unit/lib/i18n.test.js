@@ -14,13 +14,10 @@ import cat_ja from '../../../src/locales/ja.js';
 import cat_ru from '../../../src/locales/ru.js';
 import {
     t,
-    msg,
-    resolve,
     loadCatalogs,
     isCatalogued,
     toLocaleCode,
     nameFromCode,
-    I18nMessage,
     SUPPORTED_LOCALES,
     DEFAULT_LOCALE
 } from '../../../src/lib/i18n.js';
@@ -120,34 +117,6 @@ describe('isCatalogued', () => {
     it('is false for a language we hold no catalog for', () => {
         expect(isCatalogued('thai')).toBe(false);
         expect(isCatalogued('klingon')).toBe(false);
-    });
-});
-
-describe('I18nMessage', () => {
-    it('stringifies to its English fallback so concatenation keeps working', () => {
-        const m = msg('trivia.stop', { answer: 'Paris' }, '🛑 Game stopped. The answer was: Paris');
-        expect(`${m}`).toBe('🛑 Game stopped. The answer was: Paris');
-        expect(m.length).toBe('🛑 Game stopped. The answer was: Paris'.length);
-    });
-
-    it('resolves to the catalog string for a catalogued language', () => {
-        const m = msg('trivia.stop', { roundPrefix: '', answer: 'Paris' }, 'FALLBACK');
-        expect(resolve(m, 'spanish')).not.toBe('FALLBACK');
-        expect(resolve(m, 'spanish')).toEqual(expect.stringContaining('Paris'));
-    });
-
-    it('resolves to the fallback for an uncatalogued language', () => {
-        const m = msg('trivia.stop', { answer: 'Paris' }, 'FALLBACK');
-        expect(resolve(m, 'thai')).toBe('FALLBACK');
-        expect(resolve(m, null)).toBe('FALLBACK');
-    });
-
-    it('passes plain strings through untouched', () => {
-        expect(resolve('plain', 'spanish')).toBe('plain');
-    });
-
-    it('is what instanceof checks in ircSender rely on', () => {
-        expect(msg('a.b', {}, 'x')).toBeInstanceOf(I18nMessage);
     });
 });
 
