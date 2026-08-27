@@ -508,7 +508,8 @@ async function _startNextRound(gameState) {
     }
 
     let selectedLocation = null;
-    let firstClue = null;
+    // No initializer: both branches below assign it before it is read, so `= null` was dead.
+    let firstClue;
 
     if (prefetched && prefetched.targetLocation?.name && prefetched.firstClue) {
         selectedLocation = prefetched.targetLocation;
@@ -1049,6 +1050,13 @@ function processPotentialGuess(channelName, username, displayName, message) {
  * @returns {{message: string}} Result message.
  */
 async function configureGame(channelName, options) {
+    // The confirmation sentence is delivered in the channel's language, so the per-setting
+    // descriptions spliced into it come from the catalog too rather than staying English.
+    let cfgLang = null;
+    try {
+        cfgLang = getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch { /* context manager not ready — English descriptions are the correct fallback */ }
+
     const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[GeoGame][${channelName}] Configure command received with options: ${JSON.stringify(options)}`);
     let changesMade = [];
@@ -1058,7 +1066,7 @@ async function configureGame(channelName, options) {
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty)) {
         if (gameState.config.difficulty !== options.difficulty) {
             gameState.config.difficulty = options.difficulty;
-            changesMade.push(`Difficulty set to ${options.difficulty}`);
+            changesMade.push(t('change.geo.Difficulty', { difficulty: options.difficulty }, cfgLang) ?? `Difficulty set to ${options.difficulty}`);
             configChanged = true;
         }
     }
@@ -1069,11 +1077,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(interval) && interval >= 30 && interval <= 300) {
             if (gameState.config.clueIntervalSeconds !== interval) {
                 gameState.config.clueIntervalSeconds = interval;
-                changesMade.push(`Clue interval set to ${interval} seconds`);
+                changesMade.push(t('change.geo.ClueIntervalSeconds', { interval }, cfgLang) ?? `Clue interval set to ${interval} seconds`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid clue interval "${options.clueIntervalSeconds}". Must be between 30 and 300.`);
+            changesMade.push(t('change.geo.InvalidClueIntervalMust', { clueIntervalSeconds: options.clueIntervalSeconds }, cfgLang) ?? `Invalid clue interval "${options.clueIntervalSeconds}". Must be between 30 and 300.`);
         }
     }
 
@@ -1083,11 +1091,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(duration) && duration >= 3 && duration <= 20) { // Example range 3-20 mins
             if (gameState.config.roundDurationMinutes !== duration) {
                 gameState.config.roundDurationMinutes = duration;
-                changesMade.push(`Round duration set to ${duration} minutes`);
+                changesMade.push(t('change.geo.RoundDurationMinutes', { duration }, cfgLang) ?? `Round duration set to ${duration} minutes`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid round duration "${options.roundDurationMinutes}". Must be between 3 and 20 minutes.`);
+            changesMade.push(t('change.geo.InvalidRoundDurationMust', { roundDurationMinutes: options.roundDurationMinutes }, cfgLang) ?? `Invalid round duration "${options.roundDurationMinutes}". Must be between 3 and 20 minutes.`);
         }
     }
 
@@ -1096,7 +1104,7 @@ async function configureGame(channelName, options) {
         const enableScoring = options.scoreTracking === 'true' || options.scoreTracking === true;
         if (gameState.config.scoreTracking !== enableScoring) {
             gameState.config.scoreTracking = enableScoring;
-            changesMade.push(`Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.geo.ScoreTracking${enableScoring ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1106,7 +1114,7 @@ async function configureGame(channelName, options) {
         // Ensure it's an array
         const regions = Array.isArray(options.regionRestrictions) ? options.regionRestrictions : String(options.regionRestrictions).split(',').map(s => s.trim()).filter(Boolean);
         gameState.config.regionRestrictions = regions;
-        changesMade.push(`Region restrictions updated to: ${regions.join(', ') || 'None'}`);
+        changesMade.push(t('change.geo.RegionRestrictionsUpdated', { p1: regions.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None') }, cfgLang) ?? `Region restrictions updated to: ${regions.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None')}`);
         configChanged = true;
     }
 
@@ -1114,7 +1122,7 @@ async function configureGame(channelName, options) {
     if (options.gameTitlePreferences) {
         const titles = Array.isArray(options.gameTitlePreferences) ? options.gameTitlePreferences : String(options.gameTitlePreferences).split(',').map(s => s.trim()).filter(Boolean);
         gameState.config.gameTitlePreferences = titles;
-        changesMade.push(`Game title preferences updated to: ${titles.join(', ') || 'None'}`);
+        changesMade.push(t('change.geo.GameTitlePreferencesUpdated', { p1: titles.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None') }, cfgLang) ?? `Game title preferences updated to: ${titles.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None')}`);
         configChanged = true;
     }
 
@@ -1124,18 +1132,18 @@ async function configureGame(channelName, options) {
         if (!isNaN(points) && points >= 1 && points <= 100) {
             if (gameState.config.pointsBase !== points) {
                 gameState.config.pointsBase = points;
-                changesMade.push(`Base points set to ${points}`);
+                changesMade.push(t('change.geo.BasePoints', { points }, cfgLang) ?? `Base points set to ${points}`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
+            changesMade.push(t('change.geo.InvalidBasePointsMust', { pointsBase: options.pointsBase }, cfgLang) ?? `Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
         }
     }
     if (options.pointsTimeBonus !== undefined) {
         const enableTimeBonus = options.pointsTimeBonus === 'true' || options.pointsTimeBonus === true;
         if (gameState.config.pointsTimeBonus !== enableTimeBonus) {
             gameState.config.pointsTimeBonus = enableTimeBonus;
-            changesMade.push(`Time bonus scoring ${enableTimeBonus ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.geo.TimeBonusScoring${enableTimeBonus ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Time bonus scoring ${enableTimeBonus ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1143,7 +1151,7 @@ async function configureGame(channelName, options) {
         const enableMultiplier = options.pointsDifficultyMultiplier === 'true' || options.pointsDifficultyMultiplier === true;
         if (gameState.config.pointsDifficultyMultiplier !== enableMultiplier) {
             gameState.config.pointsDifficultyMultiplier = enableMultiplier;
-            changesMade.push(`Difficulty multiplier scoring ${enableMultiplier ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.geo.DifficultyMultiplierScoring${enableMultiplier ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Difficulty multiplier scoring ${enableMultiplier ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }

@@ -342,12 +342,68 @@ export default {
             "ICouldnTFind3": "@{username}, no encontré el acertijo de la ronda {roundNum}. Intenta reportar de nuevo.",
             "ThanksReportRiddleFrom": "@{username}, ¡gracias! Tu reporte del acertijo de la ronda {roundNum} (\"{p3}...\") ha sido enviado.",
             "ErrorOccurredSubmittingReport": "@{username}, ocurrió un error al enviar tu reporte para la ronda {roundNum}. Inténtalo de nuevo.",
-            "ErrFailedStartRiddleGame": "No se pudo iniciar el juego de acertijos. No se pudo generar el primer acertijo."
+            "ErrFailedStartRiddleGame": "No se pudo iniciar el juego de acertijos. No se pudo generar el primer acertijo.",
+            "RiddleSettingsUnchanged": "Configuración de acertijos: {p1}.",
+            "NoValidRiddleSettings": "No se cambió ninguna configuración válida de acertijos."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "El comando '{normalizedCommand}' siempre está disponible y no se puede desactivar.",
             "ErrorDisablingCommandPlease": "Error al desactivar el comando '!{commandName}'. Inténtalo de nuevo.",
             "ErrorEnablingCommandPlease": "Error al activar el comando '!{commandName}'. Inténtalo de nuevo."
+        }
+    },
+    "change": {
+        "trivia": {
+            "Difficulty": "Dificultad establecida en {difficulty}",
+            "QuestionTimeSeconds": "Tiempo por pregunta establecido en {time} segundos",
+            "InvalidQuestionTimeMust": "Tiempo de pregunta no válido \"{questionTimeSeconds}\". Debe estar entre 10 y 120 segundos.",
+            "RoundDurationMinutes": "Duración de la ronda establecida en {duration} minutos",
+            "InvalidRoundDurationMust": "Duración de ronda no válida \"{roundDurationMinutes}\". Debe estar entre 1 y 10 minutos.",
+            "TopicPreferencesUpdated": "Preferencias de temas actualizadas a: {p1}",
+            "BasePoints": "Puntos base establecidos en {points}",
+            "InvalidBasePointsMust": "Puntos base no válidos \"{pointsBase}\". Deben estar entre 1 y 100.",
+            "ScoreTrackingEnabled": "Seguimiento de puntuación activado",
+            "ScoreTrackingDisabled": "Seguimiento de puntuación desactivado",
+            "TimeBonusEnabled": "Bonus de tiempo activado",
+            "TimeBonusDisabled": "Bonus de tiempo desactivado",
+            "DifficultyMultiplierEnabled": "Multiplicador de dificultad activado",
+            "DifficultyMultiplierDisabled": "Multiplicador de dificultad desactivado"
+        },
+        "geo": {
+            "Difficulty": "Dificultad establecida en {difficulty}",
+            "ClueIntervalSeconds": "Intervalo de pistas establecido en {interval} segundos",
+            "InvalidClueIntervalMust": "Intervalo de pistas no válido \"{clueIntervalSeconds}\". Debe estar entre 30 y 300.",
+            "RoundDurationMinutes": "Duración de la ronda establecida en {duration} minutos",
+            "InvalidRoundDurationMust": "Duración de ronda no válida \"{roundDurationMinutes}\". Debe estar entre 3 y 20 minutos.",
+            "RegionRestrictionsUpdated": "Restricciones de región actualizadas a: {p1}",
+            "GameTitlePreferencesUpdated": "Preferencias de títulos de juegos actualizadas a: {p1}",
+            "BasePoints": "Puntos base establecidos en {points}",
+            "InvalidBasePointsMust": "Puntos base no válidos \"{pointsBase}\". Deben estar entre 1 y 100.",
+            "ScoreTrackingEnabled": "Seguimiento de puntuación activado",
+            "ScoreTrackingDisabled": "Seguimiento de puntuación desactivado",
+            "TimeBonusScoringEnabled": "Puntuación con bonus de tiempo activada",
+            "TimeBonusScoringDisabled": "Puntuación con bonus de tiempo desactivada",
+            "DifficultyMultiplierScoringEnabled": "Puntuación con multiplicador de dificultad activada",
+            "DifficultyMultiplierScoringDisabled": "Puntuación con multiplicador de dificultad desactivada"
+        },
+        "riddle": {
+            "Difficulty": "Dificultad establecida en {difficulty}",
+            "QuestionTimeS": "Tiempo de pregunta establecido en {time}s",
+            "InvalidQuestionTime15": "Tiempo de pregunta no válido (15-120s)",
+            "Invalid": "{optionName} no válido ({min}-{max})",
+            "BasePoints": "Puntos base establecidos en {value}",
+            "MaxRounds": "Máximo de rondas establecido en {value}",
+            "KeywordLimit": "Límite de exclusión de palabras clave establecido en {value}",
+            "RoundDelay": "Retraso entre rondas establecido en {value}ms",
+            "ScoreTrackingEnabled": "Seguimiento de puntuación activado",
+            "ScoreTrackingDisabled": "Seguimiento de puntuación desactivado",
+            "TimeBonusEnabled": "Bonus de tiempo activado",
+            "TimeBonusDisabled": "Bonus por tiempo desactivado",
+            "DifficultyMultiplierEnabled": "Multiplicador de dificultad activado",
+            "DifficultyMultiplierDisabled": "Multiplicador de dificultad desactivado"
+        },
+        "common": {
+            "None": "Ninguno"
         }
     }
 };

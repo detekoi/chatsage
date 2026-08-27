@@ -342,12 +342,68 @@ export default {
             "ICouldnTFind3": "@{username}, não encontrei o enigma da rodada {roundNum}. Tente denunciar novamente.",
             "ThanksReportRiddleFrom": "@{username}, obrigado! Sua denúncia sobre o enigma da rodada {roundNum} (\"{p3}...\") foi enviada.",
             "ErrorOccurredSubmittingReport": "@{username}, ocorreu um erro ao enviar sua denúncia da rodada {roundNum}. Tente novamente.",
-            "ErrFailedStartRiddleGame": "Falha ao iniciar o jogo de charadas. Não foi possível gerar a primeira charada."
+            "ErrFailedStartRiddleGame": "Falha ao iniciar o jogo de charadas. Não foi possível gerar a primeira charada.",
+            "RiddleSettingsUnchanged": "Configurações de charadas: {p1}.",
+            "NoValidRiddleSettings": "Nenhuma configuração válida de charadas foi alterada."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "O comando '{normalizedCommand}' está sempre disponível e não pode ser desativado.",
             "ErrorDisablingCommandPlease": "Erro ao desativar o comando '!{commandName}'. Tente novamente.",
             "ErrorEnablingCommandPlease": "Erro ao ativar o comando '!{commandName}'. Tente novamente."
+        }
+    },
+    "change": {
+        "trivia": {
+            "Difficulty": "Dificuldade definida para {difficulty}",
+            "QuestionTimeSeconds": "Tempo de pergunta definido para {time} segundos",
+            "InvalidQuestionTimeMust": "Tempo de pergunta inválido \"{questionTimeSeconds}\". Deve ser entre 10 e 120 segundos.",
+            "RoundDurationMinutes": "Duração da rodada definida para {duration} minutos",
+            "InvalidRoundDurationMust": "Duração da rodada inválida \"{roundDurationMinutes}\". Deve ser entre 1 e 10 minutos.",
+            "TopicPreferencesUpdated": "Preferências de tópicos atualizadas para: {p1}",
+            "BasePoints": "Pontos base definidos para {points}",
+            "InvalidBasePointsMust": "Pontos base inválidos \"{pointsBase}\". Deve ser entre 1 e 100.",
+            "ScoreTrackingEnabled": "Rastreamento de pontuação ativado",
+            "ScoreTrackingDisabled": "Rastreamento de pontuação desativado",
+            "TimeBonusEnabled": "Bônus de tempo ativado",
+            "TimeBonusDisabled": "Bônus de tempo desativado",
+            "DifficultyMultiplierEnabled": "Multiplicador de dificuldade ativado",
+            "DifficultyMultiplierDisabled": "Multiplicador de dificuldade desativado"
+        },
+        "geo": {
+            "Difficulty": "Dificuldade definida para {difficulty}",
+            "ClueIntervalSeconds": "Intervalo de dicas definido para {interval} segundos",
+            "InvalidClueIntervalMust": "Intervalo de dicas inválido \"{clueIntervalSeconds}\". Deve ser entre 30 e 300.",
+            "RoundDurationMinutes": "Duração da rodada definida para {duration} minutos",
+            "InvalidRoundDurationMust": "Duração da rodada inválida \"{roundDurationMinutes}\". Deve ser entre 3 e 20 minutos.",
+            "RegionRestrictionsUpdated": "Restrições de região atualizadas para: {p1}",
+            "GameTitlePreferencesUpdated": "Preferências de título de jogo atualizadas para: {p1}",
+            "BasePoints": "Pontos base definidos para {points}",
+            "InvalidBasePointsMust": "Pontos base inválidos \"{pointsBase}\". Deve ser entre 1 e 100.",
+            "ScoreTrackingEnabled": "Rastreamento de pontuação ativado",
+            "ScoreTrackingDisabled": "Rastreamento de pontuação desativado",
+            "TimeBonusScoringEnabled": "Pontuação por bônus de tempo ativada",
+            "TimeBonusScoringDisabled": "Pontuação por bônus de tempo desativada",
+            "DifficultyMultiplierScoringEnabled": "Pontuação com multiplicador de dificuldade ativada",
+            "DifficultyMultiplierScoringDisabled": "Pontuação com multiplicador de dificuldade desativada"
+        },
+        "riddle": {
+            "Difficulty": "Dificuldade definida para {difficulty}",
+            "QuestionTimeS": "Tempo de pergunta definido para {time}s",
+            "InvalidQuestionTime15": "Tempo de pergunta inválido (15-120s)",
+            "Invalid": "{optionName} inválido ({min}-{max})",
+            "BasePoints": "Pontos base definidos para {value}",
+            "MaxRounds": "Máximo de rodadas definido para {value}",
+            "KeywordLimit": "Limite de exclusão de palavras-chave definido para {value}",
+            "RoundDelay": "Intervalo de rodada definido para {value}ms",
+            "ScoreTrackingEnabled": "Rastreamento de pontuação ativado",
+            "ScoreTrackingDisabled": "Rastreamento de pontuação desativado",
+            "TimeBonusEnabled": "Bônus de tempo ativado",
+            "TimeBonusDisabled": "Bônus de tempo desativado",
+            "DifficultyMultiplierEnabled": "Multiplicador de dificuldade ativado",
+            "DifficultyMultiplierDisabled": "Multiplicador de dificuldade desativado"
+        },
+        "common": {
+            "None": "Nenhum"
         }
     }
 };

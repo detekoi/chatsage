@@ -721,26 +721,70 @@ export function processPotentialAnswer(channelName, username, displayName, messa
 }
 
 export async function configureRiddleGame(channelName, options) {
+    // The confirmation sentence is delivered in the channel's language, so the per-setting
+    // descriptions spliced into it come from the catalog too rather than staying English.
+    let cfgLang = null;
+    try {
+        cfgLang = getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch { /* context manager not ready — English descriptions are the correct fallback */ }
+
     const gameState = await _getOrCreateGameState(channelName);
     let changed = false;
     const appliedChanges = [];
 
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty.toLowerCase())) {
         gameState.config.difficulty = options.difficulty.toLowerCase();
-        appliedChanges.push(`Difficulty set to ${gameState.config.difficulty}`);
+        appliedChanges.push(t('change.riddle.Difficulty', { difficulty: gameState.config.difficulty }, cfgLang) ?? `Difficulty set to ${gameState.config.difficulty}`);
         changed = true;
     }
     if (options.questionTimeSeconds) {
         const time = parseInt(options.questionTimeSeconds, 10);
         if (!isNaN(time) && time >= 15 && time <= 120) {
             gameState.config.questionTimeSeconds = time;
-            appliedChanges.push(`Question time set to ${time}s`);
+            appliedChanges.push(t('change.riddle.QuestionTimeS', { time }, cfgLang) ?? `Question time set to ${time}s`);
             changed = true;
         } else {
-            appliedChanges.push(`Invalid question time (15-120s)`);
+            appliedChanges.push(t('change.riddle.InvalidQuestionTime15', {}, cfgLang) ?? `Invalid question time (15-120s)`);
         }
     }
-    // Add other config options here: pointsBase, scoreTracking, etc.
+    // Numeric options, each with the range the help text documents.
+    const numericOptions = [
+        ['pointsBase', 'pointsBase', 1, 1000, 'change.riddle.BasePoints', v => `Base points set to ${v}`],
+        ['maxRounds', 'maxRounds', 1, 20, 'change.riddle.MaxRounds', v => `Max rounds set to ${v}`],
+        ['recentKeywordsFetchLimit', 'recentKeywordsFetchLimit', 1, 200, 'change.riddle.KeywordLimit', v => `Keyword exclusion limit set to ${v}`],
+        ['multiRoundDelayMs', 'multiRoundDelayMs', 1000, 60000, 'change.riddle.RoundDelay', v => `Round delay set to ${v}ms`],
+    ];
+    for (const [optionName, configKey, min, max, changeKey, describe] of numericOptions) {
+        if (options[optionName] === undefined) continue;
+        const value = parseInt(options[optionName], 10);
+        if (!isNaN(value) && value >= min && value <= max) {
+            gameState.config[configKey] = value;
+            appliedChanges.push(t(changeKey, { value }, cfgLang) ?? describe(value));
+            changed = true;
+        } else {
+            appliedChanges.push(t('change.riddle.Invalid', { optionName, min, max }, cfgLang) ?? `Invalid ${optionName} (${min}-${max})`);
+        }
+    }
+
+    // Boolean options.
+    // Two keys per option rather than an "{label} {enabled|disabled}" splice: the enabled/disabled
+    // word would otherwise stay English inside a translated sentence.
+    const booleanOptions = [
+        ['scoreTracking', 'scoreTracking', 'Score tracking', 'change.riddle.ScoreTracking'],
+        ['pointsTimeBonus', 'pointsTimeBonus', 'Time bonus', 'change.riddle.TimeBonus'],
+        ['pointsDifficultyMultiplier', 'pointsDifficultyMultiplier', 'Difficulty multiplier', 'change.riddle.DifficultyMultiplier'],
+    ];
+    for (const [optionName, configKey, label, changeKey] of booleanOptions) {
+        if (options[optionName] === undefined) continue;
+        const value = typeof options[optionName] === 'boolean'
+            ? options[optionName]
+            : String(options[optionName]).toLowerCase() === 'true';
+        gameState.config[configKey] = value;
+        appliedChanges.push(
+            t(`${changeKey}${value ? 'Enabled' : 'Disabled'}`, {}, cfgLang)
+            ?? `${label} ${value ? 'enabled' : 'disabled'}`);
+        changed = true;
+    }
 
     if (changed) {
         try {
@@ -752,7 +796,18 @@ export async function configureRiddleGame(channelName, options) {
             return { messageKey: 'result.riddle.SettingsChangedMemoryBut', messageParams: {}, message: `Settings changed in memory but failed to save.` };
         }
     }
-    return { message: appliedChanges.length > 0 ? `Riddle settings: ${appliedChanges.join('. ')}.` : "No valid riddle settings changed." };
+    if (appliedChanges.length > 0) {
+        return {
+            messageKey: 'result.riddle.RiddleSettingsUnchanged',
+            messageParams: { p1: appliedChanges.join('. ') },
+            message: `Riddle settings: ${appliedChanges.join('. ')}.`
+        };
+    }
+    return {
+        messageKey: 'result.riddle.NoValidRiddleSettings',
+        messageParams: {},
+        message: "No valid riddle settings changed."
+    };
 }
 
 export async function resetRiddleConfig(channelName) {
@@ -850,7 +905,7 @@ export function getRiddleGameManager() {
             stopGame,
             processPotentialAnswer,
             configureGame: configureRiddleGame,
-            resetConfig: resetRiddleConfig,
+            resetChannelConfig: resetRiddleConfig,
             getCurrentGameInitiator,
             clearLeaderboard,
             reportLastRiddle,

@@ -342,12 +342,68 @@ export default {
             "ICouldnTFind3": "@{username}、ラウンド {roundNum} のなぞなぞが見つかりませんでした。もう一度通報をお試しください。",
             "ThanksReportRiddleFrom": "@{username}、ありがとうございます！ラウンド {roundNum} のなぞなぞ (\"{p3}...\") の通報を受け付けました。",
             "ErrorOccurredSubmittingReport": "@{username}、ラウンド {roundNum} の通報送信中にエラーが発生しました。もう一度お試しください。",
-            "ErrFailedStartRiddleGame": "なぞなぞゲームの開始に失敗しました。最初のなぞなぞを生成できませんでした。"
+            "ErrFailedStartRiddleGame": "なぞなぞゲームの開始に失敗しました。最初のなぞなぞを生成できませんでした。",
+            "RiddleSettingsUnchanged": "なぞなぞ設定: {p1}。",
+            "NoValidRiddleSettings": "有効ななぞなぞ設定は変更されませんでした。"
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "コマンド '{normalizedCommand}' は常時利用可能なため、無効化できません。",
             "ErrorDisablingCommandPlease": "コマンド '!{commandName}' の無効化中にエラーが発生しました。もう一度お試しください。",
             "ErrorEnablingCommandPlease": "コマンド '!{commandName}' の有効化中にエラーが発生しました。もう一度お試しください。"
+        }
+    },
+    "change": {
+        "trivia": {
+            "Difficulty": "難易度を{difficulty}に設定しました",
+            "QuestionTimeSeconds": "回答時間を{time}秒に設定しました",
+            "InvalidQuestionTimeMust": "無効な回答時間 \"{questionTimeSeconds}\" です。10〜120秒の間で設定してください。",
+            "RoundDurationMinutes": "ラウンド時間を{duration}分に設定しました",
+            "InvalidRoundDurationMust": "無効なラウンド時間 \"{roundDurationMinutes}\" です。1〜10分の間で設定してください。",
+            "TopicPreferencesUpdated": "トピック設定を更新しました: {p1}",
+            "BasePoints": "基本ポイントを{points}に設定しました",
+            "InvalidBasePointsMust": "無効な基本ポイント \"{pointsBase}\" です。1〜100の間で設定してください。",
+            "ScoreTrackingEnabled": "スコア記録を有効にしました",
+            "ScoreTrackingDisabled": "スコア記録を無効にしました",
+            "TimeBonusEnabled": "タイムボーナスを有効にしました",
+            "TimeBonusDisabled": "タイムボーナスを無効にしました",
+            "DifficultyMultiplierEnabled": "難易度倍率を有効にしました",
+            "DifficultyMultiplierDisabled": "難易度倍率を無効にしました"
+        },
+        "geo": {
+            "Difficulty": "難易度を{difficulty}に設定しました",
+            "ClueIntervalSeconds": "ヒント間隔を{interval}秒に設定しました",
+            "InvalidClueIntervalMust": "無効なヒント間隔 \"{clueIntervalSeconds}\" です。30〜300の間で設定してください。",
+            "RoundDurationMinutes": "ラウンド時間を{duration}分に設定しました",
+            "InvalidRoundDurationMust": "無効なラウンド時間 \"{roundDurationMinutes}\" です。3〜20分の間で設定してください。",
+            "RegionRestrictionsUpdated": "地域制限を更新しました: {p1}",
+            "GameTitlePreferencesUpdated": "ゲームタイトルの設定を更新しました: {p1}",
+            "BasePoints": "基本ポイントを{points}に設定しました",
+            "InvalidBasePointsMust": "基本ポイント「{pointsBase}」は無効です。1〜100の間で指定してください。",
+            "ScoreTrackingEnabled": "スコア記録を有効にしました",
+            "ScoreTrackingDisabled": "スコア記録を無効にしました",
+            "TimeBonusScoringEnabled": "タイムボーナス加点を有効にしました",
+            "TimeBonusScoringDisabled": "タイムボーナス加点を無効にしました",
+            "DifficultyMultiplierScoringEnabled": "難易度倍率加点を有効にしました",
+            "DifficultyMultiplierScoringDisabled": "難易度倍率加点を無効にしました"
+        },
+        "riddle": {
+            "Difficulty": "難易度を{difficulty}に設定しました",
+            "QuestionTimeS": "問題時間を{time}秒に設定しました",
+            "InvalidQuestionTime15": "問題時間が無効です (15〜120秒)",
+            "Invalid": "{optionName}が無効です ({min}〜{max})",
+            "BasePoints": "基本ポイントを{value}に設定しました",
+            "MaxRounds": "最大ラウンド数を{value}に設定しました",
+            "KeywordLimit": "キーワード除外上限を{value}に設定しました",
+            "RoundDelay": "ラウンド間ディレイを{value}msに設定しました",
+            "ScoreTrackingEnabled": "スコア記録を有効にしました",
+            "ScoreTrackingDisabled": "スコア記録を無効にしました",
+            "TimeBonusEnabled": "タイムボーナスを有効にしました",
+            "TimeBonusDisabled": "タイムボーナスを無効にしました",
+            "DifficultyMultiplierEnabled": "難易度倍率を有効にしました",
+            "DifficultyMultiplierDisabled": "難易度倍率を無効にしました"
+        },
+        "common": {
+            "None": "なし"
         }
     }
 };

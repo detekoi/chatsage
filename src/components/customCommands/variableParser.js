@@ -62,9 +62,14 @@ export async function parseVariables(template, context) {
     // Resolve all variables (some may be async)
     let result = template;
 
-    // Process in reverse order to maintain correct indices during replacement
+    // Walk backwards and splice by recorded index. The indices are only valid while the text to
+    // their left is untouched, which is what reverse order guarantees. The previous version
+    // reverse-iterated but then called result.replace(fullMatch, ...), which rewrites the *first*
+    // occurrence rather than the matched one — so the recorded index was collected and never used,
+    // and a resolved value that happened to contain an earlier variable's literal text could be
+    // rewritten on the next pass.
     for (let i = matches.length - 1; i >= 0; i--) {
-        const { fullMatch, variableContent } = matches[i];
+        const { fullMatch, variableContent, index } = matches[i];
         let resolved;
 
         try {
@@ -84,7 +89,7 @@ export async function parseVariables(template, context) {
             resolved = '';
         }
 
-        result = result.replace(fullMatch, resolved);
+        result = result.slice(0, index) + resolved + result.slice(index + fullMatch.length);
     }
 
     return result;

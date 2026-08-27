@@ -342,12 +342,68 @@ export default {
             "ICouldnTFind3": "@{username}, не удалось найти загадку для раунда {roundNum}. Попробуйте отправить жалобу снова.",
             "ThanksReportRiddleFrom": "@{username}, спасибо! Жалоба на загадку из раунда {roundNum} (\"{p3}...\") отправлена.",
             "ErrorOccurredSubmittingReport": "@{username}, произошла ошибка при отправке жалобы для раунда {roundNum}. Попробуйте ещё раз.",
-            "ErrFailedStartRiddleGame": "Не удалось запустить игру в загадки. Не получилось сгенерировать первую загадку."
+            "ErrFailedStartRiddleGame": "Не удалось запустить игру в загадки. Не получилось сгенерировать первую загадку.",
+            "RiddleSettingsUnchanged": "Настройки загадок: {p1}.",
+            "NoValidRiddleSettings": "Никакие корректные настройки загадок не изменены."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "Команда '{normalizedCommand}' доступна всегда и не может быть отключена.",
             "ErrorDisablingCommandPlease": "Ошибка при отключении команды '!{commandName}'. Попробуйте ещё раз.",
             "ErrorEnablingCommandPlease": "Ошибка при включении команды '!{commandName}'. Попробуйте ещё раз."
+        }
+    },
+    "change": {
+        "trivia": {
+            "Difficulty": "Сложность установлена на {difficulty}",
+            "QuestionTimeSeconds": "Время на вопрос установлено на {time} сек.",
+            "InvalidQuestionTimeMust": "Недопустимое время на вопрос \"{questionTimeSeconds}\". Должно быть от 10 до 120 секунд.",
+            "RoundDurationMinutes": "Длительность раунда установлена на {duration} мин.",
+            "InvalidRoundDurationMust": "Недопустимая длительность раунда \"{roundDurationMinutes}\". Должна быть от 1 до 10 минут.",
+            "TopicPreferencesUpdated": "Предпочтения по темам обновлены: {p1}",
+            "BasePoints": "Базовые очки установлены на {points}",
+            "InvalidBasePointsMust": "Недопустимое количество базовых очков \"{pointsBase}\". Должно быть от 1 до 100.",
+            "ScoreTrackingEnabled": "Подсчёт очков включён",
+            "ScoreTrackingDisabled": "Подсчёт очков выключен",
+            "TimeBonusEnabled": "Бонус за время включён",
+            "TimeBonusDisabled": "Бонус за время выключен",
+            "DifficultyMultiplierEnabled": "Множитель сложности включён",
+            "DifficultyMultiplierDisabled": "Множитель сложности выключен"
+        },
+        "geo": {
+            "Difficulty": "Сложность установлена на {difficulty}",
+            "ClueIntervalSeconds": "Интервал подсказок установлен на {interval} сек.",
+            "InvalidClueIntervalMust": "Недопустимый интервал подсказок \"{clueIntervalSeconds}\". Должен быть от 30 до 300.",
+            "RoundDurationMinutes": "Длительность раунда установлена на {duration} мин.",
+            "InvalidRoundDurationMust": "Недопустимая длительность раунда \"{roundDurationMinutes}\". Должна быть от 3 до 20 минут.",
+            "RegionRestrictionsUpdated": "Ограничения по регионам обновлены: {p1}",
+            "GameTitlePreferencesUpdated": "Предпочтения по названиям игр обновлены: {p1}",
+            "BasePoints": "Базовые очки установлены на {points}",
+            "InvalidBasePointsMust": "Неверные базовые очки \"{pointsBase}\". Должно быть от 1 до 100.",
+            "ScoreTrackingEnabled": "Подсчёт очков включён",
+            "ScoreTrackingDisabled": "Подсчёт очков выключен",
+            "TimeBonusScoringEnabled": "Подсчёт бонуса за время включён",
+            "TimeBonusScoringDisabled": "Подсчёт бонуса за время выключен",
+            "DifficultyMultiplierScoringEnabled": "Подсчёт множителя сложности включён",
+            "DifficultyMultiplierScoringDisabled": "Подсчёт множителя сложности выключен"
+        },
+        "riddle": {
+            "Difficulty": "Сложность установлена на {difficulty}",
+            "QuestionTimeS": "Время на вопрос установлено на {time} с",
+            "InvalidQuestionTime15": "Неверное время на вопрос (15-120 с)",
+            "Invalid": "Неверное значение {optionName} ({min}-{max})",
+            "BasePoints": "Базовые очки установлены на {value}",
+            "MaxRounds": "Макс. раундов установлено на {value}",
+            "KeywordLimit": "Лимит исключения ключевых слов установлен на {value}",
+            "RoundDelay": "Задержка раунда установлена на {value}мс",
+            "ScoreTrackingEnabled": "Подсчет очков включен",
+            "ScoreTrackingDisabled": "Подсчет очков выключен",
+            "TimeBonusEnabled": "Бонус за время включен",
+            "TimeBonusDisabled": "Бонус за время выключен",
+            "DifficultyMultiplierEnabled": "Множитель сложности включен",
+            "DifficultyMultiplierDisabled": "Множитель сложности отключен"
+        },
+        "common": {
+            "None": "Нет"
         }
     }
 };

@@ -1269,6 +1269,13 @@ function processPotentialAnswer(channelName, username, displayName, message) {
  * @returns {Promise<{message: string}>} Result message.
  */
 async function configureGame(channelName, options) {
+    // The confirmation sentence is delivered in the channel's language, so the per-setting
+    // descriptions spliced into it come from the catalog too rather than staying English.
+    let cfgLang = null;
+    try {
+        cfgLang = getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch { /* context manager not ready — English descriptions are the correct fallback */ }
+
     const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[TriviaGame][${channelName}] Configure command received with options: ${JSON.stringify(options)}`);
 
@@ -1279,7 +1286,7 @@ async function configureGame(channelName, options) {
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty)) {
         if (gameState.config.difficulty !== options.difficulty) {
             gameState.config.difficulty = options.difficulty;
-            changesMade.push(`Difficulty set to ${options.difficulty}`);
+            changesMade.push(t('change.trivia.Difficulty', { difficulty: options.difficulty }, cfgLang) ?? `Difficulty set to ${options.difficulty}`);
             configChanged = true;
         }
     }
@@ -1290,11 +1297,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(time) && time >= 10 && time <= 120) {
             if (gameState.config.questionTimeSeconds !== time) {
                 gameState.config.questionTimeSeconds = time;
-                changesMade.push(`Question time set to ${time} seconds`);
+                changesMade.push(t('change.trivia.QuestionTimeSeconds', { time }, cfgLang) ?? `Question time set to ${time} seconds`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid question time "${options.questionTimeSeconds}". Must be between 10 and 120 seconds.`);
+            changesMade.push(t('change.trivia.InvalidQuestionTimeMust', { questionTimeSeconds: options.questionTimeSeconds }, cfgLang) ?? `Invalid question time "${options.questionTimeSeconds}". Must be between 10 and 120 seconds.`);
         }
     }
 
@@ -1304,11 +1311,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(duration) && duration >= 1 && duration <= 10) {
             if (gameState.config.roundDurationMinutes !== duration) {
                 gameState.config.roundDurationMinutes = duration;
-                changesMade.push(`Round duration set to ${duration} minutes`);
+                changesMade.push(t('change.trivia.RoundDurationMinutes', { duration }, cfgLang) ?? `Round duration set to ${duration} minutes`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid round duration "${options.roundDurationMinutes}". Must be between 1 and 10 minutes.`);
+            changesMade.push(t('change.trivia.InvalidRoundDurationMust', { roundDurationMinutes: options.roundDurationMinutes }, cfgLang) ?? `Invalid round duration "${options.roundDurationMinutes}". Must be between 1 and 10 minutes.`);
         }
     }
 
@@ -1317,7 +1324,7 @@ async function configureGame(channelName, options) {
         const enableScoring = options.scoreTracking === 'true' || options.scoreTracking === true;
         if (gameState.config.scoreTracking !== enableScoring) {
             gameState.config.scoreTracking = enableScoring;
-            changesMade.push(`Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.ScoreTracking${enableScoring ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1329,7 +1336,7 @@ async function configureGame(channelName, options) {
             String(options.topicPreferences).split(',').map(s => s.trim()).filter(Boolean);
 
         gameState.config.topicPreferences = topics;
-        changesMade.push(`Topic preferences updated to: ${topics.join(', ') || 'None'}`);
+        changesMade.push(t('change.trivia.TopicPreferencesUpdated', { p1: topics.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None') }, cfgLang) ?? `Topic preferences updated to: ${topics.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None')}`);
         configChanged = true;
     }
 
@@ -1339,11 +1346,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(points) && points > 0 && points <= 100) {
             if (gameState.config.pointsBase !== points) {
                 gameState.config.pointsBase = points;
-                changesMade.push(`Base points set to ${points}`);
+                changesMade.push(t('change.trivia.BasePoints', { points }, cfgLang) ?? `Base points set to ${points}`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
+            changesMade.push(t('change.trivia.InvalidBasePointsMust', { pointsBase: options.pointsBase }, cfgLang) ?? `Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
         }
     }
 
@@ -1352,7 +1359,7 @@ async function configureGame(channelName, options) {
         const enableTimeBonus = options.pointsTimeBonus === 'true' || options.pointsTimeBonus === true;
         if (gameState.config.pointsTimeBonus !== enableTimeBonus) {
             gameState.config.pointsTimeBonus = enableTimeBonus;
-            changesMade.push(`Time bonus ${enableTimeBonus ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.TimeBonus${enableTimeBonus ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Time bonus ${enableTimeBonus ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1362,7 +1369,7 @@ async function configureGame(channelName, options) {
         const enableMultiplier = options.pointsDifficultyMultiplier === 'true' || options.pointsDifficultyMultiplier === true;
         if (gameState.config.pointsDifficultyMultiplier !== enableMultiplier) {
             gameState.config.pointsDifficultyMultiplier = enableMultiplier;
-            changesMade.push(`Difficulty multiplier ${enableMultiplier ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.DifficultyMultiplier${enableMultiplier ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Difficulty multiplier ${enableMultiplier ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1468,9 +1475,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     if (totalRounds > 1 && itemsInSession.length > 0) {
         const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
         // Ensure these are set BEFORE pendingTriviaReports.set
-        global.debug_lastSetTriviaPendingMap = pendingTriviaReports;
-        global.debug_lastSetTriviaReportKey = reportKey;
-        logger.debug({ key: global.debug_lastSetTriviaReportKey }, "[TriviaGameManager] Set global.debug_lastSetTriviaReportKey");
+        logger.debug({ key: reportKey }, "[TriviaGameManager] Stored pending trivia report");
         logger.debug({
             channel: channelName,
             user: reportedByUsername,

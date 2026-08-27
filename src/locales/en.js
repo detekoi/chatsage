@@ -342,12 +342,68 @@ export default {
             "ICouldnTFind3": "@{username}, I couldn't find the riddle for round {roundNum}. Please try reporting again.",
             "ThanksReportRiddleFrom": "@{username}, thanks! Your report for the riddle from round {roundNum} (\"{p3}...\") has been submitted.",
             "ErrorOccurredSubmittingReport": "@{username}, an error occurred submitting your report for round {roundNum}. Please try again.",
-            "ErrFailedStartRiddleGame": "Failed to start the riddle game. Could not generate the first riddle."
+            "ErrFailedStartRiddleGame": "Failed to start the riddle game. Could not generate the first riddle.",
+            "RiddleSettingsUnchanged": "Riddle settings: {p1}.",
+            "NoValidRiddleSettings": "No valid riddle settings changed."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "The command '{normalizedCommand}' is always available and cannot be disabled.",
             "ErrorDisablingCommandPlease": "Error disabling command '!{commandName}'. Please try again.",
             "ErrorEnablingCommandPlease": "Error enabling command '!{commandName}'. Please try again."
+        }
+    },
+    "change": {
+        "trivia": {
+            "Difficulty": "Difficulty set to {difficulty}",
+            "QuestionTimeSeconds": "Question time set to {time} seconds",
+            "InvalidQuestionTimeMust": "Invalid question time \"{questionTimeSeconds}\". Must be between 10 and 120 seconds.",
+            "RoundDurationMinutes": "Round duration set to {duration} minutes",
+            "InvalidRoundDurationMust": "Invalid round duration \"{roundDurationMinutes}\". Must be between 1 and 10 minutes.",
+            "TopicPreferencesUpdated": "Topic preferences updated to: {p1}",
+            "BasePoints": "Base points set to {points}",
+            "InvalidBasePointsMust": "Invalid base points \"{pointsBase}\". Must be between 1 and 100.",
+            "ScoreTrackingEnabled": "Score tracking enabled",
+            "ScoreTrackingDisabled": "Score tracking disabled",
+            "TimeBonusEnabled": "Time bonus enabled",
+            "TimeBonusDisabled": "Time bonus disabled",
+            "DifficultyMultiplierEnabled": "Difficulty multiplier enabled",
+            "DifficultyMultiplierDisabled": "Difficulty multiplier disabled"
+        },
+        "geo": {
+            "Difficulty": "Difficulty set to {difficulty}",
+            "ClueIntervalSeconds": "Clue interval set to {interval} seconds",
+            "InvalidClueIntervalMust": "Invalid clue interval \"{clueIntervalSeconds}\". Must be between 30 and 300.",
+            "RoundDurationMinutes": "Round duration set to {duration} minutes",
+            "InvalidRoundDurationMust": "Invalid round duration \"{roundDurationMinutes}\". Must be between 3 and 20 minutes.",
+            "RegionRestrictionsUpdated": "Region restrictions updated to: {p1}",
+            "GameTitlePreferencesUpdated": "Game title preferences updated to: {p1}",
+            "BasePoints": "Base points set to {points}",
+            "InvalidBasePointsMust": "Invalid base points \"{pointsBase}\". Must be between 1 and 100.",
+            "ScoreTrackingEnabled": "Score tracking enabled",
+            "ScoreTrackingDisabled": "Score tracking disabled",
+            "TimeBonusScoringEnabled": "Time bonus scoring enabled",
+            "TimeBonusScoringDisabled": "Time bonus scoring disabled",
+            "DifficultyMultiplierScoringEnabled": "Difficulty multiplier scoring enabled",
+            "DifficultyMultiplierScoringDisabled": "Difficulty multiplier scoring disabled"
+        },
+        "riddle": {
+            "Difficulty": "Difficulty set to {difficulty}",
+            "QuestionTimeS": "Question time set to {time}s",
+            "InvalidQuestionTime15": "Invalid question time (15-120s)",
+            "Invalid": "Invalid {optionName} ({min}-{max})",
+            "BasePoints": "Base points set to {value}",
+            "MaxRounds": "Max rounds set to {value}",
+            "KeywordLimit": "Keyword exclusion limit set to {value}",
+            "RoundDelay": "Round delay set to {value}ms",
+            "ScoreTrackingEnabled": "Score tracking enabled",
+            "ScoreTrackingDisabled": "Score tracking disabled",
+            "TimeBonusEnabled": "Time bonus enabled",
+            "TimeBonusDisabled": "Time bonus disabled",
+            "DifficultyMultiplierEnabled": "Difficulty multiplier enabled",
+            "DifficultyMultiplierDisabled": "Difficulty multiplier disabled"
+        },
+        "common": {
+            "None": "None"
         }
     }
 };

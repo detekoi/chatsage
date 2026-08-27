@@ -42,6 +42,13 @@ export async function initializeCommandStateManager() {
         channelCommandStates = await loadAllChannelCommandSettings();
         logger.info(`[CommandStateManager] Loaded command states for ${channelCommandStates.size} channels`);
 
+        // Drop any listener from a previous initialization before registering a new one; two
+        // live snapshot handlers would both write to channelCommandStates.
+        if (typeof firestoreListener === 'function') {
+            firestoreListener();
+            firestoreListener = null;
+        }
+
         // Set up real-time listener for changes
         firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet) => {
             logger.debug(`[CommandStateManager] Updating cached command state for channel ${channelName}`);

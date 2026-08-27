@@ -12,11 +12,28 @@ import {
     channelLanguage,
     handleLeaderboard,
     handleClearLeaderboard,
+    handleConfig,
+    handleResetConfig,
     handleReport,
     validateRounds,
     startGameWithErrorHandling,
     isPositiveInteger,
 } from './gameHandlerUtils.js';
+
+// Keys here match the option names documented by formatRiddleHelpMessage().
+const RIDDLE_CONFIG_SCHEMA = [
+    { keys: ['difficulty'], type: 'enum', optionName: 'difficulty', enumValues: ['easy', 'normal', 'hard'] },
+    { keys: ['questiontime', 'time'], type: 'int', optionName: 'questionTimeSeconds' },
+    { keys: ['pointsbase', 'points'], type: 'int', optionName: 'pointsBase' },
+    { keys: ['pointstimebonus', 'timebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
+    { keys: ['pointsdifficultymultiplier', 'difficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
+    { keys: ['scoretracking', 'scoring'], type: 'bool', optionName: 'scoreTracking' },
+    { keys: ['maxrounds'], type: 'int', optionName: 'maxRounds' },
+    { keys: ['keywordslimit'], type: 'int', optionName: 'recentKeywordsFetchLimit' },
+    { keys: ['rounddelay'], type: 'int', optionName: 'multiRoundDelayMs' },
+];
+
+const RIDDLE_CONFIG_USAGE = `Usage: !riddle config difficulty <easy|normal|hard> | questiontime <sec> | pointsbase <num> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <num> | keywordslimit <num> | rounddelay <ms>`;
 
 const GAME_NAME = 'Riddle';
 const COMMAND_NAME = 'riddle';
@@ -61,6 +78,14 @@ const riddleHandler = {
                 logger.info(`[RiddleCmd] Riddle game stop requested by ${displayName} in ${channelName}. Result: ${stopResult.message}`);
                 break;
             }
+
+            case 'config':
+                await handleConfig(gameCtx, riddleManager, RIDDLE_CONFIG_SCHEMA, RIDDLE_CONFIG_USAGE, GAME_NAME);
+                break;
+
+            case 'resetconfig':
+                await handleResetConfig(gameCtx, riddleManager, GAME_NAME);
+                break;
 
             case 'leaderboard':
                 await handleLeaderboard(gameCtx, getLeaderboard, formatRiddleLeaderboardMessage, GAME_NAME);
