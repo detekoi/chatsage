@@ -432,7 +432,7 @@ describe('Trivia Command Handler', () => {
             const context = createMockContext(['help']);
             await triviaHandler.execute(context);
 
-            expect(formatHelpMessage).toHaveBeenCalledWith(false);
+            expect(formatHelpMessage).toHaveBeenCalledWith(false, null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Trivia help message',

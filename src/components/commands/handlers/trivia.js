@@ -4,8 +4,10 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
 import { getLeaderboard } from '../../trivia/triviaStorage.js';
 import { formatHelpMessage } from '../../trivia/triviaMessageFormatter.js';
+import { isCatalogued } from '../../../lib/i18n.js';
 import {
     extractGameContext,
+    channelLanguage,
     handleStop,
     handleLeaderboard,
     handleClearLeaderboard,
@@ -130,8 +132,10 @@ const trivia = {
             return;
 
         } else if (subCommand === 'help') {
-            const helpMessage = formatHelpMessage(isMod);
-            await enqueueMessage(channel, `${helpMessage}`, { replyToId });
+            const helpLang = channelLanguage(channelName);
+            const helpMessage = formatHelpMessage(isMod, helpLang);
+            await enqueueMessage(channel, `${helpMessage}`,
+                isCatalogued(helpLang) ? { replyToId, skipTranslation: true } : { replyToId });
             return;
 
         } else {

@@ -71,6 +71,7 @@ GameState structure:
     } | null,
     startTime: number | null, // Timestamp for when the current riddle was asked
     riddleTimeoutTimer: NodeJS.Timeout | null,
+    transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
     winner: { username: string, displayName: string } | null,
     initiatorUsername: string | null, // Lowercase username
     config: Object, // Channel-specific config merged with defaults
@@ -104,6 +105,7 @@ async function _getOrCreateGameState(channelName) {
             currentRiddle: null,
             startTime: null,
             riddleTimeoutTimer: null,
+            transitionTimer: null,
             winner: null,
             initiatorUsername: null,
             config: finalConfig,
@@ -133,6 +135,12 @@ function _clearTimers(gameState) {
     if (gameState.riddleTimeoutTimer) {
         clearTimeout(gameState.riddleTimeoutTimer);
         gameState.riddleTimeoutTimer = null;
+    }
+    // Round transitions are scheduled with their own delay; a game stopped mid-transition must
+    // cancel the pending _startNextRound/_resetGameToIdle rather than let it fire on a dead game.
+    if (gameState.transitionTimer) {
+        clearTimeout(gameState.transitionTimer);
+        gameState.transitionTimer = null;
     }
 }
 
@@ -294,7 +302,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
     } else {
         logger.warn(`[RiddleGameManager][${channelName}] TransitionToEnding called but currentRiddle is null. Reason: ${reason}`);
         if (reason === "riddle_error") {
-            enqueueMessage(`#${channelName}`, "Apologies, I couldn't come up with a riddle this time!");
+            enqueueMessage(`#${channelName}`, (t('riddle.NoRiddleThisTime', {}, gameState.botLanguage || null) ?? "Apologies, I couldn't come up with a riddle this time!"), { skipTranslation: isCatalogued(gameState.botLanguage) });
         }
     }
 
@@ -316,7 +324,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
             }
         }
         logger.info(`[RiddleGameManager][${channelName}] Riddle game session finished. Resetting.`);
-        setTimeout(() => _resetGameToIdle(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
     } else {
         // Proceed to next round
         gameState.currentRound++;
@@ -326,7 +334,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         // Set state to 'selecting' BEFORE scheduling the next round
         gameState.state = 'selecting';
         logger.info(`[RiddleGameManager][${channelName}] Preparing for next round: ${gameState.currentRound}. State set to 'selecting'.`);
-        setTimeout(() => _startNextRound(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
+        gameState.transitionTimer = setTimeout(() => _startNextRound(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
     }
 }
 
@@ -445,7 +453,7 @@ async function _startNextRound(gameState) {
 
     if (!generatedRiddle) {
         logger.error(`[RiddleGameManager][${channelName}] Failed to generate riddle after ${retries} attempts. Ending game.`);
-        enqueueMessage(`#${channelName}`, `I'm stumped! Couldn't think of a new riddle for round ${gameState.currentRound}. Ending the game.`);
+        enqueueMessage(`#${channelName}`, (t('riddle.StumpedEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `I'm stumped! Couldn't think of a new riddle for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "riddle_error");
         return;
     }

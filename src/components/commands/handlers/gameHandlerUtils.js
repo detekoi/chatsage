@@ -2,6 +2,9 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { getContextManager } from '../../context/contextManager.js';
+import { isCatalogued } from '../../../lib/i18n.js';
 
 /**
  * Wraps enqueueMessage with secondary error handling.
@@ -16,6 +19,37 @@ export async function safeReply(channel, text, opts, logTag) {
         await enqueueMessage(channel, text, opts);
     } catch (msgError) {
         logger.warn({ err: msgError }, `${logTag} Failed to send message to chat`);
+    }
+}
+
+/**
+ * safeReply for a fixed, catalog-backed string.
+ * @param {string} channel - Channel to send to (with #).
+ * @param {string} key - Dotted catalog key.
+ * @param {object} params - Interpolation values.
+ * @param {string} fallback - English text.
+ * @param {object} opts - Options ({ replyToId, ... }).
+ * @param {string} logTag - Tag for warning logs.
+ */
+export async function safeReplyLocalized(channel, key, params, fallback, opts, logTag) {
+    try {
+        await sendLocalized(channel, key, params, fallback, opts);
+    } catch (msgError) {
+        logger.warn({ err: msgError }, `${logTag} Failed to send message to chat`);
+    }
+}
+
+/**
+ * The channel's configured bot language, or null. Formatters take this so their fixed wrapper text
+ * comes from the catalog instead of being machine-translated on the way out.
+ * @param {string} channelName - Channel name without '#'.
+ * @returns {string|null}
+ */
+export function channelLanguage(channelName) {
+    try {
+        return getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch {
+        return null;
     }
 }
 
@@ -47,7 +81,7 @@ export async function handleStop(gameCtx, manager, gameName) {
     const currentInitiator = manager.getCurrentGameInitiator(channelName);
 
     if (!currentInitiator) {
-        await enqueueMessage(channel, `There is no active ${gameName} to stop.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.ThereNoActiveStop', { gameName }, `There is no active ${gameName} to stop.`, { replyToId });
         return;
     }
 
@@ -55,7 +89,7 @@ export async function handleStop(gameCtx, manager, gameName) {
         const result = manager.stopGame(channelName);
         logger.info(`[${gameName}] Stop requested by ${displayName}, result: ${result?.message || 'handled by manager'}`);
     } else {
-        await enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.OnlyGameInitiatorMods', {}, `Only the game initiator, mods, or the broadcaster can stop the current game.`, { replyToId });
     }
 }
 
@@ -71,12 +105,14 @@ export async function handleLeaderboard(gameCtx, getLeaderboardFn, formatFn, gam
 
     try {
         const leaderboardData = await getLeaderboardFn(channelName, 5);
-        const message = formatFn(leaderboardData, channelName);
-        await enqueueMessage(channel, message, { replyToId });
+        const lang = channelLanguage(channelName);
+        const message = formatFn(leaderboardData, channelName, lang);
+        await enqueueMessage(channel, message,
+            isCatalogued(lang) ? { replyToId, skipTranslation: true } : { replyToId });
         logger.info(`[${gameName}] Displayed leaderboard for channel ${channelName}`);
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `Error fetching or formatting ${gameName} leaderboard.`);
-        await safeReply(channel, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId }, `[${gameName}]`);
+        await safeReplyLocalized(channel, 'cmd.game.LeaderboardFetchFailed', {}, `Sorry, couldn't fetch the leaderboard right now.`, { replyToId }, `[${gameName}]`);
     }
 }
 
@@ -91,18 +127,18 @@ export async function handleClearLeaderboard(gameCtx, manager, gameName) {
     const { channel, channelName, replyToId, isMod } = gameCtx;
 
     if (!isMod) {
-        await enqueueMessage(channel, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.OnlyModsOrBroadcaster', {}, `Only mods or the broadcaster can clear the leaderboard.`, { replyToId });
         return;
     }
 
-    await enqueueMessage(channel, `Attempting to clear ${gameName} leaderboard data for this channel. This may take a moment...`, { replyToId });
+    await sendLocalized(channel, 'cmd.gameHandlerUtils.AttemptingClearLeaderboardData', { gameName }, `Attempting to clear ${gameName} leaderboard data for this channel. This may take a moment...`, { replyToId });
 
     try {
         const result = await manager.clearLeaderboard(channelName);
         await enqueueMessage(channel, `${result.message}`, { replyToId });
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `Error calling clearLeaderboard from ${gameName} handler.`);
-        await safeReply(channel, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId }, `[${gameName}]`);
+        await safeReplyLocalized(channel, 'cmd.game.ClearLeaderboardFailed', {}, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId }, `[${gameName}]`);
     }
 }
 
@@ -117,7 +153,7 @@ export async function handleResetConfig(gameCtx, manager, gameName) {
     const { channel, channelName, replyToId, isMod } = gameCtx;
 
     if (!isMod) {
-        await enqueueMessage(channel, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.OnlyModsOrBroadcaster2', {}, `Only mods or the broadcaster can reset the game configuration.`, { replyToId });
         return;
     }
 
@@ -126,7 +162,7 @@ export async function handleResetConfig(gameCtx, manager, gameName) {
         await enqueueMessage(channel, `${result.message}`, { replyToId });
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `Error calling resetChannelConfig from ${gameName} handler.`);
-        await safeReply(channel, `An unexpected error occurred while trying to reset the configuration.`, { replyToId }, `[${gameName}]`);
+        await safeReplyLocalized(channel, 'cmd.game.ResetConfigFailed', {}, `An unexpected error occurred while trying to reset the configuration.`, { replyToId }, `[${gameName}]`);
     }
 }
 
@@ -141,7 +177,7 @@ export async function handleReport(gameCtx, manager, gameName, commandName) {
     const { channel, channelName, username, displayName, replyToId, args } = gameCtx;
 
     if (args.length < 2) {
-        await enqueueMessage(channel, `Please provide a reason for reporting. Usage: !${commandName} report <your reason>`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.PleaseProvideReasonReporting', { commandName }, `Please provide a reason for reporting. Usage: !${commandName} report <your reason>`, { replyToId });
         return;
     }
 
@@ -153,11 +189,11 @@ export async function handleReport(gameCtx, manager, gameName, commandName) {
         if (result.message) {
             await enqueueMessage(channel, `${result.message}`, { replyToId });
         } else if (!result.success) {
-            await enqueueMessage(channel, `Could not process your report request at this time.`, { replyToId });
+            await sendLocalized(channel, 'cmd.gameHandlerUtils.CouldNotProcessReport', {}, `Could not process your report request at this time.`, { replyToId });
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: username }, `Error calling initiateReportProcess for ${gameName}.`);
-        await safeReply(channel, `An error occurred while trying to initiate the report.`, { replyToId }, `[${gameName}]`);
+        await safeReplyLocalized(channel, 'cmd.game.ReportFailed', {}, `An error occurred while trying to initiate the report.`, { replyToId }, `[${gameName}]`);
     }
 }
 
@@ -178,7 +214,7 @@ export async function handleConfig(gameCtx, manager, schema, usageMessage, gameN
     const { channel, channelName, replyToId, isMod, args } = gameCtx;
 
     if (!isMod) {
-        await enqueueMessage(channel, `Only mods or the broadcaster can configure the game.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.OnlyModsOrBroadcaster3', {}, `Only mods or the broadcaster can configure the game.`, { replyToId });
         return;
     }
 
@@ -232,7 +268,7 @@ export async function handleConfig(gameCtx, manager, schema, usageMessage, gameN
 export async function validateRounds(gameCtx, rounds, maxRounds = 10) {
     if (rounds > maxRounds) {
         const { channel, replyToId } = gameCtx;
-        await enqueueMessage(channel, `Maximum number of rounds is ${maxRounds}. Starting a ${maxRounds}-round game.`, { replyToId });
+        await sendLocalized(channel, 'cmd.gameHandlerUtils.MaximumNumberRoundsStarting', { maxRounds }, `Maximum number of rounds is ${maxRounds}. Starting a ${maxRounds}-round game.`, { replyToId });
         return maxRounds;
     }
     return rounds;
@@ -255,7 +291,7 @@ export async function startGameWithErrorHandling(gameCtx, startFn, gameName) {
         }
     } catch (error) {
         logger.error({ err: error }, `Unhandled error starting ${gameName} game from command handler.`);
-        await safeReply(channel, `An unexpected error occurred trying to start the game.`, { replyToId }, `[${gameName}]`);
+        await safeReplyLocalized(channel, 'cmd.game.StartGameFailed', {}, `An unexpected error occurred trying to start the game.`, { replyToId }, `[${gameName}]`);
     }
 }
 

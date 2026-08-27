@@ -61,19 +61,15 @@ function _intelligentTruncate(text, maxLength) {
     // First, ensure we don't cut in the middle of a UTF-8 character
     let truncated = text.substring(0, availableLength);
 
-    // Check if we cut in the middle of a multi-byte UTF-8 character
-    // by trying to encode and seeing if it's valid
-    try {
-        const encoded = Buffer.from(truncated, 'utf8');
-        const decoded = encoded.toString('utf8');
-        if (decoded.length < truncated.length) {
-            // We cut a multi-byte character, so trim it back
-            truncated = decoded;
-        }
-    } catch (error) {
-        // If there's an encoding error, play it safe and trim back further
-        logger.debug({ error: error.message }, 'UTF-8 truncation safety check triggered');
-        truncated = text.substring(0, Math.max(0, availableLength - 4));
+    // substring() slices UTF-16 code units, so it can land between the two halves of a surrogate
+    // pair and leave a lone high surrogate at the end — an emoji cut in half.
+    //
+    // The previous check round-tripped through a UTF-8 Buffer and compared lengths, but Node
+    // decodes a lone surrogate to U+FFFD, which is itself one code unit: the lengths matched, the
+    // guard never fired, and a replacement character went out to chat. Test the last code unit
+    // directly instead.
+    if (/[\uD800-\uDBFF]$/.test(truncated)) {
+        truncated = truncated.slice(0, -1);
     }
 
     // Now find the best break point to avoid cutting words
@@ -338,7 +334,7 @@ async function _preprocessText(channel, text, skipTranslation, skipLengthProcess
  * Translates the message if the channel has a language setting.
  * Summarizes message if it exceeds MAX_IRC_MESSAGE_LENGTH.
  * @param {string} channel Channel name with '#'.
- * @param {string} text Message text.
+ * @param {string|I18nMessage} text Message text, or a deferred catalog message from msg().
  * @param {object|boolean} [options={}] Optional params or legacy boolean for skipTranslation.
  * @param {string|null} [options.replyToId=null] The ID of the message to reply to.
  * @param {boolean} [options.skipTranslation=false] If true, skips translation.
@@ -416,7 +412,7 @@ async function waitForQueueEmpty() {
  * Announcements appear with a colored highlight bar in Twitch chat.
  * If the announcement API call fails, falls back to a regular chat message.
  * @param {string} channel Channel name with '#'.
- * @param {string} text Announcement text.
+ * @param {string|I18nMessage} text Announcement text, or a deferred catalog message from msg().
  * @param {string} [color='primary'] Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
  * @param {object} [options={}] Optional params.
  * @param {boolean} [options.skipTranslation=false] If true, skips translation.

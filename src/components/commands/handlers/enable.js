@@ -2,6 +2,7 @@
 import { enableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !enable command.
@@ -19,7 +20,7 @@ async function execute(context) {
     try {
         // Check if command name was provided
         if (args.length === 0) {
-            await enqueueMessage(channel, `Usage: !enable <commandName>. Example: !enable trivia`, { replyToId });
+            await sendLocalized(channel, 'cmd.enable.UsageEnableCommandnameExample', {}, `Usage: !enable <commandName>. Example: !enable trivia`, { replyToId });
             return;
         }
 
@@ -28,7 +29,7 @@ async function execute(context) {
         // Validate that the command exists
         if (!isValidCommand(commandToEnable, commandHandlers)) {
             const availableCommands = getAllAvailableCommands(commandHandlers);
-            await enqueueMessage(channel, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
+            await sendLocalized(channel, 'cmd.enable.UnknownCommandAvailableCommands', { commandToEnable, p2: availableCommands.join(', ') }, `Unknown command '${commandToEnable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
             return;
         }
 
@@ -52,7 +53,7 @@ async function execute(context) {
         }, `[EnableCommand] Error executing enable command in channel ${channelName}`);
 
         try {
-            await enqueueMessage(channel, `Sorry, there was an error enabling the command. Please try again later.`, { replyToId });
+            await sendLocalized(channel, 'cmd.enable.SorryThereWasError', {}, `Sorry, there was an error enabling the command. Please try again later.`, { replyToId });
         } catch (msgError) {
             logger.warn({ err: msgError }, '[EnableCommand] Failed to send error message to chat');
         }

@@ -387,7 +387,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 { skipTranslation: isCatalogued(lang) });
             await new Promise(resolve => setTimeout(resolve, 1000));
         } else if (isMultiRound) {
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Game finished. No scores recorded in this session.`);
+            enqueueMessage(`#${gameState.channelName}`, (t('geo.NoScoresSession', {}, gameState.botLanguage || null) ?? `🏁 Game finished. No scores recorded in this session.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
         if (gameState.config.scoreTracking) {
@@ -404,7 +404,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 enqueueMessage(`#${gameState.channelName}`, leaderboardMessage);
             } catch (error) {
                 logger.error({ err: error, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Failed to fetch or format overall leaderboard.`);
-                enqueueMessage(`#${gameState.channelName}`, `Could not fetch the overall channel leaderboard.`);
+                enqueueMessage(`#${gameState.channelName}`, (t('geo.LeaderboardFetchFailed', {}, gameState.botLanguage || null) ?? `Could not fetch the overall channel leaderboard.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
             }
         }
         gameState.transitionTimer = setTimeout(() => {
@@ -552,7 +552,7 @@ async function _startNextRound(gameState) {
 
         if (!selectedLocation) {
             logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to select location for round ${gameState.currentRound} after retries. Ending game prematurely.`);
-            enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not find a suitable new location for round ${gameState.currentRound}. Ending the game.`);
+            enqueueMessage(`#${gameState.channelName}`, (t('geo.NoLocationEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `⚠️ Error: Could not find a suitable new location for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
             await _transitionToEnding(gameState, "location_error");
             return;
         }
@@ -561,7 +561,7 @@ async function _startNextRound(gameState) {
         firstClue = await generateInitialClue(selectedLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null);
         if (!firstClue) {
             logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
-            enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`);
+            enqueueMessage(`#${gameState.channelName}`, (t('geo.NoClueEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
             await _transitionToEnding(gameState, "clue_error");
             return;
         }

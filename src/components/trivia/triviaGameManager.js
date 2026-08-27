@@ -80,6 +80,7 @@ GameState structure:
     } | null,
     startTime: number | null,
     questionEndTimer: NodeJS.Timeout | null,
+    transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
     answers: Array<{username: string, displayName: string, answer: string, timestamp: Date}>,
     winner: {username: string, displayName: string} | null,
     initiatorUsername: string | null,
@@ -132,6 +133,7 @@ async function _getOrCreateGameState(channelName) {
             currentQuestion: null,
             startTime: null,
             questionEndTimer: null,
+            transitionTimer: null,
             answers: [],
             winner: null,
             initiatorUsername: null,
@@ -192,6 +194,12 @@ function _clearTimers(gameState) {
     if (gameState.questionEndTimer) {
         clearTimeout(gameState.questionEndTimer);
         gameState.questionEndTimer = null;
+    }
+    // Round transitions are scheduled with their own delay; a game stopped mid-transition must
+    // cancel the pending _startNextRound/_resetGameToIdle rather than let it fire on a dead game.
+    if (gameState.transitionTimer) {
+        clearTimeout(gameState.transitionTimer);
+        gameState.transitionTimer = null;
     }
 }
 
@@ -460,7 +468,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         }
 
         // Reset after delay
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     } else if (isMultiRound && !isLastRound && reason !== "stopped" && reason !== "question_error" && reason !== "timer_error") {
         // Proceed to next round
         logger.info(`[TriviaGame][${gameState.channelName}] Proceeding to round ${gameState.currentRound + 1}.`);
@@ -475,7 +483,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.guessCache.clear(); // Clear guess cache for next round
 
         // Start next round after delay
-        setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
     } else {
         // Game complete (last round or single round)
         logger.info(`[TriviaGame][${gameState.channelName}] Game session finished.`);
@@ -512,7 +520,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         }
 
         // Reset after delay
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     }
 }
 
@@ -666,7 +674,7 @@ async function _startNextRound(gameState) {
 
     if (!questionGenerated) {
         logger.error(`[TriviaGame][${gameState.channelName}] Failed to generate question after ${MAX_QUESTION_RETRIES} attempts.`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`);
+        enqueueMessage(`#${gameState.channelName}`, (t('trivia.NoQuestionEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "question_error");
         return;
     }
@@ -678,7 +686,7 @@ async function _startNextRound(gameState) {
         !gameState.currentQuestion?.answer ||
         String(gameState.currentQuestion.answer).trim().length === 0) {
         logger.error(`[TriviaGame][${gameState.channelName}] Generated question failed final validation: ${JSON.stringify(gameState.currentQuestion)}`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Generated question was invalid. Ending the game.`);
+        enqueueMessage(`#${gameState.channelName}`, (t('trivia.InvalidQuestionEndingGame', {}, gameState.botLanguage || null) ?? `⚠️ Error: Generated question was invalid. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "question_error");
         return;
     }
@@ -750,7 +758,7 @@ async function _prefetchNextQuestion(gameState) {
             if (gameState.currentQuestion?.answer) {
                 excludedAnswers.push(gameState.currentQuestion.answer.toLowerCase());
                 if (gameState.currentQuestion.alternateAnswers?.length > 0) {
-                    gameState.currentQuestion.alternateAnswers.forEach(alt => excludedAnswers.push(alt.toLowerCase()));
+                    gameState.currentQuestion.alternateAnswers.forEach(alt => excludedAnswers.push(alt.toLowerCase()), { skipTranslation: isCatalogued(gameState.botLanguage) });
                 }
             }
 

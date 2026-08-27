@@ -28,7 +28,9 @@ export default {
             "nonMod": ". Модераторам доступны дополнительные команды."
         },
         "gameStoppedScores": "🏁 Игра остановлена. Итоговый счет: {list}",
-        "finalScores": "🏁 Итоговый счет: {list}"
+        "finalScores": "🏁 Итоговый счет: {list}",
+        "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
+        "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру."
     },
     "riddle": {
         "start": "🤔 Начинаем {roundText} загадок! {topicText} У вас есть {questionTimeSeconds} сек., чтобы ответить. Пишите варианты в чат!",
@@ -53,7 +55,9 @@ export default {
             "modConfig": ", !riddle config difficulty <easy|normal|hard> | questiontime <сек> | pointsbase <число> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <число> | keywordslimit <число> | rounddelay <мс>",
             "modReset": ", !riddle resetconfig"
         },
-        "gameOver": "{roundPrefix}Загадка завершена. Правильный ответ: {answer}. {explanation}"
+        "gameOver": "{roundPrefix}Загадка завершена. Правильный ответ: {answer}. {explanation}",
+        "NoRiddleThisTime": "Прошу прощения, в этот раз не удалось придумать загадку!",
+        "StumpedEndingGame": "Я в тупике! Не удалось придумать новую загадку для раунда {currentRound}. Завершаем игру."
     },
     "geo": {
         "startGame": "🎮 Гео-игра началась!{roundInfo} Угадайте локацию из игры{gameTitleText}! {durationInfo} Пишите варианты в чат! Первая подсказка на подходе...",
@@ -80,6 +84,194 @@ export default {
             "reveal": "{roundPrefix}📢 Правильный ответ: {locationName}! "
         },
         "roundError": "Произошла ошибка при показе ответа для раунда {currentRound}.",
-        "roundEnded": "Раунд завершён."
+        "roundEnded": "Раунд завершён.",
+        "NoScoresSession": "🏁 Игра окончена. В этой сессии никто не набрал очков.",
+        "LeaderboardFetchFailed": "Не удалось загрузить общую таблицу лидеров канала.",
+        "NoLocationEndingGame": "⚠️ Ошибка: не удалось найти подходящую новую локацию для раунда {currentRound}. Завершаем игру.",
+        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру."
+    },
+    "cmd": {
+        "ask": {
+            "SorryICouldnT": "Извини, не получилось найти или сгенерировать ответ прямо сейчас.",
+            "PleaseAskQuestionAfter": "Пожалуйста, укажи вопрос после команды. Использование: !ask <твой вопрос>",
+            "HeyThereWhatS": "Привет! О чем думаешь?",
+            "SorryICouldnT2": "Извини, не удалось получить текущий контекст."
+        },
+        "botlang": {
+            "BotCurrentlySetSpeak2": "Сейчас бот настроен говорить на английском (по умолчанию). Используй \"!botlang <язык>\", чтобы изменить.",
+            "BotCurrentlySetSpeak4": "Сейчас бот настроен говорить на английском (по умолчанию).",
+            "BotLanguageHasBeen": "Язык бота сброшен на английский (по умолчанию).",
+            "SorryICouldnT": "Извини, не удалось перевести на \"{targetLanguage}\". Проверь название языка и попробуй снова.",
+            "SorryErrorOccurredWhile": "Извини, произошла ошибка при установке языка бота.",
+            "StatusUsageDetected": "Сейчас бот говорит на {currentLanguage} (определено по языку стрима на Twitch). Используйте \"!botlang off\", чтобы вернуть английский, или \"!botlang <язык>\", чтобы изменить.",
+            "StatusUsageSet": "Сейчас бот говорит на {currentLanguage}. Используйте \"!botlang off\", чтобы вернуть английский, или \"!botlang <язык>\", чтобы изменить.",
+            "StatusDetected": "Сейчас бот говорит на {currentLanguage} (определено по языку стрима на Twitch).",
+            "StatusSet": "Сейчас бот говорит на {currentLanguage} (установлено модератором)."
+        },
+        "command": {
+            "UsageCommandAddAddai": "Использование: !command add/addai/edit/remove/show/options <имя> [ответ/параметры]",
+            "UnknownSubcommandUseAdd": "Неизвестная подкоманда \"{subCommand}\". Используй add, addai, edit, remove, show или options.",
+            "PleaseSpecifyCommandName": "Пожалуйста, укажи имя команды. Использование: !command {p1} <имя> <ответ>",
+            "PleaseSpecifyResponseUsage": "Пожалуйста, укажи ответ. Использование: !command {p1} {commandName} <ответ>",
+            "CommandHasBeenAdded": "Команда !{commandName} добавлена {p2}.",
+            "CommandAlreadyExistsUse": "Команда !{commandName} уже существует. Используй \"!command edit\", чтобы обновить её.",
+            "ErrorAddingCommandPlease": "Ошибка при добавлении команды. Пожалуйста, попробуй позже.",
+            "PleaseSpecifyCommandName2": "Пожалуйста, укажи имя команды. Использование: !command edit <имя> <ответ>",
+            "PleaseSpecifyNewResponse": "Пожалуйста, укажи новый ответ. Использование: !command edit {commandName} <ответ>",
+            "CommandHasBeenUpdated": "Команда !{commandName} обновлена.",
+            "CommandNotFoundUse": "Команда !{commandName} не найдена. Используй \"!command add\", чтобы создать её.",
+            "ErrorEditingCommandPlease": "Ошибка при изменении команды. Попробуй позже.",
+            "PleaseSpecifyCommandName3": "Укажи название команды. Использование: !command remove <название>",
+            "CommandHasBeenRemoved": "Команда !{commandName} удалена.",
+            "CommandNotFound": "Команда !{commandName} не найдена.",
+            "ErrorRemovingCommandPlease": "Ошибка при удалении команды. Попробуй позже.",
+            "PleaseSpecifyCommandName4": "Укажи название команды. Использование: !command show <название>",
+            "ErrorFetchingCommandPlease": "Ошибка при получении команды. Попробуй позже.",
+            "UsageCommandOptionsName": "Использование: !command options <название> <ключ>=<значение>",
+            "UsageCommandOptionsPermission": "Использование: !command options {commandName} permission=moderator или cooldown=30",
+            "InvalidPermissionValidOptions": "Неверный уровень доступа. Допустимые варианты: {p1}",
+            "CooldownMustNonNegative": "Кулдаун должен быть неотрицательным числом (в секундах).",
+            "InvalidTypeValidOptions": "Неверный тип. Допустимые варианты: text, prompt",
+            "UnknownOptionAvailablePermission": "Неизвестный параметр \"{key}\". Доступные: permission, cooldown, type",
+            "NoValidOptionsProvided": "Не указаны корректные параметры.",
+            "OptionsUpdated": "Параметры для !{commandName} обновлены: {changes}",
+            "ErrorUpdatingOptionsPlease": "Ошибка при обновлении параметров. Попробуй позже."
+        },
+        "disable": {
+            "UsageDisableCommandnameExample": "Использование: !disable <названиеКоманды>. Пример: !disable trivia",
+            "UnknownCommandAvailableCommands": "Неизвестная команда '{commandToDisable}'. Доступные команды: {p2}",
+            "SorryThereWasError": "Ошибка при отключении команды. Пожалуйста, попробуйте позже."
+        },
+        "enable": {
+            "UsageEnableCommandnameExample": "Использование: !enable <имяКоманды>. Пример: !enable trivia",
+            "UnknownCommandAvailableCommands": "Неизвестная команда '{commandToEnable}'. Доступные команды: {p2}",
+            "SorryThereWasError": "Ошибка при включении команды. Пожалуйста, попробуйте позже."
+        },
+        "followage": {
+            "SorryFollowageDataCurrently": "Данные о подписке сейчас недоступны. Стримеру может потребоваться повторная авторизация.",
+            "SorryCouldnTDetermine": "Не удалось определить ID стримера.",
+            "UserNotFound": "Пользователь \"{targetUsername}\" не найден.",
+            "HaveBeenFollowing": "{displayName}, вы отслеживаете {p2} уже {duration}!",
+            "HasBeenFollowing": "{targetDisplayName} отслеживает {p2} уже {duration}!",
+            "AreNotFollowing": "{displayName}, вы не отслеживаете {p2}.",
+            "NotFollowing": "{targetDisplayName} не отслеживает {p2}.",
+            "SorryThereWasError": "Ошибка при проверке длительности подписки. Пожалуйста, попробуйте позже."
+        },
+        "game": {
+            "IDonTSee": "Сейчас игра для стрима не указана.",
+            "SorryErrorOccurredWhile": "Произошла ошибка при обработке команды !game.",
+            "CouldnTDetermineCurrent": "Не удалось определить текущую игру. Возможно, на стриме сейчас нет игры.",
+            "CouldnTFetchStream": "Не удалось получить превью стрима. Возможно, канал офлайн.",
+            "AiCouldnTAnalyze": "AI не удалось сразу проанализировать геймплей {officialGameName}.",
+            "SorryThereWasError": "Ошибка при анализе стрима.",
+            "ICouldnTDetermine": "Не удалось определить текущую игру.",
+            "CurrentlyPlayingTryGame": "Сейчас играет в {gameName}. Попробуйте \"!game [ваш вопрос]\", чтобы получить подсказку по игре.",
+            "CurrentGame": "Текущая игра: {gameName}",
+            "IMFetchingCurrent": "Получаю информацию о текущей игре. Попробуйте \"!game {helpQuery}\" через пару секунд или укажите название игры: \"!search <игра> {helpQuery}\".",
+            "SorryICouldnT": "Не удалось найти подсказку по \"{helpQuery}\" для {gameName}.",
+            "SorryErrorOccurredWhile2": "Произошла ошибка при поиске помощи по \"{helpQuery}\".",
+            "LeaderboardFetchFailed": "Не удалось загрузить таблицу лидеров прямо сейчас.",
+            "ClearLeaderboardFailed": "Произошла непредвиденная ошибка при очистке таблицы лидеров.",
+            "ResetConfigFailed": "Произошла непредвиденная ошибка при сбросе настроек.",
+            "ReportFailed": "Произошла ошибка при попытке сформировать отчет.",
+            "StreamGameFetchFailed": "Ошибка при получении текущей игры стрима.",
+            "StartGameFailed": "Произошла непредвиденная ошибка при запуске игры."
+        },
+        "gameHandlerUtils": {
+            "ThereNoActiveStop": "Нет активной игры {gameName}, которую можно остановить.",
+            "OnlyGameInitiatorMods": "Остановить игру может только ее создатель, модераторы или стример.",
+            "OnlyModsOrBroadcaster": "Очистить таблицу лидеров могут только модераторы или стример.",
+            "AttemptingClearLeaderboardData": "Очищаем таблицу лидеров {gameName} для этого канала. Это может занять некоторое время...",
+            "OnlyModsOrBroadcaster2": "Сбросить настройки игры могут только модераторы или стример.",
+            "PleaseProvideReasonReporting": "Укажите причину жалобы. Использование: !{commandName} report <ваша причина>",
+            "CouldNotProcessReport": "Не удалось отправить жалобу в данный момент.",
+            "OnlyModsOrBroadcaster3": "Настраивать игру могут только модераторы или стример.",
+            "MaximumNumberRoundsStarting": "Максимальное количество раундов: {maxRounds}. Начинаем игру из {maxRounds} раундов."
+        },
+        "geo": {
+            "CouldNotDetectCurrent": "Не удалось определить текущую игру. Укажите название: !geo game <Название игры> [раунды]",
+            "GeoGameGeoRegion": "Гео-игра: !geo [регион] [раунды] (реальный мир), !geo game [название] [раунды] (игра), !geo stop (модеры/создатель), !geo config <параметры...> (модеры), !geo resetconfig (модеры), !geo leaderboard, !geo clearleaderboard (модеры), !geo report <причина...>, !geo help",
+            "UnknownCommandFormatOr": "Неизвестный формат команды или лишние аргументы. Используйте !geo help."
+        },
+        "quote": {
+            "NoQuotesYetAdd": "Цитат пока нет. Добавьте первую: \"!quote add <текст [- автор]>\"",
+            "QuoteNotFound": "Цитата #{id} не найдена.",
+            "NoQuotesYet": "Цитат пока нет.",
+            "UsageQuoteSearchTerm": "Использование: !quote search <запрос>",
+            "NoQuotesMatching": "Нет цитат по запросу \"{term}\".",
+            "UsageQuoteQuote12": "Использование: !quote | !quote 12 | !quote add <текст [- автор]> | !quote last | !quote search <запрос> | !quote delete <id> | !quote edit <id> <текст>",
+            "UsageQuoteAddText": "Использование: !quote add <текст [- автор]>",
+            "QuoteTooLongMax": "Цитата слишком длинная (макс. {MAX_QUOTE_LENGTH} симв.).",
+            "AddedQuote": "Добавлена цитата #{quoteId}: \"{text}\"{suffix}",
+            "OnlyModsBroadcasterCan": "Удалять цитаты могут только модераторы и стример.",
+            "UsageQuoteDeleteId": "Использование: !quote delete <id>",
+            "OnlyModsBroadcasterCan2": "Редактировать цитаты могут только модераторы и стример.",
+            "UsageQuoteEditId": "Использование: !quote edit <id> <текст [- автор]>",
+            "SorrySomethingWentWrong": "К сожалению, произошла ошибка при обработке !quote."
+        },
+        "riddle": {
+            "OnlyGameInitiatorMods": "Остановить игру в загадки может только запустивший её игрок, модераторы или стример.",
+            "ICanTStop": "Я не могу себя остановить!"
+        },
+        "search": {
+            "PleaseProvideSomethingSearch": "Укажите, что искать. Использование: !search <ваш запрос>",
+            "SorryICouldnT": "К сожалению, не удалось получить текущий контекст для выполнения поиска.",
+            "SorryICouldnT2": "К сожалению, сейчас не удалось найти информацию о \"{userQuery}\".",
+            "SorryErrorOccurredWhile": "К сожалению, произошла ошибка при поиске."
+        },
+        "timer": {
+            "UsageTimerAddAddai": "Использование: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <название> [...]",
+            "UnknownSubcommandUseAdd": "Неизвестная подкоманда \"{subCommand}\". Используйте add, addai, edit, interval, lines, enable, disable, remove, show или list.",
+            "PleaseSpecifyTimerName": "Укажите название таймера. {usage}",
+            "TimerNameSanitizedNothing": "Название таймера оказалось пустым после очистки — попробуйте использовать буквы или цифры.",
+            "ReservedWordCanT": "\"{timerName}\" — зарезервированное слово, его нельзя использовать как имя таймера.",
+            "PleaseSpecifyIntervalBetween": "Укажите интервал от {MIN_INTERVAL_MINUTES} до {MAX_INTERVAL_MINUTES} мин. {usage}",
+            "TimerTextMustCharacters": "Текст таймера должен содержать не более {MAX_RESPONSE_LENGTH} символов.",
+            "TimersFireWithoutTriggering": "Таймеры срабатывают без вызова пользователем, поэтому эти переменные не поддерживаются: {p1}",
+            "TimerAddedFiresEvery": "Таймер \"{timerName}\" добавлен{p2} — срабатывает каждые {intervalMinutes} мин, когда идет стрим и чат активен.",
+            "TimerAlreadyExistsUse": "Таймер \"{timerName}\" уже существует. Используйте \"!timer edit\", чтобы обновить его.",
+            "PleaseSpecifyTimerName2": "Укажите имя таймера. Использование: !timer edit <имя> <сообщение>",
+            "PleaseSpecifyNewText": "Укажите новый текст. Использование: !timer edit {timerName} <сообщение>",
+            "TimerNotFoundUse": "Таймер \"{timerName}\" не найден. Используйте \"!timer add\", чтобы создать его.",
+            "TimerHasBeenUpdated": "Таймер \"{timerName}\" обновлен.",
+            "ErrorEditingTimerPlease": "Ошибка при изменении таймера. Попробуйте позже.",
+            "UsageTimerIntervalName": "Использование: !timer interval <имя> <минуты>",
+            "IntervalMustBetweenMinutes": "Интервал должен быть от {MIN_INTERVAL_MINUTES} до {MAX_INTERVAL_MINUTES} мин.",
+            "TimerNowFiresEvery": "Таймер \"{timerName}\" теперь срабатывает каждые {intervalMinutes} мин.",
+            "TimerNotFound": "Таймер \"{timerName}\" не найден.",
+            "ErrorUpdatingTimerPlease": "Ошибка при обновлении таймера. Попробуйте позже.",
+            "UsageTimerLinesName": "Использование: !timer lines <имя> <количество>",
+            "ChatLinesMustBetween": "Количество строк в чате должно быть от 0 до {MAX_MIN_CHAT_LINES}.",
+            "UsageTimerName": "Использование: !timer {p1} <имя>",
+            "PleaseSpecifyTimerName3": "Укажите имя таймера. Использование: !timer remove <имя>",
+            "TimerHasBeenRemoved": "Таймер \"{timerName}\" удалён.",
+            "ErrorRemovingTimerPlease": "Ошибка при удалении таймера. Попробуйте позже.",
+            "PleaseSpecifyTimerName4": "Укажите имя таймера. Использование: !timer show <имя>",
+            "TimerEveryMMin": "Таймер \"{timerName}\"{typeInfo}{statusInfo} — каждые {intervalMinutes} мин, от {minChatLines} строк: {response}",
+            "ErrorFetchingTimerPlease": "Ошибка при получении таймера. Попробуйте позже.",
+            "NoTimersConfiguredUse": "Нет настроенных таймеров. Используйте \"!timer add <имя> <минуты> <сообщение>\", чтобы создать таймер.",
+            "Timers": "Таймеры ({length}): {summary}",
+            "ErrorListingTimersPlease": "Ошибка при загрузке списка таймеров. Попробуйте позже.",
+            "PleaseSpecifyPrompt": "Укажите промпт. {usage}",
+            "PleaseSpecifyMessage": "Укажите сообщение. {usage}",
+            "TimerEnabled": "Таймер \"{timerName}\" включён.",
+            "TimerDisabled": "Таймер \"{timerName}\" выключен."
+        },
+        "translate": {
+            "UsageTranslateLanguageUser": "Использование: !translate <язык> [пользователь] | !translate stop [пользователь|all]",
+            "OnlyModsOrBroadcaster": "Только модераторы или стример могут остановить все переводы.",
+            "OkayStoppedTranslationsGlobally": "Хорошо, перевод остановлен глобально для {count} польз.",
+            "SorryErrorOccurredTrying": "Извините, произошла ошибка при попытке остановить все переводы.",
+            "OnlyModsOrBroadcaster2": "Только модераторы или стример могут управлять переводом для других пользователей.",
+            "PleaseSpecifyLanguageExample": "Укажите язык. Пример: !translate spanish",
+            "SorryErrorOccurredWhile": "Извините, произошла ошибка при обработке команды translate."
+        },
+        "commandProcessor": {
+            "OopsSomethingWentWrong": "Упс! Что-то пошло не так при выполнении команды !{command}."
+        },
+        "messageHandlers": {
+            "OkayStoppedTranslationsGlobally": "Окей, переводы отключены глобально для {count} пользователей.",
+            "OnlyModsBroadcasterCan": "Только модераторы и стример могут отключать перевод для других."
+        }
     }
 };

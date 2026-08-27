@@ -7,6 +7,7 @@ import {
     updateCustomCommandOptions,
 } from '../../customCommands/customCommandsStorage.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !command meta-command.
@@ -26,8 +27,7 @@ async function execute(context) {
     const username = user.username;
 
     if (args.length === 0) {
-        await enqueueMessage(channel,
-            `Usage: !command add/addai/edit/remove/show/options <name> [response/options]`);
+        await sendLocalized(channel, 'cmd.command.UsageCommandAddAddai', {}, `Usage: !command add/addai/edit/remove/show/options <name> [response/options]`);
         return;
     }
 
@@ -55,18 +55,17 @@ async function execute(context) {
             await _handleOptions(channel, channelName, commandName, args.slice(2), logger);
             break;
         default:
-            await enqueueMessage(channel,
-                `Unknown subcommand "${subCommand}". Use add, addai, edit, remove, show, or options.`);
+            await sendLocalized(channel, 'cmd.command.UnknownSubcommandUseAdd', { subCommand }, `Unknown subcommand "${subCommand}". Use add, addai, edit, remove, show, or options.`);
     }
 }
 
 async function _handleAdd(channel, channelName, commandName, responseArgs, username, type, logger) {
     if (!commandName) {
-        await enqueueMessage(channel, `Please specify a command name. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} <name> <response>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyCommandName', { p1: type === 'prompt' ? 'addai' : 'add' }, `Please specify a command name. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} <name> <response>`);
         return;
     }
     if (responseArgs.length === 0) {
-        await enqueueMessage(channel, `Please specify a response. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} ${commandName} <response>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyResponseUsage', { p1: type === 'prompt' ? 'addai' : 'add', commandName }, `Please specify a response. Usage: !command ${type === 'prompt' ? 'addai' : 'add'} ${commandName} <response>`);
         return;
     }
 
@@ -75,25 +74,25 @@ async function _handleAdd(channel, channelName, commandName, responseArgs, usern
     try {
         const created = await addCustomCommand(channelName, commandName, response, username, type);
         if (created) {
-            await enqueueMessage(channel, `Command !${commandName} has been added ${type === 'prompt' ? '(AI Mode)' : ''}.`);
+            await sendLocalized(channel, 'cmd.command.CommandHasBeenAdded', { commandName, p2: type === 'prompt' ? '(AI Mode)' : '' }, `Command !${commandName} has been added ${type === 'prompt' ? '(AI Mode)' : ''}.`);
             logger.info(`[CommandHandler] ${username} added !${commandName} (type: ${type}) in ${channelName}`);
         } else {
-            await enqueueMessage(channel, `Command !${commandName} already exists. Use "!command edit" to update it.`);
+            await sendLocalized(channel, 'cmd.command.CommandAlreadyExistsUse', { commandName }, `Command !${commandName} already exists. Use "!command edit" to update it.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error adding command');
-        await enqueueMessage(channel, `Error adding command. Please try again later.`);
+        await sendLocalized(channel, 'cmd.command.ErrorAddingCommandPlease', {}, `Error adding command. Please try again later.`);
     }
 }
 
 async function _handleEdit(channel, channelName, commandName, responseArgs, logger) {
     if (!commandName) {
-        await enqueueMessage(channel, `Please specify a command name. Usage: !command edit <name> <response>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyCommandName2', {}, `Please specify a command name. Usage: !command edit <name> <response>`);
         return;
     }
     if (responseArgs.length === 0) {
-        await enqueueMessage(channel, `Please specify a new response. Usage: !command edit ${commandName} <response>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyNewResponse', { commandName }, `Please specify a new response. Usage: !command edit ${commandName} <response>`);
         return;
     }
 
@@ -102,42 +101,42 @@ async function _handleEdit(channel, channelName, commandName, responseArgs, logg
     try {
         const updated = await updateCustomCommand(channelName, commandName, response);
         if (updated) {
-            await enqueueMessage(channel, `Command !${commandName} has been updated.`);
+            await sendLocalized(channel, 'cmd.command.CommandHasBeenUpdated', { commandName }, `Command !${commandName} has been updated.`);
             logger.info(`[CommandHandler] Updated !${commandName} in ${channelName}`);
         } else {
-            await enqueueMessage(channel, `Command !${commandName} not found. Use "!command add" to create it.`);
+            await sendLocalized(channel, 'cmd.command.CommandNotFoundUse', { commandName }, `Command !${commandName} not found. Use "!command add" to create it.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error editing command');
-        await enqueueMessage(channel, `Error editing command. Please try again later.`);
+        await sendLocalized(channel, 'cmd.command.ErrorEditingCommandPlease', {}, `Error editing command. Please try again later.`);
     }
 }
 
 async function _handleRemove(channel, channelName, commandName, logger) {
     if (!commandName) {
-        await enqueueMessage(channel, `Please specify a command name. Usage: !command remove <name>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyCommandName3', {}, `Please specify a command name. Usage: !command remove <name>`);
         return;
     }
 
     try {
         const removed = await removeCustomCommand(channelName, commandName);
         if (removed) {
-            await enqueueMessage(channel, `Command !${commandName} has been removed.`);
+            await sendLocalized(channel, 'cmd.command.CommandHasBeenRemoved', { commandName }, `Command !${commandName} has been removed.`);
             logger.info(`[CommandHandler] Removed !${commandName} from ${channelName}`);
         } else {
-            await enqueueMessage(channel, `Command !${commandName} not found.`);
+            await sendLocalized(channel, 'cmd.command.CommandNotFound', { commandName }, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error removing command');
-        await enqueueMessage(channel, `Error removing command. Please try again later.`);
+        await sendLocalized(channel, 'cmd.command.ErrorRemovingCommandPlease', {}, `Error removing command. Please try again later.`);
     }
 }
 
 async function _handleShow(channel, channelName, commandName, logger) {
     if (!commandName) {
-        await enqueueMessage(channel, `Please specify a command name. Usage: !command show <name>`);
+        await sendLocalized(channel, 'cmd.command.PleaseSpecifyCommandName4', {}, `Please specify a command name. Usage: !command show <name>`);
         return;
     }
 
@@ -150,23 +149,22 @@ async function _handleShow(channel, channelName, commandName, logger) {
             await enqueueMessage(channel,
                 `!${commandName}${permInfo}${cooldownInfo}${typeInfo}: ${cmd.response}`);
         } else {
-            await enqueueMessage(channel, `Command !${commandName} not found.`);
+            await sendLocalized(channel, 'cmd.command.CommandNotFound', { commandName }, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error showing command');
-        await enqueueMessage(channel, `Error fetching command. Please try again later.`);
+        await sendLocalized(channel, 'cmd.command.ErrorFetchingCommandPlease', {}, `Error fetching command. Please try again later.`);
     }
 }
 
 async function _handleOptions(channel, channelName, commandName, optionArgs, logger) {
     if (!commandName) {
-        await enqueueMessage(channel, `Usage: !command options <name> <key>=<value>`);
+        await sendLocalized(channel, 'cmd.command.UsageCommandOptionsName', {}, `Usage: !command options <name> <key>=<value>`);
         return;
     }
     if (optionArgs.length === 0) {
-        await enqueueMessage(channel,
-            `Usage: !command options ${commandName} permission=moderator or cooldown=30`);
+        await sendLocalized(channel, 'cmd.command.UsageCommandOptionsPermission', { commandName }, `Usage: !command options ${commandName} permission=moderator or cooldown=30`);
         return;
     }
 
@@ -183,8 +181,7 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, log
                 if (validPermissions.includes(value.toLowerCase())) {
                     options.permission = value.toLowerCase();
                 } else {
-                    await enqueueMessage(channel,
-                        `Invalid permission. Valid options: ${validPermissions.join(', ')}`);
+                    await sendLocalized(channel, 'cmd.command.InvalidPermissionValidOptions', { p1: validPermissions.join(', ') }, `Invalid permission. Valid options: ${validPermissions.join(', ')}`);
                     return;
                 }
                 break;
@@ -192,7 +189,7 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, log
             case 'cd': {
                 const seconds = parseInt(value, 10);
                 if (isNaN(seconds) || seconds < 0) {
-                    await enqueueMessage(channel, `Cooldown must be a non-negative number (in seconds).`);
+                    await sendLocalized(channel, 'cmd.command.CooldownMustNonNegative', {}, `Cooldown must be a non-negative number (in seconds).`);
                     return;
                 }
                 options.cooldownMs = seconds * 1000;
@@ -202,18 +199,18 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, log
                 if (value.toLowerCase() === 'prompt' || value.toLowerCase() === 'text') {
                     options.type = value.toLowerCase();
                 } else {
-                    await enqueueMessage(channel, `Invalid type. Valid options: text, prompt`);
+                    await sendLocalized(channel, 'cmd.command.InvalidTypeValidOptions', {}, `Invalid type. Valid options: text, prompt`);
                     return;
                 }
                 break;
             default:
-                await enqueueMessage(channel, `Unknown option "${key}". Available: permission, cooldown, type`);
+                await sendLocalized(channel, 'cmd.command.UnknownOptionAvailablePermission', { key }, `Unknown option "${key}". Available: permission, cooldown, type`);
                 return;
         }
     }
 
     if (Object.keys(options).length === 0) {
-        await enqueueMessage(channel, `No valid options provided.`);
+        await sendLocalized(channel, 'cmd.command.NoValidOptionsProvided', {}, `No valid options provided.`);
         return;
     }
 
@@ -223,15 +220,15 @@ async function _handleOptions(channel, channelName, commandName, optionArgs, log
             const changes = Object.entries(options)
                 .map(([k, v]) => `${k}=${k === 'cooldownMs' ? `${v / 1000}s` : v}`)
                 .join(', ');
-            await enqueueMessage(channel, `Options for !${commandName} updated: ${changes}`);
+            await sendLocalized(channel, 'cmd.command.OptionsUpdated', { commandName, changes }, `Options for !${commandName} updated: ${changes}`);
             logger.info(`[CommandHandler] Updated options for !${commandName} in ${channelName}: ${changes}`);
         } else {
-            await enqueueMessage(channel, `Command !${commandName} not found.`);
+            await sendLocalized(channel, 'cmd.command.CommandNotFound', { commandName }, `Command !${commandName} not found.`);
         }
     } catch (error) {
         logger.error({ err: error, channel: channelName, command: commandName },
             '[CommandHandler] Error updating options');
-        await enqueueMessage(channel, `Error updating options. Please try again later.`);
+        await sendLocalized(channel, 'cmd.command.ErrorUpdatingOptionsPlease', {}, `Error updating options. Please try again later.`);
     }
 }
 

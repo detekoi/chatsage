@@ -5,8 +5,11 @@ import { getRiddleGameManager } from '../../riddle/riddleGameManager.js';
 import { getLeaderboard } from '../../riddle/riddleStorage.js';
 import { formatRiddleHelpMessage, formatRiddleLeaderboardMessage } from '../../riddle/riddleMessageFormatter.js';
 import config from '../../../config/index.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { isCatalogued } from '../../../lib/i18n.js';
 import {
     extractGameContext,
+    channelLanguage,
     handleLeaderboard,
     handleClearLeaderboard,
     handleReport,
@@ -45,11 +48,11 @@ const riddleHandler = {
                 // Riddle stop has a unique pattern: it sends the result message directly
                 // and has a bot self-stop guard
                 if (!isMod && username !== riddleManager.getCurrentGameInitiator(channelName)) {
-                    await enqueueMessage(channel, `Only the game initiator, mods, or the broadcaster can stop the riddle game.`, { replyToId });
+                    await sendLocalized(channel, 'cmd.riddle.OnlyGameInitiatorMods', {}, `Only the game initiator, mods, or the broadcaster can stop the riddle game.`, { replyToId });
                     return;
                 }
                 if (args[1] && args[1].toLowerCase() === config.twitch.username.toLowerCase()) {
-                    await enqueueMessage(channel, `I can't stop myself!`, { replyToId });
+                    await sendLocalized(channel, 'cmd.riddle.ICanTStop', {}, `I can't stop myself!`, { replyToId });
                     return;
                 }
 
@@ -74,8 +77,10 @@ const riddleHandler = {
                 break;
 
             case 'help': {
-                const helpMessage = formatRiddleHelpMessage(isMod);
-                await enqueueMessage(channel, `${helpMessage}`, { replyToId });
+                const helpLang = channelLanguage(channelName);
+                const helpMessage = formatRiddleHelpMessage(isMod, helpLang);
+                await enqueueMessage(channel, `${helpMessage}`,
+                    isCatalogued(helpLang) ? { replyToId, skipTranslation: true } : { replyToId });
                 break;
             }
 

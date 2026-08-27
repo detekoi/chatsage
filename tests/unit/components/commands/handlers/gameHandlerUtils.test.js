@@ -199,7 +199,7 @@ describe('gameHandlerUtils', () => {
             await handleLeaderboard(createGameCtx(), getLeaderboardFn, formatFn, 'Trivia');
 
             expect(getLeaderboardFn).toHaveBeenCalledWith('testchannel', 5);
-            expect(formatFn).toHaveBeenCalledWith(mockData, 'testchannel');
+            expect(formatFn).toHaveBeenCalledWith(mockData, 'testchannel', null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Formatted leaderboard',

@@ -28,7 +28,9 @@ export default {
             "nonMod": ". モデレーター用コマンドもあります。"
         },
         "gameStoppedScores": "🏁 ゲームを終了しました。最終スコア: {list}",
-        "finalScores": "🏁 最終スコア: {list}"
+        "finalScores": "🏁 最終スコア: {list}",
+        "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
+        "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。"
     },
     "riddle": {
         "start": "🤔 なぞなぞ{roundText}をスタート！ {topicText} 制限時間は{questionTimeSeconds}秒。チャットで回答してね！",
@@ -53,7 +55,9 @@ export default {
             "modConfig": ", !riddle config difficulty <easy|normal|hard> | questiontime <秒> | pointsbase <数値> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <数値> | keywordslimit <数値> | rounddelay <ミリ秒>",
             "modReset": ", !riddle resetconfig"
         },
-        "gameOver": "{roundPrefix}なぞなぞ終了！正解は: {answer} でした。{explanation}"
+        "gameOver": "{roundPrefix}なぞなぞ終了！正解は: {answer} でした。{explanation}",
+        "NoRiddleThisTime": "ごめんなさい、今回はなぞなぞが思いつきませんでした！",
+        "StumpedEndingGame": "お手上げです！ラウンド{currentRound}の新しいなぞなぞが思いつきませんでした。ゲームを終了します。"
     },
     "geo": {
         "startGame": "🎮 ジオゲーム開始！{roundInfo} ゲーム{gameTitleText}の場所を当てよう！ {durationInfo} チャットに予想を書いてね！最初のヒントが来るよ...",
@@ -80,6 +84,194 @@ export default {
             "reveal": "{roundPrefix}📢 正解は {locationName} でした！ "
         },
         "roundError": "ラウンド {currentRound} の正解発表中にエラーが発生しました。",
-        "roundEnded": "ラウンドが終了しました。"
+        "roundEnded": "ラウンドが終了しました。",
+        "NoScoresSession": "🏁 ゲーム終了。このセッションではスコアが記録されませんでした。",
+        "LeaderboardFetchFailed": "チャンネル全体のリーダーボードを取得できませんでした。",
+        "NoLocationEndingGame": "⚠️ エラー: ラウンド{currentRound}に適した新しい場所が見つかりませんでした。ゲームを終了します。",
+        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。"
+    },
+    "cmd": {
+        "ask": {
+            "SorryICouldnT": "すみません、今は回答を見つけたり生成したりできませんでした。",
+            "PleaseAskQuestionAfter": "コマンドの後に質問を入力してください。使い方: !ask <質問内容>",
+            "HeyThereWhatS": "やあ！何か聞きたいことある？",
+            "SorryICouldnT2": "すみません、現在のコンテキストを取得できませんでした。"
+        },
+        "botlang": {
+            "BotCurrentlySetSpeak2": "Botの言語は現在 英語（デフォルト）に設定されています。変更するには「!botlang <言語>」を使用してください。",
+            "BotCurrentlySetSpeak4": "Botの言語は現在 英語（デフォルト）に設定されています。",
+            "BotLanguageHasBeen": "Botの言語を英語（デフォルト）にリセットしました。",
+            "SorryICouldnT": "すみません、「{targetLanguage}」への翻訳ができませんでした。言語名を確認してもう一度お試しください。",
+            "SorryErrorOccurredWhile": "すみません、Botの言語設定中にエラーが発生しました。",
+            "StatusUsageDetected": "現在ボットは {currentLanguage} に設定されています（Twitch配信の言語から検出）。英語に戻すには \"!botlang off\"、変更するには \"!botlang <言語>\" を使用してください。",
+            "StatusUsageSet": "現在ボットは {currentLanguage} に設定されています。英語に戻すには \"!botlang off\"、変更するには \"!botlang <言語>\" を使用してください。",
+            "StatusDetected": "現在ボットは {currentLanguage} に設定されています（Twitch配信の言語から検出）。",
+            "StatusSet": "現在ボットは {currentLanguage} に設定されています（モデレーターによる設定）。"
+        },
+        "command": {
+            "UsageCommandAddAddai": "使い方: !command add/addai/edit/remove/show/options <コマンド名> [応答/オプション]",
+            "UnknownSubcommandUseAdd": "不明なサブコマンド「{subCommand}」です。add、addai、edit、remove、show、optionsのいずれかを使用してください。",
+            "PleaseSpecifyCommandName": "コマンド名を指定してください。使い方: !command {p1} <コマンド名> <応答>",
+            "PleaseSpecifyResponseUsage": "応答を指定してください。使い方: !command {p1} {commandName} <応答>",
+            "CommandHasBeenAdded": "コマンド !{commandName} を追加しました{p2}。",
+            "CommandAlreadyExistsUse": "コマンド !{commandName} は既に存在します。更新するには「!command edit」を使用してください。",
+            "ErrorAddingCommandPlease": "コマンドの追加中にエラーが発生しました。後でもう一度お試しください。",
+            "PleaseSpecifyCommandName2": "コマンド名を指定してください。使い方: !command edit <コマンド名> <応答>",
+            "PleaseSpecifyNewResponse": "新しい応答を指定してください。使い方: !command edit {commandName} <応答>",
+            "CommandHasBeenUpdated": "コマンド !{commandName} を更新しました。",
+            "CommandNotFoundUse": "コマンド !{commandName} が見つかりません。\"!command add\" で作成してください。",
+            "ErrorEditingCommandPlease": "コマンドの編集中にエラーが発生しました。後でもう一度お試しください。",
+            "PleaseSpecifyCommandName3": "コマンド名を指定してください。使用法: !command remove <コマンド名>",
+            "CommandHasBeenRemoved": "コマンド !{commandName} を削除しました。",
+            "CommandNotFound": "コマンド !{commandName} が見つかりません。",
+            "ErrorRemovingCommandPlease": "コマンドの削除中にエラーが発生しました。後でもう一度お試しください。",
+            "PleaseSpecifyCommandName4": "コマンド名を指定してください。使用法: !command show <コマンド名>",
+            "ErrorFetchingCommandPlease": "コマンドの取得中にエラーが発生しました。後でもう一度お試しください。",
+            "UsageCommandOptionsName": "使用法: !command options <コマンド名> <キー>=<値>",
+            "UsageCommandOptionsPermission": "使用法: !command options {commandName} permission=moderator または cooldown=30",
+            "InvalidPermissionValidOptions": "無効な権限です。利用可能なオプション: {p1}",
+            "CooldownMustNonNegative": "クールダウンは0以上の数値（秒単位）で指定してください。",
+            "InvalidTypeValidOptions": "無効なタイプです。利用可能なオプション: text, prompt",
+            "UnknownOptionAvailablePermission": "不明なオプション \"{key}\" です。利用可能: permission, cooldown, type",
+            "NoValidOptionsProvided": "有効なオプションが指定されていません。",
+            "OptionsUpdated": "!{commandName} のオプションを更新しました: {changes}",
+            "ErrorUpdatingOptionsPlease": "オプションの更新中にエラーが発生しました。後でもう一度お試しください。"
+        },
+        "disable": {
+            "UsageDisableCommandnameExample": "使用法: !disable <コマンド名>。例: !disable trivia",
+            "UnknownCommandAvailableCommands": "不明なコマンド '{commandToDisable}' です。利用可能なコマンド: {p2}",
+            "SorryThereWasError": "コマンドの無効化中にエラーが発生しました。後でもう一度お試しください。"
+        },
+        "enable": {
+            "UsageEnableCommandnameExample": "使用方法: !enable <コマンド名> 例: !enable trivia",
+            "UnknownCommandAvailableCommands": "不明なコマンド '{commandToEnable}'。利用可能なコマンド: {p2}",
+            "SorryThereWasError": "コマンドの有効化中にエラーが発生しました。後でもう一度お試しください。"
+        },
+        "followage": {
+            "SorryFollowageDataCurrently": "現在フォロー期間のデータを取得できません。配信者の再認証が必要な場合があります。",
+            "SorryCouldnTDetermine": "配信者IDを特定できませんでした。",
+            "UserNotFound": "ユーザー「{targetUsername}」が見つかりません。",
+            "HaveBeenFollowing": "{displayName}、あなたは{p2}を{duration}フォローしています！",
+            "HasBeenFollowing": "{targetDisplayName}は{p2}を{duration}フォローしています！",
+            "AreNotFollowing": "{displayName}、あなたは{p2}をフォローしていません。",
+            "NotFollowing": "{targetDisplayName}は{p2}をフォローしていません。",
+            "SorryThereWasError": "フォロー期間の確認中にエラーが発生しました。後でもう一度お試しください。"
+        },
+        "game": {
+            "IDonTSee": "現在配信にゲームが設定されていないようです。",
+            "SorryErrorOccurredWhile": "!game コマンドの処理中にエラーが発生しました。",
+            "CouldnTDetermineCurrent": "現在のゲームを特定できませんでした。ゲーム配信中ではない可能性があります。",
+            "CouldnTFetchStream": "配信のサムネイルを取得できませんでした。チャンネルがオフラインの可能性があります。",
+            "AiCouldnTAnalyze": "AIが{officialGameName}のゲームプレイを正常に分析できませんでした。",
+            "SorryThereWasError": "配信の分析中にエラーが発生しました。",
+            "ICouldnTDetermine": "現在のゲームを特定できませんでした。",
+            "CurrentlyPlayingTryGame": "プレイ中: {gameName}。ゲームについて質問がある場合は「!game [質問内容]」とお試しください。",
+            "CurrentGame": "現在のゲーム: {gameName}",
+            "IMFetchingCurrent": "現在のゲーム情報を取得中です。数秒後に \"!game {helpQuery}\" を再試行するか、\"!search <ゲーム名> {helpQuery}\" のようにゲーム名を指定してください。",
+            "SorryICouldnT": "すみません、現在 {gameName} の \"{helpQuery}\" に関するヘルプは見つかりませんでした。",
+            "SorryErrorOccurredWhile2": "すみません、\"{helpQuery}\" のヘルプ検索中にエラーが発生しました。",
+            "LeaderboardFetchFailed": "すみません、今はリーダーボードを取得できませんでした。",
+            "ClearLeaderboardFailed": "リーダーボードのクリア中に予期しないエラーが発生しました。",
+            "ResetConfigFailed": "設定のリセット中に予期しないエラーが発生しました。",
+            "ReportFailed": "レポートの開始中にエラーが発生しました。",
+            "StreamGameFetchFailed": "現在の配信ゲームの取得に失敗しました。",
+            "StartGameFailed": "ゲームの開始中に予期しないエラーが発生しました。"
+        },
+        "gameHandlerUtils": {
+            "ThereNoActiveStop": "停止できる進行中の {gameName} はありません。",
+            "OnlyGameInitiatorMods": "ゲームを停止できるのは、開始したユーザー、モデレーター、または配信者のみです。",
+            "OnlyModsOrBroadcaster": "リーダーボードをクリアできるのはモデレーターまたは配信者のみです。",
+            "AttemptingClearLeaderboardData": "このチャンネルの {gameName} リーダーボードデータを消去しています。少々お待ちください...",
+            "OnlyModsOrBroadcaster2": "ゲーム設定をリセットできるのはモデレーターまたは配信者のみです。",
+            "PleaseProvideReasonReporting": "通報の理由を入力してください。使用方法: !{commandName} report <理由>",
+            "CouldNotProcessReport": "現在、通報リクエストを処理できませんでした。",
+            "OnlyModsOrBroadcaster3": "ゲームを設定できるのはモデレーターまたは配信者のみです。",
+            "MaximumNumberRoundsStarting": "最大ラウンド数は {maxRounds} です。{maxRounds} ラウンドのゲームを開始します。"
+        },
+        "geo": {
+            "CouldNotDetectCurrent": "現在のゲームを検出できませんでした。ゲームを指定してください: !geo game <ゲームタイトル> [ラウンド数]",
+            "GeoGameGeoRegion": "Geo-Game: !geo [地域] [ラウンド数] (現実版開始), !geo game [タイトル] [ラウンド数] (ゲーム版開始), !geo stop (モデレーター/開始者), !geo config <設定...> (モデレーター), !geo resetconfig (モデレーター), !geo leaderboard, !geo clearleaderboard (モデレーター), !geo report <理由...>, !geo help",
+            "UnknownCommandFormatOr": "コマンドの形式が無効か、余分な引数があります。!geo help を使用してください。"
+        },
+        "quote": {
+            "NoQuotesYetAdd": "名言はまだありません。\"!quote add <テキスト [- 発言者]>\" で追加できます。",
+            "QuoteNotFound": "名言 #{id} が見つかりませんでした。",
+            "NoQuotesYet": "名言はまだありません。",
+            "UsageQuoteSearchTerm": "使用方法: !quote search <検索ワード>",
+            "NoQuotesMatching": "「{term}」に一致する名言は見つかりませんでした。",
+            "UsageQuoteQuote12": "使い方: !quote | !quote 12 | !quote add <テキスト [- 発言者]> | !quote last | !quote search <検索ワード> | !quote delete <ID> | !quote edit <ID> <テキスト>",
+            "UsageQuoteAddText": "使い方: !quote add <テキスト [- 発言者]>",
+            "QuoteTooLongMax": "名言が長すぎます（最大{MAX_QUOTE_LENGTH}文字）。",
+            "AddedQuote": "名言 #{quoteId} を追加しました: \"{text}\"{suffix}",
+            "OnlyModsBroadcasterCan": "名言を削除できるのはモデレーター／配信者のみです。",
+            "UsageQuoteDeleteId": "使い方: !quote delete <ID>",
+            "OnlyModsBroadcasterCan2": "名言を編集できるのはモデレーター／配信者のみです。",
+            "UsageQuoteEditId": "使い方: !quote edit <ID> <テキスト [- 発言者]>",
+            "SorrySomethingWentWrong": "!quote の処理中にエラーが発生しました。"
+        },
+        "riddle": {
+            "OnlyGameInitiatorMods": "なぞなぞゲームを終了できるのはゲーム開始者、モデレーター、配信者のみです。",
+            "ICanTStop": "自分では止められません！"
+        },
+        "search": {
+            "PleaseProvideSomethingSearch": "検索キーワードを入力してください。使い方: !search <検索ワード>",
+            "SorryICouldnT": "検索を実行するためのコンテキストを取得できませんでした。",
+            "SorryICouldnT2": "現在「{userQuery}」に関する情報が見つかりませんでした。",
+            "SorryErrorOccurredWhile": "検索中にエラーが発生しました。"
+        },
+        "timer": {
+            "UsageTimerAddAddai": "使い方: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <タイマー名> [...]",
+            "UnknownSubcommandUseAdd": "不明なサブコマンド \"{subCommand}\" です。add, addai, edit, interval, lines, enable, disable, remove, show, list のいずれかを使用してください。",
+            "PleaseSpecifyTimerName": "タイマー名を指定してください。{usage}",
+            "TimerNameSanitizedNothing": "タイマー名が無効になりました。英数字を含む名前にしてください。",
+            "ReservedWordCanT": "「{timerName}」は予約語のため、タイマー名として使用できません。",
+            "PleaseSpecifyIntervalBetween": "間隔は{MIN_INTERVAL_MINUTES}分から{MAX_INTERVAL_MINUTES}分の間で指定してください。{usage}",
+            "TimerTextMustCharacters": "タイマーのテキストは{MAX_RESPONSE_LENGTH}文字以下にする必要があります。",
+            "TimersFireWithoutTriggering": "タイマーはユーザーのトリガーなしで実行されるため、次の変数はサポートされていません: {p1}",
+            "TimerAddedFiresEvery": "タイマー「{timerName}」を追加しました{p2} — 配信中でチャットがアクティブな時、{intervalMinutes}分ごとに実行されます。",
+            "TimerAlreadyExistsUse": "タイマー「{timerName}」は既に存在します。「!timer edit」で更新してください。",
+            "PleaseSpecifyTimerName2": "タイマー名を指定してください。使用法: !timer edit <名前> <メッセージ>",
+            "PleaseSpecifyNewText": "新しいテキストを指定してください。使用法: !timer edit {timerName} <メッセージ>",
+            "TimerNotFoundUse": "タイマー「{timerName}」が見つかりません。「!timer add」で作成してください。",
+            "TimerHasBeenUpdated": "タイマー「{timerName}」を更新しました。",
+            "ErrorEditingTimerPlease": "タイマーの編集中にエラーが発生しました。後でもう一度お試しください。",
+            "UsageTimerIntervalName": "使用法: !timer interval <名前> <分>",
+            "IntervalMustBetweenMinutes": "間隔は{MIN_INTERVAL_MINUTES}分から{MAX_INTERVAL_MINUTES}分の間で指定してください。",
+            "TimerNowFiresEvery": "タイマー「{timerName}」は{intervalMinutes}分ごとに実行されるようになりました。",
+            "TimerNotFound": "タイマー「{timerName}」が見つかりません。",
+            "ErrorUpdatingTimerPlease": "タイマーの更新中にエラーが発生しました。後でもう一度お試しください。",
+            "UsageTimerLinesName": "使用法: !timer lines <名前> <行数>",
+            "ChatLinesMustBetween": "チャット行数は0から{MAX_MIN_CHAT_LINES}の間で指定してください。",
+            "UsageTimerName": "使用法: !timer {p1} <名前>",
+            "PleaseSpecifyTimerName3": "タイマー名を指定してください。使用法: !timer remove <名前>",
+            "TimerHasBeenRemoved": "タイマー「{timerName}」を削除しました。",
+            "ErrorRemovingTimerPlease": "タイマーの削除中にエラーが発生しました。後でもう一度お試しください。",
+            "PleaseSpecifyTimerName4": "タイマー名を指定してください。使用法: !timer show <名前>",
+            "TimerEveryMMin": "タイマー「{timerName}」{typeInfo}{statusInfo} — {intervalMinutes}分ごと、最低{minChatLines}行: {response}",
+            "ErrorFetchingTimerPlease": "タイマーの取得中にエラーが発生しました。後でもう一度お試しください。",
+            "NoTimersConfiguredUse": "設定されたタイマーはありません。「!timer add <名前> <分数> <メッセージ>」で作成できます。",
+            "Timers": "タイマー ({length}): {summary}",
+            "ErrorListingTimersPlease": "タイマー一覧の取得中にエラーが発生しました。後でもう一度お試しください。",
+            "PleaseSpecifyPrompt": "プロンプトを指定してください。{usage}",
+            "PleaseSpecifyMessage": "メッセージを指定してください。{usage}",
+            "TimerEnabled": "タイマー「{timerName}」を有効にしました。",
+            "TimerDisabled": "タイマー「{timerName}」を無効にしました。"
+        },
+        "translate": {
+            "UsageTranslateLanguageUser": "使用法: !translate <言語> [ユーザー] | !translate stop [ユーザー|all]",
+            "OnlyModsOrBroadcaster": "すべての翻訳を停止できるのはモデレーターまたは配信者のみです。",
+            "OkayStoppedTranslationsGlobally": "了解、{count}名分の全体翻訳を停止しました。",
+            "SorryErrorOccurredTrying": "申し訳ありません。すべての翻訳を停止する際にエラーが発生しました。",
+            "OnlyModsOrBroadcaster2": "他のユーザーの翻訳を管理できるのはモデレーターまたは配信者のみです。",
+            "PleaseSpecifyLanguageExample": "言語を指定してください。例: !translate spanish",
+            "SorryErrorOccurredWhile": "申し訳ありません。翻訳コマンドの処理中にエラーが発生しました。"
+        },
+        "commandProcessor": {
+            "OopsSomethingWentWrong": "おっと！!{command} の実行中に問題が発生しました。"
+        },
+        "messageHandlers": {
+            "OkayStoppedTranslationsGlobally": "了解、{count}人のグローバル翻訳を停止しました。",
+            "OnlyModsBroadcasterCan": "他のユーザーの翻訳を停止できるのはモデレーター/配信者のみです。"
+        }
     }
 };

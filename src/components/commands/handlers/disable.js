@@ -2,6 +2,7 @@
 import { disableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !disable command.
@@ -19,7 +20,7 @@ async function execute(context) {
     try {
         // Check if command name was provided
         if (args.length === 0) {
-            await enqueueMessage(channel, `Usage: !disable <commandName>. Example: !disable trivia`, { replyToId });
+            await sendLocalized(channel, 'cmd.disable.UsageDisableCommandnameExample', {}, `Usage: !disable <commandName>. Example: !disable trivia`, { replyToId });
             return;
         }
 
@@ -28,7 +29,7 @@ async function execute(context) {
         // Validate that the command exists
         if (!isValidCommand(commandToDisable, commandHandlers)) {
             const availableCommands = getAllAvailableCommands(commandHandlers);
-            await enqueueMessage(channel, `Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
+            await sendLocalized(channel, 'cmd.disable.UnknownCommandAvailableCommands', { commandToDisable, p2: availableCommands.join(', ') }, `Unknown command '${commandToDisable}'. Available commands: ${availableCommands.join(', ')}`, { replyToId });
             return;
         }
 
@@ -52,7 +53,7 @@ async function execute(context) {
         }, `[DisableCommand] Error executing disable command in channel ${channelName}`);
         
         try {
-            await enqueueMessage(channel, `Sorry, there was an error disabling the command. Please try again later.`, { replyToId });
+            await sendLocalized(channel, 'cmd.disable.SorryThereWasError', {}, `Sorry, there was an error disabling the command. Please try again later.`, { replyToId });
         } catch (msgError) {
             logger.warn({ err: msgError }, '[DisableCommand] Failed to send error message to chat');
         }

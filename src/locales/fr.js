@@ -28,7 +28,9 @@ export default {
             "nonMod": ". Les mods ont accès à des commandes supplémentaires."
         },
         "gameStoppedScores": "🏁 Partie arrêtée. Scores finaux : {list}",
-        "finalScores": "🏁 Scores finaux : {list}"
+        "finalScores": "🏁 Scores finaux : {list}",
+        "NoQuestionEndingGame": "⚠️ Erreur : Impossible de générer une question pour la manche {currentRound}. Fin de la partie.",
+        "InvalidQuestionEndingGame": "⚠️ Erreur : La question générée n'était pas valide. Fin de la partie."
     },
     "riddle": {
         "start": "🤔 C'est parti pour {roundText} d'énigmes ! {topicText} Vous avez {questionTimeSeconds} secondes pour répondre. Écrivez vos réponses dans le chat !",
@@ -53,7 +55,9 @@ export default {
             "modConfig": ", !riddle config difficulty <easy|normal|hard> | questiontime <sec> | pointsbase <nombre> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <nombre> | keywordslimit <nombre> | rounddelay <ms>",
             "modReset": ", !riddle resetconfig"
         },
-        "gameOver": "{roundPrefix}L'énigme est terminée. La réponse était : {answer}. {explanation}"
+        "gameOver": "{roundPrefix}L'énigme est terminée. La réponse était : {answer}. {explanation}",
+        "NoRiddleThisTime": "Désolé, je n'ai pas réussi à trouver d'énigme cette fois-ci !",
+        "StumpedEndingGame": "Je sèche ! Impossible de trouver une nouvelle énigme pour la manche {currentRound}. Fin de la partie."
     },
     "geo": {
         "startGame": "🎮 Geo-Game lancé !{roundInfo} Devinez le lieu issu du jeu{gameTitleText} ! {durationInfo} Envoyez vos réponses dans le chat ! Premier indice arrive...",
@@ -80,6 +84,194 @@ export default {
             "reveal": "{roundPrefix}📢 La réponse était : {locationName} ! "
         },
         "roundError": "Une erreur est survenue lors de la révélation de la réponse pour la manche {currentRound}.",
-        "roundEnded": "La manche est terminée."
+        "roundEnded": "La manche est terminée.",
+        "NoScoresSession": "🏁 Partie terminée. Aucun score enregistré pour cette session.",
+        "LeaderboardFetchFailed": "Impossible de récupérer le classement général de la chaîne.",
+        "NoLocationEndingGame": "⚠️ Erreur : Impossible de trouver un lieu adapté pour la manche {currentRound}. Fin de la partie.",
+        "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie."
+    },
+    "cmd": {
+        "ask": {
+            "SorryICouldnT": "Désolé, impossible de trouver ou de générer une réponse pour le moment.",
+            "PleaseAskQuestionAfter": "Pose une question après la commande. Utilisation : !ask <ta question>",
+            "HeyThereWhatS": "Salut ! De quoi veux-tu parler ?",
+            "SorryICouldnT2": "Désolé, impossible de récupérer le contexte actuel."
+        },
+        "botlang": {
+            "BotCurrentlySetSpeak2": "Le bot est actuellement configuré pour parler anglais (par défaut). Utilise \"!botlang <langue>\" pour changer.",
+            "BotCurrentlySetSpeak4": "Le bot est actuellement configuré pour parler anglais (par défaut).",
+            "BotLanguageHasBeen": "La langue du bot a été réinitialisée en anglais (par défaut).",
+            "SorryICouldnT": "Désolé, impossible de traduire en \"{targetLanguage}\". Vérifie le nom de la langue et réessaie.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors de la configuration de la langue du bot.",
+            "StatusUsageDetected": "Le bot est actuellement configuré pour parler {currentLanguage} (détecté d'après la langue de votre stream Twitch). Utilisez \"!botlang off\" pour réinitialiser en anglais ou \"!botlang <langue>\" pour changer.",
+            "StatusUsageSet": "Le bot est actuellement configuré pour parler {currentLanguage}. Utilisez \"!botlang off\" pour réinitialiser en anglais ou \"!botlang <langue>\" pour changer.",
+            "StatusDetected": "Le bot est actuellement configuré pour parler {currentLanguage} (détecté d'après la langue de votre stream Twitch).",
+            "StatusSet": "Le bot est actuellement configuré pour parler {currentLanguage} (défini par un modérateur)."
+        },
+        "command": {
+            "UsageCommandAddAddai": "Utilisation : !command add/addai/edit/remove/show/options <nom> [réponse/options]",
+            "UnknownSubcommandUseAdd": "Sous-commande \"{subCommand}\" inconnue. Utilise add, addai, edit, remove, show ou options.",
+            "PleaseSpecifyCommandName": "Précise un nom de commande. Utilisation : !command {p1} <nom> <réponse>",
+            "PleaseSpecifyResponseUsage": "Précise une réponse. Utilisation : !command {p1} {commandName} <réponse>",
+            "CommandHasBeenAdded": "La commande !{commandName} a été ajoutée {p2}.",
+            "CommandAlreadyExistsUse": "La commande !{commandName} existe déjà. Utilise \"!command edit\" pour la modifier.",
+            "ErrorAddingCommandPlease": "Erreur lors de l'ajout de la commande. Réessaie plus tard.",
+            "PleaseSpecifyCommandName2": "Précise un nom de commande. Utilisation : !command edit <nom> <réponse>",
+            "PleaseSpecifyNewResponse": "Précise une nouvelle réponse. Utilisation : !command edit {commandName} <réponse>",
+            "CommandHasBeenUpdated": "La commande !{commandName} a été mise à jour.",
+            "CommandNotFoundUse": "Commande !{commandName} introuvable. Utilise \"!command add\" pour la créer.",
+            "ErrorEditingCommandPlease": "Erreur lors de la modification de la commande. Réessaie plus tard.",
+            "PleaseSpecifyCommandName3": "Précise un nom de commande. Utilisation : !command remove <nom>",
+            "CommandHasBeenRemoved": "La commande !{commandName} a été supprimée.",
+            "CommandNotFound": "Commande !{commandName} introuvable.",
+            "ErrorRemovingCommandPlease": "Erreur lors de la suppression de la commande. Réessaie plus tard.",
+            "PleaseSpecifyCommandName4": "Précise un nom de commande. Utilisation : !command show <nom>",
+            "ErrorFetchingCommandPlease": "Erreur lors de la récupération de la commande. Réessaie plus tard.",
+            "UsageCommandOptionsName": "Utilisation : !command options <nom> <clé>=<valeur>",
+            "UsageCommandOptionsPermission": "Utilisation : !command options {commandName} permission=moderator ou cooldown=30",
+            "InvalidPermissionValidOptions": "Permission invalide. Options valides : {p1}",
+            "CooldownMustNonNegative": "Le cooldown doit être un nombre positif ou nul (en secondes).",
+            "InvalidTypeValidOptions": "Type invalide. Options valides : text, prompt",
+            "UnknownOptionAvailablePermission": "Option inconnue \"{key}\". Disponibles : permission, cooldown, type",
+            "NoValidOptionsProvided": "Aucune option valide fournie.",
+            "OptionsUpdated": "Options de !{commandName} mises à jour : {changes}",
+            "ErrorUpdatingOptionsPlease": "Erreur lors de la mise à jour des options. Réessaie plus tard."
+        },
+        "disable": {
+            "UsageDisableCommandnameExample": "Utilisation : !disable <nomCommande>. Exemple : !disable trivia",
+            "UnknownCommandAvailableCommands": "Commande '{commandToDisable}' inconnue. Commandes disponibles : {p2}",
+            "SorryThereWasError": "Désolé, une erreur s'est produite lors de la désactivation de la commande. Réessaie plus tard."
+        },
+        "enable": {
+            "UsageEnableCommandnameExample": "Utilisation : !enable <nomCommande>. Exemple : !enable trivia",
+            "UnknownCommandAvailableCommands": "Commande inconnue '{commandToEnable}'. Commandes disponibles : {p2}",
+            "SorryThereWasError": "Désolé, une erreur s'est produite lors de l'activation de la commande. Réessaie plus tard."
+        },
+        "followage": {
+            "SorryFollowageDataCurrently": "Désolé, les données de followage sont actuellement indisponibles. Le diffuseur doit peut-être se réauthentifier.",
+            "SorryCouldnTDetermine": "Désolé, impossible de déterminer l'ID du diffuseur.",
+            "UserNotFound": "Utilisateur \"{targetUsername}\" introuvable.",
+            "HaveBeenFollowing": "{displayName}, tu suis {p2} depuis {duration} !",
+            "HasBeenFollowing": "{targetDisplayName} suit {p2} depuis {duration} !",
+            "AreNotFollowing": "{displayName}, tu ne suis pas {p2}.",
+            "NotFollowing": "{targetDisplayName} ne suit pas {p2}.",
+            "SorryThereWasError": "Désolé, une erreur est survenue lors de la vérification du followage. Réessaie plus tard."
+        },
+        "game": {
+            "IDonTSee": "Je ne vois aucun jeu configuré pour le stream actuellement.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur s'est produite lors du traitement de la commande !game.",
+            "CouldnTDetermineCurrent": "Impossible de déterminer le jeu actuel. La chaîne ne diffuse peut-être pas de jeu.",
+            "CouldnTFetchStream": "Impossible de récupérer la miniature du stream. La chaîne est peut-être hors ligne.",
+            "AiCouldnTAnalyze": "L'AI n'a pas pu analyser le gameplay de {officialGameName} initialement.",
+            "SorryThereWasError": "Désolé, une erreur est survenue lors de l'analyse du stream.",
+            "ICouldnTDetermine": "Je n'ai pas pu déterminer le jeu actuel.",
+            "CurrentlyPlayingTryGame": "Joue actuellement à {gameName}. Essaie \"!game [ta question]\" pour de l'aide spécifique sur le jeu.",
+            "CurrentGame": "Jeu actuel : {gameName}",
+            "IMFetchingCurrent": "Je récupère les infos du jeu actuel. Réessaie \"!game {helpQuery}\" dans quelques secondes, ou précise le nom du jeu : \"!search <jeu> {helpQuery}\".",
+            "SorryICouldnT": "Désolé, impossible de trouver de l'aide pour \"{helpQuery}\" dans {gameName} pour l'instant.",
+            "SorryErrorOccurredWhile2": "Désolé, une erreur est survenue lors de la recherche d'aide pour \"{helpQuery}\".",
+            "LeaderboardFetchFailed": "Désolé, impossible de récupérer le classement pour le moment.",
+            "ClearLeaderboardFailed": "Une erreur inattendue est survenue en essayant d'effacer le classement.",
+            "ResetConfigFailed": "Une erreur inattendue est survenue lors de la réinitialisation de la configuration.",
+            "ReportFailed": "Une erreur est survenue lors de l'initialisation du signalement.",
+            "StreamGameFetchFailed": "Erreur lors de la récupération du jeu actuel du stream.",
+            "StartGameFailed": "Une erreur inattendue est survenue en essayant de lancer la partie."
+        },
+        "gameHandlerUtils": {
+            "ThereNoActiveStop": "Aucune partie de {gameName} en cours à arrêter.",
+            "OnlyGameInitiatorMods": "Seuls l'initiateur de la partie, les mods ou le diffuseur peuvent arrêter la partie en cours.",
+            "OnlyModsOrBroadcaster": "Seuls les mods ou le diffuseur peuvent effacer le classement.",
+            "AttemptingClearLeaderboardData": "Tentative d'effacement du classement de {gameName} pour cette chaîne. Cela peut prendre un moment...",
+            "OnlyModsOrBroadcaster2": "Seuls les mods ou le diffuseur peuvent réinitialiser la configuration du jeu.",
+            "PleaseProvideReasonReporting": "Merci d'indiquer une raison pour le signalement. Utilisation : !{commandName} report <ta raison>",
+            "CouldNotProcessReport": "Impossible de traiter ta demande de signalement pour le moment.",
+            "OnlyModsOrBroadcaster3": "Seuls les mods ou le diffuseur peuvent configurer le jeu.",
+            "MaximumNumberRoundsStarting": "Le nombre maximum de manches est de {maxRounds}. Lancement d'une partie en {maxRounds} manches."
+        },
+        "geo": {
+            "CouldNotDetectCurrent": "Impossible de détecter le jeu actuel. Merci d'en préciser un : !geo game <Titre du jeu> [manches]",
+            "GeoGameGeoRegion": "Géo-Jeu : !geo [région] [manches] (démarrer réel), !geo game [Titre] [manches] (démarrer jeu), !geo stop (mods/initiateur), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <raison...>, !geo help",
+            "UnknownCommandFormatOr": "Format de commande inconnu ou arguments en trop. Utilise !geo help."
+        },
+        "quote": {
+            "NoQuotesYetAdd": "Aucune citation pour l'instant. Ajoutes-en une avec \"!quote add <texte [- auteur]>\"",
+            "QuoteNotFound": "Citation #{id} introuvable.",
+            "NoQuotesYet": "Aucune citation pour le moment.",
+            "UsageQuoteSearchTerm": "Utilisation : !quote search <terme>",
+            "NoQuotesMatching": "Aucune citation correspondant à \"{term}\".",
+            "UsageQuoteQuote12": "Utilisation : !quote | !quote 12 | !quote add <texte [- auteur]> | !quote last | !quote search <terme> | !quote delete <id> | !quote edit <id> <texte>",
+            "UsageQuoteAddText": "Utilisation : !quote add <texte [- auteur]>",
+            "QuoteTooLongMax": "Citation trop longue ({MAX_QUOTE_LENGTH} car. max).",
+            "AddedQuote": "Citation #{quoteId} ajoutée : \"{text}\"{suffix}",
+            "OnlyModsBroadcasterCan": "Seuls les modos/le diffuseur peuvent supprimer des citations.",
+            "UsageQuoteDeleteId": "Utilisation : !quote delete <id>",
+            "OnlyModsBroadcasterCan2": "Seuls les modos/le diffuseur peuvent modifier des citations.",
+            "UsageQuoteEditId": "Utilisation : !quote edit <id> <texte [- auteur]>",
+            "SorrySomethingWentWrong": "Désolé, une erreur est survenue lors du traitement de !quote."
+        },
+        "riddle": {
+            "OnlyGameInitiatorMods": "Seul l'initiateur du jeu, les modos ou le diffuseur peuvent arrêter l'énigme.",
+            "ICanTStop": "Je ne peux pas m'arrêter !"
+        },
+        "search": {
+            "PleaseProvideSomethingSearch": "Indiquez un terme à rechercher. Utilisation : !search <votre recherche>",
+            "SorryICouldnT": "Désolé, impossible de récupérer le contexte actuel pour effectuer la recherche.",
+            "SorryICouldnT2": "Désolé, impossible de trouver des infos sur \"{userQuery}\" pour le moment.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors de la recherche."
+        },
+        "timer": {
+            "UsageTimerAddAddai": "Utilisation : !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <nom> [...]",
+            "UnknownSubcommandUseAdd": "Sous-commande \"{subCommand}\" inconnue. Utilisez add, addai, edit, interval, lines, enable, disable, remove, show ou list.",
+            "PleaseSpecifyTimerName": "Veuillez spécifier un nom de timer. {usage}",
+            "TimerNameSanitizedNothing": "Nom de timer vide après nettoyage — essayez avec des lettres ou des chiffres.",
+            "ReservedWordCanT": "\"{timerName}\" est un mot réservé et ne peut pas être utilisé comme nom de timer.",
+            "PleaseSpecifyIntervalBetween": "Précise un intervalle entre {MIN_INTERVAL_MINUTES} et {MAX_INTERVAL_MINUTES} minutes. {usage}",
+            "TimerTextMustCharacters": "Le texte du timer doit faire {MAX_RESPONSE_LENGTH} caractères ou moins.",
+            "TimersFireWithoutTriggering": "Les timers se déclenchent sans utilisateur, donc ces variables ne sont pas prises en charge : {p1}",
+            "TimerAddedFiresEvery": "Timer \"{timerName}\" ajouté{p2} — se déclenche toutes les {intervalMinutes}m quand le stream est en direct et le chat actif.",
+            "TimerAlreadyExistsUse": "Le timer \"{timerName}\" existe déjà. Utilise \"!timer edit\" pour le modifier.",
+            "PleaseSpecifyTimerName2": "Précise un nom de timer. Utilisation : !timer edit <nom> <message>",
+            "PleaseSpecifyNewText": "Précise le nouveau texte. Utilisation : !timer edit {timerName} <message>",
+            "TimerNotFoundUse": "Timer \"{timerName}\" introuvable. Utilise \"!timer add\" pour le créer.",
+            "TimerHasBeenUpdated": "Le timer \"{timerName}\" a été mis à jour.",
+            "ErrorEditingTimerPlease": "Erreur lors de la modification du timer. Réessaie plus tard.",
+            "UsageTimerIntervalName": "Utilisation : !timer interval <nom> <minutes>",
+            "IntervalMustBetweenMinutes": "L'intervalle doit être compris entre {MIN_INTERVAL_MINUTES} et {MAX_INTERVAL_MINUTES} minutes.",
+            "TimerNowFiresEvery": "Le timer \"{timerName}\" se déclenche désormais toutes les {intervalMinutes}m.",
+            "TimerNotFound": "Timer \"{timerName}\" introuvable.",
+            "ErrorUpdatingTimerPlease": "Erreur lors de la mise à jour du timer. Réessaie plus tard.",
+            "UsageTimerLinesName": "Utilisation : !timer lines <nom> <nombre>",
+            "ChatLinesMustBetween": "Les lignes de chat doivent être comprises entre 0 et {MAX_MIN_CHAT_LINES}.",
+            "UsageTimerName": "Utilisation : !timer {p1} <nom>",
+            "PleaseSpecifyTimerName3": "Précise un nom de timer. Utilisation : !timer remove <nom>",
+            "TimerHasBeenRemoved": "Le timer \"{timerName}\" a été supprimé.",
+            "ErrorRemovingTimerPlease": "Erreur lors de la suppression du timer. Réessaie plus tard.",
+            "PleaseSpecifyTimerName4": "Précise un nom de timer. Utilisation : !timer show <nom>",
+            "TimerEveryMMin": "Timer \"{timerName}\"{typeInfo}{statusInfo} — toutes les {intervalMinutes}m, min {minChatLines} lignes : {response}",
+            "ErrorFetchingTimerPlease": "Erreur lors de la récupération du timer. Réessaie plus tard.",
+            "NoTimersConfiguredUse": "Aucun timer configuré. Utilise \"!timer add <nom> <minutes> <message>\" pour en créer un.",
+            "Timers": "Timers ({length}) : {summary}",
+            "ErrorListingTimersPlease": "Erreur lors de l'affichage des timers. Réessaie plus tard.",
+            "PleaseSpecifyPrompt": "Précise un prompt. {usage}",
+            "PleaseSpecifyMessage": "Précise un message. {usage}",
+            "TimerEnabled": "Le timer \"{timerName}\" a été activé.",
+            "TimerDisabled": "Le timer \"{timerName}\" a été désactivé."
+        },
+        "translate": {
+            "UsageTranslateLanguageUser": "Utilisation : !translate <langue> [utilisateur] | !translate stop [utilisateur|all]",
+            "OnlyModsOrBroadcaster": "Seuls les modérateurs ou le diffuseur peuvent arrêter toutes les traductions.",
+            "OkayStoppedTranslationsGlobally": "C'est fait, traductions arrêtées globalement pour {count} utilisateur(s).",
+            "SorryErrorOccurredTrying": "Désolé, une erreur est survenue lors de l'arrêt de toutes les traductions.",
+            "OnlyModsOrBroadcaster2": "Seuls les modérateurs ou le diffuseur peuvent gérer les traductions pour les autres utilisateurs.",
+            "PleaseSpecifyLanguageExample": "Précise une langue. Exemple : !translate spanish",
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors de l'exécution de la commande de traduction."
+        },
+        "commandProcessor": {
+            "OopsSomethingWentWrong": "Oups ! Une erreur est survenue lors de l'exécution de !{command}."
+        },
+        "messageHandlers": {
+            "OkayStoppedTranslationsGlobally": "C'est bon, traductions arrêtées globalement pour {count} utilisateur(s).",
+            "OnlyModsBroadcasterCan": "Seuls les modos/le streamer peuvent arrêter la traduction pour les autres."
+        }
     }
 };

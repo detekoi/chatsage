@@ -80,8 +80,8 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Bot is currently set to speak spanish (set by a moderator).',
-                { replyToId: '123' }
+                expect.stringContaining('spanish'),
+                { replyToId: '123', skipTranslation: true }
             );
         });
 
@@ -237,8 +237,8 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Bot is currently set to speak german. Use "!botlang off" to reset to English or "!botlang <language>" to change.',
-                { replyToId: '123' }
+                expect.stringContaining('german'),
+                { replyToId: '123', skipTranslation: true }
             );
         });
     });

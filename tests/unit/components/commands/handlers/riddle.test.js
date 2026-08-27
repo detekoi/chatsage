@@ -212,7 +212,7 @@ describe('Riddle Command Handler', () => {
             await riddleHandler.execute(context);
 
             expect(getLeaderboard).toHaveBeenCalledWith('testchannel', 5);
-            expect(formatRiddleLeaderboardMessage).toHaveBeenCalledWith(leaderboardData, 'testchannel');
+            expect(formatRiddleLeaderboardMessage).toHaveBeenCalledWith(leaderboardData, 'testchannel', null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Leaderboard message',
@@ -256,7 +256,7 @@ describe('Riddle Command Handler', () => {
             const context = createMockContext(['help']);
             await riddleHandler.execute(context);
 
-            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(false);
+            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(false, null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Riddle help message',
@@ -274,7 +274,7 @@ describe('Riddle Command Handler', () => {
 
             await riddleHandler.execute(context);
 
-            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(true);
+            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(true, null);
         });
     });
 

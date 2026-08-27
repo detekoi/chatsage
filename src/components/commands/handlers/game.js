@@ -15,6 +15,7 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 // Import markdown removal and smart truncation utilities
 import { removeMarkdownAsterisks, smartTruncate } from '../../llm/llmUtils.js';
 import { logConversation } from '../../llm/conversationStorage.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 const MAX_IRC_MESSAGE_LENGTH = 450;
 const SUMMARY_TARGET_LENGTH = 420; // Target length for summaries, leaving buffer for IRC limits
@@ -83,7 +84,7 @@ const gameHandler = {
                     await handleGameInfoResponse(channel, channelName, userName, titleBasedInfo, replyToId);
                 } else {
                     logger.info(`[${channelName}] No current game set in context for basic !game command.`);
-                    await enqueueMessage(channel, `I don't see a game set for the stream right now.`, { replyToId });
+                    await sendLocalized(channel, 'cmd.game.IDonTSee', {}, `I don't see a game set for the stream right now.`, { replyToId });
                 }
                 return;
             }
@@ -91,7 +92,7 @@ const gameHandler = {
         } catch (error) {
             logger.error({ err: error, command: 'game', analysisRequested, helpRequested }, `Error executing !game command flow.`);
             try {
-                await enqueueMessage(channel, `Sorry, an error occurred while processing the !game command.`, { replyToId });
+                await sendLocalized(channel, 'cmd.game.SorryErrorOccurredWhile', {}, `Sorry, an error occurred while processing the !game command.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[GameCommand] Failed to send error message to chat');
             }
@@ -122,7 +123,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
         }
 
         if (!officialGameName) {
-            await enqueueMessage(channel, `Couldn't determine the current game. The channel might not be streaming a game.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.CouldnTDetermineCurrent', {}, `Couldn't determine the current game. The channel might not be streaming a game.`, { replyToId });
             return;
         }
 
@@ -130,7 +131,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
         const thumbnailBuffer = await fetchStreamThumbnail(channelName);
 
         if (!thumbnailBuffer) {
-            await enqueueMessage(channel, `Couldn't fetch the stream thumbnail. The channel might be offline.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.CouldnTFetchStream', {}, `Couldn't fetch the stream thumbnail. The channel might be offline.`, { replyToId });
             return;
         }
 
@@ -142,7 +143,7 @@ async function handleImageAnalysis(channel, channelName, userName, replyToId, se
         const initialAnalysisResult = await analyzeImage(thumbnailBuffer, initialAnalysisPrompt);
 
         if (!initialAnalysisResult || initialAnalysisResult.trim().length === 0) {
-            await enqueueMessage(channel, `AI couldn't analyze the ${officialGameName} gameplay initially.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.AiCouldnTAnalyze', { officialGameName }, `AI couldn't analyze the ${officialGameName} gameplay initially.`, { replyToId });
             return;
         }
         logger.debug(`[${channelName}] Initial analysis for ${officialGameName}: "${initialAnalysisResult.substring(0, 100)}..."`);
@@ -239,7 +240,7 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
         logger.error({ err: error }, 'Error in image analysis for !game command');
         if (sendToChat) {
             try {
-                await enqueueMessage(channel, `Sorry, there was an error analyzing the stream.`, { replyToId });
+                await sendLocalized(channel, 'cmd.game.SorryThereWasError', {}, `Sorry, there was an error analyzing the stream.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[GameCommand] Failed to send analysis error message to chat');
             }
@@ -321,7 +322,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
         const gameName = (gameInfo?.gameName && gameInfo.gameName !== 'Unknown' && gameInfo.gameName !== 'N/A') ? gameInfo.gameName : null;
 
         if (!gameName) {
-            await enqueueMessage(channel, `I couldn't determine the current game.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.ICouldnTDetermine', {}, `I couldn't determine the current game.`, { replyToId });
             return;
         }
 
@@ -351,13 +352,13 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
             logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
-            await enqueueMessage(channel, `Currently playing ${gameName}. Try "!game [your question]" for specific help with the game.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.CurrentlyPlayingTryGame', { gameName }, `Currently playing ${gameName}. Try "!game [your question]" for specific help with the game.`, { replyToId });
         }
     } catch (error) {
         logger.error({ err: error }, 'Error handling game info response (concise version)');
         const gameName = gameInfo?.gameName || 'Unknown';
         try {
-            await enqueueMessage(channel, `Current game: ${gameName}`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.CurrentGame', { gameName }, `Current game: ${gameName}`, { replyToId });
         } catch (msgError) {
             logger.warn({ err: msgError }, '[GameCommand] Failed to send fallback game info to chat');
         }
@@ -386,7 +387,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
 
         if (!gameName && !streamTitle) {
             // No game AND no title — truly can't determine what's being played
-            await enqueueMessage(channel, `I'm fetching the current game info. Please try "!game ${helpQuery}" again in a few seconds, or include the game name like "!search <game> ${helpQuery}".`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.IMFetchingCurrent', { helpQuery }, `I'm fetching the current game info. Please try "!game ${helpQuery}" again in a few seconds, or include the game name like "!search <game> ${helpQuery}".`, { replyToId });
             return;
         }
 
@@ -427,7 +428,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
 
         if (!searchResultText || searchResultText.trim().length === 0) {
             logger.warn(`[${channelName}] Help search returned no results for query: "${helpQuery}" in game "${gameName}" after ${maxRetries} attempts.`);
-            await enqueueMessage(channel, `Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.SorryICouldnT', { helpQuery, gameName }, `Sorry, I couldn't find specific help for "${helpQuery}" in ${gameName} right now.`, { replyToId });
             return;
         }
 
@@ -460,7 +461,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: userName, helpQuery }, `Error processing game help request.`);
         try {
-            await enqueueMessage(channel, `Sorry, an error occurred while searching for help with "${helpQuery}".`, { replyToId });
+            await sendLocalized(channel, 'cmd.game.SorryErrorOccurredWhile2', { helpQuery }, `Sorry, an error occurred while searching for help with "${helpQuery}".`, { replyToId });
         } catch (msgError) {
             logger.warn({ err: msgError }, '[GameCommand] Failed to send help error message to chat');
         }

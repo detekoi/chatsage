@@ -3,6 +3,7 @@ import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 import { resetChatSession } from '../../llm/gemini/chat.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 // Helper function removed - permission checking now handled by command system
 
@@ -27,12 +28,15 @@ const botLangHandler = {
             // Show current status and usage info
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                const source = contextManager.isBotLanguageInferred(channelName)
-                    ? ' (detected from your Twitch stream language)'
-                    : '';
-                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}${source}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
+                const inferred = contextManager.isBotLanguageInferred(channelName);
+                const source = inferred ? ' (detected from your Twitch stream language)' : '';
+                await sendLocalized(channel,
+                    inferred ? 'cmd.botlang.StatusUsageDetected' : 'cmd.botlang.StatusUsageSet',
+                    { currentLanguage },
+                    `Bot is currently set to speak ${currentLanguage}${source}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`,
+                    { replyToId });
             } else {
-                await enqueueMessage(channel, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
+                await sendLocalized(channel, 'cmd.botlang.BotCurrentlySetSpeak2', {}, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
             }
             return;
         }
@@ -43,21 +47,24 @@ const botLangHandler = {
         if (action === 'status') {
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                const source = contextManager.isBotLanguageInferred(channelName)
-                    ? 'detected from your Twitch stream language'
-                    : 'set by a moderator';
-                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage} (${source}).`, { replyToId });
+                const inferred = contextManager.isBotLanguageInferred(channelName);
+                const source = inferred ? 'detected from your Twitch stream language' : 'set by a moderator';
+                await sendLocalized(channel,
+                    inferred ? 'cmd.botlang.StatusDetected' : 'cmd.botlang.StatusSet',
+                    { currentLanguage },
+                    `Bot is currently set to speak ${currentLanguage} (${source}).`,
+                    { replyToId });
             } else {
-                await enqueueMessage(channel, `Bot is currently set to speak English (default).`, { replyToId });
+                await sendLocalized(channel, 'cmd.botlang.BotCurrentlySetSpeak4', {}, `Bot is currently set to speak English (default).`, { replyToId });
             }
             return;
         }
 
         // Handle turning off translation
         if (action === 'off' || action === 'default' || action === 'english') {
-            contextManager.setBotLanguage(channelName, null);
+            await contextManager.setBotLanguage(channelName, null);
             resetChatSession(channelName); // Invalidate cached session so next query uses English
-            await enqueueMessage(channel, `Bot language has been reset to English (default).`, { replyToId });
+            await sendLocalized(channel, 'cmd.botlang.BotLanguageHasBeen', {}, `Bot language has been reset to English (default).`, { replyToId });
             return;
         }
 
@@ -70,12 +77,12 @@ const botLangHandler = {
             const translatedTest = await translateText(testMessage, targetLanguage);
 
             if (!translatedTest || translatedTest === SAME_LANGUAGE || (typeof translatedTest === 'string' && translatedTest.trim().length === 0)) {
-                await enqueueMessage(channel, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
+                await sendLocalized(channel, 'cmd.botlang.SorryICouldnT', { targetLanguage }, `Sorry, I couldn't translate to "${targetLanguage}". Please check the language name and try again.`, { replyToId });
                 return;
             }
 
             // Set the bot language
-            contextManager.setBotLanguage(channelName, targetLanguage);
+            await contextManager.setBotLanguage(channelName, targetLanguage);
             resetChatSession(channelName); // Invalidate cached session so next query uses new language
 
             // Confirm in both languages
@@ -97,7 +104,7 @@ const botLangHandler = {
         } catch (error) {
             logger.error({ err: error, targetLanguage }, 'Error setting bot language');
             try {
-                await enqueueMessage(channel, `Sorry, an error occurred while setting the bot language.`, { replyToId });
+                await sendLocalized(channel, 'cmd.botlang.SorryErrorOccurredWhile', {}, `Sorry, an error occurred while setting the bot language.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[BotLang] Failed to send error message to chat');
             }

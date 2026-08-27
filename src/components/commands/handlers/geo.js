@@ -1,9 +1,9 @@
 // src/components/commands/handlers/geo.js
 import logger from '../../../lib/logger.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getGeoGameManager } from '../../geo/geoGameManager.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getLeaderboard } from '../../geo/geoStorage.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 import {
     extractGameContext,
     handleStop,
@@ -14,7 +14,7 @@ import {
     handleConfig,
     validateRounds,
     startGameWithErrorHandling,
-    safeReply,
+    safeReplyLocalized,
     isPositiveInteger,
 } from './gameHandlerUtils.js';
 
@@ -134,13 +134,13 @@ const geoHandler = {
                      const llmContext = contextManager.getContextForLLM(channelName, displayName, "");
                      scope = llmContext?.streamGame || null;
                      if (!scope || scope === "N/A") {
-                         await enqueueMessage(channel, `Could not detect the current game. Please specify one: !geo game <Game Title> [rounds]`, { replyToId });
+                         await sendLocalized(channel, 'cmd.geo.CouldNotDetectCurrent', {}, `Could not detect the current game. Please specify one: !geo game <Game Title> [rounds]`, { replyToId });
                          return;
                      }
                      logger.info(`[GeoGame] Using current stream game for !geo game: ${scope}`);
                 } catch (err) {
                      logger.error({ err }, "Error getting stream context for !geo game");
-                     await safeReply(channel, `Error getting current stream game.`, { replyToId }, '[GeoGame]');
+                     await safeReplyLocalized(channel, 'cmd.game.StreamGameFetchFailed', {}, `Error getting current stream game.`, { replyToId }, '[GeoGame]');
                      return;
                 }
             }
@@ -175,7 +175,7 @@ const geoHandler = {
             return;
 
         } else if (subCommand === 'help') {
-            await enqueueMessage(channel, `Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help`, { replyToId });
+            await sendLocalized(channel, 'cmd.geo.GeoGameGeoRegion', {}, `Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help`, { replyToId });
             return;
 
         } else {
@@ -223,7 +223,7 @@ const geoHandler = {
         // If consumedArgsCount is less than args.length, it means some arguments were not processed
         if (consumedArgsCount < args.length) {
             logger.warn(`[GeoGame][${channelName}] Unknown arguments after primary command processing: ${args.slice(consumedArgsCount).join(' ')}`);
-            await enqueueMessage(channel, `Unknown command format or extra arguments provided. Use !geo help.`, { replyToId });
+            await sendLocalized(channel, 'cmd.geo.UnknownCommandFormatOr', {}, `Unknown command format or extra arguments provided. Use !geo help.`, { replyToId });
             return;
         }
 

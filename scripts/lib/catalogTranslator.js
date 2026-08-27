@@ -81,7 +81,11 @@ export const placeholdersOf = str =>
 const COMMAND_LITERAL = /![a-z]+/g;
 export const commandsOf = str => (String(str).match(COMMAND_LITERAL) || []).sort().join();
 
-const HTML_TAG = /<\/?([a-z]+)[^>]*>/g;
+// Only real markup counts. Usage strings are full of angle-bracket *parameter names*
+// (`<name>`, `<text [- author]>`, `<opts...>`), and the prompt deliberately asks for those to be
+// translated — treating them as tags would reject every correct translation of a usage string.
+const HTML_TAGS = ['a', 'br', 'code', 'em', 'i', 'small', 'span', 'strong'];
+const HTML_TAG = new RegExp(`</?(?:${HTML_TAGS.join('|')})(?:\\s[^>]*)?/?>`, 'gi');
 export const tagsOf = str => (String(str).match(HTML_TAG) || []).map(t => t.toLowerCase()).sort().join();
 
 // --- prompt + call ---
