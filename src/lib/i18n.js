@@ -152,3 +152,25 @@ function interpolate(template, params) {
             : match
     );
 }
+
+/**
+ * The name of a language, written in the reader's own language.
+ *
+ * `!botlang` stores a free-text English name ("spanish"), so a status line would otherwise read
+ * "El bot está configurado para hablar spanish". Intl.DisplayNames covers every locale we ship
+ * without adding a name-per-language matrix to the catalogs.
+ *
+ * @param {string} language Locale code or English language name.
+ * @param {string|null} [displayIn=null] Locale to write the name in; defaults to `language` itself.
+ * @returns {string} The localized name, or the input unchanged if it cannot be resolved.
+ */
+export function localizedLanguageName(language, displayIn = null) {
+    const code = toLocaleCode(language);
+    if (!code) return String(language ?? '');
+    const target = toLocaleCode(displayIn) || code;
+    try {
+        return new Intl.DisplayNames([target], { type: 'language' }).of(code) || String(language);
+    } catch {
+        return String(language);
+    }
+}

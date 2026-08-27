@@ -58,7 +58,7 @@ async function execute(context) {
         );
 
         if (followData) {
-            const duration = formatFollowAge(followData.followed_at);
+            const duration = formatFollowAge(followData.followed_at, contextManager.getBotLanguage(channelName));
             if (targetUsername === user.username) {
                 await sendLocalized(channel, 'cmd.followage.HaveBeenFollowing', { displayName, p2: channelName, duration }, `${displayName}, you have been following ${channelName} for ${duration}!`);
             } else {

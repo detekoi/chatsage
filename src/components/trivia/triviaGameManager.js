@@ -1022,13 +1022,13 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         if (gameState.initiatorUsername === initiatorUsername?.toLowerCase() && gameState.totalRounds > 1) {
             return {
                 success: false,
-                error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (round ${gameState.currentRound}). Use !trivia stop if needed.`
+                errorKey: 'result.trivia.ErrRoundGameInitiatedBy', errorParams: { totalRounds: gameState.totalRounds, currentRound: gameState.currentRound }, error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (round ${gameState.currentRound}). Use !trivia stop if needed.`
             };
         }
 
         return {
             success: false,
-            error: `A game is already active (${gameState.state}). Please wait or use !trivia stop.`
+            errorKey: 'result.trivia.ErrGameAlreadyActivePlease', errorParams: { state: gameState.state }, error: `A game is already active (${gameState.state}). Please wait or use !trivia stop.`
         };
     }
 
@@ -1215,7 +1215,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
 
         return {
             success: false,
-            error: `Error starting game: ${error.message || 'Unknown error'}`
+            errorKey: 'result.trivia.ErrErrorStartingGame', errorParams: { p1: error.message || 'Unknown error' }, error: `Error starting game: ${error.message || 'Unknown error'}`
         };
     }
 }
@@ -1230,7 +1230,7 @@ function stopGame(channelName) {
 
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         logger.debug(`[TriviaGame][${channelName}] Stop command received, but no active game found.`);
-        return { message: "No active Trivia game to stop." };
+        return { messageKey: 'result.trivia.NoActiveTriviaGame', messageParams: {}, message: "No active Trivia game to stop." };
     }
 
     logger.info(`[TriviaGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}.`);
@@ -1242,7 +1242,7 @@ function stopGame(channelName) {
     // Transition to ending with "stopped" reason
     _transitionToEnding(gameState, "stopped");
 
-    return { message: "Trivia game stopped successfully." };
+    return { messageKey: 'result.trivia.TriviaGameStoppedSuccessfully', messageParams: {}, message: "Trivia game stopped successfully." };
 }
 
 /**
@@ -1371,15 +1371,15 @@ async function configureGame(channelName, options) {
         try {
             await saveChannelConfig(channelName, gameState.config);
             logger.info(`[TriviaGame][${channelName}] Configuration updated and saved: ${changesMade.join(', ')}`);
-            return { message: `Trivia settings updated: ${changesMade.join('. ')}.` };
+            return { messageKey: 'result.trivia.TriviaSettingsUpdated', messageParams: { p1: changesMade.join('. ') }, message: `Trivia settings updated: ${changesMade.join('. ')}.` };
         } catch (error) {
             logger.error({ err: error }, `[TriviaGame][${channelName}] Failed to save configuration changes.`);
-            return { message: `Settings updated in memory, but failed to save them permanently.` };
+            return { messageKey: 'result.trivia.SettingsUpdatedMemoryBut', messageParams: {}, message: `Settings updated in memory, but failed to save them permanently.` };
         }
     } else if (changesMade.length > 0 && !configChanged) {
-        return { message: `Trivia settings not changed: ${changesMade.join('. ')}.` };
+        return { messageKey: 'result.trivia.TriviaSettingsNotChanged', messageParams: { p1: changesMade.join('. ') }, message: `Trivia settings not changed: ${changesMade.join('. ')}.` };
     } else {
-        return { message: "No valid configuration options provided. Use !trivia help config for options." };
+        return { messageKey: 'result.trivia.NoValidConfigurationOptions', messageParams: {}, message: "No valid configuration options provided. Use !trivia help config for options." };
     }
 }
 
@@ -1397,10 +1397,10 @@ async function resetChannelConfig(channelName) {
         gameState.config = newConfig;
         await saveChannelConfig(channelName, gameState.config);
         logger.info(`[TriviaGame][${channelName}] Configuration successfully reset and saved.`);
-        return { success: true, message: "Trivia configuration reset to defaults." };
+        return { success: true, messageKey: 'result.trivia.TriviaConfigurationResetDefaults', messageParams: {}, message: "Trivia configuration reset to defaults." };
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Failed to save reset configuration.`);
-        return { success: false, message: "Configuration reset in memory, but failed to save permanently." };
+        return { success: false, messageKey: 'result.trivia.ConfigurationResetMemoryBut', messageParams: {}, message: "Configuration reset in memory, but failed to save permanently." };
     }
 }
 
@@ -1431,7 +1431,7 @@ async function clearLeaderboard(channelName) {
         return { success: result.success, message: result.message };
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Error clearing leaderboard data.`);
-        return { success: false, message: `An error occurred: ${error.message || 'Unknown error'}` };
+        return { success: false, messageKey: 'result.trivia.ErrorOccurred', messageParams: { p1: error.message || 'Unknown error' }, message: `An error occurred: ${error.message || 'Unknown error'}` };
     }
 }
 
@@ -1459,7 +1459,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
 
     if (!sessionInfo || !sessionInfo.itemsInSession || sessionInfo.itemsInSession.length === 0) {
         logger.warn(`[TriviaGameManager][${channelName}] No session info found for reporting.`);
-        return { success: false, message: "I couldn't find a recently played Trivia round in this channel to report." };
+        return { success: false, messageKey: 'result.trivia.ICouldnTFind', messageParams: {}, message: "I couldn't find a recently played Trivia round in this channel to report." };
     }
 
     const { totalRounds, itemsInSession } = sessionInfo;
@@ -1506,19 +1506,19 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         const itemToReport = itemsInSession[0];
         if (!itemToReport || !itemToReport.itemData || !itemToReport.itemData.question) {
             logger.warn(`[TriviaGameManager][${channelName}] Single item session, but question data missing for report.`);
-            return { success: false, message: "Could not identify a specific question to report from the last game." };
+            return { success: false, messageKey: 'result.trivia.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific question to report from the last game." };
         }
         try {
             await flagTriviaQuestionProblem(itemToReport.itemData.question, reason, reportedByUsername);
             logger.info(`[TriviaGameManager][${channelName}] Successfully reported single/latest question: "${itemToReport.itemData.question.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The question ("${itemToReport.itemData.question.substring(0, 30)}...") has been reported.` };
+            return { success: true, messageKey: 'result.trivia.ThanksFeedbackQuestionHas', messageParams: { p1: itemToReport.itemData.question.substring(0, 30) }, message: `Thanks for the feedback! The question ("${itemToReport.itemData.question.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error reporting question directly.`);
-            return { success: false, message: "Sorry, an error occurred while trying to report the question." };
+            return { success: false, messageKey: 'result.trivia.SorryErrorOccurredWhile', messageParams: {}, message: "Sorry, an error occurred while trying to report the question." };
         }
     } else {
         logger.warn(`[TriviaGameManager][${channelName}] No items found in session for reporting, though sessionInfo was present.`);
-        return { success: false, message: "No specific questions found in the last game session to report." };
+        return { success: false, messageKey: 'result.trivia.NoSpecificQuestionsFound', messageParams: {}, message: "No specific questions found in the last game session to report." };
     }
 }
 
@@ -1553,7 +1553,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     if (pendingData.expiresAt <= Date.now()) {
         pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Attempt to finalize an expired trivia report by ${username}.`);
-        return { success: true, message: `@${username}, your report session timed out. Please use !trivia report again.` };
+        return { success: true, messageKey: 'result.trivia.ReportSessionTimedOut', messageParams: { username }, message: `@${username}, your report session timed out. Please use !trivia report again.` };
     }
 
     const roundNum = parseInt(roundNumberStr, 10);
@@ -1561,23 +1561,23 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 
     if (isNaN(roundNum) || !itemToReport) {
         const maxRound = pendingData.itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
-        return { success: true, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
+        return { success: true, messageKey: 'result.trivia.SNotValidRound', messageParams: { username, maxRound }, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
     }
 
     if (!itemToReport.docId || !itemToReport.itemData || !itemToReport.itemData.question) {
         pendingTriviaReports.delete(reportKey);
         logger.error(`[TriviaGameManager][${channelName}] Found item for round ${roundNum} but it's missing docId or question data.`);
-        return { success: true, message: `@${username}, I found round ${roundNum}, but there was an issue identifying the question for the report. Please try again.` };
+        return { success: true, messageKey: 'result.trivia.IFoundRoundBut', messageParams: { username, roundNum }, message: `@${username}, I found round ${roundNum}, but there was an issue identifying the question for the report. Please try again.` };
     }
 
     try {
         await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
         pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Successfully finalized report for trivia round ${roundNum}, doc ID ${itemToReport.docId}, Question: "${itemToReport.itemData.question.substring(0, 30)}..."`);
-        return { success: true, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
+        return { success: true, messageKey: 'result.trivia.ThanksReportQuestionFrom', messageParams: { username, roundNum, p3: itemToReport.itemData.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
     } catch (error) {
         logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error finalizing report for trivia round ${roundNum}.`);
-        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
+        return { success: true, messageKey: 'result.trivia.ErrorOccurredSubmittingReport', messageParams: { username, roundNum }, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
     }
 }
 

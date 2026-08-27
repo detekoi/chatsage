@@ -11,7 +11,9 @@ export default {
             "one": "eine Runde",
             "many": "{totalRounds} Runden"
         },
-        "roundPrefixParen": "(Runde {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Runde {currentRound}/{totalRounds}) ",
+        "justNow": "gerade eben",
+        "unknown": "unbekannt"
     },
     "trivia": {
         "start": "🎯 Starte {roundText} Trivia! Thema: {topic}. Ihr habt {questionTimeSeconds} Sekunden Zeit pro Frage. Schreibt eure Antworten in den Chat!",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Okay, Übersetzungen global für {count} Nutzer gestoppt.",
             "OnlyModsBroadcasterCan": "Nur Mods/Broadcaster können Übersetzungen für andere stoppen."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "Kein aktives Trivia-Spiel zum Beenden.",
+            "TriviaGameStoppedSuccessfully": "Trivia-Spiel erfolgreich beendet.",
+            "TriviaSettingsUpdated": "Trivia-Einstellungen aktualisiert: {p1}.",
+            "SettingsUpdatedMemoryBut": "Einstellungen im Speicher aktualisiert, aber dauerhaftes Speichern fehlgeschlagen.",
+            "TriviaSettingsNotChanged": "Trivia-Einstellungen nicht geändert: {p1}.",
+            "NoValidConfigurationOptions": "Keine gültigen Konfigurationsoptionen angegeben. Nutze !trivia help config für Optionen.",
+            "TriviaConfigurationResetDefaults": "Trivia-Konfiguration auf Standardwerte zurückgesetzt.",
+            "ConfigurationResetMemoryBut": "Konfiguration im Speicher zurückgesetzt, aber dauerhaftes Speichern fehlgeschlagen.",
+            "ErrorOccurred": "Ein Fehler ist aufgetreten: {p1}",
+            "ICouldnTFind": "Ich konnte keine kürzlich gespielte Trivia-Runde in diesem Kanal zum Melden finden.",
+            "CouldNotIdentifySpecific": "Konnte keine bestimmte Frage aus dem letzten Spiel zum Melden finden.",
+            "ThanksFeedbackQuestionHas": "Danke für das Feedback! Die Frage (\"{p1}...\") wurde gemeldet.",
+            "SorryErrorOccurredWhile": "Entschuldigung, beim Melden der Frage ist ein Fehler aufgetreten.",
+            "NoSpecificQuestionsFound": "In der letzten Spielsitzung wurden keine bestimmten Fragen zum Melden gefunden.",
+            "ReportSessionTimedOut": "@{username}, deine Meldesitzung ist abgelaufen. Bitte nutze !trivia report erneut.",
+            "SNotValidRound": "@{username}, das ist keine gültige Rundennummer (1-{maxRound}) aus der letzten Spielsitzung. Bitte antworte mit einer gültigen Nummer oder versuche erneut zu melden.",
+            "IFoundRoundBut": "@{username}, ich habe Runde {roundNum} gefunden, aber es gab ein Problem beim Erkennen der Frage für die Meldung. Bitte versuche es erneut.",
+            "ThanksReportQuestionFrom": "@{username}, danke! Deine Meldung für die Frage aus Runde {roundNum} (\"{p3}...\") wurde übermittelt.",
+            "ErrorOccurredSubmittingReport": "@{username}, beim Senden deiner Meldung für Runde {roundNum} ist ein Fehler aufgetreten. Bitte versuche es erneut oder kontaktiere einen Mod.",
+            "ErrRoundGameInitiatedBy": "Ein von dir gestartetes Spiel mit {totalRounds} Runden läuft bereits (Runde {currentRound}). Nutze bei Bedarf !trivia stop.",
+            "ErrGameAlreadyActivePlease": "Ein Spiel ist bereits aktiv ({state}). Bitte warte oder nutze !trivia stop.",
+            "ErrErrorStartingGame": "Fehler beim Starten des Spiels: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "Keine aktive Geo-Game-Runde/-Session in diesem Kanal zum Beenden.",
+            "GeoGameStoppedSuccessfully": "Geo-Game erfolgreich beendet. Endergebnisse (falls vorhanden) werden gesendet.",
+            "GeoGameSettingsUpdated": "Geo-Game-Einstellungen aktualisiert: {p1}.",
+            "SettingsUpdatedMemoryBut": "Einstellungen im Speicher aktualisiert, konnten aber nicht dauerhaft gespeichert werden.",
+            "GeoGameSettingsNot": "Geo-Game-Einstellungen nicht geändert: {p1}.",
+            "NoValidConfigurationOptions": "Keine gültigen Konfigurationsoptionen angegeben oder Einstellungen sind bereits aktuell. Nutze !geo help config für Optionen.",
+            "GeoGameConfigurationReset": "Geo-Game-Konfiguration auf Standardwerte zurückgesetzt.",
+            "ConfigurationResetMemoryBut": "Konfiguration im Speicher zurückgesetzt, konnte aber nicht dauerhaft gespeichert werden. Bitte versuche es erneut.",
+            "ICouldnTFind": "Ich konnte in diesem Kanal keine kürzlich gespielte Geo-Game-Runde zum Melden finden.",
+            "CouldNotIdentifySpecific": "Konnte keinen bestimmten Ort aus dem letzten Spiel zum Melden ermitteln.",
+            "SorryErrorOccurredWhile": "Entschuldigung, beim Versuch, den Ort zu melden, ist ein Fehler aufgetreten.",
+            "NoSpecificLocationsFound": "Keine bestimmten Orte in der letzten Spiel-Session zum Melden gefunden.",
+            "ReportSessionTimedOut": "@{username}, deine Melde-Session ist abgelaufen. Bitte nutze !geo report erneut.",
+            "SNotValidRound": "@{username}, das ist keine gültige Rundennummer (1-{maxRound}) aus der letzten Spiel-Session. Bitte antworte mit einer gültigen Zahl oder versuche es erneut.",
+            "IFoundRoundBut": "@{username}, ich habe Runde {roundNum} gefunden, aber es gab ein Problem beim Identifizieren für die Meldung. Bitte versuche es erneut.",
+            "ThanksReportLocationFrom": "@{username}, danke! Deine Meldung für den Ort aus Runde {roundNum} (\"{p3}...\") wurde übermittelt.",
+            "ErrorOccurredSubmittingReport": "@{username}, beim Senden deiner Meldung für Runde {roundNum} ist ein Fehler aufgetreten. Bitte versuche es erneut oder kontaktiere einen Mod.",
+            "ErrRoundGameInitiatedBy": "Ein von dir gestartetes Spiel mit {totalRounds} Runden läuft bereits (aktuell Runde {currentRound}). Nutze bei Bedarf !geo stop.",
+            "ErrGameAlreadyActiveOr": "Ein Spiel ist bereits aktiv oder wird beendet ({state}). Bitte warte oder nutze !geo stop.",
+            "ErrGameStoppedBeforeFirst": "Das Spiel wurde vor dem ersten Hinweis beendet."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "Kein aktives Rätselspiel zum Beenden.",
+            "RiddleGameBeingStopped": "Rätselspiel wird beendet.",
+            "RiddleSettingsUpdated": "Rätsel-Einstellungen aktualisiert: {p1}.",
+            "SettingsChangedMemoryBut": "Einstellungen im Speicher geändert, konnten aber nicht gespeichert werden.",
+            "RiddleGameConfigurationReset": "Rätselspiel-Konfiguration auf Standardwerte zurückgesetzt.",
+            "ConfigResetMemoryBut": "Konfiguration im Speicher zurückgesetzt, konnte aber nicht gespeichert werden.",
+            "ICouldnTFind": "Ich konnte kein kürzlich gespieltes Rätsel in diesem Kanal zum Melden finden.",
+            "LastRiddleFoundSeems": "Das zuletzt gefundene Rätsel scheint unvollständig zu sein und kann nicht gemeldet werden.",
+            "ThanksFeedbackRiddleStarting": "Danke für das Feedback! Das Rätsel, das mit \"{p1}...\" beginnt, wurde gemeldet.",
+            "SorryErrorOccurredWhile": "Sorry, beim Melden des Rätsels ist ein Fehler aufgetreten.",
+            "ICouldnTFind2": "Ich konnte keine kürzlich gespielten Rätsel in diesem Kanal zum Melden finden.",
+            "CouldNotIdentifySpecific": "Es konnte kein bestimmtes Rätsel zum Melden identifiziert werden.",
+            "ThanksFeedbackRiddleHas": "Danke für das Feedback! Das Rätsel (\"{p1}...\") wurde gemeldet.",
+            "SorryErrorOccurredWhile2": "Sorry, beim Melden des Rätsels ist ein Fehler aufgetreten.",
+            "SNotValidRound": "@{username}, das ist keine gültige Rundennummer (1-{length}). Bitte versuche es erneut zu melden.",
+            "ICouldnTFind3": "@{username}, ich konnte das Rätsel für Runde {roundNum} nicht finden. Bitte versuche es erneut zu melden.",
+            "ThanksReportRiddleFrom": "@{username}, danke! Deine Meldung für das Rätsel aus Runde {roundNum} (\"{p3}...\") wurde übermittelt.",
+            "ErrorOccurredSubmittingReport": "@{username}, beim Senden deiner Meldung für Runde {roundNum} ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+            "ErrFailedStartRiddleGame": "Rätselspiel konnte nicht gestartet werden. Das erste Rätsel konnte nicht generiert werden."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "Der Befehl '{normalizedCommand}' ist immer verfügbar und kann nicht deaktiviert werden.",
+            "ErrorDisablingCommandPlease": "Fehler beim Deaktivieren des Befehls '!{commandName}'. Bitte versuche es erneut.",
+            "ErrorEnablingCommandPlease": "Fehler beim Aktivieren des Befehls '!{commandName}'. Bitte versuche es erneut."
         }
     }
 };

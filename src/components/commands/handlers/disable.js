@@ -1,8 +1,7 @@
 // src/components/commands/handlers/disable.js
 import { disableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
-import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { sendLocalized, sendLocalizedResult } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !disable command.
@@ -38,10 +37,10 @@ async function execute(context) {
         const result = await disableCommandForChannel(channelName, commandToDisable);
         
         if (result.success) {
-            await enqueueMessage(channel, result.message, { replyToId });
+            await sendLocalizedResult(channel, result, { replyToId });
             logger.info(`[DisableCommand] Successfully disabled command '${commandToDisable}' in channel ${channelName} by ${username}`);
         } else {
-            await enqueueMessage(channel, result.message, { replyToId });
+            await sendLocalizedResult(channel, result, { replyToId });
             logger.warn(`[DisableCommand] Failed to disable command '${commandToDisable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {

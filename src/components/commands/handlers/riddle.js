@@ -5,7 +5,7 @@ import { getRiddleGameManager } from '../../riddle/riddleGameManager.js';
 import { getLeaderboard } from '../../riddle/riddleStorage.js';
 import { formatRiddleHelpMessage, formatRiddleLeaderboardMessage } from '../../riddle/riddleMessageFormatter.js';
 import config from '../../../config/index.js';
-import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { sendLocalized, sendLocalizedResult } from '../../../lib/localizedMessage.js';
 import { isCatalogued } from '../../../lib/i18n.js';
 import {
     extractGameContext,
@@ -57,7 +57,7 @@ const riddleHandler = {
                 }
 
                 const stopResult = riddleManager.stopGame(channelName);
-                await enqueueMessage(channel, `${stopResult.message}`, { replyToId });
+                await sendLocalizedResult(channel, stopResult, { replyToId });
                 logger.info(`[RiddleCmd] Riddle game stop requested by ${displayName} in ${channelName}. Result: ${stopResult.message}`);
                 break;
             }

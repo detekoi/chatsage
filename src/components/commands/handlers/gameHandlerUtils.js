@@ -2,7 +2,7 @@
 import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
-import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { sendLocalized, sendLocalizedResult } from '../../../lib/localizedMessage.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { isCatalogued } from '../../../lib/i18n.js';
 
@@ -135,7 +135,7 @@ export async function handleClearLeaderboard(gameCtx, manager, gameName) {
 
     try {
         const result = await manager.clearLeaderboard(channelName);
-        await enqueueMessage(channel, `${result.message}`, { replyToId });
+        await sendLocalizedResult(channel, result, { replyToId });
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `Error calling clearLeaderboard from ${gameName} handler.`);
         await safeReplyLocalized(channel, 'cmd.game.ClearLeaderboardFailed', {}, `An unexpected error occurred while trying to clear the leaderboard.`, { replyToId }, `[${gameName}]`);
@@ -159,7 +159,7 @@ export async function handleResetConfig(gameCtx, manager, gameName) {
 
     try {
         const result = await manager.resetChannelConfig(channelName);
-        await enqueueMessage(channel, `${result.message}`, { replyToId });
+        await sendLocalizedResult(channel, result, { replyToId });
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `Error calling resetChannelConfig from ${gameName} handler.`);
         await safeReplyLocalized(channel, 'cmd.game.ResetConfigFailed', {}, `An unexpected error occurred while trying to reset the configuration.`, { replyToId }, `[${gameName}]`);
@@ -187,7 +187,7 @@ export async function handleReport(gameCtx, manager, gameName, commandName) {
     try {
         const result = await manager.initiateReportProcess(channelName, reason, username);
         if (result.message) {
-            await enqueueMessage(channel, `${result.message}`, { replyToId });
+            await sendLocalizedResult(channel, result, { replyToId });
         } else if (!result.success) {
             await sendLocalized(channel, 'cmd.gameHandlerUtils.CouldNotProcessReport', {}, `Could not process your report request at this time.`, { replyToId });
         }
@@ -254,7 +254,7 @@ export async function handleConfig(gameCtx, manager, schema, usageMessage, gameN
     }
 
     const result = await manager.configureGame(channelName, options);
-    await enqueueMessage(channel, `${result.message}`, { replyToId });
+    await sendLocalizedResult(channel, result, { replyToId });
     logger.info(`[${gameName}] Configuration updated for channel ${channelName}: ${JSON.stringify(options)}`);
 }
 
@@ -287,7 +287,7 @@ export async function startGameWithErrorHandling(gameCtx, startFn, gameName) {
     try {
         const result = await startFn();
         if (!result.success) {
-            await enqueueMessage(channel, `${result.error}`, { replyToId });
+            await sendLocalizedResult(channel, { message: result.error, messageKey: result.errorKey, messageParams: result.errorParams }, { replyToId });
         }
     } catch (error) {
         logger.error({ err: error }, `Unhandled error starting ${gameName} game from command handler.`);

@@ -80,7 +80,7 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                expect.stringContaining('spanish'),
+                expect.stringContaining('español'),
                 { replyToId: '123', skipTranslation: true }
             );
         });
@@ -237,7 +237,7 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                expect.stringContaining('german'),
+                expect.stringContaining('Deutsch'),
                 { replyToId: '123', skipTranslation: true }
             );
         });

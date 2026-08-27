@@ -4,6 +4,7 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 import { resetChatSession } from '../../llm/gemini/chat.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { localizedLanguageName } from '../../../lib/i18n.js';
 
 // Helper function removed - permission checking now handled by command system
 
@@ -32,7 +33,7 @@ const botLangHandler = {
                 const source = inferred ? ' (detected from your Twitch stream language)' : '';
                 await sendLocalized(channel,
                     inferred ? 'cmd.botlang.StatusUsageDetected' : 'cmd.botlang.StatusUsageSet',
-                    { currentLanguage },
+                    { currentLanguage: localizedLanguageName(currentLanguage) },
                     `Bot is currently set to speak ${currentLanguage}${source}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`,
                     { replyToId });
             } else {
@@ -51,7 +52,7 @@ const botLangHandler = {
                 const source = inferred ? 'detected from your Twitch stream language' : 'set by a moderator';
                 await sendLocalized(channel,
                     inferred ? 'cmd.botlang.StatusDetected' : 'cmd.botlang.StatusSet',
-                    { currentLanguage },
+                    { currentLanguage: localizedLanguageName(currentLanguage) },
                     `Bot is currently set to speak ${currentLanguage} (${source}).`,
                     { replyToId });
             } else {

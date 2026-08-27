@@ -11,7 +11,9 @@ export default {
             "one": "una ronda",
             "many": "{totalRounds} rondas"
         },
-        "roundPrefixParen": "(Ronda {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Ronda {currentRound}/{totalRounds}) ",
+        "justNow": "ahora mismo",
+        "unknown": "desconocido"
     },
     "trivia": {
         "start": "🎯 ¡Empezando {roundText} de Trivia! Tema: {topic}. Tienes {questionTimeSeconds} segundos para responder cada pregunta. ¡Escribe tus respuestas en el chat!",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Listo, se detuvieron las traducciones globalmente para {count} usuario(s).",
             "OnlyModsBroadcasterCan": "Solo los mods/streamer pueden detener la traducción para otros."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "No hay ninguna partida de Trivia activa para detener.",
+            "TriviaGameStoppedSuccessfully": "Partida de Trivia detenida correctamente.",
+            "TriviaSettingsUpdated": "Configuración de Trivia actualizada: {p1}.",
+            "SettingsUpdatedMemoryBut": "Ajustes actualizados en memoria, pero no se pudieron guardar de forma permanente.",
+            "TriviaSettingsNotChanged": "Ajustes de Trivia sin cambios: {p1}.",
+            "NoValidConfigurationOptions": "No se proporcionaron opciones de configuración válidas. Usa !trivia help config para ver las opciones.",
+            "TriviaConfigurationResetDefaults": "Configuración de Trivia restablecida a los valores predeterminados.",
+            "ConfigurationResetMemoryBut": "Configuración restablecida en memoria, pero no se pudo guardar de forma permanente.",
+            "ErrorOccurred": "Ocurrió un error: {p1}",
+            "ICouldnTFind": "No encontré ninguna ronda de Trivia reciente en este canal para reportar.",
+            "CouldNotIdentifySpecific": "No se pudo identificar una pregunta específica de la última partida para reportar.",
+            "ThanksFeedbackQuestionHas": "¡Gracias por los comentarios! La pregunta (\"{p1}...\") ha sido reportada.",
+            "SorryErrorOccurredWhile": "Lo siento, ocurrió un error al intentar reportar la pregunta.",
+            "NoSpecificQuestionsFound": "No se encontraron preguntas específicas en la última partida para reportar.",
+            "ReportSessionTimedOut": "@{username}, tu sesión de reporte ha caducado. Por favor, usa !trivia report de nuevo.",
+            "SNotValidRound": "@{username}, ese no es un número de ronda válido (1-{maxRound}) de la última partida. Responde con un número válido o intenta reportar de nuevo.",
+            "IFoundRoundBut": "@{username}, encontré la ronda {roundNum}, pero hubo un problema al identificar la pregunta para el reporte. Inténtalo de nuevo.",
+            "ThanksReportQuestionFrom": "@{username}, ¡gracias! Tu reporte para la pregunta de la ronda {roundNum} (\"{p3}...\") ha sido enviado.",
+            "ErrorOccurredSubmittingReport": "@{username}, ocurrió un error al enviar tu reporte de la ronda {roundNum}. Inténtalo de nuevo o contacta a un mod.",
+            "ErrRoundGameInitiatedBy": "Ya hay una partida de {totalRounds} rondas iniciada por ti en curso (ronda {currentRound}). Usa !trivia stop si es necesario.",
+            "ErrGameAlreadyActivePlease": "Ya hay una partida activa ({state}). Espera o usa !trivia stop.",
+            "ErrErrorStartingGame": "Error al iniciar la partida: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "No hay ninguna ronda/sesión activa de Geo-Game para detener en este canal.",
+            "GeoGameStoppedSuccessfully": "Geo-Game detenido con éxito. Se están enviando los resultados finales (si los hay).",
+            "GeoGameSettingsUpdated": "Ajustes de Geo-Game actualizados: {p1}.",
+            "SettingsUpdatedMemoryBut": "Ajustes actualizados en memoria, pero no se pudieron guardar permanentemente.",
+            "GeoGameSettingsNot": "Ajustes de Geo-Game no modificados: {p1}.",
+            "NoValidConfigurationOptions": "No se indicaron opciones de configuración válidas o los ajustes ya están actualizados. Usa !geo help config para ver las opciones.",
+            "GeoGameConfigurationReset": "Configuración de Geo-Game restablecida a los valores predeterminados.",
+            "ConfigurationResetMemoryBut": "Configuración restablecida en memoria, pero no se pudo guardar permanentemente. Inténtalo de nuevo.",
+            "ICouldnTFind": "No encontré ninguna ronda reciente de Geo-Game en este canal para reportar.",
+            "CouldNotIdentifySpecific": "No se pudo identificar una ubicación específica para reportar de la última partida.",
+            "SorryErrorOccurredWhile": "Lo siento, ocurrió un error al intentar reportar la ubicación.",
+            "NoSpecificLocationsFound": "No se encontraron ubicaciones específicas para reportar en la última sesión.",
+            "ReportSessionTimedOut": "@{username}, tu sesión de reporte expiró. Usa !geo report de nuevo.",
+            "SNotValidRound": "@{username}, ese no es un número de ronda válido (1-{maxRound}) de la última sesión. Responde con un número válido o intenta reportar de nuevo.",
+            "IFoundRoundBut": "@{username}, encontré la ronda {roundNum}, pero hubo un problema al identificarla para el reporte. Inténtalo de nuevo.",
+            "ThanksReportLocationFrom": "@{username}, ¡gracias! Se ha enviado tu reporte para la ubicación de la ronda {roundNum} (\"{p3}...\").",
+            "ErrorOccurredSubmittingReport": "@{username}, ocurrió un error al enviar tu reporte de la ronda {roundNum}. Inténtalo de nuevo o contacta a un mod.",
+            "ErrRoundGameInitiatedBy": "Ya hay una partida de {totalRounds} rondas iniciada por ti en curso (ronda actual: {currentRound}). Usa !geo stop si es necesario.",
+            "ErrGameAlreadyActiveOr": "Ya hay una partida activa o terminando ({state}). Espera o usa !geo stop.",
+            "ErrGameStoppedBeforeFirst": "La partida se detuvo antes de la primera pista."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "No hay ningún juego de acertijos activo para detener.",
+            "RiddleGameBeingStopped": "Deteniendo el juego de acertijos.",
+            "RiddleSettingsUpdated": "Ajustes de acertijos actualizados: {p1}.",
+            "SettingsChangedMemoryBut": "Ajustes cambiados en memoria, pero no se pudieron guardar.",
+            "RiddleGameConfigurationReset": "Configuración del juego de acertijos restablecida a los valores predeterminados.",
+            "ConfigResetMemoryBut": "Configuración restablecida en memoria, pero no se pudo guardar.",
+            "ICouldnTFind": "No encontré ningún acertijo jugado recientemente en este canal para reportar.",
+            "LastRiddleFoundSeems": "El último acertijo encontrado parece incompleto y no se puede reportar.",
+            "ThanksFeedbackRiddleStarting": "¡Gracias por los comentarios! El acertijo que empieza por \"{p1}...\" ha sido reportado.",
+            "SorryErrorOccurredWhile": "Lo siento, ocurrió un error al intentar reportar el acertijo.",
+            "ICouldnTFind2": "No encontré ningún acertijo reciente en este canal para reportar.",
+            "CouldNotIdentifySpecific": "No se pudo identificar un acertijo específico para reportar.",
+            "ThanksFeedbackRiddleHas": "¡Gracias por los comentarios! El acertijo (\"{p1}...\") ha sido reportado.",
+            "SorryErrorOccurredWhile2": "Lo siento, ocurrió un error al intentar reportar el acertijo.",
+            "SNotValidRound": "@{username}, ese no es un número de ronda válido (1-{length}). Intenta reportar de nuevo.",
+            "ICouldnTFind3": "@{username}, no encontré el acertijo de la ronda {roundNum}. Intenta reportar de nuevo.",
+            "ThanksReportRiddleFrom": "@{username}, ¡gracias! Tu reporte del acertijo de la ronda {roundNum} (\"{p3}...\") ha sido enviado.",
+            "ErrorOccurredSubmittingReport": "@{username}, ocurrió un error al enviar tu reporte para la ronda {roundNum}. Inténtalo de nuevo.",
+            "ErrFailedStartRiddleGame": "No se pudo iniciar el juego de acertijos. No se pudo generar el primer acertijo."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "El comando '{normalizedCommand}' siempre está disponible y no se puede desactivar.",
+            "ErrorDisablingCommandPlease": "Error al desactivar el comando '!{commandName}'. Inténtalo de nuevo.",
+            "ErrorEnablingCommandPlease": "Error al activar el comando '!{commandName}'. Inténtalo de nuevo."
         }
     }
 };

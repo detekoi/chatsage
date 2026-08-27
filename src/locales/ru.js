@@ -11,7 +11,9 @@ export default {
             "one": "1 раунд",
             "many": "{totalRounds} раундов"
         },
-        "roundPrefixParen": "(Раунд {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Раунд {currentRound}/{totalRounds}) ",
+        "justNow": "только что",
+        "unknown": "неизвестно"
     },
     "trivia": {
         "start": "🎯 Начинаем {roundText} викторины! Тема: {topic}. У вас {questionTimeSeconds} с на каждый вопрос. Пишите ответы в чат!",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Окей, переводы отключены глобально для {count} пользователей.",
             "OnlyModsBroadcasterCan": "Только модераторы и стример могут отключать перевод для других."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "Нет активной игры в Trivia для остановки.",
+            "TriviaGameStoppedSuccessfully": "Игра в Trivia успешно остановлена.",
+            "TriviaSettingsUpdated": "Настройки Trivia обновлены: {p1}.",
+            "SettingsUpdatedMemoryBut": "Настройки обновлены в памяти, но их не удалось сохранить насовсем.",
+            "TriviaSettingsNotChanged": "Настройки Trivia не изменились: {p1}.",
+            "NoValidConfigurationOptions": "Не указаны допустимые параметры. Используйте !trivia help config для справки.",
+            "TriviaConfigurationResetDefaults": "Настройки Trivia сброшены по умолчанию.",
+            "ConfigurationResetMemoryBut": "Настройки сброшены в памяти, но их не удалось сохранить насовсем.",
+            "ErrorOccurred": "Произошла ошибка: {p1}",
+            "ICouldnTFind": "Не удалось найти недавний раунд Trivia на этом канале для отправки жалобы.",
+            "CouldNotIdentifySpecific": "Не удалось определить конкретный вопрос из прошлой игры для жалобы.",
+            "ThanksFeedbackQuestionHas": "Спасибо за отзыв! Жалоба на вопрос (\"{p1}...\") отправлена.",
+            "SorryErrorOccurredWhile": "Извините, произошла ошибка при попытке отправить жалобу на вопрос.",
+            "NoSpecificQuestionsFound": "В прошлой игре не найдено конкретных вопросов для жалобы.",
+            "ReportSessionTimedOut": "@{username}, время сессии для жалобы истекло. Используйте !trivia report снова.",
+            "SNotValidRound": "@{username}, это недопустимый номер раунда (1-{maxRound}) из прошлой игры. Ответьте правильным числом или попробуйте отправить жалобу заново.",
+            "IFoundRoundBut": "@{username}, найден раунд {roundNum}, но возникла проблема с определением вопроса для жалобы. Попробуйте ещё раз.",
+            "ThanksReportQuestionFrom": "@{username}, спасибо! Жалоба на вопрос из раунда {roundNum} (\"{p3}...\") отправлена.",
+            "ErrorOccurredSubmittingReport": "@{username}, произошла ошибка при отправке репорта на раунд {roundNum}. Попробуй снова или обратись к модератору.",
+            "ErrRoundGameInitiatedBy": "Запущенная вами игра на {totalRounds} раундов уже идёт (раунд {currentRound}). Если нужно, используйте !trivia stop.",
+            "ErrGameAlreadyActivePlease": "Игра уже идёт ({state}). Пожалуйста, подождите или используйте !trivia stop.",
+            "ErrErrorStartingGame": "Ошибка запуска игры: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "На этом канале нет активного раунда или сессии Geo-Game для остановки.",
+            "GeoGameStoppedSuccessfully": "Игра Geo-Game успешно остановлена. Отправляем финальные результаты (если есть).",
+            "GeoGameSettingsUpdated": "Настройки Geo-Game обновлены: {p1}.",
+            "SettingsUpdatedMemoryBut": "Настройки обновлены в памяти, но не удалось сохранить их навсегда.",
+            "GeoGameSettingsNot": "Настройки Geo-Game не изменены: {p1}.",
+            "NoValidConfigurationOptions": "Не указаны подходящие параметры или настройки уже актуальны. Используй !geo help config для списка опций.",
+            "GeoGameConfigurationReset": "Настройки Geo-Game сброшены по умолчанию.",
+            "ConfigurationResetMemoryBut": "Конфигурация сброшена в памяти, но не удалось сохранить навсегда. Попробуй еще раз.",
+            "ICouldnTFind": "Не удалось найти недавно сыгранный раунд Geo-Game на этом канале для репорта.",
+            "CouldNotIdentifySpecific": "Не удалось определить конкретную локацию из прошлой игры для репорта.",
+            "SorryErrorOccurredWhile": "Извини, произошла ошибка при попытке отправить репорт на локацию.",
+            "NoSpecificLocationsFound": "В прошлой игровой сессии не найдено локаций для репорта.",
+            "ReportSessionTimedOut": "@{username}, время сессии репорта истекло. Используй !geo report снова.",
+            "SNotValidRound": "@{username}, это неверный номер раунда (1-{maxRound}) из прошлой сессии. Ответь правильным номером или попробуй отправить репорт заново.",
+            "IFoundRoundBut": "@{username}, раунд {roundNum} найден, но возникла проблема с его определением для репорта. Попробуй еще раз.",
+            "ThanksReportLocationFrom": "@{username}, спасибо! Твой репорт на локацию из раунда {roundNum} (\"{p3}...\") отправлен.",
+            "ErrorOccurredSubmittingReport": "@{username}, произошла ошибка при отправке репорта на раунд {roundNum}. Попробуй снова или обратись к модератору.",
+            "ErrRoundGameInitiatedBy": "Запущенная вами игра на {totalRounds} раундов уже идёт (сейчас раунд {currentRound}). Если нужно, используйте !geo stop.",
+            "ErrGameAlreadyActiveOr": "Игра уже идёт или завершается ({state}). Пожалуйста, подождите или используйте !geo stop.",
+            "ErrGameStoppedBeforeFirst": "Игра была остановлена до первой подсказки."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "Нет активной игры в загадки для остановки.",
+            "RiddleGameBeingStopped": "Игра в загадки останавливается.",
+            "RiddleSettingsUpdated": "Настройки загадок обновлены: {p1}.",
+            "SettingsChangedMemoryBut": "Настройки изменены в памяти, но не сохранились.",
+            "RiddleGameConfigurationReset": "Настройки игры в загадки сброшены по умолчанию.",
+            "ConfigResetMemoryBut": "Конфигурация сброшена в памяти, но не сохранилась.",
+            "ICouldnTFind": "Не удалось найти недавнюю загадку на этом канале для отправки жалобы.",
+            "LastRiddleFoundSeems": "Кажется, последняя найденная загадка неполная, на неё нельзя пожаловаться.",
+            "ThanksFeedbackRiddleStarting": "Спасибо за отзыв! Жалоба на загадку, начинающуюся с \"{p1}...\", отправлена.",
+            "SorryErrorOccurredWhile": "Извините, произошла ошибка при попытке отправить жалобу на загадку.",
+            "ICouldnTFind2": "Не удалось найти недавние загадки на этом канале для отправки жалобы.",
+            "CouldNotIdentifySpecific": "Не удалось определить конкретную загадку для отправки жалобы.",
+            "ThanksFeedbackRiddleHas": "Спасибо за отзыв! Жалоба на загадку (\"{p1}...\") отправлена.",
+            "SorryErrorOccurredWhile2": "Извините, произошла ошибка при попытке отправить жалобу на загадку.",
+            "SNotValidRound": "@{username}, это недопустимый номер раунда (1-{length}). Попробуйте отправить жалобу снова.",
+            "ICouldnTFind3": "@{username}, не удалось найти загадку для раунда {roundNum}. Попробуйте отправить жалобу снова.",
+            "ThanksReportRiddleFrom": "@{username}, спасибо! Жалоба на загадку из раунда {roundNum} (\"{p3}...\") отправлена.",
+            "ErrorOccurredSubmittingReport": "@{username}, произошла ошибка при отправке жалобы для раунда {roundNum}. Попробуйте ещё раз.",
+            "ErrFailedStartRiddleGame": "Не удалось запустить игру в загадки. Не получилось сгенерировать первую загадку."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "Команда '{normalizedCommand}' доступна всегда и не может быть отключена.",
+            "ErrorDisablingCommandPlease": "Ошибка при отключении команды '!{commandName}'. Попробуйте ещё раз.",
+            "ErrorEnablingCommandPlease": "Ошибка при включении команды '!{commandName}'. Попробуйте ещё раз."
         }
     }
 };

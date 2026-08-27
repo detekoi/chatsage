@@ -11,7 +11,9 @@ export default {
             "one": "une manche",
             "many": "{totalRounds} manches"
         },
-        "roundPrefixParen": "(Manche {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Manche {currentRound}/{totalRounds}) ",
+        "justNow": "à l'instant",
+        "unknown": "inconnu"
     },
     "trivia": {
         "start": "🎯 Lancement de {roundText} de Trivia ! Thème : {topic}. Vous avez {questionTimeSeconds} secondes pour répondre à chaque question. Tapez vos réponses dans le chat !",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "C'est bon, traductions arrêtées globalement pour {count} utilisateur(s).",
             "OnlyModsBroadcasterCan": "Seuls les modos/le streamer peuvent arrêter la traduction pour les autres."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "Aucune partie de Trivia en cours à arrêter.",
+            "TriviaGameStoppedSuccessfully": "Partie de Trivia arrêtée avec succès.",
+            "TriviaSettingsUpdated": "Paramètres du Trivia mis à jour : {p1}.",
+            "SettingsUpdatedMemoryBut": "Paramètres mis à jour en mémoire, mais échec de l'enregistrement permanent.",
+            "TriviaSettingsNotChanged": "Paramètres du Trivia inchangés : {p1}.",
+            "NoValidConfigurationOptions": "Aucune option de configuration valide. Utilisez !trivia help config pour voir les options.",
+            "TriviaConfigurationResetDefaults": "Configuration du Trivia réinitialisée par défaut.",
+            "ConfigurationResetMemoryBut": "Configuration réinitialisée en mémoire, mais échec de l'enregistrement permanent.",
+            "ErrorOccurred": "Une erreur est survenue : {p1}",
+            "ICouldnTFind": "Impossible de trouver une manche de Trivia récente à signaler sur cette chaîne.",
+            "CouldNotIdentifySpecific": "Impossible d'identifier une question précise à signaler de la dernière partie.",
+            "ThanksFeedbackQuestionHas": "Merci pour le retour ! La question (\"{p1}...\") a bien été signalée.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors du signalement de la question.",
+            "NoSpecificQuestionsFound": "Aucune question trouvée à signaler dans la dernière session de jeu.",
+            "ReportSessionTimedOut": "@{username}, la session de signalement a expiré. Veuillez réutiliser !trivia report.",
+            "SNotValidRound": "@{username}, ce n'est pas un numéro de manche valide (1-{maxRound}) de la dernière partie. Répondez avec un numéro valide ou relancez le signalement.",
+            "IFoundRoundBut": "@{username}, manche {roundNum} trouvée, mais impossible d'identifier la question à signaler. Merci de réessayer.",
+            "ThanksReportQuestionFrom": "@{username}, merci ! Votre signalement pour la question de la manche {roundNum} (\"{p3}...\") a bien été envoyé.",
+            "ErrorOccurredSubmittingReport": "@{username}, une erreur est survenue lors de l'envoi de ton signalement pour la manche {roundNum}. Réessaie ou contacte un modo.",
+            "ErrRoundGameInitiatedBy": "Une partie en {totalRounds} manches lancée par toi est déjà en cours (manche {currentRound}). Utilise !trivia stop si besoin.",
+            "ErrGameAlreadyActivePlease": "Une partie est déjà en cours ({state}). Patiente ou utilise !trivia stop.",
+            "ErrErrorStartingGame": "Erreur lors du lancement de la partie : {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "Aucune manche/session de Geo-Game active à arrêter sur cette chaîne.",
+            "GeoGameStoppedSuccessfully": "Geo-Game arrêté avec succès. Affichage des résultats finaux (s'il y en a) en cours.",
+            "GeoGameSettingsUpdated": "Paramètres de Geo-Game mis à jour : {p1}.",
+            "SettingsUpdatedMemoryBut": "Paramètres mis à jour en mémoire, mais échec de la sauvegarde permanente.",
+            "GeoGameSettingsNot": "Paramètres de Geo-Game inchangés : {p1}.",
+            "NoValidConfigurationOptions": "Aucune option de configuration valide fournie ou paramètres déjà à jour. Utilise !geo help config pour voir les options.",
+            "GeoGameConfigurationReset": "Configuration de Geo-Game réinitialisée par défaut.",
+            "ConfigurationResetMemoryBut": "Configuration réinitialisée en mémoire, mais échec de la sauvegarde permanente. Merci de réessayer.",
+            "ICouldnTFind": "Impossible de trouver une manche récente de Geo-Game à signaler sur cette chaîne.",
+            "CouldNotIdentifySpecific": "Impossible d'identifier un lieu précis à signaler pour la dernière partie.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors de la tentative de signalement du lieu.",
+            "NoSpecificLocationsFound": "Aucun lieu précis trouvé à signaler dans la dernière session de jeu.",
+            "ReportSessionTimedOut": "@{username}, le délai pour ton signalement a expiré. Merci d'utiliser à nouveau !geo report.",
+            "SNotValidRound": "@{username}, ce n'est pas un numéro de manche valide (1-{maxRound}) pour la dernière session. Réponds avec un numéro valide ou réessaie de signaler.",
+            "IFoundRoundBut": "@{username}, j'ai bien trouvé la manche {roundNum}, mais un problème est survenu lors de son identification pour le rapport. Merci de réessayer.",
+            "ThanksReportLocationFrom": "@{username}, merci ! Ton signalement pour le lieu de la manche {roundNum} (\"{p3}...\") a bien été envoyé.",
+            "ErrorOccurredSubmittingReport": "@{username}, une erreur est survenue lors de l'envoi de ton signalement pour la manche {roundNum}. Réessaie ou contacte un modo.",
+            "ErrRoundGameInitiatedBy": "Une partie en {totalRounds} manches lancée par toi est déjà en cours (actuellement manche {currentRound}). Utilise !geo stop si besoin.",
+            "ErrGameAlreadyActiveOr": "Une partie est déjà en cours ou se termine ({state}). Patiente ou utilise !geo stop.",
+            "ErrGameStoppedBeforeFirst": "La partie a été arrêtée avant le premier indice."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "Aucune énigme active à arrêter.",
+            "RiddleGameBeingStopped": "Arrêt du jeu d'énigme en cours.",
+            "RiddleSettingsUpdated": "Paramètres des énigmes mis à jour : {p1}.",
+            "SettingsChangedMemoryBut": "Paramètres modifiés en mémoire mais échec de la sauvegarde.",
+            "RiddleGameConfigurationReset": "Configuration du jeu d'énigmes réinitialisée par défaut.",
+            "ConfigResetMemoryBut": "Configuration réinitialisée en mémoire mais échec de la sauvegarde.",
+            "ICouldnTFind": "Impossible de trouver une énigme récente dans cette chaîne à signaler.",
+            "LastRiddleFoundSeems": "La dernière énigme trouvée semble incomplète et ne peut pas être signalée.",
+            "ThanksFeedbackRiddleStarting": "Merci pour le retour ! L'énigme commençant par \"{p1}...\" a été signalée.",
+            "SorryErrorOccurredWhile": "Désolé, une erreur s'est produite lors du signalement de l'énigme.",
+            "ICouldnTFind2": "Impossible de trouver des énigmes récentes dans cette chaîne à signaler.",
+            "CouldNotIdentifySpecific": "Impossible d'identifier une énigme précise à signaler.",
+            "ThanksFeedbackRiddleHas": "Merci pour le retour ! L'énigme (\"{p1}...\") a été signalée.",
+            "SorryErrorOccurredWhile2": "Désolé, une erreur s'est produite lors du signalement de l'énigme.",
+            "SNotValidRound": "@{username}, ce n'est pas un numéro de manche valide (1-{length}). Réessaie de signaler.",
+            "ICouldnTFind3": "@{username}, impossible de trouver l'énigme de la manche {roundNum}. Réessaie de signaler.",
+            "ThanksReportRiddleFrom": "@{username}, merci ! Ton signalement pour l'énigme de la manche {roundNum} (\"{p3}...\") a été envoyé.",
+            "ErrorOccurredSubmittingReport": "@{username}, une erreur s'est produite lors de l'envoi de ton signalement pour la manche {roundNum}. Réessaie.",
+            "ErrFailedStartRiddleGame": "Impossible de lancer le jeu d'énigmes. Impossible de générer la première énigme."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "La commande '{normalizedCommand}' est toujours disponible et ne peut pas être désactivée.",
+            "ErrorDisablingCommandPlease": "Erreur lors de la désactivation de la commande '!{commandName}'. Réessaie.",
+            "ErrorEnablingCommandPlease": "Erreur lors de l'activation de la commande '!{commandName}'. Réessaie."
         }
     }
 };

@@ -11,7 +11,9 @@ export default {
             "one": "1ラウンド",
             "many": "{totalRounds}ラウンド"
         },
-        "roundPrefixParen": "(ラウンド {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(ラウンド {currentRound}/{totalRounds}) ",
+        "justNow": "たった今",
+        "unknown": "不明"
     },
     "trivia": {
         "start": "🎯 トリビア（{roundText}）スタート！トピック: {topic}。回答時間は各問{questionTimeSeconds}秒。チャットで答えを入力してね！",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "了解、{count}人のグローバル翻訳を停止しました。",
             "OnlyModsBroadcasterCan": "他のユーザーの翻訳を停止できるのはモデレーター/配信者のみです。"
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "停止する進行中のトリビアゲームはありません。",
+            "TriviaGameStoppedSuccessfully": "トリビアゲームを終了しました。",
+            "TriviaSettingsUpdated": "トリビアの設定を更新しました: {p1}",
+            "SettingsUpdatedMemoryBut": "メモリ内の設定は更新されましたが、永続保存に失敗しました。",
+            "TriviaSettingsNotChanged": "トリビアの設定は変更されませんでした: {p1}",
+            "NoValidConfigurationOptions": "有効な設定オプションが指定されていません。オプションは !trivia help config で確認してください。",
+            "TriviaConfigurationResetDefaults": "トリビアの設定をデフォルトにリセットしました。",
+            "ConfigurationResetMemoryBut": "メモリ内の設定はリセットされましたが、永続保存に失敗しました。",
+            "ErrorOccurred": "エラーが発生しました: {p1}",
+            "ICouldnTFind": "このチャンネルで報告対象となる最近プレイされたトリビアのラウンドが見つかりませんでした。",
+            "CouldNotIdentifySpecific": "前回のゲームから報告対象の特定の問題を識別できませんでした。",
+            "ThanksFeedbackQuestionHas": "フィードバックありがとうございます！問題（\"{p1}...\"）を報告しました。",
+            "SorryErrorOccurredWhile": "申し訳ありません。問題の報告中にエラーが発生しました。",
+            "NoSpecificQuestionsFound": "前回のゲームセッションに報告対象となる特定の問題が見つかりませんでした。",
+            "ReportSessionTimedOut": "@{username}、報告セッションがタイムアウトしました。もう一度 !trivia report を実行してください。",
+            "SNotValidRound": "@{username}、前回のゲームセッションの有効なラウンド番号（1-{maxRound}）ではありません。有効な番号で返信するか、報告をやり直してください。",
+            "IFoundRoundBut": "@{username}、ラウンド {roundNum} が見つかりましたが、報告対象の問題の特定で問題が発生しました。もう一度お試しください。",
+            "ThanksReportQuestionFrom": "@{username}、ありがとうございます！ラウンド {roundNum} の問題（\"{p3}...\"）の報告を送信しました。",
+            "ErrorOccurredSubmittingReport": "@{username}、ラウンド{roundNum}の報告送信中にエラーが発生しました。もう一度試すかモデレーターに連絡してください。",
+            "ErrRoundGameInitiatedBy": "あなたが開始した{totalRounds}ラウンドのゲームが既に進行中です（ラウンド {currentRound}）。必要なら !trivia stop を使ってください。",
+            "ErrGameAlreadyActivePlease": "ゲームが既に進行中です（{state}）。待つか、!trivia stop を使ってください。",
+            "ErrErrorStartingGame": "ゲーム開始エラー: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "このチャンネルで停止できる進行中のGeo-Gameラウンド/セッションはありません。",
+            "GeoGameStoppedSuccessfully": "Geo-Gameを停止しました。最終結果がある場合は集計中です。",
+            "GeoGameSettingsUpdated": "Geo-Gameの設定を更新しました: {p1}",
+            "SettingsUpdatedMemoryBut": "設定はメモリ上で更新されましたが、永続保存に失敗しました。",
+            "GeoGameSettingsNot": "Geo-Gameの設定は変更されませんでした: {p1}",
+            "NoValidConfigurationOptions": "有効な設定オプションが指定されていないか、すでに最新です。オプション一覧は !geo help config で確認できます。",
+            "GeoGameConfigurationReset": "Geo-Gameの設定をデフォルトにリセットしました。",
+            "ConfigurationResetMemoryBut": "設定はメモリ上でリセットされましたが、永続保存に失敗しました。もう一度試してください。",
+            "ICouldnTFind": "このチャンネルで報告対象となる最近プレイされたGeo-Gameのラウンドが見つかりませんでした。",
+            "CouldNotIdentifySpecific": "前回のゲームから報告対象の特定の場所を特定できませんでした。",
+            "SorryErrorOccurredWhile": "申し訳ありません。場所の報告中にエラーが発生しました。",
+            "NoSpecificLocationsFound": "前回のゲームセッションに報告対象の場所が見つかりませんでした。",
+            "ReportSessionTimedOut": "@{username}、報告セッションがタイムアウトしました。もう一度 !geo report を実行してください。",
+            "SNotValidRound": "@{username}、前回のゲームセッションの有効なラウンド番号（1〜{maxRound}）ではありません。有効な番号で返信するかも一度報告をやり直してください。",
+            "IFoundRoundBut": "@{username}、ラウンド{roundNum}は見つかりましたが、報告用の特定時に問題が発生しました。もう一度お試しください。",
+            "ThanksReportLocationFrom": "@{username}、ありがとうございます！ラウンド{roundNum}（\"{p3}...\"）の場所に関する報告を受け付けました。",
+            "ErrorOccurredSubmittingReport": "@{username}、ラウンド{roundNum}の報告送信中にエラーが発生しました。もう一度試すかモデレーターに連絡してください。",
+            "ErrRoundGameInitiatedBy": "あなたが開始した{totalRounds}ラウンドのゲームが既に進行中です（現在ラウンド {currentRound}）。必要なら !geo stop を使ってください。",
+            "ErrGameAlreadyActiveOr": "ゲームが既に進行中または終了処理中です（{state}）。待つか、!geo stop を使ってください。",
+            "ErrGameStoppedBeforeFirst": "最初のヒントが出る前にゲームが停止されました。"
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "停止できる進行中のなぞなぞゲームはありません。",
+            "RiddleGameBeingStopped": "なぞなぞゲームを停止しています。",
+            "RiddleSettingsUpdated": "なぞなぞの設定を更新しました: {p1}。",
+            "SettingsChangedMemoryBut": "メモリ上の設定は変更されましたが、保存に失敗しました。",
+            "RiddleGameConfigurationReset": "なぞなぞゲームの設定を初期状態にリセットしました。",
+            "ConfigResetMemoryBut": "メモリ上の設定はリセットされましたが、保存に失敗しました。",
+            "ICouldnTFind": "このチャンネルで通報対象となる最近プレイされたなぞなぞが見つかりませんでした。",
+            "LastRiddleFoundSeems": "見つかった最新のなぞなぞが不完全なため、通報できません。",
+            "ThanksFeedbackRiddleStarting": "フィードバックありがとうございます！「{p1}...」で始まるなぞなぞを通報しました。",
+            "SorryErrorOccurredWhile": "申し訳ありません。なぞなぞの通報中にエラーが発生しました。",
+            "ICouldnTFind2": "このチャンネルで通報対象となる最近のなぞなぞが見つかりませんでした。",
+            "CouldNotIdentifySpecific": "通報対象のなぞなぞを特定できませんでした。",
+            "ThanksFeedbackRiddleHas": "フィードバックありがとうございます！なぞなぞ (\"{p1}...\") を通報しました。",
+            "SorryErrorOccurredWhile2": "申し訳ありません。なぞなぞの通報中にエラーが発生しました。",
+            "SNotValidRound": "@{username}、ラウンド番号が無効です (1-{length})。もう一度通報をお試しください。",
+            "ICouldnTFind3": "@{username}、ラウンド {roundNum} のなぞなぞが見つかりませんでした。もう一度通報をお試しください。",
+            "ThanksReportRiddleFrom": "@{username}、ありがとうございます！ラウンド {roundNum} のなぞなぞ (\"{p3}...\") の通報を受け付けました。",
+            "ErrorOccurredSubmittingReport": "@{username}、ラウンド {roundNum} の通報送信中にエラーが発生しました。もう一度お試しください。",
+            "ErrFailedStartRiddleGame": "なぞなぞゲームの開始に失敗しました。最初のなぞなぞを生成できませんでした。"
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "コマンド '{normalizedCommand}' は常時利用可能なため、無効化できません。",
+            "ErrorDisablingCommandPlease": "コマンド '!{commandName}' の無効化中にエラーが発生しました。もう一度お試しください。",
+            "ErrorEnablingCommandPlease": "コマンド '!{commandName}' の有効化中にエラーが発生しました。もう一度お試しください。"
         }
     }
 };

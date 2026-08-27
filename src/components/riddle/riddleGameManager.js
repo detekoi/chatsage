@@ -691,7 +691,7 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     // Start the first round
     await _startNextRound(gameState);
     if (gameState.state === 'idle') { // Game failed to start properly
-        return { success: false, error: "Failed to start the riddle game. Could not generate the first riddle." };
+        return { success: false, errorKey: 'result.riddle.ErrFailedStartRiddleGame', errorParams: {}, error: "Failed to start the riddle game. Could not generate the first riddle." };
     }
     return { success: true };
 }
@@ -700,7 +700,7 @@ export function stopGame(channelName) {
     const gameState = activeGames.get(channelName);
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         logger.debug(`[RiddleGameManager][${channelName}] Stop command, but no active/stoppable game.`);
-        return { message: "No active riddle game to stop." };
+        return { messageKey: 'result.riddle.NoActiveRiddleGame', messageParams: {}, message: "No active riddle game to stop." };
     }
     logger.info(`[RiddleGameManager][${channelName}] Game stop requested. Current state: ${gameState.state}`);
     // Clear any prefetched riddle
@@ -708,7 +708,7 @@ export function stopGame(channelName) {
     gameState.prefetchedRiddle = null;
     // _transitionToEnding will send the actual "game stopped" message with answer.
     _transitionToEnding(gameState, "stopped");
-    return { message: "Riddle game is being stopped." }; // Confirmation to initiator
+    return { messageKey: 'result.riddle.RiddleGameBeingStopped', messageParams: {}, message: "Riddle game is being stopped." }; // Confirmation to initiator
 }
 
 export function processPotentialAnswer(channelName, username, displayName, message) {
@@ -746,10 +746,10 @@ export async function configureRiddleGame(channelName, options) {
         try {
             await saveChannelRiddleConfig(channelName, gameState.config);
             logger.info(`[RiddleGameManager][${channelName}] Riddle config updated: ${appliedChanges.join(', ')}`);
-            return { message: `Riddle settings updated: ${appliedChanges.join('. ')}.` };
+            return { messageKey: 'result.riddle.RiddleSettingsUpdated', messageParams: { p1: appliedChanges.join('. ') }, message: `Riddle settings updated: ${appliedChanges.join('. ')}.` };
         } catch (e) {
             logger.error({ e }, `Failed to save riddle config for ${channelName}`);
-            return { message: `Settings changed in memory but failed to save.` };
+            return { messageKey: 'result.riddle.SettingsChangedMemoryBut', messageParams: {}, message: `Settings changed in memory but failed to save.` };
         }
     }
     return { message: appliedChanges.length > 0 ? `Riddle settings: ${appliedChanges.join('. ')}.` : "No valid riddle settings changed." };
@@ -761,10 +761,10 @@ export async function resetRiddleConfig(channelName) {
     try {
         await saveChannelRiddleConfig(channelName, gameState.config);
         logger.info(`[RiddleGameManager][${channelName}] Riddle config reset to defaults.`);
-        return { message: "Riddle game configuration reset to defaults." };
+        return { messageKey: 'result.riddle.RiddleGameConfigurationReset', messageParams: {}, message: "Riddle game configuration reset to defaults." };
     } catch (e) {
         logger.error({ e }, `Failed to save reset riddle config for ${channelName}`);
-        return { message: `Config reset in memory but failed to save.` };
+        return { messageKey: 'result.riddle.ConfigResetMemoryBut', messageParams: {}, message: `Config reset in memory but failed to save.` };
     }
 }
 
@@ -820,21 +820,21 @@ async function reportLastRiddle(channelName, reason, reportedByUsername) {
     const lastRiddle = await getLastPlayedRiddleDetails(channelName);
 
     if (!lastRiddle || !lastRiddle.docId) {
-        return { success: false, message: "I couldn't find a recently played riddle in this channel to report." };
+        return { success: false, messageKey: 'result.riddle.ICouldnTFind', messageParams: {}, message: "I couldn't find a recently played riddle in this channel to report." };
     }
 
     if (!lastRiddle.question) {
         logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
-        return { success: false, message: "The last riddle found seems incomplete and cannot be reported." };
+        return { success: false, messageKey: 'result.riddle.LastRiddleFoundSeems', messageParams: {}, message: "The last riddle found seems incomplete and cannot be reported." };
     }
 
     try {
         await flagRiddleAsProblem(lastRiddle.docId, reason, reportedByUsername);
         logger.info(`[RiddleGameManager][${channelName}] Successfully reported riddle: "${lastRiddle.question.substring(0, 50)}..."`);
-        return { success: true, message: `Thanks for the feedback! The riddle starting with "${lastRiddle.question.substring(0, 30)}..." has been reported.` };
+        return { success: true, messageKey: 'result.riddle.ThanksFeedbackRiddleStarting', messageParams: { p1: lastRiddle.question.substring(0, 30) }, message: `Thanks for the feedback! The riddle starting with "${lastRiddle.question.substring(0, 30)}..." has been reported.` };
     } catch (error) {
         logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting riddle via storage.`);
-        return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
+        return { success: false, messageKey: 'result.riddle.SorryErrorOccurredWhile', messageParams: {}, message: "Sorry, an error occurred while trying to report the riddle." };
     }
 }
 
@@ -876,7 +876,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
 
     if (!sessionInfo || !sessionInfo.riddlesInSession || sessionInfo.riddlesInSession.length === 0) {
         logger.warn(`[RiddleGameManager][${channelName}] getLatestCompletedSessionInfo returned insufficient data. sessionInfo: ${JSON.stringify(sessionInfo, null, 2)}`);
-        return { success: false, message: "I couldn't find any recent riddles in this channel to report." };
+        return { success: false, messageKey: 'result.riddle.ICouldnTFind2', messageParams: {}, message: "I couldn't find any recent riddles in this channel to report." };
     }
 
     const totalRoundsFromInfo = sessionInfo.totalRounds;
@@ -911,16 +911,16 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         logger.info(`[RiddleGameManager][${channelName}] Single riddle report scenario. totalRoundsFromInfo: ${totalRoundsFromInfo}, riddlesFoundInSession.length: ${riddlesFoundInSession.length}`);
         const riddleToReport = riddlesFoundInSession[0];
         if (!riddleToReport || !riddleToReport.docId) {
-            return { success: false, message: "Could not identify a specific riddle to report." };
+            return { success: false, messageKey: 'result.riddle.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific riddle to report." };
         }
         const questionPreview = riddleToReport.question || 'Unknown riddle';
         try {
             await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
             logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${questionPreview.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
+            return { success: true, messageKey: 'result.riddle.ThanksFeedbackRiddleHas', messageParams: { p1: questionPreview.substring(0, 30) }, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting single/latest riddle via storage.`);
-            return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
+            return { success: false, messageKey: 'result.riddle.SorryErrorOccurredWhile2', messageParams: {}, message: "Sorry, an error occurred while trying to report the riddle." };
         }
     }
 }
@@ -935,24 +935,24 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 
     const roundNum = parseInt(roundNumberStr, 10);
     if (isNaN(roundNum) || roundNum < 1 || roundNum > pendingData.riddlesInSession.length) {
-        return { success: true, message: `@${username}, that's not a valid round number (1-${pendingData.riddlesInSession.length}). Please try reporting again.` };
+        return { success: true, messageKey: 'result.riddle.SNotValidRound', messageParams: { username, length: pendingData.riddlesInSession.length }, message: `@${username}, that's not a valid round number (1-${pendingData.riddlesInSession.length}). Please try reporting again.` };
     }
 
     const riddleToReport = pendingData.riddlesInSession.find(r => r.roundNumber === roundNum);
 
     if (!riddleToReport || !riddleToReport.docId) {
         pendingReports.delete(reportKey); // Clean up
-        return { success: true, message: `@${username}, I couldn't find the riddle for round ${roundNum}. Please try reporting again.` };
+        return { success: true, messageKey: 'result.riddle.ICouldnTFind3', messageParams: { username, roundNum }, message: `@${username}, I couldn't find the riddle for round ${roundNum}. Please try reporting again.` };
     }
 
     try {
         await flagRiddleAsProblem(riddleToReport.docId, pendingData.reason, pendingData.reportedByUsername);
         pendingReports.delete(reportKey); // Clean up successful report
         logger.info(`[RiddleGameManager][${channelName}] Successfully finalized report for round ${roundNum}, riddle ID ${riddleToReport.docId}`);
-        return { success: true, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };
+        return { success: true, messageKey: 'result.riddle.ThanksReportRiddleFrom', messageParams: { username, roundNum, p3: riddleToReport.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };
     } catch (error) {
         pendingReports.delete(reportKey); // Clean up even on error
         logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error finalizing report for round ${roundNum}.`);
-        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again.` };
+        return { success: true, messageKey: 'result.riddle.ErrorOccurredSubmittingReport', messageParams: { username, roundNum }, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again.` };
     }
 }

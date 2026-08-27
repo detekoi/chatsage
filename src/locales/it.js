@@ -11,7 +11,9 @@ export default {
             "one": "un round",
             "many": "{totalRounds} round"
         },
-        "roundPrefixParen": "(Round {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Round {currentRound}/{totalRounds}) ",
+        "justNow": "proprio ora",
+        "unknown": "sconosciuto"
     },
     "trivia": {
         "start": "🎯 Inizia {roundText} di Trivia! Argomento: {topic}. Avete {questionTimeSeconds} secondi per rispondere a ogni domanda. Scrivete le risposte in chat!",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Okay, traduzioni interrotte a livello globale per {count} utente/i.",
             "OnlyModsBroadcasterCan": "Solo mod/streamer possono interrompere la traduzione per gli altri."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "Nessuna partita di Trivia attiva da interrompere.",
+            "TriviaGameStoppedSuccessfully": "Partita di Trivia interrotta con successo.",
+            "TriviaSettingsUpdated": "Impostazioni di Trivia aggiornate: {p1}.",
+            "SettingsUpdatedMemoryBut": "Impostazioni aggiornate in memoria, ma salvataggio permanente non riuscito.",
+            "TriviaSettingsNotChanged": "Impostazioni di Trivia non modificate: {p1}.",
+            "NoValidConfigurationOptions": "Nessuna opzione di configurazione valida specificata. Usa !trivia help config per le opzioni.",
+            "TriviaConfigurationResetDefaults": "Configurazione di Trivia ripristinata ai valori predefiniti.",
+            "ConfigurationResetMemoryBut": "Configurazione ripristinata in memoria, ma salvataggio permanente non riuscito.",
+            "ErrorOccurred": "Si è verificato un errore: {p1}",
+            "ICouldnTFind": "Non ho trovato alcun round di Trivia giocato di recente in questo canale da segnalare.",
+            "CouldNotIdentifySpecific": "Impossibile identificare una domanda specifica da segnalare dall'ultima partita.",
+            "ThanksFeedbackQuestionHas": "Grazie per il feedback! La domanda (\"{p1}...\") è stata segnalata.",
+            "SorryErrorOccurredWhile": "Spiacenti, si è verificato un errore durante la segnalazione della domanda.",
+            "NoSpecificQuestionsFound": "Nessuna domanda specifica trovata nell'ultima sessione di gioco da segnalare.",
+            "ReportSessionTimedOut": "@{username}, sessione di segnalazione scaduta. Usa di nuovo !trivia report.",
+            "SNotValidRound": "@{username}, questo non è un numero di round valido (1-{maxRound}) dell'ultima sessione. Rispondi con un numero valido o prova a segnalare di nuovo.",
+            "IFoundRoundBut": "@{username}, ho trovato il round {roundNum}, ma si è verificato un problema nell'identificare la domanda per la segnalazione. Riprova.",
+            "ThanksReportQuestionFrom": "@{username}, grazie! La tua segnalazione per la domanda del round {roundNum} (\"{p3}...\") è stata inviata.",
+            "ErrorOccurredSubmittingReport": "@{username}, si è verificato un errore durante l'invio della segnalazione per il round {roundNum}. Riprova o contatta un mod.",
+            "ErrRoundGameInitiatedBy": "Una partita da {totalRounds} round avviata da te è già in corso (round {currentRound}). Usa !trivia stop se necessario.",
+            "ErrGameAlreadyActivePlease": "Una partita è già attiva ({state}). Attendi o usa !trivia stop.",
+            "ErrErrorStartingGame": "Errore durante l'avvio della partita: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "Nessun round/sessione di Geo-Game attivo da interrompere in questo canale.",
+            "GeoGameStoppedSuccessfully": "Geo-Game terminato con successo. Invio dei risultati finali (se presenti) in corso.",
+            "GeoGameSettingsUpdated": "Impostazioni di Geo-Game aggiornate: {p1}.",
+            "SettingsUpdatedMemoryBut": "Impostazioni aggiornate in memoria, ma salvataggio permanente non riuscito.",
+            "GeoGameSettingsNot": "Impostazioni di Geo-Game non modificate: {p1}.",
+            "NoValidConfigurationOptions": "Nessuna opzione di configurazione valida fornita o impostazioni già aggiornate. Usa !geo help config per le opzioni.",
+            "GeoGameConfigurationReset": "Configurazione di Geo-Game ripristinata ai valori predefiniti.",
+            "ConfigurationResetMemoryBut": "Configurazione ripristinata in memoria, ma salvataggio permanente non riuscito. Riprova.",
+            "ICouldnTFind": "Non ho trovato nessun round di Geo-Game giocato di recente in questo canale da segnalare.",
+            "CouldNotIdentifySpecific": "Impossibile identificare una posizione specifica da segnalare dall'ultima partita.",
+            "SorryErrorOccurredWhile": "Spiacente, si è verificato un errore durante la segnalazione della posizione.",
+            "NoSpecificLocationsFound": "Nessuna posizione specifica trovata da segnalare nell'ultima sessione di gioco.",
+            "ReportSessionTimedOut": "@{username}, la sessione di segnalazione è scaduta. Usa di nuovo !geo report.",
+            "SNotValidRound": "@{username}, non è un numero di round valido (1-{maxRound}) dell'ultima sessione di gioco. Rispondi con un numero valido o prova a segnalare di nuovo.",
+            "IFoundRoundBut": "@{username}, ho trovato il round {roundNum}, ma c'è stato un problema nell'identificarlo per la segnalazione. Riprova.",
+            "ThanksReportLocationFrom": "@{username}, grazie! La tua segnalazione per la posizione del round {roundNum} (\"{p3}...\") è stata inviata.",
+            "ErrorOccurredSubmittingReport": "@{username}, si è verificato un errore durante l'invio della segnalazione per il round {roundNum}. Riprova o contatta un mod.",
+            "ErrRoundGameInitiatedBy": "Una partita da {totalRounds} round avviata da te è già in corso (attualmente round {currentRound}). Usa !geo stop se necessario.",
+            "ErrGameAlreadyActiveOr": "Una partita è già attiva o sta terminando ({state}). Attendi o usa !geo stop.",
+            "ErrGameStoppedBeforeFirst": "La partita è stata interrotta prima del primo indizio."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "Nessun gioco degli indovinelli attivo da interrompere.",
+            "RiddleGameBeingStopped": "Interruzione del gioco degli indovinelli in corso.",
+            "RiddleSettingsUpdated": "Impostazioni indovinello aggiornate: {p1}.",
+            "SettingsChangedMemoryBut": "Impostazioni modificate in memoria, ma salvataggio non riuscito.",
+            "RiddleGameConfigurationReset": "Configurazione del gioco degli indovinelli reimpostata ai valori predefiniti.",
+            "ConfigResetMemoryBut": "Configurazione ripristinata in memoria, ma salvataggio non riuscito.",
+            "ICouldnTFind": "Non ho trovato nessun indovinello recente giocato in questo canale da segnalare.",
+            "LastRiddleFoundSeems": "L'ultimo indovinello trovato sembra incompleto e non può essere segnalato.",
+            "ThanksFeedbackRiddleStarting": "Grazie per il feedback! L'indovinello che inizia con \"{p1}...\" è stato segnalato.",
+            "SorryErrorOccurredWhile": "Spiacente, si è verificato un errore durante la segnalazione dell'indovinello.",
+            "ICouldnTFind2": "Non ho trovato indovinelli recenti in questo canale da segnalare.",
+            "CouldNotIdentifySpecific": "Impossibile identificare un indovinello specifico da segnalare.",
+            "ThanksFeedbackRiddleHas": "Grazie per il feedback! L'indovinello (\"{p1}...\") è stato segnalato.",
+            "SorryErrorOccurredWhile2": "Spiacente, si è verificato un errore durante la segnalazione dell'indovinello.",
+            "SNotValidRound": "@{username}, questo non è un numero di round valido (1-{length}). Riprova a segnalare.",
+            "ICouldnTFind3": "@{username}, non ho trovato l'indovinello per il round {roundNum}. Riprova a segnalare.",
+            "ThanksReportRiddleFrom": "@{username}, grazie! La tua segnalazione per l'indovinello del round {roundNum} (\"{p3}...\") è stata inviata.",
+            "ErrorOccurredSubmittingReport": "@{username}, si è verificato un errore durante l'invio della segnalazione per il round {roundNum}. Riprova.",
+            "ErrFailedStartRiddleGame": "Impossibile avviare il gioco degli indovinelli. Impossibile generare il primo indovinello."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "Il comando '{normalizedCommand}' è sempre disponibile e non può essere disattivato.",
+            "ErrorDisablingCommandPlease": "Errore durante la disattivazione del comando '!{commandName}'. Riprova.",
+            "ErrorEnablingCommandPlease": "Errore durante l'attivazione del comando '!{commandName}'. Riprova."
         }
     }
 };

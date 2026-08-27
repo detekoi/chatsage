@@ -64,3 +64,25 @@ export async function sendLocalized(channel, key, params, fallback, options) {
         ? enqueueMessage(channel, text)
         : enqueueMessage(channel, text, options);
 }
+
+/**
+ * Sends the message carried on a manager result object.
+ *
+ * Game managers return `{ success, message }` where `message` is fixed English prose. They now also
+ * carry `messageKey`/`messageParams` so that text can come from the catalog instead of being
+ * machine-translated on the way out. A result without a key still sends its `message` verbatim,
+ * so older call paths keep working unchanged.
+ *
+ * @param {string} channel Channel name with '#'.
+ * @param {{ message?: string, messageKey?: string, messageParams?: object }} result
+ * @param {object} [options] Passed through to enqueueMessage (replyToId, etc.).
+ */
+export async function sendLocalizedResult(channel, result, options) {
+    const text = result?.message ?? '';
+    if (!result?.messageKey) {
+        return options === undefined
+            ? enqueueMessage(channel, text)
+            : enqueueMessage(channel, text, options);
+    }
+    return sendLocalized(channel, result.messageKey, result.messageParams || {}, text, options);
+}

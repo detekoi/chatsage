@@ -11,7 +11,9 @@ export default {
             "one": "a round",
             "many": "{totalRounds} rounds"
         },
-        "roundPrefixParen": "(Round {currentRound}/{totalRounds}) "
+        "roundPrefixParen": "(Round {currentRound}/{totalRounds}) ",
+        "justNow": "just now",
+        "unknown": "unknown"
     },
     "trivia": {
         "start": "🎯 Starting {roundText} of Trivia! Topic: {topic}. You have {questionTimeSeconds} seconds to answer each question. Type your answers in chat!",
@@ -272,6 +274,80 @@ export default {
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Okay, stopped translations globally for {count} user(s).",
             "OnlyModsBroadcasterCan": "Only mods/broadcaster can stop translation for others."
+        }
+    },
+    "result": {
+        "trivia": {
+            "NoActiveTriviaGame": "No active Trivia game to stop.",
+            "TriviaGameStoppedSuccessfully": "Trivia game stopped successfully.",
+            "TriviaSettingsUpdated": "Trivia settings updated: {p1}.",
+            "SettingsUpdatedMemoryBut": "Settings updated in memory, but failed to save them permanently.",
+            "TriviaSettingsNotChanged": "Trivia settings not changed: {p1}.",
+            "NoValidConfigurationOptions": "No valid configuration options provided. Use !trivia help config for options.",
+            "TriviaConfigurationResetDefaults": "Trivia configuration reset to defaults.",
+            "ConfigurationResetMemoryBut": "Configuration reset in memory, but failed to save permanently.",
+            "ErrorOccurred": "An error occurred: {p1}",
+            "ICouldnTFind": "I couldn't find a recently played Trivia round in this channel to report.",
+            "CouldNotIdentifySpecific": "Could not identify a specific question to report from the last game.",
+            "ThanksFeedbackQuestionHas": "Thanks for the feedback! The question (\"{p1}...\") has been reported.",
+            "SorryErrorOccurredWhile": "Sorry, an error occurred while trying to report the question.",
+            "NoSpecificQuestionsFound": "No specific questions found in the last game session to report.",
+            "ReportSessionTimedOut": "@{username}, your report session timed out. Please use !trivia report again.",
+            "SNotValidRound": "@{username}, that's not a valid round number (1-{maxRound}) from the last game session. Please reply with a valid number or try reporting again.",
+            "IFoundRoundBut": "@{username}, I found round {roundNum}, but there was an issue identifying the question for the report. Please try again.",
+            "ThanksReportQuestionFrom": "@{username}, thanks! Your report for the question from round {roundNum} (\"{p3}...\") has been submitted.",
+            "ErrorOccurredSubmittingReport": "@{username}, an error occurred submitting your report for round {roundNum}. Please try again or contact a mod.",
+            "ErrRoundGameInitiatedBy": "A {totalRounds}-round game initiated by you is already in progress (round {currentRound}). Use !trivia stop if needed.",
+            "ErrGameAlreadyActivePlease": "A game is already active ({state}). Please wait or use !trivia stop.",
+            "ErrErrorStartingGame": "Error starting game: {p1}"
+        },
+        "geo": {
+            "NoActiveGeoGame": "No active Geo-Game round/session to stop in this channel.",
+            "GeoGameStoppedSuccessfully": "Geo-Game stopped successfully. Final results (if any) are being reported.",
+            "GeoGameSettingsUpdated": "Geo-Game settings updated: {p1}.",
+            "SettingsUpdatedMemoryBut": "Settings updated in memory, but failed to save them permanently.",
+            "GeoGameSettingsNot": "Geo-Game settings not changed: {p1}.",
+            "NoValidConfigurationOptions": "No valid configuration options provided or settings are already up-to-date. Use !geo help config for options.",
+            "GeoGameConfigurationReset": "Geo-Game configuration reset to defaults.",
+            "ConfigurationResetMemoryBut": "Configuration reset in memory, but failed to save permanently. Please try again.",
+            "ICouldnTFind": "I couldn't find a recently played Geo-Game round in this channel to report.",
+            "CouldNotIdentifySpecific": "Could not identify a specific location to report from the last game.",
+            "SorryErrorOccurredWhile": "Sorry, an error occurred while trying to report the location.",
+            "NoSpecificLocationsFound": "No specific locations found in the last game session to report.",
+            "ReportSessionTimedOut": "@{username}, your report session timed out. Please use !geo report again.",
+            "SNotValidRound": "@{username}, that's not a valid round number (1-{maxRound}) from the last game session. Please reply with a valid number or try reporting again.",
+            "IFoundRoundBut": "@{username}, I found round {roundNum}, but there was an issue identifying it for the report. Please try again.",
+            "ThanksReportLocationFrom": "@{username}, thanks! Your report for the location from round {roundNum} (\"{p3}...\") has been submitted.",
+            "ErrorOccurredSubmittingReport": "@{username}, an error occurred submitting your report for round {roundNum}. Please try again or contact a mod.",
+            "ErrRoundGameInitiatedBy": "A {totalRounds}-round game initiated by you is already in progress (currently round {currentRound}). Use !geo stop if needed.",
+            "ErrGameAlreadyActiveOr": "A game is already active or ending ({state}). Please wait or use !geo stop.",
+            "ErrGameStoppedBeforeFirst": "Game was stopped before the first clue."
+        },
+        "riddle": {
+            "NoActiveRiddleGame": "No active riddle game to stop.",
+            "RiddleGameBeingStopped": "Riddle game is being stopped.",
+            "RiddleSettingsUpdated": "Riddle settings updated: {p1}.",
+            "SettingsChangedMemoryBut": "Settings changed in memory but failed to save.",
+            "RiddleGameConfigurationReset": "Riddle game configuration reset to defaults.",
+            "ConfigResetMemoryBut": "Config reset in memory but failed to save.",
+            "ICouldnTFind": "I couldn't find a recently played riddle in this channel to report.",
+            "LastRiddleFoundSeems": "The last riddle found seems incomplete and cannot be reported.",
+            "ThanksFeedbackRiddleStarting": "Thanks for the feedback! The riddle starting with \"{p1}...\" has been reported.",
+            "SorryErrorOccurredWhile": "Sorry, an error occurred while trying to report the riddle.",
+            "ICouldnTFind2": "I couldn't find any recent riddles in this channel to report.",
+            "CouldNotIdentifySpecific": "Could not identify a specific riddle to report.",
+            "ThanksFeedbackRiddleHas": "Thanks for the feedback! The riddle (\"{p1}...\") has been reported.",
+            "SorryErrorOccurredWhile2": "Sorry, an error occurred while trying to report the riddle.",
+            "SNotValidRound": "@{username}, that's not a valid round number (1-{length}). Please try reporting again.",
+            "ICouldnTFind3": "@{username}, I couldn't find the riddle for round {roundNum}. Please try reporting again.",
+            "ThanksReportRiddleFrom": "@{username}, thanks! Your report for the riddle from round {roundNum} (\"{p3}...\") has been submitted.",
+            "ErrorOccurredSubmittingReport": "@{username}, an error occurred submitting your report for round {roundNum}. Please try again.",
+            "ErrFailedStartRiddleGame": "Failed to start the riddle game. Could not generate the first riddle."
+        },
+        "commandState": {
+            "CommandAlwaysAvailableCannot": "The command '{normalizedCommand}' is always available and cannot be disabled.",
+            "ErrorDisablingCommandPlease": "Error disabling command '!{commandName}'. Please try again.",
+            "ErrorEnablingCommandPlease": "Error enabling command '!{commandName}'. Please try again."
         }
     }
 };

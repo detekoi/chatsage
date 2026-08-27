@@ -1,8 +1,7 @@
 // src/components/commands/handlers/enable.js
 import { enableCommandForChannel, isValidCommand, getAllAvailableCommands } from '../../context/commandStateManager.js';
 import commandHandlers from './index.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
-import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { sendLocalized, sendLocalizedResult } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !enable command.
@@ -38,10 +37,10 @@ async function execute(context) {
         const result = await enableCommandForChannel(channelName, commandToEnable);
 
         if (result.success) {
-            await enqueueMessage(channel, `${result.message}`, { replyToId });
+            await sendLocalizedResult(channel, result, { replyToId });
             logger.info(`[EnableCommand] Successfully enabled command '${commandToEnable}' in channel ${channelName} by ${username}`);
         } else {
-            await enqueueMessage(channel, `${result.message}`, { replyToId });
+            await sendLocalizedResult(channel, result, { replyToId });
             logger.warn(`[EnableCommand] Failed to enable command '${commandToEnable}' in channel ${channelName}: ${result.message}`);
         }
     } catch (error) {

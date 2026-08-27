@@ -710,9 +710,9 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         logger.warn(`[GeoGame][${channelName}] Attempted to start game while state is ${gameState.state}`);
         // Check if the initiator is the same as the current game's initiator and if it's multi-round
         if (gameState.initiatorUsername === initiatorUsername?.toLowerCase() && gameState.totalRounds > 1 && (gameState.state === 'inProgress' || gameState.state === 'started' || gameState.state === 'selecting')) {
-            return { success: false, error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (currently round ${gameState.currentRound}). Use !geo stop if needed.` };
+            return { success: false, errorKey: 'result.geo.ErrRoundGameInitiatedBy', errorParams: { totalRounds: gameState.totalRounds, currentRound: gameState.currentRound }, error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (currently round ${gameState.currentRound}). Use !geo stop if needed.` };
         }
-        return { success: false, error: `A game is already active or ending (${gameState.state}). Please wait or use !geo stop.` };
+        return { success: false, errorKey: 'result.geo.ErrGameAlreadyActiveOr', errorParams: { state: gameState.state }, error: `A game is already active or ending (${gameState.state}). Please wait or use !geo stop.` };
     }
 
     // Reset core game fields before starting the FIRST round
@@ -824,7 +824,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
                 // If not already ending (e.g., by stop command), reset fully
                 await _resetGameToIdle(gameState); // Use await for async reset
             }
-            return { success: false, error: "Game was stopped before the first clue." };
+            return { success: false, errorKey: 'result.geo.ErrGameStoppedBeforeFirst', errorParams: {}, error: "Game was stopped before the first clue." };
         }
 
         const clueMessage = formatClueMessage(1, firstClue, gameState.botLanguage || null); // Clue #1 for Round 1
@@ -1008,7 +1008,7 @@ function stopGame(channelName) {
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         const stateMsg = gameState ? `(state: ${gameState.state})` : '(no game active)';
         logger.debug(`[GeoGame][${channelName}] Stop command received, but no stoppable game found ${stateMsg}.`);
-        return { message: "No active Geo-Game round/session to stop in this channel." };
+        return { messageKey: 'result.geo.NoActiveGeoGame', messageParams: {}, message: "No active Geo-Game round/session to stop in this channel." };
     }
 
     logger.info(`[GeoGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}. Manually ending game session from state: ${gameState.state}.`);
@@ -1020,7 +1020,7 @@ function stopGame(channelName) {
     // _transitionToEnding will handle reporting scores (if multi-round) and resetting.
     _transitionToEnding(gameState, "stopped");
 
-    return { message: "Geo-Game stopped successfully. Final results (if any) are being reported." };
+    return { messageKey: 'result.geo.GeoGameStoppedSuccessfully', messageParams: {}, message: "Geo-Game stopped successfully. Final results (if any) are being reported." };
 }
 
 /**
@@ -1152,16 +1152,16 @@ async function configureGame(channelName, options) {
         try {
             await saveChannelConfig(channelName, gameState.config);
             logger.info(`[GeoGame][${channelName}] Configuration updated and saved: ${changesMade.join(', ')}`);
-            return { message: `Geo-Game settings updated: ${changesMade.join('. ')}.` };
+            return { messageKey: 'result.geo.GeoGameSettingsUpdated', messageParams: { p1: changesMade.join('. ') }, message: `Geo-Game settings updated: ${changesMade.join('. ')}.` };
         } catch (error) {
             logger.error({ err: error, channel: channelName }, `[GeoGame][${channelName}] Failed to save configuration changes.`);
-            return { message: `Settings updated in memory, but failed to save them permanently.` };
+            return { messageKey: 'result.geo.SettingsUpdatedMemoryBut', messageParams: {}, message: `Settings updated in memory, but failed to save them permanently.` };
         }
     } else if (changesMade.length > 0 && !configChanged) {
         // Changes were attempted but values were invalid or same as current
-        return { message: `Geo-Game settings not changed: ${changesMade.join('. ')}.` };
+        return { messageKey: 'result.geo.GeoGameSettingsNot', messageParams: { p1: changesMade.join('. ') }, message: `Geo-Game settings not changed: ${changesMade.join('. ')}.` };
     } else {
-        return { message: "No valid configuration options provided or settings are already up-to-date. Use !geo help config for options." };
+        return { messageKey: 'result.geo.NoValidConfigurationOptions', messageParams: {}, message: "No valid configuration options provided or settings are already up-to-date. Use !geo help config for options." };
     }
 }
 
@@ -1178,10 +1178,10 @@ async function resetChannelConfig(channelName) {
         gameState.config = newConfig;
         await saveChannelConfig(channelName, gameState.config);
         logger.info(`[GeoGame][${channelName}] Configuration successfully reset and saved.`);
-        return { success: true, message: "Geo-Game configuration reset to defaults." };
+        return { success: true, messageKey: 'result.geo.GeoGameConfigurationReset', messageParams: {}, message: "Geo-Game configuration reset to defaults." };
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `[GeoGame][${channelName}] Failed to save reset configuration.`);
-        return { success: false, message: "Configuration reset in memory, but failed to save permanently. Please try again." };
+        return { success: false, messageKey: 'result.geo.ConfigurationResetMemoryBut', messageParams: {}, message: "Configuration reset in memory, but failed to save permanently. Please try again." };
     }
 }
 
@@ -1238,7 +1238,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
 
     if (!sessionInfo || !sessionInfo.itemsInSession || sessionInfo.itemsInSession.length === 0) {
         logger.warn(`[GeoGameManager][${channelName}] No session info found for reporting.`);
-        return { success: false, message: "I couldn't find a recently played Geo-Game round in this channel to report." };
+        return { success: false, messageKey: 'result.geo.ICouldnTFind', messageParams: {}, message: "I couldn't find a recently played Geo-Game round in this channel to report." };
     }
 
     const { totalRounds, itemsInSession } = sessionInfo;
@@ -1269,7 +1269,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         const itemToReport = itemsInSession[0];
         if (!itemToReport || !itemToReport.docId) {
             logger.warn(`[GeoGameManager][${channelName}] Single item session, but docId missing for report.`);
-            return { success: false, message: "Could not identify a specific location to report from the last game." };
+            return { success: false, messageKey: 'result.geo.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific location to report from the last game." };
         }
         try {
             const directReportResult = await reportProblemLocation(itemToReport.itemData, reason, channelName, reportedByUsername);
@@ -1277,11 +1277,11 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
             return { success: directReportResult.success, message: directReportResult.message };
         } catch (error) {
             logger.error({ err: error, channelName }, `[GeoGameManager][${channelName}] Error reporting location directly.`);
-            return { success: false, message: "Sorry, an error occurred while trying to report the location." };
+            return { success: false, messageKey: 'result.geo.SorryErrorOccurredWhile', messageParams: {}, message: "Sorry, an error occurred while trying to report the location." };
         }
     } else {
         logger.warn(`[GeoGameManager][${channelName}] No items found in session for reporting, though sessionInfo was present.`);
-        return { success: false, message: "No specific locations found in the last game session to report." };
+        return { success: false, messageKey: 'result.geo.NoSpecificLocationsFound', messageParams: {}, message: "No specific locations found in the last game session to report." };
     }
 }
 
@@ -1305,7 +1305,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     if (pendingData.expiresAt <= Date.now()) {
         pendingGeoReports.delete(reportKey);
         logger.info(`[GeoGameManager][${channelName}] Attempt to finalize an expired geo report by ${username}.`);
-        return { success: true, message: `@${username}, your report session timed out. Please use !geo report again.` };
+        return { success: true, messageKey: 'result.geo.ReportSessionTimedOut', messageParams: { username }, message: `@${username}, your report session timed out. Please use !geo report again.` };
     }
 
     const roundNum = parseInt(roundNumberStr, 10);
@@ -1315,24 +1315,24 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     if (isNaN(roundNum) || !itemToReport) {
         // Don't delete pendingData here, let them try again if they mistyped, until timeout.
         const maxRound = pendingData.itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
-        return { success: true, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
+        return { success: true, messageKey: 'result.geo.SNotValidRound', messageParams: { username, maxRound }, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
     }
 
     if (!itemToReport.docId) {
         pendingGeoReports.delete(reportKey); // Clean up
         logger.error(`[GeoGameManager][${channelName}] Found item for round ${roundNum} but it's missing a docId.`);
-        return { success: true, message: `@${username}, I found round ${roundNum}, but there was an issue identifying it for the report. Please try again.` };
+        return { success: true, messageKey: 'result.geo.IFoundRoundBut', messageParams: { username, roundNum }, message: `@${username}, I found round ${roundNum}, but there was an issue identifying it for the report. Please try again.` };
     }
 
     try {
         await flagGeoLocationByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
         pendingGeoReports.delete(reportKey); // Clean up successful report
         logger.info(`[GeoGameManager][${channelName}] Successfully finalized report for geo round ${roundNum}, doc ID ${itemToReport.docId}, Location: "${itemToReport.itemData}"`);
-        return { success: true, message: `@${username}, thanks! Your report for the location from round ${roundNum} ("${String(itemToReport.itemData).substring(0, 30)}...") has been submitted.` };
+        return { success: true, messageKey: 'result.geo.ThanksReportLocationFrom', messageParams: { username, roundNum, p3: String(itemToReport.itemData).substring(0, 30) }, message: `@${username}, thanks! Your report for the location from round ${roundNum} ("${String(itemToReport.itemData).substring(0, 30)}...") has been submitted.` };
     } catch (error) {
         // Don't delete pending data on error, user might want to know it failed to save
         logger.error({ err: error, channelName }, `[GeoGameManager][${channelName}] Error finalizing report for geo round ${roundNum}.`);
-        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
+        return { success: true, messageKey: 'result.geo.ErrorOccurredSubmittingReport', messageParams: { username, roundNum }, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
     }
 }
 

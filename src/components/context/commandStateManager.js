@@ -113,7 +113,7 @@ export async function disableCommandForChannel(channelName, commandName) {
     if (PROTECTED_COMMANDS.has(normalizedCommand)) {
         return {
             success: false,
-            message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
+            messageKey: 'result.commandState.CommandAlwaysAvailableCannot', messageParams: { normalizedCommand }, message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
             wasAlreadyDisabled: false
         };
     }
@@ -139,7 +139,7 @@ export async function disableCommandForChannel(channelName, commandName) {
             `[CommandStateManager] Error disabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
-            message: `Error disabling command '!${commandName}'. Please try again.`,
+            messageKey: 'result.commandState.ErrorDisablingCommandPlease', messageParams: { commandName }, message: `Error disabling command '!${commandName}'. Please try again.`,
             wasAlreadyDisabled: false
         };
     }
@@ -176,7 +176,7 @@ export async function enableCommandForChannel(channelName, commandName) {
             `[CommandStateManager] Error enabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
-            message: `Error enabling command '!${commandName}'. Please try again.`,
+            messageKey: 'result.commandState.ErrorEnablingCommandPlease', messageParams: { commandName }, message: `Error enabling command '!${commandName}'. Please try again.`,
             wasAlreadyEnabled: false
         };
     }
