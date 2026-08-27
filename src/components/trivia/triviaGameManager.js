@@ -10,6 +10,7 @@ import {
     formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
     formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage
 } from './triviaMessageFormatter.js';
+import { t, isCatalogued } from '../../lib/i18n.js';
 import {
     loadChannelConfig, saveChannelConfig, recordGameResult,
     updatePlayerScore, getRecentQuestions, getRecentAnswers, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId
@@ -353,19 +354,24 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 
     // --- 2. Send End Round Message ---
     let endMessage;
+    let endMessageLocalized = false;
     if (!gameState.currentQuestion?.question) {
         logger.error(`[TriviaGame][${gameState.channelName}] Cannot generate round end message: question is missing.`);
         endMessage = "An error occurred, and the round information couldn't be displayed.";
     } else {
         try {
-            const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
+            const lang = gameState.botLanguage || null;
+            const roundPrefix = isMultiRound
+                ? (t('common.roundPrefixParen', { currentRound: gameState.currentRound, totalRounds: gameState.totalRounds }, lang)
+                    ?? `(Round ${gameState.currentRound}/${gameState.totalRounds}) `)
+                : "";
 
             if (reason === "guessed" && gameState.winner) {
                 const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
-                const timeString = seconds !== null ? ` in ${seconds}s` : '';
-                const streakInfo = gameState.streakMap.get(gameState.winner.username) > 1 ?
-                    ` 🔥x${gameState.streakMap.get(gameState.winner.username)}` : '';
-                const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
+                const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : '';
+                const streak = gameState.streakMap.get(gameState.winner.username);
+                const streakInfo = streak > 1 ? (t('common.streakInfo', { streak }, lang) ?? ` 🔥x${streak}`) : '';
+                const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
 
                 endMessage = formatCorrectAnswerMessage(
                     roundPrefix,
@@ -374,22 +380,28 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     gameState.currentQuestion.explanation,
                     timeString,
                     streakInfo,
-                    pointsInfo
+                    pointsInfo,
+                    lang
                 );
             } else if (reason === "timeout") {
                 endMessage = formatTimeoutMessage(
                     roundPrefix,
                     gameState.currentQuestion.answer,
-                    gameState.currentQuestion.explanation
+                    gameState.currentQuestion.explanation,
+                    lang
                 );
             } else if (reason === "stopped") {
                 endMessage = formatStopMessage(
                     roundPrefix,
-                    gameState.currentQuestion.answer
+                    gameState.currentQuestion.answer,
+                    lang
                 );
             } else {
                 endMessage = `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
             }
+            // Catalog strings are already in the target language, as is the natively generated
+            // explanation — so the outbound LLM translation would be redundant work.
+            endMessageLocalized = isCatalogued(lang);
 
             // Ensure message doesn't exceed max length
             if (endMessage.length > MAX_IRC_MESSAGE_LENGTH) {
@@ -401,7 +413,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         }
     }
 
-    enqueueMessage(`#${gameState.channelName}`, endMessage);
+    enqueueMessage(`#${gameState.channelName}`, endMessage, { skipTranslation: endMessageLocalized });
 
     // --- 3. Record Game Result ---
     if (gameState.config.scoreTracking && gameState.currentQuestion?.question) {
@@ -440,8 +452,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final scores if multi-round
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Game stopped. Final Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('trivia.gameStoppedScores', { list: sessionScoresMessage }, lang) ?? `🏁 Game stopped. Final Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
         }
 
         // Reset after delay
@@ -467,8 +482,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final session scores
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Final Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('trivia.finalScores', { list: sessionScoresMessage }, lang) ?? `🏁 Final Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
@@ -534,7 +552,8 @@ async function _startNextRound(gameState) {
                 gameState.totalRounds,
                 gameState.currentQuestion.question,
                 gameState.currentQuestion.difficulty,
-                gameState.config.questionTimeSeconds
+                gameState.config.questionTimeSeconds,
+                gameState.botLanguage || null
             );
             // Skip translation if question was generated natively in the target language
             enqueueMessage(`#${gameState.channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
@@ -676,7 +695,8 @@ async function _startNextRound(gameState) {
         gameState.totalRounds,
         gameState.currentQuestion.question,
         gameState.currentQuestion.difficulty,
-        gameState.config.questionTimeSeconds
+        gameState.config.questionTimeSeconds,
+        gameState.botLanguage || null
     );
 
     // Skip translation if question was generated natively in the target language
@@ -1038,10 +1058,11 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         const startMessage = formatStartMessage(
             topic || 'General Knowledge',
             gameState.config.questionTimeSeconds,
-            gameState.totalRounds
+            gameState.totalRounds,
+            gameState.botLanguage || null
         );
 
-        enqueueMessage(`#${channelName}`, startMessage);
+        enqueueMessage(`#${channelName}`, startMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
     }
 
     try {
@@ -1146,7 +1167,8 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.totalRounds,
             gameState.currentQuestion.question,
             gameState.currentQuestion.difficulty,
-            gameState.config.questionTimeSeconds
+            gameState.config.questionTimeSeconds,
+            gameState.botLanguage || null
         );
 
         // Skip translation if question was generated natively in the target language

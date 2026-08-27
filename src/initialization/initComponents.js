@@ -4,6 +4,7 @@ import { initializeFirestore } from '../lib/firestore.js';
 import { initializeSecretManager, validateSecretManager } from '../lib/secretManager.js';
 import { initializeChannelManager, getActiveManagedChannels } from '../components/twitch/channelManager.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
+import { loadCatalogs } from '../lib/i18n.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
 import { initializePersonaStorage, loadAllChannelPersonas, publishBotDefaults } from '../components/context/personaStorage.js';
 import { BOT_CORE_INSTRUCTION, DEFAULT_BOT_PERSONA } from '../components/llm/gemini/prompts.js';
@@ -85,6 +86,9 @@ export async function initializeChannels() {
 export async function initializeStorageComponents() {
     // Firestore is already initialized by initializeAllComponents() before this is called.
     // The individual storage initializers below are now no-ops kept for logging clarity.
+    logger.info('Loading message catalogs...');
+    loadCatalogs();
+
     logger.info('Initializing Language Storage...');
     await initializeLanguageStorage();
 

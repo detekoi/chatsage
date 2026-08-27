@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
+import { nameFromCode } from '../../lib/i18n.js';
 import { saveUserTranslation, removeUserTranslation, loadAllUserTranslations } from './translationStorage.js';
 import { getEmoteContextString } from '../../lib/geminiEmoteDescriber.js';
 
@@ -41,7 +42,7 @@ interface ChannelState {
     isSummarizing: boolean; // <-- Lock flag to prevent concurrent summarization
     streamContext: StreamContext;
     userStates: Map<string, UserState>; // <-- Map: username -> UserState
-    botLanguage: string | null; // <-- Channel-specific bot language setting
+    botLanguage: string | null | undefined; // undefined = never configured (auto-detect from Twitch); null = explicitly English
 }
 */
 
@@ -160,7 +161,7 @@ function _getOrCreateChannelState(channelName) {
                 offlineMissCount: 0,
             },
             userStates: new Map(), // <-- Initialize the userStates Map here
-            botLanguage: null, // <-- Initialize with no language preference
+            botLanguage: undefined, // undefined = never configured; a stored doc (even language:null) makes it explicit
             moderators: [], // <-- Cached moderator display names for LLM context
             summaryGeneration: 0, // <-- Monotonic counter; incremented by clearThematicContext
         });
@@ -720,7 +721,39 @@ function getBotLanguage(channelName) {
         logger.debug(`[${channelName}] Attempted to get bot language, but channel not found.`);
         return null;
     }
-    return channelState.botLanguage;
+    // An explicit choice always wins — including `null`, which means a mod ran `!botlang off`.
+    if (channelState.botLanguage !== undefined) {
+        return channelState.botLanguage;
+    }
+    return getInferredBotLanguage(channelName);
+}
+
+/**
+ * The language implied by the channel's Twitch `broadcaster_language`, used only when nobody has
+ * configured one. Deliberately not persisted: it must track the Twitch setting rather than freeze
+ * a snapshot of it, and an explicit `!botlang` must always be able to override it.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {string|null} English language name (e.g. 'spanish'), or null to use English.
+ */
+function getInferredBotLanguage(channelName) {
+    const channelState = channelStates.get(channelName);
+    const code = channelState?.streamContext?.language;
+    if (!code) return null;
+    const name = nameFromCode(code);
+    // 'en' is Twitch's default for unset channels, so it is not evidence of intent.
+    if (!name || name === 'english') return null;
+    return name;
+}
+
+/**
+ * Whether this channel's language came from Twitch rather than from an explicit `!botlang`.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {boolean}
+ */
+function isBotLanguageInferred(channelName) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState || channelState.botLanguage !== undefined) return false;
+    return getInferredBotLanguage(channelName) !== null;
 }
 
 /**
@@ -843,6 +876,7 @@ const manager = {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,
     getAllChannelStates,
@@ -865,6 +899,7 @@ export {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,
     setModerators,

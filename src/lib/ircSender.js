@@ -3,6 +3,7 @@ import { sendMessage as helixSendMessage, sendAnnouncement as helixSendAnnouncem
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/geminiClient.js';
+import { I18nMessage, t } from './i18n.js';
 
 // --- Module State ---
 const messageQueue = [];
@@ -31,6 +32,16 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @param {number} maxLength Maximum length including ellipsis
  * @returns {string} Truncated text with ellipsis if needed
  */
+/**
+ * Whether a value can be queued: a non-blank string, or a deferred catalog message.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+function _isSendableText(text) {
+    if (text instanceof I18nMessage) return text.fallback.trim().length > 0;
+    return typeof text === 'string' && text.trim().length > 0;
+}
+
 function _intelligentTruncate(text, maxLength) {
     if (!text || typeof text !== 'string') {
         return '';
@@ -225,21 +236,57 @@ async function _translateIfNeeded(channelName, text) {
 }
 
 /**
+ * Resolves an I18nMessage against the channel's language.
+ *
+ * This is the single place the catalog-vs-LLM decision is made for deferred messages:
+ *   - no bot language          -> English fallback, nothing to translate
+ *   - catalog hit              -> localized string, translation skipped entirely
+ *   - catalogue miss / no file -> English fallback, handed to the runtime translator as before
+ *
+ * @param {string} channelName Channel name without '#'.
+ * @param {I18nMessage} message
+ * @returns {{ text: string, localized: boolean }}
+ */
+function _resolveI18nMessage(channelName, message) {
+    let botLanguage = null;
+    try {
+        botLanguage = getContextManager()?.getBotLanguage(channelName) || null;
+    } catch {
+        // Context manager not initialized yet (cold start) — fall back to English.
+    }
+    if (!botLanguage) return { text: message.fallback, localized: true };
+
+    const localized = t(message.key, message.params, botLanguage);
+    if (localized !== null) {
+        logger.debug({ key: message.key, botLanguage }, 'Resolved message from catalog; skipping LLM translation');
+        return { text: localized, localized: true };
+    }
+    return { text: message.fallback, localized: false };
+}
+
+/**
  * Shared preprocessing pipeline: translate, summarize, and truncate text.
  * @param {string} channel Channel name with '#'.
- * @param {string} text Raw message text.
+ * @param {string|I18nMessage} text Raw message text, or a deferred catalog message.
  * @param {boolean} skipTranslation If true, skips translation.
  * @param {boolean} skipLengthProcessing If true, skips summarization and truncation.
  * @param {string} label Log label ('Message' or 'Announcement') for observability.
  * @returns {Promise<string>} Processed text ready for queuing.
  */
 async function _preprocessText(channel, text, skipTranslation, skipLengthProcessing, label = 'Message') {
+    const channelName = channel.substring(1); // Remove # prefix
     let finalText = text;
+
+    // A deferred catalog message resolves here; a catalog hit needs no further translation.
+    if (text instanceof I18nMessage) {
+        const resolved = _resolveI18nMessage(channelName, text);
+        finalText = resolved.text;
+        if (resolved.localized) skipTranslation = true;
+    }
 
     // Translate if needed (unless explicitly skipped)
     if (!skipTranslation) {
-        const channelName = channel.substring(1); // Remove # prefix
-        finalText = await _translateIfNeeded(channelName, text);
+        finalText = await _translateIfNeeded(channelName, finalText);
     }
 
     // Handle length limits with summarization fallback (only if not already processed)
@@ -298,7 +345,7 @@ async function _preprocessText(channel, text, skipTranslation, skipLengthProcess
  * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation (already handled).
  */
 async function enqueueMessage(channel, text, options = {}) {
-    if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
+    if (!channel || !text || typeof channel !== 'string' || !_isSendableText(text)) {
         logger.warn({ channel, text }, 'Attempted to queue invalid message.');
         return;
     }
@@ -376,7 +423,7 @@ async function waitForQueueEmpty() {
  * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation.
  */
 async function enqueueAnnouncement(channel, text, color = 'primary', options = {}) {
-    if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
+    if (!channel || !text || typeof channel !== 'string' || !_isSendableText(text)) {
         logger.warn({ channel, text }, 'Attempted to queue invalid announcement.');
         return;
     }

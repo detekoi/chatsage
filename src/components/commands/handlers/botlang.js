@@ -27,7 +27,10 @@ const botLangHandler = {
             // Show current status and usage info
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
+                const source = contextManager.isBotLanguageInferred(channelName)
+                    ? ' (detected from your Twitch stream language)'
+                    : '';
+                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}${source}. Use "!botlang off" to reset to English or "!botlang <language>" to change.`, { replyToId });
             } else {
                 await enqueueMessage(channel, `Bot is currently set to speak English (default). Use "!botlang <language>" to change.`, { replyToId });
             }
@@ -40,7 +43,10 @@ const botLangHandler = {
         if (action === 'status') {
             const currentLanguage = contextManager.getBotLanguage(channelName);
             if (currentLanguage) {
-                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage}.`, { replyToId });
+                const source = contextManager.isBotLanguageInferred(channelName)
+                    ? 'detected from your Twitch stream language'
+                    : 'set by a moderator';
+                await enqueueMessage(channel, `Bot is currently set to speak ${currentLanguage} (${source}).`, { replyToId });
             } else {
                 await enqueueMessage(channel, `Bot is currently set to speak English (default).`, { replyToId });
             }

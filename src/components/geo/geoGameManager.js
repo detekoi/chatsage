@@ -6,7 +6,8 @@ import { translateText } from '../../lib/translationUtils.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { isTextTooSimilar as _isLocationTooSimilar } from '../../lib/stringUtils.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
-import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage } from './geoMessageFormatter.js';
+import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage, formatRevealMessage } from './geoMessageFormatter.js';
+import { t, isCatalogued } from '../../lib/i18n.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
 import { summarizeText } from '../llm/geminiClient.js';
 import crypto from 'crypto';
@@ -232,6 +233,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     }
     let revealText;
     let roundEndMessage;
+    let roundEndLocalized = false;
     if (!gameState.targetLocation?.name) {
         logger.error(`[GeoGame][${gameState.channelName}] Cannot generate round reveal: targetLocation is missing.`);
         roundEndMessage = "An error occurred, and the round's location couldn't be revealed.";
@@ -239,49 +241,64 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         try {
             revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason, gameState.botLanguage || null);
             let baseMessageContent = "";
-            const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
+            const lang = gameState.botLanguage || null;
+            const roundPrefix = isMultiRound
+                ? (t('common.roundPrefixParen', { currentRound: gameState.currentRound, totalRounds: gameState.totalRounds }, lang)
+                    ?? `(Round ${gameState.currentRound}/${gameState.totalRounds}) `)
+                : "";
             if (reason === "guessed" && gameState.winner) {
                 const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
-                const streakInfo = currentStreak > 1 ? ` 🔥x${currentStreak}` : '';
-                const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
+                const streakInfo = currentStreak > 1 ? (t('common.streakInfo', { streak: currentStreak }, lang) ?? ` 🔥x${currentStreak}`) : '';
+                const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
                 baseMessageContent = formatCorrectGuessMessage(
                     gameState.winner.displayName,
                     gameState.targetLocation.name,
                     timeTakenMs,
                     streakInfo,
-                    pointsInfo
+                    pointsInfo,
+                    lang
                 );
                 baseMessageContent = `${roundPrefix}${baseMessageContent} ${revealText || '(Summary unavailable)'}`;
             } else if (reason === "timeout") {
-                baseMessageContent = `${roundPrefix}${formatTimeoutMessage(gameState.targetLocation.name)} ${revealText || '(Summary unavailable)'}`;
+                baseMessageContent = `${roundPrefix}${formatTimeoutMessage(gameState.targetLocation.name, lang)} ${revealText || '(Summary unavailable)'}`;
             } else if (reason === "stopped") {
-                baseMessageContent = `${roundPrefix}${formatStopMessage(gameState.targetLocation.name)} ${revealText || '(Summary unavailable)'}`;
+                baseMessageContent = `${roundPrefix}${formatStopMessage(gameState.targetLocation.name, lang)} ${revealText || '(Summary unavailable)'}`;
             } else {
-                baseMessageContent = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! ${revealText || '(Summary unavailable)'}`;
+                baseMessageContent = `${roundPrefix}${formatRevealMessage(gameState.targetLocation.name, revealText || '(Summary unavailable)', lang)}`;
             }
             roundEndMessage = baseMessageContent;
+            // Catalog wrapper + natively generated revealText: nothing left to translate.
+            roundEndLocalized = isCatalogued(lang);
             if (roundEndMessage.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`[GeoGame][${gameState.channelName}] Round end message too long (${roundEndMessage.length} chars). Attempting summarization.`);
                 let prefix = "";
                 if (reason === "guessed" && gameState.winner) {
                     const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
-                    const timeString = seconds !== null ? ` in ${seconds}s` : '';
+                    const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : '';
                     const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
-                    const streakInfo = currentStreak > 1 ? ` 🔥x${currentStreak}` : '';
-                    const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
-                    prefix = `${roundPrefix}✅ @${gameState.winner.displayName} guessed: ${gameState.targetLocation.name}${timeString}${streakInfo}${pointsInfo}! `;
+                    const streakInfo = currentStreak > 1 ? (t('common.streakInfo', { streak: currentStreak }, lang) ?? ` 🔥x${currentStreak}`) : '';
+                    const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
+                    const pfxParams = { roundPrefix, displayName: gameState.winner.displayName, locationName: gameState.targetLocation.name, timeString, streakInfo, pointsInfo };
+                    prefix = t('geo.summaryPrefix.guessed', pfxParams, lang)
+                        ?? `${roundPrefix}✅ @${gameState.winner.displayName} guessed: ${gameState.targetLocation.name}${timeString}${streakInfo}${pointsInfo}! `;
                 } else if (reason === "timeout") {
-                    prefix = `${roundPrefix}⏱️ Time's up! The location was ${gameState.targetLocation.name}. `;
+                    prefix = t('geo.summaryPrefix.timeout', { roundPrefix, locationName: gameState.targetLocation.name }, lang)
+                        ?? `${roundPrefix}⏱️ Time's up! The location was ${gameState.targetLocation.name}. `;
                 } else if (reason === "stopped") {
-                    prefix = `${roundPrefix}🛑 Game stopped. The location was ${gameState.targetLocation.name}. `;
+                    prefix = t('geo.summaryPrefix.stopped', { roundPrefix, locationName: gameState.targetLocation.name }, lang)
+                        ?? `${roundPrefix}🛑 Game stopped. The location was ${gameState.targetLocation.name}. `;
                 } else {
-                    prefix = `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! `;
+                    prefix = t('geo.summaryPrefix.reveal', { roundPrefix, locationName: gameState.targetLocation.name }, lang)
+                        ?? `${roundPrefix}📢 The answer was: ${gameState.targetLocation.name}! `;
                 }
                 try {
                     const summaryInput = revealText || baseMessageContent;
                     const summary = await summarizeText(summaryInput, SUMMARY_TARGET_LENGTH);
                     if (summary?.trim()) {
                         roundEndMessage = prefix + summary.trim();
+                        // summarizeText() has no language directive, so the summary may come back
+                        // in English — send this through the runtime translator as before.
+                        roundEndLocalized = false;
                         logger.info(`[GeoGame][${gameState.channelName}] Summarization successful (${roundEndMessage.length} chars).`);
                     } else {
                         logger.warn(`[GeoGame][${gameState.channelName}] Summarization failed. Falling back to original (potentially truncated by IRC).`);
@@ -294,10 +311,16 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             }
         } catch (error) {
             logger.error({ err: error }, `[GeoGame][${gameState.channelName}] Error generating round reveal or formatting message.`);
-            roundEndMessage = `An error occurred revealing the answer for round ${gameState.currentRound}.`;
+            roundEndMessage = t('geo.roundError', { currentRound: gameState.currentRound }, gameState.botLanguage || null)
+                ?? `An error occurred revealing the answer for round ${gameState.currentRound}.`;
+            roundEndLocalized = isCatalogued(gameState.botLanguage);
         }
     }
-    enqueueMessage(`#${gameState.channelName}`, roundEndMessage || "The round has ended.");
+    enqueueMessage(
+        `#${gameState.channelName}`,
+        roundEndMessage || (t('geo.roundEnded', {}, gameState.botLanguage || null) ?? "The round has ended."),
+        { skipTranslation: roundEndLocalized }
+    );
     logger.debug(`[GeoGame][${gameState.channelName}] Round end message sent.`);
     if (gameState.config.scoreTracking && gameState.targetLocation?.name && ['guessed', 'timeout', 'stopped'].includes(reason)) {
         try {
@@ -328,8 +351,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     if (reason === "stopped" || reason === "timer_error" || reason === "location_error" || reason === "clue_error") {
         logger.info(`[GeoGame][${gameState.channelName}] Game session ended prematurely (${reason}). Reporting final scores if multi-round.`);
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Game ended. Final Session Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('geo.gameEndedScores', { list: sessionScoresMessage }, lang) ?? `🏁 Game ended. Final Session Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
         }
         gameState.transitionTimer = setTimeout(() => {
             _resetGameToIdle(gameState).catch(err => {
@@ -354,8 +380,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     } else {
         logger.info(`[GeoGame][${gameState.channelName}] Game session finished. Reporting final results.`);
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Final Session Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('geo.finalScores', { list: sessionScoresMessage }, lang) ?? `🏁 Final Session Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
             await new Promise(resolve => setTimeout(resolve, 1000));
         } else if (isMultiRound) {
             enqueueMessage(`#${gameState.channelName}`, `🏁 Game finished. No scores recorded in this session.`);
@@ -548,7 +577,7 @@ async function _startNextRound(gameState) {
     gameState.startTime = Date.now();
     gameState.state = 'started';
 
-    const nextRoundMessage = formatStartNextRoundMessage(gameState.currentRound, gameState.totalRounds);
+    const nextRoundMessage = formatStartNextRoundMessage(gameState.currentRound, gameState.totalRounds, gameState.botLanguage || null);
     enqueueMessage(`#${gameState.channelName}`, nextRoundMessage);
 
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -561,7 +590,7 @@ async function _startNextRound(gameState) {
         return;
     }
 
-    const clueMessage = formatClueMessage(1, firstClue);
+    const clueMessage = formatClueMessage(1, firstClue, gameState.botLanguage || null);
     enqueueMessage(`#${gameState.channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
     gameState.state = 'inProgress';
@@ -649,7 +678,7 @@ async function _scheduleNextClue(gameState) {
                 gameState.clues.push(nextClue);
                 gameState.currentClueIndex++;
                 // Use currentClueIndex + 1 for the user-facing clue number
-                const clueMessage = formatClueMessage(gameState.currentClueIndex + 1, nextClue);
+                const clueMessage = formatClueMessage(gameState.currentClueIndex + 1, nextClue, gameState.botLanguage || null);
                 // Skip translation if clue was generated natively in the target language
                 enqueueMessage(`#${gameState.channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 
@@ -723,7 +752,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
 
     // --- Send Game Start Announcement Immediately (only if rounds > 1 or scope specified) ---
     if (gameState.totalRounds > 1 || scope !== null) {
-        const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope);
+        const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope, gameState.botLanguage || null);
         enqueueMessage(`#${channelName}`, startMessage);
     }
 
@@ -798,7 +827,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
             return { success: false, error: "Game was stopped before the first clue." };
         }
 
-        const clueMessage = formatClueMessage(1, firstClue); // Clue #1 for Round 1
+        const clueMessage = formatClueMessage(1, firstClue, gameState.botLanguage || null); // Clue #1 for Round 1
         // Skip translation if clue was generated natively in the target language
         enqueueMessage(`#${channelName}`, clueMessage, { skipTranslation: !!gameState.botLanguage });
 

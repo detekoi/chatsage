@@ -15,6 +15,7 @@ import {
     formatRiddleSessionScoresMessage,
     formatRiddleLeaderboardMessage
 } from './riddleMessageFormatter.js';
+import { t, isCatalogued } from '../../lib/i18n.js';
 import {
     loadChannelRiddleConfig,
     saveChannelRiddleConfig,
@@ -245,21 +246,26 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         }
 
         // Send end message
-        const roundPrefix = totalRounds > 1 ? `(Round ${currentRound}/${totalRounds}) ` : "";
+        const lang = gameState.botLanguage || null;
+        const roundPrefix = totalRounds > 1
+            ? (t('common.roundPrefixParen', { currentRound, totalRounds }, lang) ?? `(Round ${currentRound}/${totalRounds}) `)
+            : "";
         let endMessage;
         if (reason === "answered" && winner) {
             const seconds = timeTakenMs ? Math.round(timeTakenMs / 1000) : null;
-            const timeString = seconds !== null ? ` in ${seconds}s` : "";
-            const pointsInfo = pointsAwarded > 0 ? ` (+${pointsAwarded} pts)` : "";
-            endMessage = formatRiddleCorrectAnswerMessage(roundPrefix, winner.displayName, currentRiddle.answer, currentRiddle.explanation, timeString, pointsInfo);
+            const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : "";
+            const pointsInfo = pointsAwarded > 0 ? (t('common.pointsInfo', { points: pointsAwarded }, lang) ?? ` (+${pointsAwarded} pts)`) : "";
+            endMessage = formatRiddleCorrectAnswerMessage(roundPrefix, winner.displayName, currentRiddle.answer, currentRiddle.explanation, timeString, pointsInfo, lang);
         } else if (reason === "timeout") {
-            endMessage = formatRiddleTimeoutMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation);
+            endMessage = formatRiddleTimeoutMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation, lang);
         } else if (reason === "stopped") {
-            endMessage = formatRiddleStopMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation);
+            endMessage = formatRiddleStopMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation, lang);
         } else {
-            endMessage = `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
+            endMessage = t('riddle.gameOver', { roundPrefix, answer: currentRiddle.answer, explanation: currentRiddle.explanation || "" }, lang)
+                ?? `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
         }
-        enqueueMessage(`#${channelName}`, endMessage.substring(0, 490)); // Ensure message length
+        // Catalog wrapper + natively generated explanation: nothing left for the translator.
+        enqueueMessage(`#${channelName}`, endMessage.substring(0, 490), { skipTranslation: isCatalogued(lang) }); // Ensure message length
 
         // Record game result in history
         try {
@@ -297,14 +303,14 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
     if (reason === "stopped" || reason === "riddle_error" || (currentRound >= totalRounds)) {
         // Game fully ends
         if (totalRounds > 1 && gameState.gameSessionScores.size > 0) {
-            const scoresMsg = formatRiddleSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${channelName}`, scoresMsg);
+            const scoresMsg = formatRiddleSessionScoresMessage(gameState.gameSessionScores, gameState.botLanguage || null);
+            enqueueMessage(`#${channelName}`, scoresMsg, { skipTranslation: isCatalogued(gameState.botLanguage) });
         }
         if (config.scoreTracking && (reason !== "riddle_error" || totalRounds > 1)) { // Show leaderboard unless it was a single round riddle error
             try {
                 const leaderboardData = await getLeaderboard(channelName, 5);
-                const leaderboardMsg = formatRiddleLeaderboardMessage(leaderboardData, channelName);
-                enqueueMessage(`#${channelName}`, leaderboardMsg);
+                const leaderboardMsg = formatRiddleLeaderboardMessage(leaderboardData, channelName, gameState.botLanguage || null);
+                enqueueMessage(`#${channelName}`, leaderboardMsg, { skipTranslation: isCatalogued(gameState.botLanguage) });
             } catch (e) {
                 logger.error({ e }, `Error fetching riddle leaderboard for ${channelName}`);
             }
@@ -356,7 +362,8 @@ async function _startNextRound(gameState) {
                 gameState.totalRounds,
                 gameState.currentRiddle.question,
                 gameState.currentRiddle.difficulty,
-                config.questionTimeSeconds
+                config.questionTimeSeconds,
+                gameState.botLanguage || null
             );
             // Skip translation if riddle was generated natively in the target language
             enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
@@ -453,7 +460,8 @@ async function _startNextRound(gameState) {
         gameState.totalRounds,
         gameState.currentRiddle.question,
         gameState.currentRiddle.difficulty,
-        config.questionTimeSeconds
+        config.questionTimeSeconds,
+        gameState.botLanguage || null
     );
     // Skip translation if riddle was generated natively in the target language
     enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
@@ -666,9 +674,10 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
         const startMessage = formatRiddleStartMessage(
             topic, // Let formatter handle if topic is null
             gameState.config.questionTimeSeconds,
-            gameState.totalRounds
+            gameState.totalRounds,
+            gameState.botLanguage || null
         );
-        enqueueMessage(`#${channelName}`, startMessage);
+        enqueueMessage(`#${channelName}`, startMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
     }
 
     // Start the first round
