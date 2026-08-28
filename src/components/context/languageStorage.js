@@ -98,3 +98,37 @@ export async function loadAllChannelLanguages() {
         throw new LanguageStorageError('Failed to load all channel language settings', error);
     }
 }
+
+/**
+ * Real-time listener for channel language changes.
+ *
+ * The dashboard writes this collection directly, so a running bot would otherwise keep the value
+ * it read at boot until the next restart. The callback receives `undefined` for a removed document
+ * — the dashboard deletes it to hand the channel back to Twitch stream-language detection — and
+ * `null` for a document that holds an explicit English choice.
+ *
+ * @param {(change: {type: string, channelName: string, language: string|null|undefined}) => void} callback
+ * @returns {Function} Unsubscribe function.
+ */
+export function onChannelLanguageChanges(callback) {
+    const db = _getDb();
+    return db.collection(LANGUAGE_COLLECTION).onSnapshot(snapshot => {
+        snapshot.docChanges().forEach(change => {
+            const data = change.doc.data() || {};
+            const channelName = (data.channelName || change.doc.id || '').toLowerCase();
+            if (!channelName) return;
+
+            // `undefined` and `null` mean different things here, so a removed document has to
+            // report undefined rather than fall through to the stored value.
+            const language = change.type === 'removed' ? undefined : (data.language ?? null);
+
+            try {
+                callback({ type: change.type, channelName, language });
+            } catch (err) {
+                logger.error({ err, channelName }, '[LanguageStorage] Language change callback failed');
+            }
+        });
+    }, err => {
+        logger.error({ err }, '[LanguageStorage] Language listener error');
+    });
+}

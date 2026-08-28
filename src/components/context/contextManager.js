@@ -744,6 +744,27 @@ async function setBotLanguage(channelName, language) {
 }
 
 /**
+ * Applies a language that Firestore already holds, without writing it back.
+ *
+ * This is the path for a change made outside this process — the dashboard writes the same
+ * documents `!botlang` does. `setBotLanguage` is the wrong function for that: it would persist the
+ * value a second time and start a write loop with the listener that delivered it.
+ *
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string|null|undefined} language - Stored language; null for explicit English, undefined
+ *   to clear the choice and fall back to the Twitch stream language.
+ * @returns {boolean} True if the channel is tracked and the value was applied.
+ */
+function applyStoredBotLanguage(channelName, language) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState) return false;
+
+    channelState.botLanguage = language === undefined ? undefined : _normalizeStringOrNull(language);
+    logger.info(`[${channelName}] Bot language applied from storage: ${channelState.botLanguage ?? (language === undefined ? 'auto-detect' : 'default (English)')}`);
+    return true;
+}
+
+/**
  * Gets the bot's configured language for a specific channel.
  * @param {string} channelName - Channel name (without '#').
  * @returns {string|null} The configured language or null if none/default.
@@ -905,6 +926,7 @@ const manager = {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    applyStoredBotLanguage,
     isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,
@@ -928,6 +950,7 @@ export {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    applyStoredBotLanguage,
     isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,

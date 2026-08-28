@@ -8,6 +8,7 @@ import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
 import { onPersonaChanges } from '../components/context/personaStorage.js';
+import { onChannelLanguageChanges } from '../components/context/languageStorage.js';
 import { resetChatSession } from '../components/llm/llmClient.js';
 import { getChannelNameForBroadcasterId } from '../lib/allowList.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
@@ -19,6 +20,7 @@ class LifecycleManager {
         this.streamInfoIntervalId = null;
         this.channelChangeListener = null;
         this.personaChangeListener = null;
+        this.languageChangeListener = null;
         this._instance = null;
     }
 
@@ -96,6 +98,20 @@ class LifecycleManager {
                 logger.info({ twitchUserId, channelName }, 'LifecycleManager: Persona changed, chat sessions reset');
             });
 
+            // 6. Setup Firestore Listener for bot language changes
+            logger.info('LifecycleManager: Setting up Firestore language listener...');
+            this.languageChangeListener = onChannelLanguageChanges(({ channelName, language }) => {
+                // `!botlang` already updates memory before it writes, so this listener exists for
+                // the dashboard, which writes Firestore and nothing else. Re-applying the bot's
+                // own write is a no-op.
+                if (!contextManager.applyStoredBotLanguage(channelName, language)) return;
+
+                // The chat session bakes the response language into its system instruction, so a
+                // changed language has to invalidate it the same way a changed persona does.
+                resetChatSession(channelName);
+                logger.info({ channelName, language: language ?? null }, 'LifecycleManager: Bot language changed, chat session reset');
+            });
+
             this.isMonitoring = true;
             logger.info('LifecycleManager: Monitoring layer started successfully.');
 
@@ -119,7 +135,17 @@ class LifecycleManager {
 
         logger.info('LifecycleManager: Stopping monitoring layer...');
 
-        // 1. Unsubscribe Firestore persona listener
+        // 1. Unsubscribe Firestore language listener
+        if (typeof this.languageChangeListener === 'function') {
+            try {
+                this.languageChangeListener();
+            } catch (err) {
+                logger.error({ err }, 'LifecycleManager: Error unsubscribing language listener');
+            }
+            this.languageChangeListener = null;
+        }
+
+        // 2. Unsubscribe Firestore persona listener
         if (typeof this.personaChangeListener === 'function') {
             try {
                 this.personaChangeListener();
@@ -129,7 +155,7 @@ class LifecycleManager {
             this.personaChangeListener = null;
         }
 
-        // 2. Unsubscribe Firestore channel listener
+        // 3. Unsubscribe Firestore channel listener
         if (typeof this.channelChangeListener === 'function') {
             try {
                 this.channelChangeListener();
@@ -139,7 +165,7 @@ class LifecycleManager {
             this.channelChangeListener = null;
         }
 
-        // 3. Stop Stream Info Poller
+        // 4. Stop Stream Info Poller
         try {
             stopStreamInfoPolling();
             this.streamInfoIntervalId = null;
@@ -147,21 +173,21 @@ class LifecycleManager {
             logger.error({ err }, 'LifecycleManager: Error stopping stream info polling');
         }
 
-        // 4. Stop Ad Schedule Poller
+        // 5. Stop Ad Schedule Poller
         try {
             stopAdSchedulePoller();
         } catch (err) {
             logger.error({ err }, 'LifecycleManager: Error stopping ad schedule poller');
         }
 
-        // 5. Stop Timer Manager
+        // 6. Stop Timer Manager
         try {
             stopTimerManager();
         } catch (err) {
             logger.error({ err }, 'LifecycleManager: Error stopping timer manager');
         }
 
-        // 6. Stop Auto Chat Manager
+        // 7. Stop Auto Chat Manager
         try {
             stopAutoChatManager();
         } catch (err) {
