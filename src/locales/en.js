@@ -32,7 +32,8 @@ export default {
         "gameStoppedScores": "🏁 Game stopped. Final Scores: {list}",
         "finalScores": "🏁 Final Scores: {list}",
         "NoQuestionEndingGame": "⚠️ Error: Could not generate a question for round {currentRound}. Ending the game.",
-        "InvalidQuestionEndingGame": "⚠️ Error: Generated question was invalid. Ending the game."
+        "InvalidQuestionEndingGame": "⚠️ Error: Generated question was invalid. Ending the game.",
+        "answerWas": "{roundPrefix}The answer was: {answer}"
     },
     "riddle": {
         "start": "🤔 Starting {roundText} of Riddles! {topicText} You have {questionTimeSeconds} seconds to answer. Type your guesses in chat!",
@@ -209,7 +210,10 @@ export default {
             "UsageQuoteDeleteId": "Usage: !quote delete <id>",
             "OnlyModsBroadcasterCan2": "Only mods/broadcaster can edit quotes.",
             "UsageQuoteEditId": "Usage: !quote edit <id> <text [- author]>",
-            "SorrySomethingWentWrong": "Sorry, something went wrong handling !quote."
+            "SorrySomethingWentWrong": "Sorry, something went wrong handling !quote.",
+            "Deleted": "Deleted quote #{id}.",
+            "Updated": "Updated quote #{id}.",
+            "NotFound": "Quote #{id} not found."
         },
         "riddle": {
             "OnlyGameInitiatorMods": "Only the game initiator, mods, or the broadcaster can stop the riddle game.",
@@ -257,7 +261,10 @@ export default {
             "PleaseSpecifyPrompt": "Please specify a prompt. {usage}",
             "PleaseSpecifyMessage": "Please specify a message. {usage}",
             "TimerEnabled": "Timer \"{timerName}\" has been enabled.",
-            "TimerDisabled": "Timer \"{timerName}\" has been disabled."
+            "TimerDisabled": "Timer \"{timerName}\" has been disabled.",
+            "LinesCleared": "Timer \"{timerName}\" no longer requires chat activity to fire.",
+            "LinesSet": "Timer \"{timerName}\" now requires {minChatLines} chat lines between fires.",
+            "ErrorAddingTimer": "Error adding timer. Please try again later."
         },
         "translate": {
             "UsageTranslateLanguageUser": "Usage: !translate <language> [user] | !translate stop [user|all]",
@@ -273,7 +280,11 @@ export default {
         },
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Okay, stopped translations globally for {count} user(s).",
-            "OnlyModsBroadcasterCan": "Only mods/broadcaster can stop translation for others."
+            "OnlyModsBroadcasterCan": "Only mods/broadcaster can stop translation for others.",
+            "TranslationStopped": "Translation stopped.",
+            "TranslationAlreadyOff": "Translation was already off.",
+            "StoppedTranslationFor": "Stopped translation for {user}.",
+            "TranslationAlreadyOffFor": "Translation was already off for {user}."
         }
     },
     "result": {
@@ -344,12 +355,17 @@ export default {
             "ErrorOccurredSubmittingReport": "@{username}, an error occurred submitting your report for round {roundNum}. Please try again.",
             "ErrFailedStartRiddleGame": "Failed to start the riddle game. Could not generate the first riddle.",
             "RiddleSettingsUnchanged": "Riddle settings: {p1}.",
-            "NoValidRiddleSettings": "No valid riddle settings changed."
+            "NoValidRiddleSettings": "No valid riddle settings changed.",
+            "ErrGameAlreadyInProgress": "A riddle game is already in progress (round {currentRound}/{totalRounds}, started by @{initiator})."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "The command '{normalizedCommand}' is always available and cannot be disabled.",
             "ErrorDisablingCommandPlease": "Error disabling command '!{commandName}'. Please try again.",
-            "ErrorEnablingCommandPlease": "Error enabling command '!{commandName}'. Please try again."
+            "ErrorEnablingCommandPlease": "Error enabling command '!{commandName}'. Please try again.",
+            "CommandDisabled": "✅ Command '!{commandName}' has been disabled.",
+            "CommandAlreadyDisabled": "Command '!{commandName}' was already disabled.",
+            "CommandEnabled": "✅ Command '!{commandName}' has been enabled.",
+            "CommandAlreadyEnabled": "Command '!{commandName}' was already enabled."
         }
     },
     "change": {

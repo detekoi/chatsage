@@ -147,9 +147,17 @@ export async function handleStopTranslation({
             const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
             const replyToId = tags?.id || tags?.['message-id'] || null;
             if (targetUserForStop === lowerUsername) { // Message for self stop
-                await enqueueMessage(channel, wasStopped ? `Translation stopped.` : `Translation was already off.`, { replyToId });
+                await sendLocalized(channel,
+                    wasStopped ? 'cmd.messageHandlers.TranslationStopped' : 'cmd.messageHandlers.TranslationAlreadyOff',
+                    {},
+                    wasStopped ? `Translation stopped.` : `Translation was already off.`,
+                    { replyToId });
             } else { // Message for mod stopping someone else
-                await enqueueMessage(channel, wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`, { replyToId });
+                await sendLocalized(channel,
+                    wasStopped ? 'cmd.messageHandlers.StoppedTranslationFor' : 'cmd.messageHandlers.TranslationAlreadyOffFor',
+                    { user: targetUserForStop },
+                    wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`,
+                    { replyToId });
             }
         }
     }

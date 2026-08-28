@@ -32,7 +32,8 @@ export default {
         "gameStoppedScores": "🏁 ゲームを終了しました。最終スコア: {list}",
         "finalScores": "🏁 最終スコア: {list}",
         "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
-        "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。"
+        "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。",
+        "answerWas": "{roundPrefix}正解は: {answer}"
     },
     "riddle": {
         "start": "🤔 なぞなぞ{roundText}をスタート！ {topicText} 制限時間は{questionTimeSeconds}秒。チャットで回答してね！",
@@ -209,7 +210,10 @@ export default {
             "UsageQuoteDeleteId": "使い方: !quote delete <ID>",
             "OnlyModsBroadcasterCan2": "名言を編集できるのはモデレーター／配信者のみです。",
             "UsageQuoteEditId": "使い方: !quote edit <ID> <テキスト [- 発言者]>",
-            "SorrySomethingWentWrong": "!quote の処理中にエラーが発生しました。"
+            "SorrySomethingWentWrong": "!quote の処理中にエラーが発生しました。",
+            "Deleted": "名言 #{id} を削除しました。",
+            "Updated": "名言 #{id} を更新しました。",
+            "NotFound": "名言 #{id} が見つかりません。"
         },
         "riddle": {
             "OnlyGameInitiatorMods": "なぞなぞゲームを終了できるのはゲーム開始者、モデレーター、配信者のみです。",
@@ -257,7 +261,10 @@ export default {
             "PleaseSpecifyPrompt": "プロンプトを指定してください。{usage}",
             "PleaseSpecifyMessage": "メッセージを指定してください。{usage}",
             "TimerEnabled": "タイマー「{timerName}」を有効にしました。",
-            "TimerDisabled": "タイマー「{timerName}」を無効にしました。"
+            "TimerDisabled": "タイマー「{timerName}」を無効にしました。",
+            "LinesCleared": "タイマー \"{timerName}\" の実行にチャットアクティビティが不要になりました。",
+            "LinesSet": "タイマー \"{timerName}\" の実行には {minChatLines} 行のチャットが必要になりました。",
+            "ErrorAddingTimer": "タイマーの追加に失敗しました。後でもう一度お試しください。"
         },
         "translate": {
             "UsageTranslateLanguageUser": "使用法: !translate <言語> [ユーザー] | !translate stop [ユーザー|all]",
@@ -273,7 +280,11 @@ export default {
         },
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "了解、{count}人のグローバル翻訳を停止しました。",
-            "OnlyModsBroadcasterCan": "他のユーザーの翻訳を停止できるのはモデレーター/配信者のみです。"
+            "OnlyModsBroadcasterCan": "他のユーザーの翻訳を停止できるのはモデレーター/配信者のみです。",
+            "TranslationStopped": "翻訳を停止しました。",
+            "TranslationAlreadyOff": "翻訳はすでにオフになっています。",
+            "StoppedTranslationFor": "{user} の翻訳を停止しました。",
+            "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
         }
     },
     "result": {
@@ -344,12 +355,17 @@ export default {
             "ErrorOccurredSubmittingReport": "@{username}、ラウンド {roundNum} の通報送信中にエラーが発生しました。もう一度お試しください。",
             "ErrFailedStartRiddleGame": "なぞなぞゲームの開始に失敗しました。最初のなぞなぞを生成できませんでした。",
             "RiddleSettingsUnchanged": "なぞなぞ設定: {p1}。",
-            "NoValidRiddleSettings": "有効ななぞなぞ設定は変更されませんでした。"
+            "NoValidRiddleSettings": "有効ななぞなぞ設定は変更されませんでした。",
+            "ErrGameAlreadyInProgress": "なぞなぞゲームはすでに進行中です（ラウンド {currentRound}/{totalRounds}、開始者: @{initiator}）。"
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "コマンド '{normalizedCommand}' は常時利用可能なため、無効化できません。",
             "ErrorDisablingCommandPlease": "コマンド '!{commandName}' の無効化中にエラーが発生しました。もう一度お試しください。",
-            "ErrorEnablingCommandPlease": "コマンド '!{commandName}' の有効化中にエラーが発生しました。もう一度お試しください。"
+            "ErrorEnablingCommandPlease": "コマンド '!{commandName}' の有効化中にエラーが発生しました。もう一度お試しください。",
+            "CommandDisabled": "✅ コマンド '!{commandName}' を無効にしました。",
+            "CommandAlreadyDisabled": "コマンド '!{commandName}' はすでに無効になっています。",
+            "CommandEnabled": "✅ コマンド '!{commandName}' を有効にしました。",
+            "CommandAlreadyEnabled": "コマンド '!{commandName}' はすでに有効になっています。"
         }
     },
     "change": {

@@ -405,7 +405,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     lang
                 );
             } else {
-                endMessage = `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
+                endMessage = t('trivia.answerWas', { roundPrefix, answer: gameState.currentQuestion.answer }, lang)
+                    ?? `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
             }
             // Catalog strings are already in the target language, as is the natively generated
             // explanation — so the outbound LLM translation would be redundant work.
@@ -418,6 +419,8 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         } catch (error) {
             logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error formatting round end message.`);
             endMessage = `${reason === "guessed" ? `@${gameState.winner.displayName} got it right!` : ''} The answer was: ${gameState.currentQuestion?.answer || "N/A"}`;
+            // This fallback is raw English, so it must go through the runtime translator.
+            endMessageLocalized = false;
         }
     }
 

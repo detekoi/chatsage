@@ -32,7 +32,8 @@ export default {
         "gameStoppedScores": "🏁 Gioco interrotto. Punteggi finali: {list}",
         "finalScores": "🏁 Punteggi finali: {list}",
         "NoQuestionEndingGame": "⚠️ Errore: Impossibile generare una domanda per il round {currentRound}. Fine della partita.",
-        "InvalidQuestionEndingGame": "⚠️ Errore: La domanda generata non è valida. Fine della partita."
+        "InvalidQuestionEndingGame": "⚠️ Errore: La domanda generata non è valida. Fine della partita.",
+        "answerWas": "{roundPrefix}La risposta era: {answer}"
     },
     "riddle": {
         "start": "🤔 Inizia {roundText} di Indovinelli! {topicText} Avete {questionTimeSeconds} secondi per rispondere. Scrivete le vostre risposte in chat!",
@@ -209,7 +210,10 @@ export default {
             "UsageQuoteDeleteId": "Uso: !quote delete <id>",
             "OnlyModsBroadcasterCan2": "Solo i mod o lo streamer possono modificare le citazioni.",
             "UsageQuoteEditId": "Uso: !quote edit <id> <testo [- autore]>",
-            "SorrySomethingWentWrong": "Ops, qualcosa è andato storto con il comando !quote."
+            "SorrySomethingWentWrong": "Ops, qualcosa è andato storto con il comando !quote.",
+            "Deleted": "Citazione #{id} eliminata.",
+            "Updated": "Citazione #{id} aggiornata.",
+            "NotFound": "Citazione #{id} non trovata."
         },
         "riddle": {
             "OnlyGameInitiatorMods": "Solo chi ha avviato la partita, i mod o lo streamer possono interrompere il gioco degli indovinelli.",
@@ -257,7 +261,10 @@ export default {
             "PleaseSpecifyPrompt": "Specifica un prompt. {usage}",
             "PleaseSpecifyMessage": "Specifica un messaggio. {usage}",
             "TimerEnabled": "Il timer \"{timerName}\" è stato abilitato.",
-            "TimerDisabled": "Il timer \"{timerName}\" è stato disabilitato."
+            "TimerDisabled": "Il timer \"{timerName}\" è stato disabilitato.",
+            "LinesCleared": "Il timer \"{timerName}\" non richiede più attività in chat per attivarsi.",
+            "LinesSet": "Il timer \"{timerName}\" ora richiede {minChatLines} righe di chat tra un'attivazione e l'altra.",
+            "ErrorAddingTimer": "Errore durante l'aggiunta del timer. Riprova più tardi."
         },
         "translate": {
             "UsageTranslateLanguageUser": "Uso: !translate <lingua> [utente] | !translate stop [utente|all]",
@@ -273,7 +280,11 @@ export default {
         },
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Okay, traduzioni interrotte a livello globale per {count} utente/i.",
-            "OnlyModsBroadcasterCan": "Solo mod/streamer possono interrompere la traduzione per gli altri."
+            "OnlyModsBroadcasterCan": "Solo mod/streamer possono interrompere la traduzione per gli altri.",
+            "TranslationStopped": "Traduzione interrotta.",
+            "TranslationAlreadyOff": "La traduzione era già disattivata.",
+            "StoppedTranslationFor": "Traduzione interrotta per {user}.",
+            "TranslationAlreadyOffFor": "La traduzione era già disattivata per {user}."
         }
     },
     "result": {
@@ -344,12 +355,17 @@ export default {
             "ErrorOccurredSubmittingReport": "@{username}, si è verificato un errore durante l'invio della segnalazione per il round {roundNum}. Riprova.",
             "ErrFailedStartRiddleGame": "Impossibile avviare il gioco degli indovinelli. Impossibile generare il primo indovinello.",
             "RiddleSettingsUnchanged": "Impostazioni indovinello: {p1}.",
-            "NoValidRiddleSettings": "Nessuna impostazione indovinello valida modificata."
+            "NoValidRiddleSettings": "Nessuna impostazione indovinello valida modificata.",
+            "ErrGameAlreadyInProgress": "Una partita di indovinelli è già in corso (round {currentRound}/{totalRounds}, avviata da @{initiator})."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "Il comando '{normalizedCommand}' è sempre disponibile e non può essere disattivato.",
             "ErrorDisablingCommandPlease": "Errore durante la disattivazione del comando '!{commandName}'. Riprova.",
-            "ErrorEnablingCommandPlease": "Errore durante l'attivazione del comando '!{commandName}'. Riprova."
+            "ErrorEnablingCommandPlease": "Errore durante l'attivazione del comando '!{commandName}'. Riprova.",
+            "CommandDisabled": "✅ Il comando '!{commandName}' è stato disabilitato.",
+            "CommandAlreadyDisabled": "Il comando '!{commandName}' era già disabilitato.",
+            "CommandEnabled": "✅ Il comando '!{commandName}' è stato abilitato.",
+            "CommandAlreadyEnabled": "Il comando '!{commandName}' era già abilitato."
         }
     },
     "change": {

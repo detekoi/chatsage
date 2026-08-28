@@ -690,7 +690,16 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     if (gameState.state !== 'idle') {
         logger.warn(`[RiddleGameManager][${channelName}] Start requested by ${initiatorUsername} but game state is ${gameState.state}.`);
         const gameInProgressMsg = `A riddle game is already in progress (round ${gameState.currentRound}/${gameState.totalRounds}, started by @${gameState.initiatorUsername || 'Unknown'}).`;
-        return { success: false, error: gameInProgressMsg };
+        return {
+            success: false,
+            errorKey: 'result.riddle.ErrGameAlreadyInProgress',
+            errorParams: {
+                currentRound: gameState.currentRound,
+                totalRounds: gameState.totalRounds,
+                initiator: gameState.initiatorUsername || 'Unknown',
+            },
+            error: gameInProgressMsg,
+        };
     }
     gameState.gameSessionId = crypto.randomUUID();
     logger.info(`[RiddleGameManager][${channelName}] New game starting by ${initiatorUsername}. Rounds: ${numberOfRounds}. Generated new gameSessionId: ${gameState.gameSessionId}`);

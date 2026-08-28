@@ -99,7 +99,9 @@ function _createFollowageResolver(channelName) {
             );
 
             if (followData) {
-                return formatFollowAge(followData.followed_at);
+                // Same as the !followage handler: give the formatter the channel's language so
+                // $(followage) in a custom command is localized too.
+                return formatFollowAge(followData.followed_at, contextManager.getBotLanguage(channel || channelName));
             }
             return 'not following';
         } catch (error) {

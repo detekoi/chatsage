@@ -103,6 +103,13 @@ async function main() {
         // Clone: mutating hashes[code] in place would persist hashes for keys whose catalog
         // was never written on an aborted run, and the next run would then skip them forever.
         const localeHashes = { ...(hashes[code] || {}) };
+        // Drop hashes for keys no longer in English, or they accumulate forever. Committed
+        // immediately: pruning is independent of whether any translation work happens below.
+        let pruned = 0;
+        for (const key of Object.keys(localeHashes)) {
+            if (!(key in english)) { delete localeHashes[key]; pruned++; }
+        }
+        if (pruned) hashes[code] = localeHashes;
 
         const stale = englishKeys.filter(k =>
             force || existing[k] === undefined || localeHashes[k] !== hashOf(english[k]));

@@ -73,8 +73,11 @@ export function loadCatalogs() {
 // (scripts and tests import this module directly).
 loadCatalogs();
 
-/** Flattens a nested catalog into dotted keys: { trivia: { start: "x" } } -> { "trivia.start": "x" } */
-function flatten(obj, prefix = '', out = {}) {
+/**
+ * Flattens a nested catalog into dotted keys: { trivia: { start: "x" } } -> { "trivia.start": "x" }
+ * Exported so the build-time catalog scripts share one implementation with the runtime.
+ */
+export function flatten(obj, prefix = '', out = {}) {
     for (const [key, value] of Object.entries(obj)) {
         const path = prefix ? `${prefix}.${key}` : key;
         if (value && typeof value === 'object' && !Array.isArray(value)) {

@@ -136,6 +136,10 @@ export async function disableCommandForChannel(channelName, commandName) {
 
         return {
             success: true,
+            messageKey: wasNewlyDisabled
+                ? 'result.commandState.CommandDisabled'
+                : 'result.commandState.CommandAlreadyDisabled',
+            messageParams: { commandName },
             message: wasNewlyDisabled
                 ? `✅ Command '!${commandName}' has been disabled.`
                 : `Command '!${commandName}' was already disabled.`,
@@ -173,6 +177,10 @@ export async function enableCommandForChannel(channelName, commandName) {
 
         return {
             success: true,
+            messageKey: wasNewlyEnabled
+                ? 'result.commandState.CommandEnabled'
+                : 'result.commandState.CommandAlreadyEnabled',
+            messageParams: { commandName },
             message: wasNewlyEnabled
                 ? `✅ Command '!${commandName}' has been enabled.`
                 : `Command '!${commandName}' was already enabled.`,

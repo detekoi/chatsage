@@ -72,14 +72,25 @@ async function main() {
     console.log(`Model:  ${modelId}`);
 
     const hashes = readJson(HASH_FILE, {});
-    let llmReady = false;
 
-    for (const code of targets) {
+    // Initialize once up front rather than lazily inside each locale, which would race.
+    // Always Gemini regardless of the runtime LLM_PROVIDER setting, so catalog output is
+    // reproducible and does not change with the bot's provider flag.
+    if (!dryRun && targets.length) initializeGeminiClient();
+
+    async function translateLocale(code) {
         const languageName = LANGUAGE_NAMES[code];
         const existing = flatten(await readCatalog(code));
         // Clone: mutating hashes[code] in place would persist hashes for keys whose catalog
         // was never written on an aborted run, and the next run would then skip them forever.
         const localeHashes = { ...(hashes[code] || {}) };
+        // Drop hashes for keys no longer in English, or they accumulate forever. Committed
+        // immediately: pruning is independent of whether any translation work happens below.
+        let pruned = 0;
+        for (const key of Object.keys(localeHashes)) {
+            if (!(key in english)) { delete localeHashes[key]; pruned++; }
+        }
+        if (pruned) hashes[code] = localeHashes;
 
         const stale = englishKeys.filter(key =>
             force || existing[key] === undefined || localeHashes[key] !== hashOf(english[key]));
@@ -87,18 +98,14 @@ async function main() {
 
         if (!stale.length && !removed.length) {
             console.log(`${code}: up to date (${englishKeys.length} keys)`);
-            continue;
+            return;
         }
         console.log(`${code}: ${stale.length} to translate, ${removed.length} obsolete to drop`);
         if (dryRun) {
             stale.slice(0, 10).forEach(key => console.log(`   would translate ${key}`));
             if (stale.length > 10) console.log(`   ...and ${stale.length - 10} more`);
-            continue;
+            return;
         }
-
-        // Always Gemini here regardless of the runtime LLM_PROVIDER setting, so catalog output is
-        // reproducible and does not change with the bot's provider flag.
-        if (!llmReady) { initializeGeminiClient(); llmReady = true; }
 
         // Start from the existing catalog, drop obsolete keys, then fill in the stale ones.
         let updated = 0;
@@ -138,17 +145,28 @@ async function main() {
             // incomplete catalog must not be written — it would make lookups fall back mid-message
             // and mix two languages inside a single string.
             console.error(`${code}: ABORTED — ${missing.length} key(s) still missing (${missing.slice(0, 5).join(', ')}). Catalog not written.`);
-            continue;
+            return;
         }
         if (updated === 0 && !removed.length) {
             console.error(`${code}: no keys translated (all batches failed). Catalog left unchanged.`);
-            continue;
+            return;
         }
 
         writeCatalog(code, unflatten(result));
         hashes[code] = localeHashes;
         console.log(`${code}: wrote ${englishKeys.length} keys to ${code}.js (${updated} newly translated, ${removed.length} dropped)`);
     }
+
+    // Locales are independent: each writes its own file and its own hashes entry. Bounded rather
+    // than all-at-once because this API returns 503 "high demand" under load, and firing eight
+    // concurrent streams trades a slow run for a failed one.
+    const CONCURRENCY = 3;
+    const queue = [...targets];
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        while (queue.length) {
+            await translateLocale(queue.shift());
+        }
+    }));
 
     if (!dryRun) writeFileSync(HASH_FILE, JSON.stringify(hashes, null, 2) + '\n');
     console.log('Done.');

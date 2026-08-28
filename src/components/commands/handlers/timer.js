@@ -146,10 +146,13 @@ async function _handleAdd(channel, channelName, timerName, responseArgs, usernam
     } catch (error) {
         logger.error({ err: error, channel: channelName, timer: timerName },
             '[TimerHandler] Error adding timer');
-        const message = error instanceof TimersStorageError && !error.cause
-            ? error.message
-            : 'Error adding timer. Please try again later.';
-        await enqueueMessage(channel, message);
+        // A storage error carries its own message; otherwise use the catalogued generic one.
+        if (error instanceof TimersStorageError && !error.cause) {
+            await enqueueMessage(channel, error.message);
+        } else {
+            await sendLocalized(channel, 'cmd.timer.ErrorAddingTimer', {},
+                'Error adding timer. Please try again later.');
+        }
     }
 }
 
@@ -229,9 +232,12 @@ async function _handleLines(channel, channelName, timerName, value, logger) {
     try {
         const updated = await updateTimerOptions(channelName, timerName, { minChatLines });
         if (updated) {
-            await enqueueMessage(channel, minChatLines === 0
-                ? `Timer "${timerName}" no longer requires chat activity to fire.`
-                : `Timer "${timerName}" now requires ${minChatLines} chat lines between fires.`);
+            await sendLocalized(channel,
+                minChatLines === 0 ? 'cmd.timer.LinesCleared' : 'cmd.timer.LinesSet',
+                { timerName, minChatLines },
+                minChatLines === 0
+                    ? `Timer "${timerName}" no longer requires chat activity to fire.`
+                    : `Timer "${timerName}" now requires ${minChatLines} chat lines between fires.`);
         } else {
             await sendLocalized(channel, 'cmd.timer.TimerNotFound', { timerName }, `Timer "${timerName}" not found.`);
         }

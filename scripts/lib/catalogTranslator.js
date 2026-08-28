@@ -9,6 +9,8 @@
 // src/lib/translationUtils.js uses for per-message runtime translation.
 
 import { createHash } from 'node:crypto';
+// Shared with the runtime so the two cannot drift.
+export { flatten } from '../../src/lib/i18n.js';
 
 export const DEFAULT_MODEL_ID = 'gemini-3.7-flash';
 export const BATCH_SIZE = 20;
@@ -45,14 +47,6 @@ export const BatchSchema = {
 
 // --- shape helpers ---
 
-export function flatten(obj, prefix = '', out = {}) {
-    for (const [key, value] of Object.entries(obj)) {
-        const path = prefix ? `${prefix}.${key}` : key;
-        if (value && typeof value === 'object' && !Array.isArray(value)) flatten(value, path, out);
-        else if (typeof value === 'string') out[path] = value;
-    }
-    return out;
-}
 
 export function unflatten(flat) {
     const out = {};

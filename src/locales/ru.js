@@ -32,7 +32,8 @@ export default {
         "gameStoppedScores": "🏁 Игра остановлена. Итоговый счет: {list}",
         "finalScores": "🏁 Итоговый счет: {list}",
         "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
-        "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру."
+        "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру.",
+        "answerWas": "{roundPrefix}Правильный ответ: {answer}"
     },
     "riddle": {
         "start": "🤔 Начинаем {roundText} загадок! {topicText} У вас есть {questionTimeSeconds} сек., чтобы ответить. Пишите варианты в чат!",
@@ -209,7 +210,10 @@ export default {
             "UsageQuoteDeleteId": "Использование: !quote delete <id>",
             "OnlyModsBroadcasterCan2": "Редактировать цитаты могут только модераторы и стример.",
             "UsageQuoteEditId": "Использование: !quote edit <id> <текст [- автор]>",
-            "SorrySomethingWentWrong": "К сожалению, произошла ошибка при обработке !quote."
+            "SorrySomethingWentWrong": "К сожалению, произошла ошибка при обработке !quote.",
+            "Deleted": "Цитата #{id} удалена.",
+            "Updated": "Цитата #{id} обновлена.",
+            "NotFound": "Цитата #{id} не найдена."
         },
         "riddle": {
             "OnlyGameInitiatorMods": "Остановить игру в загадки может только запустивший её игрок, модераторы или стример.",
@@ -257,7 +261,10 @@ export default {
             "PleaseSpecifyPrompt": "Укажите промпт. {usage}",
             "PleaseSpecifyMessage": "Укажите сообщение. {usage}",
             "TimerEnabled": "Таймер \"{timerName}\" включён.",
-            "TimerDisabled": "Таймер \"{timerName}\" выключен."
+            "TimerDisabled": "Таймер \"{timerName}\" выключен.",
+            "LinesCleared": "Таймер \"{timerName}\" больше не требует активности в чате для срабатывания.",
+            "LinesSet": "Таймер \"{timerName}\" теперь требует {minChatLines} строк чата между срабатываниями.",
+            "ErrorAddingTimer": "Ошибка при добавлении таймера. Попробуйте позже."
         },
         "translate": {
             "UsageTranslateLanguageUser": "Использование: !translate <язык> [пользователь] | !translate stop [пользователь|all]",
@@ -273,7 +280,11 @@ export default {
         },
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Окей, переводы отключены глобально для {count} пользователей.",
-            "OnlyModsBroadcasterCan": "Только модераторы и стример могут отключать перевод для других."
+            "OnlyModsBroadcasterCan": "Только модераторы и стример могут отключать перевод для других.",
+            "TranslationStopped": "Перевод остановлен.",
+            "TranslationAlreadyOff": "Перевод уже был выключен.",
+            "StoppedTranslationFor": "Перевод для {user} остановлен.",
+            "TranslationAlreadyOffFor": "Перевод для {user} уже был выключен."
         }
     },
     "result": {
@@ -344,12 +355,17 @@ export default {
             "ErrorOccurredSubmittingReport": "@{username}, произошла ошибка при отправке жалобы для раунда {roundNum}. Попробуйте ещё раз.",
             "ErrFailedStartRiddleGame": "Не удалось запустить игру в загадки. Не получилось сгенерировать первую загадку.",
             "RiddleSettingsUnchanged": "Настройки загадок: {p1}.",
-            "NoValidRiddleSettings": "Никакие корректные настройки загадок не изменены."
+            "NoValidRiddleSettings": "Никакие корректные настройки загадок не изменены.",
+            "ErrGameAlreadyInProgress": "Игра в загадки уже идет (раунд {currentRound}/{totalRounds}, запустил @{initiator})."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "Команда '{normalizedCommand}' доступна всегда и не может быть отключена.",
             "ErrorDisablingCommandPlease": "Ошибка при отключении команды '!{commandName}'. Попробуйте ещё раз.",
-            "ErrorEnablingCommandPlease": "Ошибка при включении команды '!{commandName}'. Попробуйте ещё раз."
+            "ErrorEnablingCommandPlease": "Ошибка при включении команды '!{commandName}'. Попробуйте ещё раз.",
+            "CommandDisabled": "✅ Команда '!{commandName}' отключена.",
+            "CommandAlreadyDisabled": "Команда '!{commandName}' уже была отключена.",
+            "CommandEnabled": "✅ Команда '!{commandName}' включена.",
+            "CommandAlreadyEnabled": "Команда '!{commandName}' уже была включена."
         }
     },
     "change": {

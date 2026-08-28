@@ -139,7 +139,11 @@ const quoteHandler = {
                 }
                 const id = parseInt(args[1], 10);
                 const ok = await deleteQuoteFromStorage(channelName, id);
-                return await enqueueMessage(channel, ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await sendLocalized(channel,
+                    ok ? 'cmd.quote.Deleted' : 'cmd.quote.NotFound',
+                    { id },
+                    ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`,
+                    { replyToId });
             }
 
             if (sub === 'edit' || sub === 'update') {
@@ -157,7 +161,11 @@ const quoteHandler = {
                 }
                 const { text, saidBy } = parseQuoteText(raw);
                 const ok = await editQuoteInStorage(channelName, id, text, saidBy);
-                return await enqueueMessage(channel, ok ? `Updated quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await sendLocalized(channel,
+                    ok ? 'cmd.quote.Updated' : 'cmd.quote.NotFound',
+                    { id },
+                    ok ? `Updated quote #${id}.` : `Quote #${id} not found.`,
+                    { replyToId });
             }
 
             return await sendLocalized(channel, 'cmd.quote.UsageQuoteQuote12', {}, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });

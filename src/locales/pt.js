@@ -32,7 +32,8 @@ export default {
         "gameStoppedScores": "🏁 Jogo encerrado. Pontuação final: {list}",
         "finalScores": "🏁 Pontuação final: {list}",
         "NoQuestionEndingGame": "⚠️ Erro: Não foi possível gerar uma pergunta para a rodada {currentRound}. Encerrando o jogo.",
-        "InvalidQuestionEndingGame": "⚠️ Erro: A pergunta gerada era inválida. Encerrando o jogo."
+        "InvalidQuestionEndingGame": "⚠️ Erro: A pergunta gerada era inválida. Encerrando o jogo.",
+        "answerWas": "{roundPrefix}A resposta era: {answer}"
     },
     "riddle": {
         "start": "🤔 Iniciando {roundText} de Charadas! {topicText} Você tem {questionTimeSeconds} segundos para responder. Digite seus palpites no chat!",
@@ -209,7 +210,10 @@ export default {
             "UsageQuoteDeleteId": "Uso: !quote delete <id>",
             "OnlyModsBroadcasterCan2": "Apenas mods/streamer podem editar citações.",
             "UsageQuoteEditId": "Uso: !quote edit <id> <texto [- autor]>",
-            "SorrySomethingWentWrong": "Desculpe, algo deu errado ao processar o !quote."
+            "SorrySomethingWentWrong": "Desculpe, algo deu errado ao processar o !quote.",
+            "Deleted": "Citação #{id} excluída.",
+            "Updated": "Citação #{id} atualizada.",
+            "NotFound": "Citação #{id} não encontrada."
         },
         "riddle": {
             "OnlyGameInitiatorMods": "Apenas quem iniciou o jogo, mods ou o streamer podem encerrar o jogo de charadas.",
@@ -257,7 +261,10 @@ export default {
             "PleaseSpecifyPrompt": "Especifique um prompt. {usage}",
             "PleaseSpecifyMessage": "Especifique uma mensagem. {usage}",
             "TimerEnabled": "O timer \"{timerName}\" foi ativado.",
-            "TimerDisabled": "O timer \"{timerName}\" foi desativado."
+            "TimerDisabled": "O timer \"{timerName}\" foi desativado.",
+            "LinesCleared": "O timer \"{timerName}\" não precisa mais de atividade no chat para disparar.",
+            "LinesSet": "O timer \"{timerName}\" agora requer {minChatLines} linhas de chat entre disparos.",
+            "ErrorAddingTimer": "Erro ao adicionar o timer. Tente novamente mais tarde."
         },
         "translate": {
             "UsageTranslateLanguageUser": "Uso: !translate <idioma> [usuário] | !translate stop [usuário|all]",
@@ -273,7 +280,11 @@ export default {
         },
         "messageHandlers": {
             "OkayStoppedTranslationsGlobally": "Ok, traduções paradas globalmente para {count} usuário(s).",
-            "OnlyModsBroadcasterCan": "Apenas mods/streamer podem parar a tradução para outras pessoas."
+            "OnlyModsBroadcasterCan": "Apenas mods/streamer podem parar a tradução para outras pessoas.",
+            "TranslationStopped": "Tradução parada.",
+            "TranslationAlreadyOff": "A tradução já estava desativada.",
+            "StoppedTranslationFor": "Tradução parada para {user}.",
+            "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
         }
     },
     "result": {
@@ -344,12 +355,17 @@ export default {
             "ErrorOccurredSubmittingReport": "@{username}, ocorreu um erro ao enviar sua denúncia da rodada {roundNum}. Tente novamente.",
             "ErrFailedStartRiddleGame": "Falha ao iniciar o jogo de charadas. Não foi possível gerar a primeira charada.",
             "RiddleSettingsUnchanged": "Configurações de charadas: {p1}.",
-            "NoValidRiddleSettings": "Nenhuma configuração válida de charadas foi alterada."
+            "NoValidRiddleSettings": "Nenhuma configuração válida de charadas foi alterada.",
+            "ErrGameAlreadyInProgress": "Um jogo de enigmas já está em andamento (rodada {currentRound}/{totalRounds}, iniciado por @{initiator})."
         },
         "commandState": {
             "CommandAlwaysAvailableCannot": "O comando '{normalizedCommand}' está sempre disponível e não pode ser desativado.",
             "ErrorDisablingCommandPlease": "Erro ao desativar o comando '!{commandName}'. Tente novamente.",
-            "ErrorEnablingCommandPlease": "Erro ao ativar o comando '!{commandName}'. Tente novamente."
+            "ErrorEnablingCommandPlease": "Erro ao ativar o comando '!{commandName}'. Tente novamente.",
+            "CommandDisabled": "✅ O comando '!{commandName}' foi desativado.",
+            "CommandAlreadyDisabled": "O comando '!{commandName}' já estava desativado.",
+            "CommandEnabled": "✅ O comando '!{commandName}' foi ativado.",
+            "CommandAlreadyEnabled": "O comando '!{commandName}' já estava ativado."
         }
     },
     "change": {
