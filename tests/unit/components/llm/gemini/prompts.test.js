@@ -59,7 +59,12 @@ describe('buildSystemInstruction', () => {
             'Cat Persona:',
             'Command Safety:',
             'Hard bans:',
-            'Avoid these words:',
+            // Scoped to English now, since the list is English vocabulary and would otherwise
+            // push the model into avoiding odd translations of it on a non-English stream.
+            'When writing in English, avoid these words:',
+            // Language handling is deliberately language-agnostic: mirror the speaker rather than
+            // naming a language, so multilingual streams keep working.
+            'Language: Reply in the same language the person wrote to you in.',
         ]) {
             expect(CHAT_SAGE_SYSTEM_INSTRUCTION).toContain(marker);
         }

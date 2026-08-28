@@ -18,6 +18,7 @@ import { resolvePrompt } from '../customCommands/promptResolver.js';
 import { customCommandSource } from '../llm/inferenceHistoryStorage.js';
 import config from '../../config/index.js';
 import { hasPermissionLevel } from '../../lib/permissions.js';
+import { sendLocalized } from '../../lib/localizedMessage.js';
 
 
 const COMMAND_PREFIX = '!'; // Define the prefix for commands
@@ -98,7 +99,9 @@ function _createFollowageResolver(channelName) {
             );
 
             if (followData) {
-                return formatFollowAge(followData.followed_at);
+                // Same as the !followage handler: give the formatter the channel's language so
+                // $(followage) in a custom command is localized too.
+                return formatFollowAge(followData.followed_at, contextManager.getBotLanguage(channel || channelName));
             }
             return 'not following';
         } catch (error) {
@@ -245,7 +248,7 @@ async function processMessage(channelName, tags, message) {
             `Error executing command !${command}`);
         // Optional: Send an error message back to the chat?
         try {
-            await enqueueMessage(`#${channelName}`, `Oops! Something went wrong trying to run !${command}.`);
+            await sendLocalized(`#${channelName}`, 'cmd.commandProcessor.OopsSomethingWentWrong', { command }, `Oops! Something went wrong trying to run !${command}.`);
         } catch (sayError) {
             logger.error({ err: sayError }, 'Failed to send command execution error message to chat.');
         }

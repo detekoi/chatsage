@@ -178,3 +178,51 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         expect(mockHelixSendMessage).toHaveBeenCalledWith('#test', shortText, {});
     });
 });
+
+describe('ircSender truncation and surrogate pairs', () => {
+    beforeEach(() => {
+        jest.useRealTimers();
+        jest.clearAllMocks();
+        clearMessageQueue();
+    });
+
+    afterEach(async () => {
+        clearMessageQueue();
+        await waitForQueueEmpty();
+        jest.useRealTimers();
+    });
+
+    // substring() slices UTF-16 code units, so the 500-char cut can land between the two halves of
+    // an emoji. The old guard round-tripped through a UTF-8 Buffer and compared lengths, but Node
+    // decodes a lone surrogate to U+FFFD — itself one code unit — so the lengths matched, the guard
+    // never fired, and a replacement character was sent to chat.
+    test('does not emit a lone surrogate when truncation splits an emoji', async () => {
+        geminiClient.summarizeText.mockResolvedValue(null); // force the truncation path
+
+        // 496 filler + emoji puts the surrogate pair across the 497-char cut (500 minus '...').
+        // No spaces, so the word-break logic cannot pull the cut back and mask the problem.
+        const text = 'a'.repeat(496) + '\u{1F389}' + 'b'.repeat(200);
+
+        await enqueueMessage('#chan', text);
+        await waitForQueueEmpty();
+
+        expect(mockHelixSendMessage).toHaveBeenCalled();
+        const sent = mockHelixSendMessage.mock.calls.at(-1)[1];
+
+        expect(sent).not.toMatch(/[\uD800-\uDBFF]/); // no unpaired high surrogate
+        expect(sent).not.toContain('�');        // and no replacement character
+        expect(sent.length).toBeLessThanOrEqual(500);
+    });
+
+    test('keeps an emoji intact when it falls entirely inside the limit', async () => {
+        geminiClient.summarizeText.mockResolvedValue(null);
+
+        const text = '\u{1F389} party ' + 'c'.repeat(900);
+        await enqueueMessage('#chan', text);
+        await waitForQueueEmpty();
+
+        const sent = mockHelixSendMessage.mock.calls.at(-1)[1];
+        expect(sent).toContain('\u{1F389}');
+        expect(sent).not.toContain('�');
+    });
+});

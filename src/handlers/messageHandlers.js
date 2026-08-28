@@ -8,6 +8,7 @@ import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/
 import { getContextManager } from '../components/context/contextManager.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
+import { sendLocalized } from '../lib/localizedMessage.js';
 
 
 
@@ -137,18 +138,26 @@ export async function handleStopTranslation({
     if (stopGlobally) { // Already checked permission above
         const count = contextManager.disableAllTranslationsInChannel(cleanChannel);
         const replyToId = tags?.id || tags?.['message-id'] || null;
-        await enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
+        await sendLocalized(channel, 'cmd.messageHandlers.OkayStoppedTranslationsGlobally', { count }, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
     } else {
         // Check permission if target is not self
         if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
-            await enqueueMessage(channel, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
+            await sendLocalized(channel, 'cmd.messageHandlers.OnlyModsBroadcasterCan', {}, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
         } else {
             const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
             const replyToId = tags?.id || tags?.['message-id'] || null;
             if (targetUserForStop === lowerUsername) { // Message for self stop
-                await enqueueMessage(channel, wasStopped ? `Translation stopped.` : `Translation was already off.`, { replyToId });
+                await sendLocalized(channel,
+                    wasStopped ? 'cmd.messageHandlers.TranslationStopped' : 'cmd.messageHandlers.TranslationAlreadyOff',
+                    {},
+                    wasStopped ? `Translation stopped.` : `Translation was already off.`,
+                    { replyToId });
             } else { // Message for mod stopping someone else
-                await enqueueMessage(channel, wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`, { replyToId });
+                await sendLocalized(channel,
+                    wasStopped ? 'cmd.messageHandlers.StoppedTranslationFor' : 'cmd.messageHandlers.TranslationAlreadyOffFor',
+                    { user: targetUserForStop },
+                    wasStopped ? `Stopped translation for ${targetUserForStop}.` : `Translation was already off for ${targetUserForStop}.`,
+                    { replyToId });
             }
         }
     }

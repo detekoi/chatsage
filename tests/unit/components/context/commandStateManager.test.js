@@ -139,11 +139,11 @@ describe('commandStateManager', () => {
         it('should disable a command successfully', async () => {
             const result = await disableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: true,
                 message: "✅ Command '!trivia' has been disabled.",
                 wasAlreadyDisabled: false
-            });
+            }));
             expect(channelCommandsStorage.disableCommand).toHaveBeenCalledWith('testchannel', 'trivia');
         });
 
@@ -152,21 +152,21 @@ describe('commandStateManager', () => {
 
             const result = await disableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: true,
                 message: "Command '!trivia' was already disabled.",
                 wasAlreadyDisabled: true
-            });
+            }));
         });
 
         it('should allow disabling the help command', async () => {
             const result = await disableCommandForChannel('testchannel', 'help');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: true,
                 message: "✅ Command '!help' has been disabled.",
                 wasAlreadyDisabled: false
-            });
+            }));
             expect(channelCommandsStorage.disableCommand).toHaveBeenCalledWith('testchannel', 'help');
         });
 
@@ -176,11 +176,11 @@ describe('commandStateManager', () => {
 
             const result = await disableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: false,
                 message: "Error disabling command '!trivia'. Please try again.",
                 wasAlreadyDisabled: false
-            });
+            }));
         });
     });
 
@@ -192,11 +192,11 @@ describe('commandStateManager', () => {
         it('should enable a command successfully', async () => {
             const result = await enableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: true,
                 message: "✅ Command '!trivia' has been enabled.",
                 wasAlreadyEnabled: false
-            });
+            }));
             expect(channelCommandsStorage.enableCommand).toHaveBeenCalledWith('testchannel', 'trivia');
         });
 
@@ -205,11 +205,11 @@ describe('commandStateManager', () => {
 
             const result = await enableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: true,
                 message: "Command '!trivia' was already enabled.",
                 wasAlreadyEnabled: true
-            });
+            }));
         });
 
         it('should handle storage errors', async () => {
@@ -218,11 +218,11 @@ describe('commandStateManager', () => {
 
             const result = await enableCommandForChannel('testchannel', 'trivia');
 
-            expect(result).toEqual({
+            expect(result).toEqual(expect.objectContaining({
                 success: false,
                 message: "Error enabling command '!trivia'. Please try again.",
                 wasAlreadyEnabled: false
-            });
+            }));
         });
     });
 

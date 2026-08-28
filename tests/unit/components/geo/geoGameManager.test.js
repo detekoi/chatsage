@@ -234,3 +234,62 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         expect(validateGuess).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('GeoGameManager - guess ordering', () => {
+    let geoGameManager;
+    let gameState;
+
+    beforeEach(async () => {
+        jest.clearAllMocks();
+        activeGames.clear();
+        geoGameManager = getGeoGameManager();
+        await geoGameManager.initialize();
+        getContextManager.mockReturnValue({ getBotLanguage: jest.fn().mockReturnValue('english') });
+        logger.debug = jest.fn(); logger.info = jest.fn(); logger.warn = jest.fn(); logger.error = jest.fn();
+
+        activeGames.set('geochan', {
+            channelName: 'geochan',
+            state: 'inProgress',
+            startTime: Date.now(),
+            currentRound: 1,
+            totalRounds: 1,
+            targetLocation: { name: 'Paris', alternateNames: [] },
+            guessCache: new Map(),
+            processingQueue: [],
+            guesses: [],
+            incorrectGuessReasons: [],
+            lastMessageTimestamp: 0,
+            streakMap: new Map(),
+            gameSessionScores: new Map(),
+            gameSessionExcludedLocations: new Set(),
+            clues: [],
+            currentClueIndex: 0,
+            config: { scoreTracking: false, roundDurationMinutes: 5 },
+        });
+        gameState = activeGames.get('geochan');
+    });
+
+    // The winner used to be whoever's LLM validation resolved first, so a viewer who guessed
+    // second could win purely because their validation came back faster.
+    it('awards the win to whoever guessed first, even when their validation resolves last', async () => {
+        const resolvers = [];
+        validateGuess.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve); }));
+
+        geoGameManager.processPotentialGuess('geochan', 'alice', 'Alice', 'Paris');
+        await new Promise(r => setImmediate(r));
+        gameState.lastMessageTimestamp = 0; // bypass the 1s throttle for the second guesser
+        geoGameManager.processPotentialGuess('geochan', 'bob', 'Bob', 'paris france');
+        await new Promise(r => setImmediate(r));
+        expect(resolvers).toHaveLength(2);
+
+        resolvers[1]({ is_correct: true, confidence: 0.9 });
+        await new Promise(r => setImmediate(r));
+        expect(gameState.winner).toBeUndefined(); // must wait for the earlier guess to settle
+
+        resolvers[0]({ is_correct: true, confidence: 0.9 });
+        for (let i = 0; i < 4; i++) await new Promise(r => setImmediate(r));
+
+        expect(gameState.winner).toBeDefined();
+        expect(gameState.winner.username).toBe('alice');
+    });
+});

@@ -15,6 +15,7 @@ import {
     formatRiddleSessionScoresMessage,
     formatRiddleLeaderboardMessage
 } from './riddleMessageFormatter.js';
+import { t, isCatalogued } from '../../lib/i18n.js';
 import {
     loadChannelRiddleConfig,
     saveChannelRiddleConfig,
@@ -24,7 +25,6 @@ import {
     saveRiddleKeywords, // To save keywords of successfully answered riddles
     getLeaderboard,
     clearLeaderboardData as clearRiddleLeaderboardData,
-    getMostRecentRiddlePlayed,
     flagRiddleAsProblem,
     getLatestCompletedSessionInfo,
     saveRecentAnswer,
@@ -70,6 +70,7 @@ GameState structure:
     } | null,
     startTime: number | null, // Timestamp for when the current riddle was asked
     riddleTimeoutTimer: NodeJS.Timeout | null,
+    transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
     winner: { username: string, displayName: string } | null,
     initiatorUsername: string | null, // Lowercase username
     config: Object, // Channel-specific config merged with defaults
@@ -103,6 +104,7 @@ async function _getOrCreateGameState(channelName) {
             currentRiddle: null,
             startTime: null,
             riddleTimeoutTimer: null,
+            transitionTimer: null,
             winner: null,
             initiatorUsername: null,
             config: finalConfig,
@@ -133,6 +135,12 @@ function _clearTimers(gameState) {
         clearTimeout(gameState.riddleTimeoutTimer);
         gameState.riddleTimeoutTimer = null;
     }
+    // Round transitions are scheduled with their own delay; a game stopped mid-transition must
+    // cancel the pending _startNextRound/_resetGameToIdle rather than let it fire on a dead game.
+    if (gameState.transitionTimer) {
+        clearTimeout(gameState.transitionTimer);
+        gameState.transitionTimer = null;
+    }
 }
 
 async function _resetGameToIdle(gameState) {
@@ -159,6 +167,10 @@ async function _resetGameToIdle(gameState) {
     newState.gameSessionExcludedAnswers = [];
     newState.guessCache = new Map();
     newState.prefetchedRiddle = null;
+    newState.processingQueue = [];
+    // Per-user answer cooldowns are only meaningful within a game. Left alone they accumulate one
+    // entry per unique guesser for the lifetime of the process, since channel state is never freed.
+    newState.userLastGuessTime = {};
 }
 
 function _calculatePoints(gameState, timeElapsedMs) {
@@ -245,21 +257,26 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         }
 
         // Send end message
-        const roundPrefix = totalRounds > 1 ? `(Round ${currentRound}/${totalRounds}) ` : "";
+        const lang = gameState.botLanguage || null;
+        const roundPrefix = totalRounds > 1
+            ? (t('common.roundPrefixParen', { currentRound, totalRounds }, lang) ?? `(Round ${currentRound}/${totalRounds}) `)
+            : "";
         let endMessage;
         if (reason === "answered" && winner) {
             const seconds = timeTakenMs ? Math.round(timeTakenMs / 1000) : null;
-            const timeString = seconds !== null ? ` in ${seconds}s` : "";
-            const pointsInfo = pointsAwarded > 0 ? ` (+${pointsAwarded} pts)` : "";
-            endMessage = formatRiddleCorrectAnswerMessage(roundPrefix, winner.displayName, currentRiddle.answer, currentRiddle.explanation, timeString, pointsInfo);
+            const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : "";
+            const pointsInfo = pointsAwarded > 0 ? (t('common.pointsInfo', { points: pointsAwarded }, lang) ?? ` (+${pointsAwarded} pts)`) : "";
+            endMessage = formatRiddleCorrectAnswerMessage(roundPrefix, winner.displayName, currentRiddle.answer, currentRiddle.explanation, timeString, pointsInfo, lang);
         } else if (reason === "timeout") {
-            endMessage = formatRiddleTimeoutMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation);
+            endMessage = formatRiddleTimeoutMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation, lang);
         } else if (reason === "stopped") {
-            endMessage = formatRiddleStopMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation);
+            endMessage = formatRiddleStopMessage(roundPrefix, currentRiddle.answer, currentRiddle.explanation, lang);
         } else {
-            endMessage = `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
+            endMessage = t('riddle.gameOver', { roundPrefix, answer: currentRiddle.answer, explanation: currentRiddle.explanation || "" }, lang)
+                ?? `${roundPrefix}The riddle is over. The answer was: ${currentRiddle.answer}. ${currentRiddle.explanation || ""}`;
         }
-        enqueueMessage(`#${channelName}`, endMessage.substring(0, 490)); // Ensure message length
+        // Catalog wrapper + natively generated explanation: nothing left for the translator.
+        enqueueMessage(`#${channelName}`, endMessage.substring(0, 490), { skipTranslation: isCatalogued(lang) }); // Ensure message length
 
         // Record game result in history
         try {
@@ -288,7 +305,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
     } else {
         logger.warn(`[RiddleGameManager][${channelName}] TransitionToEnding called but currentRiddle is null. Reason: ${reason}`);
         if (reason === "riddle_error") {
-            enqueueMessage(`#${channelName}`, "Apologies, I couldn't come up with a riddle this time!");
+            enqueueMessage(`#${channelName}`, (t('riddle.NoRiddleThisTime', {}, gameState.botLanguage || null) ?? "Apologies, I couldn't come up with a riddle this time!"), { skipTranslation: isCatalogued(gameState.botLanguage) });
         }
     }
 
@@ -297,20 +314,20 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
     if (reason === "stopped" || reason === "riddle_error" || (currentRound >= totalRounds)) {
         // Game fully ends
         if (totalRounds > 1 && gameState.gameSessionScores.size > 0) {
-            const scoresMsg = formatRiddleSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${channelName}`, scoresMsg);
+            const scoresMsg = formatRiddleSessionScoresMessage(gameState.gameSessionScores, gameState.botLanguage || null);
+            enqueueMessage(`#${channelName}`, scoresMsg, { skipTranslation: isCatalogued(gameState.botLanguage) });
         }
         if (config.scoreTracking && (reason !== "riddle_error" || totalRounds > 1)) { // Show leaderboard unless it was a single round riddle error
             try {
                 const leaderboardData = await getLeaderboard(channelName, 5);
-                const leaderboardMsg = formatRiddleLeaderboardMessage(leaderboardData, channelName);
-                enqueueMessage(`#${channelName}`, leaderboardMsg);
+                const leaderboardMsg = formatRiddleLeaderboardMessage(leaderboardData, channelName, gameState.botLanguage || null);
+                enqueueMessage(`#${channelName}`, leaderboardMsg, { skipTranslation: isCatalogued(gameState.botLanguage) });
             } catch (e) {
                 logger.error({ e }, `Error fetching riddle leaderboard for ${channelName}`);
             }
         }
         logger.info(`[RiddleGameManager][${channelName}] Riddle game session finished. Resetting.`);
-        setTimeout(() => _resetGameToIdle(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
     } else {
         // Proceed to next round
         gameState.currentRound++;
@@ -320,7 +337,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
         // Set state to 'selecting' BEFORE scheduling the next round
         gameState.state = 'selecting';
         logger.info(`[RiddleGameManager][${channelName}] Preparing for next round: ${gameState.currentRound}. State set to 'selecting'.`);
-        setTimeout(() => _startNextRound(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
+        gameState.transitionTimer = setTimeout(() => _startNextRound(gameState), config.multiRoundDelayMs || DEFAULT_RIDDLE_CONFIG.multiRoundDelayMs);
     }
 }
 
@@ -350,13 +367,15 @@ async function _startNextRound(gameState) {
             gameState.startTime = Date.now();
             gameState.state = 'inProgress';
             gameState.guessCache.clear();
+            gameState.processingQueue = []; // per-round: stale attempts must not decide this round
 
             const questionMsg = formatRiddleQuestionMessage(
                 gameState.currentRound,
                 gameState.totalRounds,
                 gameState.currentRiddle.question,
                 gameState.currentRiddle.difficulty,
-                config.questionTimeSeconds
+                config.questionTimeSeconds,
+                gameState.botLanguage || null
             );
             // Skip translation if riddle was generated natively in the target language
             enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
@@ -438,7 +457,7 @@ async function _startNextRound(gameState) {
 
     if (!generatedRiddle) {
         logger.error(`[RiddleGameManager][${channelName}] Failed to generate riddle after ${retries} attempts. Ending game.`);
-        enqueueMessage(`#${channelName}`, `I'm stumped! Couldn't think of a new riddle for round ${gameState.currentRound}. Ending the game.`);
+        enqueueMessage(`#${channelName}`, (t('riddle.StumpedEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `I'm stumped! Couldn't think of a new riddle for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "riddle_error");
         return;
     }
@@ -447,13 +466,15 @@ async function _startNextRound(gameState) {
     gameState.startTime = Date.now();
     gameState.state = 'inProgress'; // Set state before sending message
     gameState.guessCache.clear(); // Clear cache for the new round
+    gameState.processingQueue = []; // per-round: stale attempts must not decide this round
 
     const questionMsg = formatRiddleQuestionMessage(
         gameState.currentRound,
         gameState.totalRounds,
         gameState.currentRiddle.question,
         gameState.currentRiddle.difficulty,
-        config.questionTimeSeconds
+        config.questionTimeSeconds,
+        gameState.botLanguage || null
     );
     // Skip translation if riddle was generated natively in the target language
     enqueueMessage(`#${channelName}`, questionMsg, { skipTranslation: !!gameState.currentRiddle.language });
@@ -533,6 +554,29 @@ async function _prefetchNextRiddle(gameState) {
     });
 }
 
+/**
+ * Declares a winner from the queue, strictly in the order answers arrived in chat.
+ * Returns without acting while an earlier attempt is still being verified, so a fast verification
+ * for a later answer cannot jump ahead of a slower one that was typed first.
+ * @param {Object} gameState
+ */
+async function _resolveRiddleWinner(gameState) {
+    if (gameState.state !== 'inProgress') return; // Round already ended
+
+    for (const attempt of gameState.processingQueue) {
+        if (attempt.status === 'pending') return; // Wait for the earliest unresolved answer
+
+        if (attempt.status === 'correct') {
+            logger.info(`[RiddleGameManager][${gameState.channelName}] Correct answer from ${attempt.displayName} for round ${gameState.currentRound}.`);
+            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            const timeTakenMs = attempt.timestamp - gameState.startTime;
+            await _transitionToEnding(gameState, "answered", timeTakenMs);
+            return;
+        }
+        // 'incorrect' or 'error': keep scanning later attempts
+    }
+}
+
 async function _handleAnswer(channelName, username, displayName, message) {
     const gameState = activeGames.get(channelName);
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentRiddle) {
@@ -558,6 +602,17 @@ async function _handleAnswer(channelName, username, displayName, message) {
     }
 
     logger.debug(`[RiddleGameManager][${channelName}] Processing answer "${userAnswer}" from ${displayName} for round ${gameState.currentRound}`);
+
+    // Record arrival order before any awaiting, so verification latency cannot reorder answers.
+    if (!gameState.processingQueue) gameState.processingQueue = [];
+    const attempt = {
+        username: username.toLowerCase(),
+        displayName,
+        answer: userAnswer,
+        timestamp: Date.now(),
+        status: 'pending',
+    };
+    gameState.processingQueue.push(attempt);
 
     // Determine verification answer: use answerEnglish if available (native generation path)
     let verifyAgainstAnswer = gameState.currentRiddle.answer;
@@ -597,15 +652,15 @@ async function _handleAnswer(channelName, username, displayName, message) {
 
         if (gameState.state !== 'inProgress') {
             logger.debug(`[RiddleGameManager][${channelName}] Game state changed to ${gameState.state} while verifying answer for ${displayName}. Ignoring result.`);
+            attempt.status = 'error';
             return;
         }
 
         if (verification && verification.isCorrect) {
-            logger.info(`[RiddleGameManager][${channelName}] Correct answer from ${displayName} for round ${gameState.currentRound}. Confidence: ${verification.confidence.toFixed(2)}`);
-            gameState.winner = { username: username.toLowerCase(), displayName };
-            const timeTakenMs = Date.now() - gameState.startTime;
-            await _transitionToEnding(gameState, "answered", timeTakenMs);
+            logger.debug(`[RiddleGameManager][${channelName}] Answer from ${displayName} verified correct. Confidence: ${verification.confidence.toFixed(2)}`);
+            attempt.status = 'correct';
         } else {
+            attempt.status = 'incorrect';
             // Cache the incorrect answer to prevent re-verification
             gameState.guessCache.set(normalizedUserAnswer, {
                 result: verification,
@@ -615,7 +670,10 @@ async function _handleAnswer(channelName, username, displayName, message) {
         }
     } catch (error) {
         logger.error({ err: error }, `[RiddleGameManager][${channelName}] Error verifying answer from ${displayName}.`);
+        attempt.status = 'error';
     }
+
+    await _resolveRiddleWinner(gameState);
 }
 
 // --- Public API ---
@@ -632,7 +690,16 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     if (gameState.state !== 'idle') {
         logger.warn(`[RiddleGameManager][${channelName}] Start requested by ${initiatorUsername} but game state is ${gameState.state}.`);
         const gameInProgressMsg = `A riddle game is already in progress (round ${gameState.currentRound}/${gameState.totalRounds}, started by @${gameState.initiatorUsername || 'Unknown'}).`;
-        return { success: false, error: gameInProgressMsg };
+        return {
+            success: false,
+            errorKey: 'result.riddle.ErrGameAlreadyInProgress',
+            errorParams: {
+                currentRound: gameState.currentRound,
+                totalRounds: gameState.totalRounds,
+                initiator: gameState.initiatorUsername || 'Unknown',
+            },
+            error: gameInProgressMsg,
+        };
     }
     gameState.gameSessionId = crypto.randomUUID();
     logger.info(`[RiddleGameManager][${channelName}] New game starting by ${initiatorUsername}. Rounds: ${numberOfRounds}. Generated new gameSessionId: ${gameState.gameSessionId}`);
@@ -646,6 +713,7 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
     gameState.gameSessionExcludedKeywordSets = []; // Fresh set for new game
     gameState.gameSessionExcludedAnswers = [];
     gameState.guessCache = new Map();
+    gameState.processingQueue = [];
     gameState.currentRiddle = null;
     gameState.startTime = null;
     gameState.winner = null;
@@ -666,15 +734,16 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
         const startMessage = formatRiddleStartMessage(
             topic, // Let formatter handle if topic is null
             gameState.config.questionTimeSeconds,
-            gameState.totalRounds
+            gameState.totalRounds,
+            gameState.botLanguage || null
         );
-        enqueueMessage(`#${channelName}`, startMessage);
+        enqueueMessage(`#${channelName}`, startMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
     }
 
     // Start the first round
     await _startNextRound(gameState);
     if (gameState.state === 'idle') { // Game failed to start properly
-        return { success: false, error: "Failed to start the riddle game. Could not generate the first riddle." };
+        return { success: false, errorKey: 'result.riddle.ErrFailedStartRiddleGame', errorParams: {}, error: "Failed to start the riddle game. Could not generate the first riddle." };
     }
     return { success: true };
 }
@@ -683,7 +752,7 @@ export function stopGame(channelName) {
     const gameState = activeGames.get(channelName);
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         logger.debug(`[RiddleGameManager][${channelName}] Stop command, but no active/stoppable game.`);
-        return { message: "No active riddle game to stop." };
+        return { messageKey: 'result.riddle.NoActiveRiddleGame', messageParams: {}, message: "No active riddle game to stop." };
     }
     logger.info(`[RiddleGameManager][${channelName}] Game stop requested. Current state: ${gameState.state}`);
     // Clear any prefetched riddle
@@ -691,7 +760,7 @@ export function stopGame(channelName) {
     gameState.prefetchedRiddle = null;
     // _transitionToEnding will send the actual "game stopped" message with answer.
     _transitionToEnding(gameState, "stopped");
-    return { message: "Riddle game is being stopped." }; // Confirmation to initiator
+    return { messageKey: 'result.riddle.RiddleGameBeingStopped', messageParams: {}, message: "Riddle game is being stopped." }; // Confirmation to initiator
 }
 
 export function processPotentialAnswer(channelName, username, displayName, message) {
@@ -704,38 +773,93 @@ export function processPotentialAnswer(channelName, username, displayName, messa
 }
 
 export async function configureRiddleGame(channelName, options) {
+    // The confirmation sentence is delivered in the channel's language, so the per-setting
+    // descriptions spliced into it come from the catalog too rather than staying English.
+    let cfgLang = null;
+    try {
+        cfgLang = getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch { /* context manager not ready — English descriptions are the correct fallback */ }
+
     const gameState = await _getOrCreateGameState(channelName);
     let changed = false;
     const appliedChanges = [];
 
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty.toLowerCase())) {
         gameState.config.difficulty = options.difficulty.toLowerCase();
-        appliedChanges.push(`Difficulty set to ${gameState.config.difficulty}`);
+        appliedChanges.push(t('change.riddle.Difficulty', { difficulty: gameState.config.difficulty }, cfgLang) ?? `Difficulty set to ${gameState.config.difficulty}`);
         changed = true;
     }
     if (options.questionTimeSeconds) {
         const time = parseInt(options.questionTimeSeconds, 10);
         if (!isNaN(time) && time >= 15 && time <= 120) {
             gameState.config.questionTimeSeconds = time;
-            appliedChanges.push(`Question time set to ${time}s`);
+            appliedChanges.push(t('change.riddle.QuestionTimeS', { time }, cfgLang) ?? `Question time set to ${time}s`);
             changed = true;
         } else {
-            appliedChanges.push(`Invalid question time (15-120s)`);
+            appliedChanges.push(t('change.riddle.InvalidQuestionTime15', {}, cfgLang) ?? `Invalid question time (15-120s)`);
         }
     }
-    // Add other config options here: pointsBase, scoreTracking, etc.
+    // Numeric options, each with the range the help text documents.
+    const numericOptions = [
+        ['pointsBase', 'pointsBase', 1, 1000, 'change.riddle.BasePoints', v => `Base points set to ${v}`],
+        ['maxRounds', 'maxRounds', 1, 20, 'change.riddle.MaxRounds', v => `Max rounds set to ${v}`],
+        ['recentKeywordsFetchLimit', 'recentKeywordsFetchLimit', 1, 200, 'change.riddle.KeywordLimit', v => `Keyword exclusion limit set to ${v}`],
+        ['multiRoundDelayMs', 'multiRoundDelayMs', 1000, 60000, 'change.riddle.RoundDelay', v => `Round delay set to ${v}ms`],
+    ];
+    for (const [optionName, configKey, min, max, changeKey, describe] of numericOptions) {
+        if (options[optionName] === undefined) continue;
+        const value = parseInt(options[optionName], 10);
+        if (!isNaN(value) && value >= min && value <= max) {
+            gameState.config[configKey] = value;
+            appliedChanges.push(t(changeKey, { value }, cfgLang) ?? describe(value));
+            changed = true;
+        } else {
+            appliedChanges.push(t('change.riddle.Invalid', { optionName, min, max }, cfgLang) ?? `Invalid ${optionName} (${min}-${max})`);
+        }
+    }
+
+    // Boolean options.
+    // Two keys per option rather than an "{label} {enabled|disabled}" splice: the enabled/disabled
+    // word would otherwise stay English inside a translated sentence.
+    const booleanOptions = [
+        ['scoreTracking', 'scoreTracking', 'Score tracking', 'change.riddle.ScoreTracking'],
+        ['pointsTimeBonus', 'pointsTimeBonus', 'Time bonus', 'change.riddle.TimeBonus'],
+        ['pointsDifficultyMultiplier', 'pointsDifficultyMultiplier', 'Difficulty multiplier', 'change.riddle.DifficultyMultiplier'],
+    ];
+    for (const [optionName, configKey, label, changeKey] of booleanOptions) {
+        if (options[optionName] === undefined) continue;
+        const value = typeof options[optionName] === 'boolean'
+            ? options[optionName]
+            : String(options[optionName]).toLowerCase() === 'true';
+        gameState.config[configKey] = value;
+        appliedChanges.push(
+            t(`${changeKey}${value ? 'Enabled' : 'Disabled'}`, {}, cfgLang)
+            ?? `${label} ${value ? 'enabled' : 'disabled'}`);
+        changed = true;
+    }
 
     if (changed) {
         try {
             await saveChannelRiddleConfig(channelName, gameState.config);
             logger.info(`[RiddleGameManager][${channelName}] Riddle config updated: ${appliedChanges.join(', ')}`);
-            return { message: `Riddle settings updated: ${appliedChanges.join('. ')}.` };
+            return { messageKey: 'result.riddle.RiddleSettingsUpdated', messageParams: { p1: appliedChanges.join('. ') }, message: `Riddle settings updated: ${appliedChanges.join('. ')}.` };
         } catch (e) {
             logger.error({ e }, `Failed to save riddle config for ${channelName}`);
-            return { message: `Settings changed in memory but failed to save.` };
+            return { messageKey: 'result.riddle.SettingsChangedMemoryBut', messageParams: {}, message: `Settings changed in memory but failed to save.` };
         }
     }
-    return { message: appliedChanges.length > 0 ? `Riddle settings: ${appliedChanges.join('. ')}.` : "No valid riddle settings changed." };
+    if (appliedChanges.length > 0) {
+        return {
+            messageKey: 'result.riddle.RiddleSettingsUnchanged',
+            messageParams: { p1: appliedChanges.join('. ') },
+            message: `Riddle settings: ${appliedChanges.join('. ')}.`
+        };
+    }
+    return {
+        messageKey: 'result.riddle.NoValidRiddleSettings',
+        messageParams: {},
+        message: "No valid riddle settings changed."
+    };
 }
 
 export async function resetRiddleConfig(channelName) {
@@ -744,10 +868,10 @@ export async function resetRiddleConfig(channelName) {
     try {
         await saveChannelRiddleConfig(channelName, gameState.config);
         logger.info(`[RiddleGameManager][${channelName}] Riddle config reset to defaults.`);
-        return { message: "Riddle game configuration reset to defaults." };
+        return { messageKey: 'result.riddle.RiddleGameConfigurationReset', messageParams: {}, message: "Riddle game configuration reset to defaults." };
     } catch (e) {
         logger.error({ e }, `Failed to save reset riddle config for ${channelName}`);
-        return { message: `Config reset in memory but failed to save.` };
+        return { messageKey: 'result.riddle.ConfigResetMemoryBut', messageParams: {}, message: `Config reset in memory but failed to save.` };
     }
 }
 
@@ -770,56 +894,7 @@ export async function clearLeaderboard(channelName) {
     }
 }
 
-/**
- * Gets the details of the last played riddle in a channel.
- * Used by the report command.
- * @param {string} channelName - Channel name (without #).
- * @returns {Promise<{question: string, answer: string, docId: string}|null>}
- */
-async function getLastPlayedRiddleDetails(channelName) {
-    try {
-        const riddleDetails = await getMostRecentRiddlePlayed(channelName);
-        if (riddleDetails) {
-            logger.info(`[RiddleGameManager][${channelName}] Last played riddle details fetched: Q: ${riddleDetails.question ? riddleDetails.question.substring(0, 30) : ''}...`);
-            return riddleDetails; // Contains docId, question, answer
-        }
-        logger.info(`[RiddleGameManager][${channelName}] No last played riddle found to report.`);
-        return null;
-    } catch (error) {
-        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error getting last played riddle details.`);
-        return null;
-    }
-}
 
-/**
- * Reports the last played riddle in the channel as problematic.
- * @param {string} channelName - Channel name (without #).
- * @param {string} reason - Reason for reporting.
- * @param {string} reportedByUsername - Username of the reporter.
- * @returns {Promise<{success: boolean, message: string}>}
- */
-async function reportLastRiddle(channelName, reason, reportedByUsername) {
-    logger.info(`[RiddleGameManager][${channelName}] Attempting to report last riddle. Reason: "${reason}", Reported by: ${reportedByUsername}`);
-    const lastRiddle = await getLastPlayedRiddleDetails(channelName);
-
-    if (!lastRiddle || !lastRiddle.docId) {
-        return { success: false, message: "I couldn't find a recently played riddle in this channel to report." };
-    }
-
-    if (!lastRiddle.question) {
-        logger.warn(`[RiddleGameManager][${channelName}] Last riddle found (ID: ${lastRiddle.docId}) but has no question text. Cannot report effectively.`);
-        return { success: false, message: "The last riddle found seems incomplete and cannot be reported." };
-    }
-
-    try {
-        await flagRiddleAsProblem(lastRiddle.docId, reason, reportedByUsername);
-        logger.info(`[RiddleGameManager][${channelName}] Successfully reported riddle: "${lastRiddle.question.substring(0, 50)}..."`);
-        return { success: true, message: `Thanks for the feedback! The riddle starting with "${lastRiddle.question.substring(0, 30)}..." has been reported.` };
-    } catch (error) {
-        logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting riddle via storage.`);
-        return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
-    }
-}
 
 /**
  * Gets the singleton RiddleGameManager instance.
@@ -833,10 +908,9 @@ export function getRiddleGameManager() {
             stopGame,
             processPotentialAnswer,
             configureGame: configureRiddleGame,
-            resetConfig: resetRiddleConfig,
+            resetChannelConfig: resetRiddleConfig,
             getCurrentGameInitiator,
             clearLeaderboard,
-            reportLastRiddle,
             initiateReportProcess,
             finalizeReportWithRoundNumber,
         };
@@ -859,7 +933,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
 
     if (!sessionInfo || !sessionInfo.riddlesInSession || sessionInfo.riddlesInSession.length === 0) {
         logger.warn(`[RiddleGameManager][${channelName}] getLatestCompletedSessionInfo returned insufficient data. sessionInfo: ${JSON.stringify(sessionInfo, null, 2)}`);
-        return { success: false, message: "I couldn't find any recent riddles in this channel to report." };
+        return { success: false, messageKey: 'result.riddle.ICouldnTFind2', messageParams: {}, message: "I couldn't find any recent riddles in this channel to report." };
     }
 
     const totalRoundsFromInfo = sessionInfo.totalRounds;
@@ -894,16 +968,16 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         logger.info(`[RiddleGameManager][${channelName}] Single riddle report scenario. totalRoundsFromInfo: ${totalRoundsFromInfo}, riddlesFoundInSession.length: ${riddlesFoundInSession.length}`);
         const riddleToReport = riddlesFoundInSession[0];
         if (!riddleToReport || !riddleToReport.docId) {
-            return { success: false, message: "Could not identify a specific riddle to report." };
+            return { success: false, messageKey: 'result.riddle.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific riddle to report." };
         }
         const questionPreview = riddleToReport.question || 'Unknown riddle';
         try {
             await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
             logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${questionPreview.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
+            return { success: true, messageKey: 'result.riddle.ThanksFeedbackRiddleHas', messageParams: { p1: questionPreview.substring(0, 30) }, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error reporting single/latest riddle via storage.`);
-            return { success: false, message: "Sorry, an error occurred while trying to report the riddle." };
+            return { success: false, messageKey: 'result.riddle.SorryErrorOccurredWhile2', messageParams: {}, message: "Sorry, an error occurred while trying to report the riddle." };
         }
     }
 }
@@ -918,24 +992,24 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 
     const roundNum = parseInt(roundNumberStr, 10);
     if (isNaN(roundNum) || roundNum < 1 || roundNum > pendingData.riddlesInSession.length) {
-        return { success: true, message: `@${username}, that's not a valid round number (1-${pendingData.riddlesInSession.length}). Please try reporting again.` };
+        return { success: true, messageKey: 'result.riddle.SNotValidRound', messageParams: { username, length: pendingData.riddlesInSession.length }, message: `@${username}, that's not a valid round number (1-${pendingData.riddlesInSession.length}). Please try reporting again.` };
     }
 
     const riddleToReport = pendingData.riddlesInSession.find(r => r.roundNumber === roundNum);
 
     if (!riddleToReport || !riddleToReport.docId) {
         pendingReports.delete(reportKey); // Clean up
-        return { success: true, message: `@${username}, I couldn't find the riddle for round ${roundNum}. Please try reporting again.` };
+        return { success: true, messageKey: 'result.riddle.ICouldnTFind3', messageParams: { username, roundNum }, message: `@${username}, I couldn't find the riddle for round ${roundNum}. Please try reporting again.` };
     }
 
     try {
         await flagRiddleAsProblem(riddleToReport.docId, pendingData.reason, pendingData.reportedByUsername);
         pendingReports.delete(reportKey); // Clean up successful report
         logger.info(`[RiddleGameManager][${channelName}] Successfully finalized report for round ${roundNum}, riddle ID ${riddleToReport.docId}`);
-        return { success: true, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };
+        return { success: true, messageKey: 'result.riddle.ThanksReportRiddleFrom', messageParams: { username, roundNum, p3: riddleToReport.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };
     } catch (error) {
         pendingReports.delete(reportKey); // Clean up even on error
         logger.error({ err: error, channelName }, `[RiddleGameManager][${channelName}] Error finalizing report for round ${roundNum}.`);
-        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again.` };
+        return { success: true, messageKey: 'result.riddle.ErrorOccurredSubmittingReport', messageParams: { username, roundNum }, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again.` };
     }
 }

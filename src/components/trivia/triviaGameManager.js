@@ -10,6 +10,7 @@ import {
     formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
     formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage
 } from './triviaMessageFormatter.js';
+import { t, isCatalogued } from '../../lib/i18n.js';
 import {
     loadChannelConfig, saveChannelConfig, recordGameResult,
     updatePlayerScore, getRecentQuestions, getRecentAnswers, getLeaderboard, clearChannelLeaderboardData, getLatestCompletedSessionInfo as getLatestTriviaSession, reportProblemQuestion as flagTriviaQuestionProblem, flagTriviaQuestionByDocId
@@ -79,6 +80,7 @@ GameState structure:
     } | null,
     startTime: number | null,
     questionEndTimer: NodeJS.Timeout | null,
+    transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
     answers: Array<{username: string, displayName: string, answer: string, timestamp: Date}>,
     winner: {username: string, displayName: string} | null,
     initiatorUsername: string | null,
@@ -131,6 +133,7 @@ async function _getOrCreateGameState(channelName) {
             currentQuestion: null,
             startTime: null,
             questionEndTimer: null,
+            transitionTimer: null,
             answers: [],
             winner: null,
             initiatorUsername: null,
@@ -191,6 +194,12 @@ function _clearTimers(gameState) {
     if (gameState.questionEndTimer) {
         clearTimeout(gameState.questionEndTimer);
         gameState.questionEndTimer = null;
+    }
+    // Round transitions are scheduled with their own delay; a game stopped mid-transition must
+    // cancel the pending _startNextRound/_resetGameToIdle rather than let it fire on a dead game.
+    if (gameState.transitionTimer) {
+        clearTimeout(gameState.transitionTimer);
+        gameState.transitionTimer = null;
     }
 }
 
@@ -353,19 +362,24 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 
     // --- 2. Send End Round Message ---
     let endMessage;
+    let endMessageLocalized = false;
     if (!gameState.currentQuestion?.question) {
         logger.error(`[TriviaGame][${gameState.channelName}] Cannot generate round end message: question is missing.`);
         endMessage = "An error occurred, and the round information couldn't be displayed.";
     } else {
         try {
-            const roundPrefix = isMultiRound ? `(Round ${gameState.currentRound}/${gameState.totalRounds}) ` : "";
+            const lang = gameState.botLanguage || null;
+            const roundPrefix = isMultiRound
+                ? (t('common.roundPrefixParen', { currentRound: gameState.currentRound, totalRounds: gameState.totalRounds }, lang)
+                    ?? `(Round ${gameState.currentRound}/${gameState.totalRounds}) `)
+                : "";
 
             if (reason === "guessed" && gameState.winner) {
                 const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
-                const timeString = seconds !== null ? ` in ${seconds}s` : '';
-                const streakInfo = gameState.streakMap.get(gameState.winner.username) > 1 ?
-                    ` 🔥x${gameState.streakMap.get(gameState.winner.username)}` : '';
-                const pointsInfo = points > 0 ? ` (+${points} pts)` : '';
+                const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : '';
+                const streak = gameState.streakMap.get(gameState.winner.username);
+                const streakInfo = streak > 1 ? (t('common.streakInfo', { streak }, lang) ?? ` 🔥x${streak}`) : '';
+                const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
 
                 endMessage = formatCorrectAnswerMessage(
                     roundPrefix,
@@ -374,22 +388,29 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     gameState.currentQuestion.explanation,
                     timeString,
                     streakInfo,
-                    pointsInfo
+                    pointsInfo,
+                    lang
                 );
             } else if (reason === "timeout") {
                 endMessage = formatTimeoutMessage(
                     roundPrefix,
                     gameState.currentQuestion.answer,
-                    gameState.currentQuestion.explanation
+                    gameState.currentQuestion.explanation,
+                    lang
                 );
             } else if (reason === "stopped") {
                 endMessage = formatStopMessage(
                     roundPrefix,
-                    gameState.currentQuestion.answer
+                    gameState.currentQuestion.answer,
+                    lang
                 );
             } else {
-                endMessage = `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
+                endMessage = t('trivia.answerWas', { roundPrefix, answer: gameState.currentQuestion.answer }, lang)
+                    ?? `${roundPrefix}The answer was: ${gameState.currentQuestion.answer}`;
             }
+            // Catalog strings are already in the target language, as is the natively generated
+            // explanation — so the outbound LLM translation would be redundant work.
+            endMessageLocalized = isCatalogued(lang);
 
             // Ensure message doesn't exceed max length
             if (endMessage.length > MAX_IRC_MESSAGE_LENGTH) {
@@ -398,10 +419,12 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         } catch (error) {
             logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error formatting round end message.`);
             endMessage = `${reason === "guessed" ? `@${gameState.winner.displayName} got it right!` : ''} The answer was: ${gameState.currentQuestion?.answer || "N/A"}`;
+            // This fallback is raw English, so it must go through the runtime translator.
+            endMessageLocalized = false;
         }
     }
 
-    enqueueMessage(`#${gameState.channelName}`, endMessage);
+    enqueueMessage(`#${gameState.channelName}`, endMessage, { skipTranslation: endMessageLocalized });
 
     // --- 3. Record Game Result ---
     if (gameState.config.scoreTracking && gameState.currentQuestion?.question) {
@@ -440,12 +463,15 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
 
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final scores if multi-round
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Game stopped. Final Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('trivia.gameStoppedScores', { list: sessionScoresMessage }, lang) ?? `🏁 Game stopped. Final Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
         }
 
         // Reset after delay
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     } else if (isMultiRound && !isLastRound && reason !== "stopped" && reason !== "question_error" && reason !== "timer_error") {
         // Proceed to next round
         logger.info(`[TriviaGame][${gameState.channelName}] Proceeding to round ${gameState.currentRound + 1}.`);
@@ -460,15 +486,18 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         gameState.guessCache.clear(); // Clear guess cache for next round
 
         // Start next round after delay
-        setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _startNextRound(gameState), MULTI_ROUND_DELAY_MS);
     } else {
         // Game complete (last round or single round)
         logger.info(`[TriviaGame][${gameState.channelName}] Game session finished.`);
 
         if (isMultiRound && gameState.gameSessionScores.size > 0) {
             // Report final session scores
-            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores);
-            enqueueMessage(`#${gameState.channelName}`, `🏁 Final Scores: ${sessionScoresMessage}`);
+            const lang = gameState.botLanguage || null;
+            const sessionScoresMessage = formatGameSessionScoresMessage(gameState.gameSessionScores, lang);
+            enqueueMessage(`#${gameState.channelName}`,
+                t('trivia.finalScores', { list: sessionScoresMessage }, lang) ?? `🏁 Final Scores: ${sessionScoresMessage}`,
+                { skipTranslation: isCatalogued(lang) });
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
@@ -494,7 +523,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         }
 
         // Reset after delay
-        setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
+        gameState.transitionTimer = setTimeout(() => _resetGameToIdle(gameState), MULTI_ROUND_DELAY_MS);
     }
 }
 
@@ -534,7 +563,8 @@ async function _startNextRound(gameState) {
                 gameState.totalRounds,
                 gameState.currentQuestion.question,
                 gameState.currentQuestion.difficulty,
-                gameState.config.questionTimeSeconds
+                gameState.config.questionTimeSeconds,
+                gameState.botLanguage || null
             );
             // Skip translation if question was generated natively in the target language
             enqueueMessage(`#${gameState.channelName}`, questionMessage, { skipTranslation: !!gameState.currentQuestion.language });
@@ -647,7 +677,7 @@ async function _startNextRound(gameState) {
 
     if (!questionGenerated) {
         logger.error(`[TriviaGame][${gameState.channelName}] Failed to generate question after ${MAX_QUESTION_RETRIES} attempts.`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`);
+        enqueueMessage(`#${gameState.channelName}`, (t('trivia.NoQuestionEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `⚠️ Error: Could not generate a question for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "question_error");
         return;
     }
@@ -659,7 +689,7 @@ async function _startNextRound(gameState) {
         !gameState.currentQuestion?.answer ||
         String(gameState.currentQuestion.answer).trim().length === 0) {
         logger.error(`[TriviaGame][${gameState.channelName}] Generated question failed final validation: ${JSON.stringify(gameState.currentQuestion)}`);
-        enqueueMessage(`#${gameState.channelName}`, `⚠️ Error: Generated question was invalid. Ending the game.`);
+        enqueueMessage(`#${gameState.channelName}`, (t('trivia.InvalidQuestionEndingGame', {}, gameState.botLanguage || null) ?? `⚠️ Error: Generated question was invalid. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
         await _transitionToEnding(gameState, "question_error");
         return;
     }
@@ -676,7 +706,8 @@ async function _startNextRound(gameState) {
         gameState.totalRounds,
         gameState.currentQuestion.question,
         gameState.currentQuestion.difficulty,
-        gameState.config.questionTimeSeconds
+        gameState.config.questionTimeSeconds,
+        gameState.botLanguage || null
     );
 
     // Skip translation if question was generated natively in the target language
@@ -994,13 +1025,13 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         if (gameState.initiatorUsername === initiatorUsername?.toLowerCase() && gameState.totalRounds > 1) {
             return {
                 success: false,
-                error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (round ${gameState.currentRound}). Use !trivia stop if needed.`
+                errorKey: 'result.trivia.ErrRoundGameInitiatedBy', errorParams: { totalRounds: gameState.totalRounds, currentRound: gameState.currentRound }, error: `A ${gameState.totalRounds}-round game initiated by you is already in progress (round ${gameState.currentRound}). Use !trivia stop if needed.`
             };
         }
 
         return {
             success: false,
-            error: `A game is already active (${gameState.state}). Please wait or use !trivia stop.`
+            errorKey: 'result.trivia.ErrGameAlreadyActivePlease', errorParams: { state: gameState.state }, error: `A game is already active (${gameState.state}). Please wait or use !trivia stop.`
         };
     }
 
@@ -1038,10 +1069,11 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
         const startMessage = formatStartMessage(
             topic || 'General Knowledge',
             gameState.config.questionTimeSeconds,
-            gameState.totalRounds
+            gameState.totalRounds,
+            gameState.botLanguage || null
         );
 
-        enqueueMessage(`#${channelName}`, startMessage);
+        enqueueMessage(`#${channelName}`, startMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
     }
 
     try {
@@ -1146,7 +1178,8 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
             gameState.totalRounds,
             gameState.currentQuestion.question,
             gameState.currentQuestion.difficulty,
-            gameState.config.questionTimeSeconds
+            gameState.config.questionTimeSeconds,
+            gameState.botLanguage || null
         );
 
         // Skip translation if question was generated natively in the target language
@@ -1185,7 +1218,7 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
 
         return {
             success: false,
-            error: `Error starting game: ${error.message || 'Unknown error'}`
+            errorKey: 'result.trivia.ErrErrorStartingGame', errorParams: { p1: error.message || 'Unknown error' }, error: `Error starting game: ${error.message || 'Unknown error'}`
         };
     }
 }
@@ -1200,7 +1233,7 @@ function stopGame(channelName) {
 
     if (!gameState || gameState.state === 'idle' || gameState.state === 'ending') {
         logger.debug(`[TriviaGame][${channelName}] Stop command received, but no active game found.`);
-        return { message: "No active Trivia game to stop." };
+        return { messageKey: 'result.trivia.NoActiveTriviaGame', messageParams: {}, message: "No active Trivia game to stop." };
     }
 
     logger.info(`[TriviaGame][${channelName}] Stop command received during round ${gameState.currentRound}/${gameState.totalRounds}.`);
@@ -1212,7 +1245,7 @@ function stopGame(channelName) {
     // Transition to ending with "stopped" reason
     _transitionToEnding(gameState, "stopped");
 
-    return { message: "Trivia game stopped successfully." };
+    return { messageKey: 'result.trivia.TriviaGameStoppedSuccessfully', messageParams: {}, message: "Trivia game stopped successfully." };
 }
 
 /**
@@ -1239,6 +1272,13 @@ function processPotentialAnswer(channelName, username, displayName, message) {
  * @returns {Promise<{message: string}>} Result message.
  */
 async function configureGame(channelName, options) {
+    // The confirmation sentence is delivered in the channel's language, so the per-setting
+    // descriptions spliced into it come from the catalog too rather than staying English.
+    let cfgLang = null;
+    try {
+        cfgLang = getContextManager()?.getBotLanguage?.(channelName) || null;
+    } catch { /* context manager not ready — English descriptions are the correct fallback */ }
+
     const gameState = await _getOrCreateGameState(channelName);
     logger.info(`[TriviaGame][${channelName}] Configure command received with options: ${JSON.stringify(options)}`);
 
@@ -1249,7 +1289,7 @@ async function configureGame(channelName, options) {
     if (options.difficulty && ['easy', 'normal', 'hard'].includes(options.difficulty)) {
         if (gameState.config.difficulty !== options.difficulty) {
             gameState.config.difficulty = options.difficulty;
-            changesMade.push(`Difficulty set to ${options.difficulty}`);
+            changesMade.push(t('change.trivia.Difficulty', { difficulty: options.difficulty }, cfgLang) ?? `Difficulty set to ${options.difficulty}`);
             configChanged = true;
         }
     }
@@ -1260,11 +1300,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(time) && time >= 10 && time <= 120) {
             if (gameState.config.questionTimeSeconds !== time) {
                 gameState.config.questionTimeSeconds = time;
-                changesMade.push(`Question time set to ${time} seconds`);
+                changesMade.push(t('change.trivia.QuestionTimeSeconds', { time }, cfgLang) ?? `Question time set to ${time} seconds`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid question time "${options.questionTimeSeconds}". Must be between 10 and 120 seconds.`);
+            changesMade.push(t('change.trivia.InvalidQuestionTimeMust', { questionTimeSeconds: options.questionTimeSeconds }, cfgLang) ?? `Invalid question time "${options.questionTimeSeconds}". Must be between 10 and 120 seconds.`);
         }
     }
 
@@ -1274,11 +1314,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(duration) && duration >= 1 && duration <= 10) {
             if (gameState.config.roundDurationMinutes !== duration) {
                 gameState.config.roundDurationMinutes = duration;
-                changesMade.push(`Round duration set to ${duration} minutes`);
+                changesMade.push(t('change.trivia.RoundDurationMinutes', { duration }, cfgLang) ?? `Round duration set to ${duration} minutes`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid round duration "${options.roundDurationMinutes}". Must be between 1 and 10 minutes.`);
+            changesMade.push(t('change.trivia.InvalidRoundDurationMust', { roundDurationMinutes: options.roundDurationMinutes }, cfgLang) ?? `Invalid round duration "${options.roundDurationMinutes}". Must be between 1 and 10 minutes.`);
         }
     }
 
@@ -1287,7 +1327,7 @@ async function configureGame(channelName, options) {
         const enableScoring = options.scoreTracking === 'true' || options.scoreTracking === true;
         if (gameState.config.scoreTracking !== enableScoring) {
             gameState.config.scoreTracking = enableScoring;
-            changesMade.push(`Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.ScoreTracking${enableScoring ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Score tracking ${enableScoring ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1299,7 +1339,7 @@ async function configureGame(channelName, options) {
             String(options.topicPreferences).split(',').map(s => s.trim()).filter(Boolean);
 
         gameState.config.topicPreferences = topics;
-        changesMade.push(`Topic preferences updated to: ${topics.join(', ') || 'None'}`);
+        changesMade.push(t('change.trivia.TopicPreferencesUpdated', { p1: topics.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None') }, cfgLang) ?? `Topic preferences updated to: ${topics.join(', ') || (t('change.common.None', {}, cfgLang) ?? 'None')}`);
         configChanged = true;
     }
 
@@ -1309,11 +1349,11 @@ async function configureGame(channelName, options) {
         if (!isNaN(points) && points > 0 && points <= 100) {
             if (gameState.config.pointsBase !== points) {
                 gameState.config.pointsBase = points;
-                changesMade.push(`Base points set to ${points}`);
+                changesMade.push(t('change.trivia.BasePoints', { points }, cfgLang) ?? `Base points set to ${points}`);
                 configChanged = true;
             }
         } else {
-            changesMade.push(`Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
+            changesMade.push(t('change.trivia.InvalidBasePointsMust', { pointsBase: options.pointsBase }, cfgLang) ?? `Invalid base points "${options.pointsBase}". Must be between 1 and 100.`);
         }
     }
 
@@ -1322,7 +1362,7 @@ async function configureGame(channelName, options) {
         const enableTimeBonus = options.pointsTimeBonus === 'true' || options.pointsTimeBonus === true;
         if (gameState.config.pointsTimeBonus !== enableTimeBonus) {
             gameState.config.pointsTimeBonus = enableTimeBonus;
-            changesMade.push(`Time bonus ${enableTimeBonus ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.TimeBonus${enableTimeBonus ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Time bonus ${enableTimeBonus ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1332,7 +1372,7 @@ async function configureGame(channelName, options) {
         const enableMultiplier = options.pointsDifficultyMultiplier === 'true' || options.pointsDifficultyMultiplier === true;
         if (gameState.config.pointsDifficultyMultiplier !== enableMultiplier) {
             gameState.config.pointsDifficultyMultiplier = enableMultiplier;
-            changesMade.push(`Difficulty multiplier ${enableMultiplier ? 'enabled' : 'disabled'}`);
+            changesMade.push(t(`change.trivia.DifficultyMultiplier${enableMultiplier ? 'Enabled' : 'Disabled'}`, {}, cfgLang) ?? `Difficulty multiplier ${enableMultiplier ? 'enabled' : 'disabled'}`);
             configChanged = true;
         }
     }
@@ -1341,15 +1381,15 @@ async function configureGame(channelName, options) {
         try {
             await saveChannelConfig(channelName, gameState.config);
             logger.info(`[TriviaGame][${channelName}] Configuration updated and saved: ${changesMade.join(', ')}`);
-            return { message: `Trivia settings updated: ${changesMade.join('. ')}.` };
+            return { messageKey: 'result.trivia.TriviaSettingsUpdated', messageParams: { p1: changesMade.join('. ') }, message: `Trivia settings updated: ${changesMade.join('. ')}.` };
         } catch (error) {
             logger.error({ err: error }, `[TriviaGame][${channelName}] Failed to save configuration changes.`);
-            return { message: `Settings updated in memory, but failed to save them permanently.` };
+            return { messageKey: 'result.trivia.SettingsUpdatedMemoryBut', messageParams: {}, message: `Settings updated in memory, but failed to save them permanently.` };
         }
     } else if (changesMade.length > 0 && !configChanged) {
-        return { message: `Trivia settings not changed: ${changesMade.join('. ')}.` };
+        return { messageKey: 'result.trivia.TriviaSettingsNotChanged', messageParams: { p1: changesMade.join('. ') }, message: `Trivia settings not changed: ${changesMade.join('. ')}.` };
     } else {
-        return { message: "No valid configuration options provided. Use !trivia help config for options." };
+        return { messageKey: 'result.trivia.NoValidConfigurationOptions', messageParams: {}, message: "No valid configuration options provided. Use !trivia help config for options." };
     }
 }
 
@@ -1367,10 +1407,10 @@ async function resetChannelConfig(channelName) {
         gameState.config = newConfig;
         await saveChannelConfig(channelName, gameState.config);
         logger.info(`[TriviaGame][${channelName}] Configuration successfully reset and saved.`);
-        return { success: true, message: "Trivia configuration reset to defaults." };
+        return { success: true, messageKey: 'result.trivia.TriviaConfigurationResetDefaults', messageParams: {}, message: "Trivia configuration reset to defaults." };
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Failed to save reset configuration.`);
-        return { success: false, message: "Configuration reset in memory, but failed to save permanently." };
+        return { success: false, messageKey: 'result.trivia.ConfigurationResetMemoryBut', messageParams: {}, message: "Configuration reset in memory, but failed to save permanently." };
     }
 }
 
@@ -1401,7 +1441,7 @@ async function clearLeaderboard(channelName) {
         return { success: result.success, message: result.message };
     } catch (error) {
         logger.error({ err: error }, `[TriviaGame][${channelName}] Error clearing leaderboard data.`);
-        return { success: false, message: `An error occurred: ${error.message || 'Unknown error'}` };
+        return { success: false, messageKey: 'result.trivia.ErrorOccurred', messageParams: { p1: error.message || 'Unknown error' }, message: `An error occurred: ${error.message || 'Unknown error'}` };
     }
 }
 
@@ -1429,7 +1469,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
 
     if (!sessionInfo || !sessionInfo.itemsInSession || sessionInfo.itemsInSession.length === 0) {
         logger.warn(`[TriviaGameManager][${channelName}] No session info found for reporting.`);
-        return { success: false, message: "I couldn't find a recently played Trivia round in this channel to report." };
+        return { success: false, messageKey: 'result.trivia.ICouldnTFind', messageParams: {}, message: "I couldn't find a recently played Trivia round in this channel to report." };
     }
 
     const { totalRounds, itemsInSession } = sessionInfo;
@@ -1438,9 +1478,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     if (totalRounds > 1 && itemsInSession.length > 0) {
         const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
         // Ensure these are set BEFORE pendingTriviaReports.set
-        global.debug_lastSetTriviaPendingMap = pendingTriviaReports;
-        global.debug_lastSetTriviaReportKey = reportKey;
-        logger.debug({ key: global.debug_lastSetTriviaReportKey }, "[TriviaGameManager] Set global.debug_lastSetTriviaReportKey");
+        logger.debug({ key: reportKey }, "[TriviaGameManager] Stored pending trivia report");
         logger.debug({
             channel: channelName,
             user: reportedByUsername,
@@ -1476,19 +1514,19 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         const itemToReport = itemsInSession[0];
         if (!itemToReport || !itemToReport.itemData || !itemToReport.itemData.question) {
             logger.warn(`[TriviaGameManager][${channelName}] Single item session, but question data missing for report.`);
-            return { success: false, message: "Could not identify a specific question to report from the last game." };
+            return { success: false, messageKey: 'result.trivia.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific question to report from the last game." };
         }
         try {
             await flagTriviaQuestionProblem(itemToReport.itemData.question, reason, reportedByUsername);
             logger.info(`[TriviaGameManager][${channelName}] Successfully reported single/latest question: "${itemToReport.itemData.question.substring(0, 50)}..."`);
-            return { success: true, message: `Thanks for the feedback! The question ("${itemToReport.itemData.question.substring(0, 30)}...") has been reported.` };
+            return { success: true, messageKey: 'result.trivia.ThanksFeedbackQuestionHas', messageParams: { p1: itemToReport.itemData.question.substring(0, 30) }, message: `Thanks for the feedback! The question ("${itemToReport.itemData.question.substring(0, 30)}...") has been reported.` };
         } catch (error) {
             logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error reporting question directly.`);
-            return { success: false, message: "Sorry, an error occurred while trying to report the question." };
+            return { success: false, messageKey: 'result.trivia.SorryErrorOccurredWhile', messageParams: {}, message: "Sorry, an error occurred while trying to report the question." };
         }
     } else {
         logger.warn(`[TriviaGameManager][${channelName}] No items found in session for reporting, though sessionInfo was present.`);
-        return { success: false, message: "No specific questions found in the last game session to report." };
+        return { success: false, messageKey: 'result.trivia.NoSpecificQuestionsFound', messageParams: {}, message: "No specific questions found in the last game session to report." };
     }
 }
 
@@ -1523,7 +1561,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     if (pendingData.expiresAt <= Date.now()) {
         pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Attempt to finalize an expired trivia report by ${username}.`);
-        return { success: true, message: `@${username}, your report session timed out. Please use !trivia report again.` };
+        return { success: true, messageKey: 'result.trivia.ReportSessionTimedOut', messageParams: { username }, message: `@${username}, your report session timed out. Please use !trivia report again.` };
     }
 
     const roundNum = parseInt(roundNumberStr, 10);
@@ -1531,23 +1569,23 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 
     if (isNaN(roundNum) || !itemToReport) {
         const maxRound = pendingData.itemsInSession.reduce((max, item) => Math.max(max, item.roundNumber), 0);
-        return { success: true, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
+        return { success: true, messageKey: 'result.trivia.SNotValidRound', messageParams: { username, maxRound }, message: `@${username}, that's not a valid round number (1-${maxRound}) from the last game session. Please reply with a valid number or try reporting again.` };
     }
 
     if (!itemToReport.docId || !itemToReport.itemData || !itemToReport.itemData.question) {
         pendingTriviaReports.delete(reportKey);
         logger.error(`[TriviaGameManager][${channelName}] Found item for round ${roundNum} but it's missing docId or question data.`);
-        return { success: true, message: `@${username}, I found round ${roundNum}, but there was an issue identifying the question for the report. Please try again.` };
+        return { success: true, messageKey: 'result.trivia.IFoundRoundBut', messageParams: { username, roundNum }, message: `@${username}, I found round ${roundNum}, but there was an issue identifying the question for the report. Please try again.` };
     }
 
     try {
         await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
         pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Successfully finalized report for trivia round ${roundNum}, doc ID ${itemToReport.docId}, Question: "${itemToReport.itemData.question.substring(0, 30)}..."`);
-        return { success: true, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
+        return { success: true, messageKey: 'result.trivia.ThanksReportQuestionFrom', messageParams: { username, roundNum, p3: itemToReport.itemData.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };
     } catch (error) {
         logger.error({ err: error, channelName }, `[TriviaGameManager][${channelName}] Error finalizing report for trivia round ${roundNum}.`);
-        return { success: true, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
+        return { success: true, messageKey: 'result.trivia.ErrorOccurredSubmittingReport', messageParams: { username, roundNum }, message: `@${username}, an error occurred submitting your report for round ${roundNum}. Please try again or contact a mod.` };
     }
 }
 

@@ -178,45 +178,6 @@ class RiddleStorage extends BaseGameStorage {
         }
     }
 
-    /**
-     * Retrieves the most recent riddle played in a channel.
-     */
-    async getMostRecentRiddlePlayed(channelName) {
-        const db = this._getDb();
-        const historyCol = db.collection(this.historyCollection);
-        const lowerChannelName = channelName.toLowerCase();
-
-        logger.debug(`[RiddleStorage] Fetching most recent riddle for channel ${lowerChannelName}`);
-        try {
-            const snapshot = await historyCol
-                .where('channel', '==', lowerChannelName)
-                .orderBy('timestamp', 'desc')
-                .limit(1)
-                .get();
-
-            if (snapshot.empty) {
-                logger.debug(`[RiddleStorage] No riddle history found for channel ${lowerChannelName}.`);
-                return null;
-            }
-
-            const doc = snapshot.docs[0];
-            const data = doc.data();
-            return {
-                docId: doc.id,
-                question: data.riddleText,
-                answer: data.riddleAnswer,
-                topic: data.topic,
-                keywords: data.keywords || []
-            };
-        } catch (error) {
-            logger.error({ err: error, channel: lowerChannelName }, `[RiddleStorage] Error fetching most recent riddle for ${lowerChannelName}`);
-            if (error.code === 5 && error.message?.includes('index')) {
-                logger.warn(`[RiddleStorage] Firestore index likely missing for getMostRecentRiddlePlayed query.`);
-            }
-            throw new StorageError(`Failed to get most recent riddle for ${lowerChannelName}`, error);
-        }
-    }
-
     // --- Recent Riddle Keywords ---
 
     async saveRiddleKeywords(channelName, keywords) {
@@ -388,7 +349,6 @@ const clearLeaderboardData = (channelName) => riddleStorage.clearChannelLeaderbo
 const getLatestCompletedSessionInfo = (channelName) => riddleStorage.getLatestCompletedSessionInfo(channelName);
 const flagRiddleAsProblem = (riddleDocId, reason, reportedBy) => riddleStorage.flagHistoryEntryByDocId(riddleDocId, reason, reportedBy);
 const recordRiddleResult = (details) => riddleStorage.recordRiddleResult(details);
-const getMostRecentRiddlePlayed = (channelName) => riddleStorage.getMostRecentRiddlePlayed(channelName);
 const saveRiddleKeywords = (channelName, keywords) => riddleStorage.saveRiddleKeywords(channelName, keywords);
 const getRecentKeywords = (channelName, limit) => riddleStorage.getRecentKeywords(channelName, limit);
 const pruneOldKeywords = (channelName) => riddleStorage.pruneOldKeywords(channelName);
@@ -405,7 +365,6 @@ export {
     getLatestCompletedSessionInfo,
     flagRiddleAsProblem,
     recordRiddleResult,
-    getMostRecentRiddlePlayed,
     saveRiddleKeywords,
     getRecentKeywords,
     pruneOldKeywords,

@@ -148,7 +148,7 @@ async function callOpenAiFlexOrStandard(testCase, serviceTier, enableFallback = 
 
     const startTime = performance.now();
     let ttftMs = 0;
-    let totalMs = 0;
+    let totalMs; // assigned on every path below before it is read
     let text = '';
     let isFallbackTriggered = false;
     let errorCode = null;
@@ -232,7 +232,7 @@ async function callGeminiFlexOrStandard(testCase, modelId, serviceTier, enableFa
 
     const startTime = performance.now();
     let ttftMs = 0;
-    let totalMs = 0;
+    let totalMs; // assigned on every path below before it is read
     let text = '';
     let isFallbackTriggered = false;
     let errorCode = null;

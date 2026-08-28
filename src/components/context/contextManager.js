@@ -2,6 +2,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin } from '../twitch/helixClient.js'; // Import both functions
 import { triggerSummarizationIfNeeded } from './summarizer.js'; // To trigger summaries
 import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.js';
+import { nameFromCode } from '../../lib/i18n.js';
 import { saveUserTranslation, removeUserTranslation, loadAllUserTranslations } from './translationStorage.js';
 import { getEmoteContextString } from '../../lib/geminiEmoteDescriber.js';
 
@@ -41,7 +42,7 @@ interface ChannelState {
     isSummarizing: boolean; // <-- Lock flag to prevent concurrent summarization
     streamContext: StreamContext;
     userStates: Map<string, UserState>; // <-- Map: username -> UserState
-    botLanguage: string | null; // <-- Channel-specific bot language setting
+    botLanguage: string | null | undefined; // undefined = never configured (auto-detect from Twitch); null = explicitly English
 }
 */
 
@@ -60,6 +61,30 @@ const HARD_CAP = MAX_CHAT_HISTORY_LENGTH * 2; // Safety valve: force-prune even 
 const channelStates = new Map();
 
 // --- Helpers ---
+/**
+ * The one non-English language every participating stream shares, or null.
+ * Null when they disagree or any is English: a mixed-language shared session is exactly where the
+ * bot should mirror each speaker rather than be nudged toward one language.
+ * @param {Array<{language: string|null}>} streamInfos Per-channel stream info.
+ * @returns {string|null}
+ */
+function _sharedStreamLanguage(streamInfos) {
+    const names = new Set(streamInfos.map(info => _nonEnglishStreamLanguage(info.language)));
+    return names.size === 1 ? [...names][0] : null;
+}
+
+/**
+ * The stream's language as a readable name, or null when it is English or unknown.
+ * English is the implicit default, so naming it would add a line to every prompt for no gain;
+ * the line exists to help the bot settle on the right language on a non-English stream.
+ * @param {string|null} code Twitch broadcaster_language.
+ * @returns {string|null}
+ */
+function _nonEnglishStreamLanguage(code) {
+    const name = nameFromCode(code);
+    return name && name !== 'english' ? name : null;
+}
+
 function _normalizeStringOrNull(value) {
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -160,7 +185,7 @@ function _getOrCreateChannelState(channelName) {
                 offlineMissCount: 0,
             },
             userStates: new Map(), // <-- Initialize the userStates Map here
-            botLanguage: null, // <-- Initialize with no language preference
+            botLanguage: undefined, // undefined = never configured; a stored doc (even language:null) makes it explicit
             moderators: [], // <-- Cached moderator display names for LLM context
             summaryGeneration: 0, // <-- Monotonic counter; incremented by clearThematicContext
         });
@@ -400,6 +425,10 @@ function getContextForLLM(channelName, currentUsername, currentMessage, userPron
         streamGameId: state.streamContext.gameId,
         streamTitle: state.streamContext.title,
         streamTags: state.streamContext.tags?.join(', ') || null, // Join tags array
+        // Twitch's broadcaster_language, as a readable name. Supplied to the prompt as context so
+        // the bot can fall back to the stream's own language rather than English when the user's
+        // language is ambiguous. Never used to force a language.
+        streamLanguage: _nonEnglishStreamLanguage(state.streamContext.language),
         viewerCount: state.streamContext.viewerCount ?? 0,
         streamStartedAt: state.streamContext.startedAt ?? null,
         chatSummary: state.chatSummary || "No conversation summary available yet.", // Provide default
@@ -462,7 +491,8 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage, u
                 game: state.streamContext.game,
                 title: state.streamContext.title,
                 viewerCount: state.streamContext.viewerCount ?? 0,
-                startedAt: state.streamContext.startedAt
+                startedAt: state.streamContext.startedAt,
+                language: state.streamContext.language
             });
         }
 
@@ -513,6 +543,10 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage, u
         streamGameId: null, // Not applicable for merged sessions
         streamTitle: `Shared stream: ${channelNames.join(' & ')}`,
         streamTags: null,
+        // Only worth stating when every participating channel agrees on one non-English language.
+        // Mixed-language raids are exactly the case where the bot should mirror each speaker
+        // instead of being nudged toward one language.
+        streamLanguage: _sharedStreamLanguage(streamInfos),
         viewerCount: streamInfos.reduce((sum, s) => sum + s.viewerCount, 0),
         streamStartedAt: null,
         streamContextDetails: streamContextText,
@@ -720,7 +754,35 @@ function getBotLanguage(channelName) {
         logger.debug(`[${channelName}] Attempted to get bot language, but channel not found.`);
         return null;
     }
-    return channelState.botLanguage;
+    // An explicit choice always wins — including `null`, which means a mod ran `!botlang off`.
+    if (channelState.botLanguage !== undefined) {
+        return channelState.botLanguage;
+    }
+    return getInferredBotLanguage(channelName);
+}
+
+/**
+ * The language implied by the channel's Twitch `broadcaster_language`, used only when nobody has
+ * configured one. Deliberately not persisted: it must track the Twitch setting rather than freeze
+ * a snapshot of it, and an explicit `!botlang` must always be able to override it.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {string|null} English language name (e.g. 'spanish'), or null to use English.
+ */
+function getInferredBotLanguage(channelName) {
+    // Same rule as the prompt's stream-language line, including treating 'en' as no signal:
+    // it is Twitch's default for unset channels, so it is not evidence of intent.
+    return _nonEnglishStreamLanguage(channelStates.get(channelName)?.streamContext?.language);
+}
+
+/**
+ * Whether this channel's language came from Twitch rather than from an explicit `!botlang`.
+ * @param {string} channelName - Channel name (without '#').
+ * @returns {boolean}
+ */
+function isBotLanguageInferred(channelName) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState || channelState.botLanguage !== undefined) return false;
+    return getInferredBotLanguage(channelName) !== null;
 }
 
 /**
@@ -843,6 +905,7 @@ const manager = {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,
     getAllChannelStates,
@@ -865,6 +928,7 @@ export {
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
+    isBotLanguageInferred,
     clearStreamContext,
     clearThematicContext,
     setModerators,

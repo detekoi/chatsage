@@ -33,7 +33,9 @@ describe('BotLang Command Handler', () => {
         // Setup mocks
         mockContextManager = {
             getBotLanguage: jest.fn(),
-            setBotLanguage: jest.fn()
+            setBotLanguage: jest.fn(),
+            // Defaults to an explicitly configured language; the inferred case is covered below.
+            isBotLanguageInferred: jest.fn().mockReturnValue(false)
         };
 
         mockLogger = {
@@ -78,8 +80,8 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Bot is currently set to speak spanish.',
-                { replyToId: '123' }
+                expect.stringContaining('español'),
+                { replyToId: '123', skipTranslation: true }
             );
         });
 
@@ -235,8 +237,8 @@ describe('BotLang Command Handler', () => {
             expect(mockContextManager.getBotLanguage).toHaveBeenCalledWith('testchannel');
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Bot is currently set to speak german. Use "!botlang off" to reset to English or "!botlang <language>" to change.',
-                { replyToId: '123' }
+                expect.stringContaining('Deutsch'),
+                { replyToId: '123', skipTranslation: true }
             );
         });
     });

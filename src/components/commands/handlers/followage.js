@@ -3,8 +3,8 @@ import { getChannelFollower, getUsersByLogin } from '../../twitch/helixClient.js
 import { getBroadcasterAccessToken } from '../../twitch/broadcasterTokenHelper.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { formatFollowAge } from '../../customCommands/variableParser.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
 import config from '../../../config/index.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !followage command.
@@ -28,8 +28,7 @@ async function execute(context) {
         // Get the broadcaster's access token
         const broadcasterToken = await getBroadcasterAccessToken(channelName);
         if (!broadcasterToken) {
-            await enqueueMessage(channel,
-                `Sorry, followage data is currently unavailable. The broadcaster may need to re-authenticate.`);
+            await sendLocalized(channel, 'cmd.followage.SorryFollowageDataCurrently', {}, `Sorry, followage data is currently unavailable. The broadcaster may need to re-authenticate.`);
             return;
         }
 
@@ -37,14 +36,14 @@ async function execute(context) {
         const contextManager = getContextManager();
         const broadcasterId = await contextManager.getBroadcasterId(channelName);
         if (!broadcasterId) {
-            await enqueueMessage(channel, `Sorry, couldn't determine the broadcaster ID.`);
+            await sendLocalized(channel, 'cmd.followage.SorryCouldnTDetermine', {}, `Sorry, couldn't determine the broadcaster ID.`);
             return;
         }
 
         // Get the target user's user ID
         const users = await getUsersByLogin([targetUsername]);
         if (!users || users.length === 0) {
-            await enqueueMessage(channel, `User "${targetUsername}" not found.`);
+            await sendLocalized(channel, 'cmd.followage.UserNotFound', { targetUsername }, `User "${targetUsername}" not found.`);
             return;
         }
         const targetUserId = users[0].id;
@@ -59,21 +58,17 @@ async function execute(context) {
         );
 
         if (followData) {
-            const duration = formatFollowAge(followData.followed_at);
+            const duration = formatFollowAge(followData.followed_at, contextManager.getBotLanguage(channelName));
             if (targetUsername === user.username) {
-                await enqueueMessage(channel,
-                    `${displayName}, you have been following ${channelName} for ${duration}!`);
+                await sendLocalized(channel, 'cmd.followage.HaveBeenFollowing', { displayName, p2: channelName, duration }, `${displayName}, you have been following ${channelName} for ${duration}!`);
             } else {
-                await enqueueMessage(channel,
-                    `${targetDisplayName} has been following ${channelName} for ${duration}!`);
+                await sendLocalized(channel, 'cmd.followage.HasBeenFollowing', { targetDisplayName, p2: channelName, duration }, `${targetDisplayName} has been following ${channelName} for ${duration}!`);
             }
         } else {
             if (targetUsername === user.username) {
-                await enqueueMessage(channel,
-                    `${displayName}, you are not following ${channelName}.`);
+                await sendLocalized(channel, 'cmd.followage.AreNotFollowing', { displayName, p2: channelName }, `${displayName}, you are not following ${channelName}.`);
             } else {
-                await enqueueMessage(channel,
-                    `${targetDisplayName} is not following ${channelName}.`);
+                await sendLocalized(channel, 'cmd.followage.NotFollowing', { targetDisplayName, p2: channelName }, `${targetDisplayName} is not following ${channelName}.`);
             }
         }
     } catch (error) {
@@ -82,8 +77,7 @@ async function execute(context) {
             channel: channelName,
             user: targetUsername,
         }, '[FollowageCommand] Error checking followage');
-        await enqueueMessage(channel,
-            `Sorry, there was an error checking followage. Please try again later.`);
+        await sendLocalized(channel, 'cmd.followage.SorryThereWasError', {}, `Sorry, there was an error checking followage. Please try again later.`);
     }
 }
 

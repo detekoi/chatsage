@@ -11,6 +11,7 @@ import {
     editQuote as editQuoteInStorage
 } from '../../quotes/quoteStorage.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 // Parse text of form: 'some quote text - author' or 'some quote text-author'
 // Supports '-', '–', '—' with optional spaces
@@ -68,7 +69,7 @@ const quoteHandler = {
             if (!args || args.length === 0) {
                 // Random
                 const q = await getRandomQuote(channelName);
-                if (!q) return await enqueueMessage(channel, `No quotes yet. Add one with "!quote add <text [- author]>"`, { replyToId });
+                if (!q) return await sendLocalized(channel, 'cmd.quote.NoQuotesYetAdd', {}, `No quotes yet. Add one with "!quote add <text [- author]>"`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
                 return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
@@ -79,24 +80,24 @@ const quoteHandler = {
             if (/^\d+$/.test(sub)) {
                 const id = parseInt(sub, 10);
                 const q = await getQuoteById(channelName, id);
-                if (!q) return await enqueueMessage(channel, `Quote #${id} not found.`, { replyToId });
+                if (!q) return await sendLocalized(channel, 'cmd.quote.QuoteNotFound', { id }, `Quote #${id} not found.`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
                 return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'last') {
                 const q = await getLastQuote(channelName);
-                if (!q) return await enqueueMessage(channel, `No quotes yet.`, { replyToId });
+                if (!q) return await sendLocalized(channel, 'cmd.quote.NoQuotesYet', {}, `No quotes yet.`, { replyToId });
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
                 return await enqueueMessage(channel, `[#${q.quoteId}] "${q.text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'search') {
                 const term = args.slice(1).join(' ').trim();
-                if (!term) return await enqueueMessage(channel, `Usage: !quote search <term>`, { replyToId });
+                if (!term) return await sendLocalized(channel, 'cmd.quote.UsageQuoteSearchTerm', {}, `Usage: !quote search <term>`, { replyToId });
                 const results = await searchQuotes(channelName, term);
                 if (!results || results.length === 0) {
-                    return await enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.NoQuotesMatching', { term }, `No quotes matching "${term}".`, { replyToId });
                 }
                 const q = results[0];
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
@@ -106,10 +107,10 @@ const quoteHandler = {
             // If not a recognized command, treat as search
             if (!recognizedCommands.includes(sub)) {
                 const term = args.join(' ').trim();
-                if (!term) return await enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
+                if (!term) return await sendLocalized(channel, 'cmd.quote.UsageQuoteQuote12', {}, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
                 const results = await searchQuotes(channelName, term);
                 if (!results || results.length === 0) {
-                    return await enqueueMessage(channel, `No quotes matching "${term}".`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.NoQuotesMatching', { term }, `No quotes matching "${term}".`, { replyToId });
                 }
                 const q = results[0];
                 const suffix = q.saidBy ? ` — ${q.saidBy}` : '';
@@ -118,48 +119,56 @@ const quoteHandler = {
 
             if (sub === 'add') {
                 const raw = args.slice(1).join(' ').trim();
-                if (!raw) return await enqueueMessage(channel, `Usage: !quote add <text [- author]>`, { replyToId });
+                if (!raw) return await sendLocalized(channel, 'cmd.quote.UsageQuoteAddText', {}, `Usage: !quote add <text [- author]>`, { replyToId });
                 if (raw.length > MAX_QUOTE_LENGTH) {
-                    return await enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.QuoteTooLongMax', { MAX_QUOTE_LENGTH }, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
                 }
                 const { text, saidBy } = parseQuoteText(raw);
                 const addedBy = user?.['display-name'] || user?.username || 'unknown';
                 const { quoteId } = await addQuote(channelName, text, saidBy, addedBy);
                 const suffix = saidBy ? ` — ${saidBy}` : '';
-                return await enqueueMessage(channel, `Added quote #${quoteId}: "${text}"${suffix}`, { replyToId });
+                return await sendLocalized(channel, 'cmd.quote.AddedQuote', { quoteId, text, suffix }, `Added quote #${quoteId}: "${text}"${suffix}`, { replyToId });
             }
 
             if (sub === 'delete' || sub === 'remove' || sub === 'del') {
                 if (!isPrivilegedUser(user, channelName)) {
-                    return await enqueueMessage(channel, `Only mods/broadcaster can delete quotes.`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.OnlyModsBroadcasterCan', {}, `Only mods/broadcaster can delete quotes.`, { replyToId });
                 }
                 if (args.length < 2 || !/^\d+$/.test(args[1])) {
-                    return await enqueueMessage(channel, `Usage: !quote delete <id>`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.UsageQuoteDeleteId', {}, `Usage: !quote delete <id>`, { replyToId });
                 }
                 const id = parseInt(args[1], 10);
                 const ok = await deleteQuoteFromStorage(channelName, id);
-                return await enqueueMessage(channel, ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await sendLocalized(channel,
+                    ok ? 'cmd.quote.Deleted' : 'cmd.quote.NotFound',
+                    { id },
+                    ok ? `Deleted quote #${id}.` : `Quote #${id} not found.`,
+                    { replyToId });
             }
 
             if (sub === 'edit' || sub === 'update') {
                 if (!isPrivilegedUser(user, channelName)) {
-                    return await enqueueMessage(channel, `Only mods/broadcaster can edit quotes.`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.OnlyModsBroadcasterCan2', {}, `Only mods/broadcaster can edit quotes.`, { replyToId });
                 }
                 if (args.length < 3 || !/^\d+$/.test(args[1])) {
-                    return await enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.UsageQuoteEditId', {}, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
                 }
                 const id = parseInt(args[1], 10);
                 const raw = args.slice(2).join(' ').trim();
-                if (!raw) return await enqueueMessage(channel, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
+                if (!raw) return await sendLocalized(channel, 'cmd.quote.UsageQuoteEditId', {}, `Usage: !quote edit <id> <text [- author]>`, { replyToId });
                 if (raw.length > MAX_QUOTE_LENGTH) {
-                    return await enqueueMessage(channel, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
+                    return await sendLocalized(channel, 'cmd.quote.QuoteTooLongMax', { MAX_QUOTE_LENGTH }, `Quote too long (max ${MAX_QUOTE_LENGTH} chars).`, { replyToId });
                 }
                 const { text, saidBy } = parseQuoteText(raw);
                 const ok = await editQuoteInStorage(channelName, id, text, saidBy);
-                return await enqueueMessage(channel, ok ? `Updated quote #${id}.` : `Quote #${id} not found.`, { replyToId });
+                return await sendLocalized(channel,
+                    ok ? 'cmd.quote.Updated' : 'cmd.quote.NotFound',
+                    { id },
+                    ok ? `Updated quote #${id}.` : `Quote #${id} not found.`,
+                    { replyToId });
             }
 
-            return await enqueueMessage(channel, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
+            return await sendLocalized(channel, 'cmd.quote.UsageQuoteQuote12', {}, `Usage: !quote | !quote 12 | !quote add <text [- author]> | !quote last | !quote search <term> | !quote delete <id> | !quote edit <id> <text>`, { replyToId });
         } catch (err) {
             logger.error({ 
                 err, 
@@ -171,7 +180,7 @@ const quoteHandler = {
                 args: args 
             }, '[QuoteCommand] Error executing quote command');
             try {
-                return await enqueueMessage(channel, `Sorry, something went wrong handling !quote.`, { replyToId });
+                return await sendLocalized(channel, 'cmd.quote.SorrySomethingWentWrong', {}, `Sorry, something went wrong handling !quote.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[QuoteCommand] Failed to send error message to chat');
             }

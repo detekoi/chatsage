@@ -7,6 +7,7 @@ import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 // Define IRC message length limit (be conservative)
 const MAX_IRC_MESSAGE_LENGTH = 450;
@@ -32,7 +33,7 @@ const searchHandler = {
         const contextManager = getContextManager(); // Get context manager
 
         if (!userQuery) {
-            await enqueueMessage(channel, `Please provide something to search for. Usage: !search <your query>`, { replyToId });
+            await sendLocalized(channel, 'cmd.search.PleaseProvideSomethingSearch', {}, `Please provide something to search for. Usage: !search <your query>`, { replyToId });
             return;
         }
 
@@ -43,7 +44,7 @@ const searchHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `searching for: ${userQuery}`); // Get context object
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !search command from user ${userName}.`);
-                await enqueueMessage(channel, `Sorry, I couldn't retrieve the current context to perform the search.`, { replyToId });
+                await sendLocalized(channel, 'cmd.search.SorryICouldnT', {}, `Sorry, I couldn't retrieve the current context to perform the search.`, { replyToId });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext); // Build context string
@@ -57,7 +58,7 @@ const searchHandler = {
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);
-                await enqueueMessage(channel, `Sorry, I couldn't find information about "${userQuery}" right now.`, { replyToId });
+                await sendLocalized(channel, 'cmd.search.SorryICouldnT2', { userQuery }, `Sorry, I couldn't find information about "${userQuery}" right now.`, { replyToId });
                 return; // Exit if no initial response
             }
 
@@ -127,7 +128,7 @@ const searchHandler = {
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);
             try {
-                await enqueueMessage(channel, `Sorry, an error occurred while searching.`, { replyToId });
+                await sendLocalized(channel, 'cmd.search.SorryErrorOccurredWhile', {}, `Sorry, an error occurred while searching.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[SearchCommand] Failed to send error message to chat');
             }

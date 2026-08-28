@@ -42,6 +42,13 @@ export async function initializeCommandStateManager() {
         channelCommandStates = await loadAllChannelCommandSettings();
         logger.info(`[CommandStateManager] Loaded command states for ${channelCommandStates.size} channels`);
 
+        // Drop any listener from a previous initialization before registering a new one; two
+        // live snapshot handlers would both write to channelCommandStates.
+        if (typeof firestoreListener === 'function') {
+            firestoreListener();
+            firestoreListener = null;
+        }
+
         // Set up real-time listener for changes
         firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet) => {
             logger.debug(`[CommandStateManager] Updating cached command state for channel ${channelName}`);
@@ -113,7 +120,7 @@ export async function disableCommandForChannel(channelName, commandName) {
     if (PROTECTED_COMMANDS.has(normalizedCommand)) {
         return {
             success: false,
-            message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
+            messageKey: 'result.commandState.CommandAlwaysAvailableCannot', messageParams: { normalizedCommand }, message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
             wasAlreadyDisabled: false
         };
     }
@@ -129,6 +136,10 @@ export async function disableCommandForChannel(channelName, commandName) {
 
         return {
             success: true,
+            messageKey: wasNewlyDisabled
+                ? 'result.commandState.CommandDisabled'
+                : 'result.commandState.CommandAlreadyDisabled',
+            messageParams: { commandName },
             message: wasNewlyDisabled
                 ? `✅ Command '!${commandName}' has been disabled.`
                 : `Command '!${commandName}' was already disabled.`,
@@ -139,7 +150,7 @@ export async function disableCommandForChannel(channelName, commandName) {
             `[CommandStateManager] Error disabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
-            message: `Error disabling command '!${commandName}'. Please try again.`,
+            messageKey: 'result.commandState.ErrorDisablingCommandPlease', messageParams: { commandName }, message: `Error disabling command '!${commandName}'. Please try again.`,
             wasAlreadyDisabled: false
         };
     }
@@ -166,6 +177,10 @@ export async function enableCommandForChannel(channelName, commandName) {
 
         return {
             success: true,
+            messageKey: wasNewlyEnabled
+                ? 'result.commandState.CommandEnabled'
+                : 'result.commandState.CommandAlreadyEnabled',
+            messageParams: { commandName },
             message: wasNewlyEnabled
                 ? `✅ Command '!${commandName}' has been enabled.`
                 : `Command '!${commandName}' was already enabled.`,
@@ -176,7 +191,7 @@ export async function enableCommandForChannel(channelName, commandName) {
             `[CommandStateManager] Error enabling command ${normalizedCommand} for channel ${normalizedChannel}`);
         return {
             success: false,
-            message: `Error enabling command '!${commandName}'. Please try again.`,
+            messageKey: 'result.commandState.ErrorEnablingCommandPlease', messageParams: { commandName }, message: `Error enabling command '!${commandName}'. Please try again.`,
             wasAlreadyEnabled: false
         };
     }

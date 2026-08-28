@@ -17,6 +17,7 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { pronounService } from '../../../lib/pronounService.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 // Note: IRC message length limits are handled by ircSender.js
 // This handler focuses on response generation, not formatting
@@ -89,7 +90,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 
     if (!responseText?.trim()) {
         logger.warn(`LLM returned no answer for !ask query "${userQuery}" from ${userName}`);
-        await enqueueMessage(channel, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
+        await sendLocalized(channel, 'cmd.ask.SorryICouldnT', {}, `Sorry, I couldn't find or generate an answer for that right now.`, { replyToId });
         return;
     }
 
@@ -126,14 +127,14 @@ const askHandler = {
         const contextManager = getContextManager();
 
         if (!userQuery) {
-            await enqueueMessage(channel, `Please ask a question after the command. Usage: !ask <your question>`, { replyToId: user?.id || user?.['message-id'] || null });
+            await sendLocalized(channel, 'cmd.ask.PleaseAskQuestionAfter', {}, `Please ask a question after the command. Usage: !ask <your question>`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
         // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
         if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
-            await enqueueMessage(channel, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
+            await sendLocalized(channel, 'cmd.ask.HeyThereWhatS', {}, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
 
@@ -151,7 +152,7 @@ const askHandler = {
             const llmContext = contextManager.getContextForLLM(channelName, userName, `asked: ${userQuery}`, userPronouns);
             if (!llmContext) {
                 logger.warn(`[${channelName}] Could not get context for !ask command.`);
-                await enqueueMessage(channel, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });
+                await sendLocalized(channel, 'cmd.ask.SorryICouldnT2', {}, `Sorry, I couldn't retrieve the current context.`, { replyToId: user?.id || user?.['message-id'] || null });
                 return;
             }
             const contextPrompt = buildContextPrompt(llmContext);

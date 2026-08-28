@@ -36,7 +36,9 @@ describe('Riddle Command Handler', () => {
             stopGame: jest.fn().mockReturnValue({ message: 'Game stopped' }),
             getCurrentGameInitiator: jest.fn().mockReturnValue(null),
             clearLeaderboard: jest.fn().mockResolvedValue({ message: 'Leaderboard cleared' }),
-            initiateReportProcess: jest.fn().mockResolvedValue({ success: true, message: 'Report initiated' })
+            initiateReportProcess: jest.fn().mockResolvedValue({ success: true, message: 'Report initiated' }),
+            configureGame: jest.fn().mockResolvedValue({ message: 'Riddle settings updated.' }),
+            resetChannelConfig: jest.fn().mockResolvedValue({ message: 'Riddle config reset.' })
         };
         getRiddleGameManager.mockReturnValue(mockRiddleManager);
 
@@ -212,7 +214,7 @@ describe('Riddle Command Handler', () => {
             await riddleHandler.execute(context);
 
             expect(getLeaderboard).toHaveBeenCalledWith('testchannel', 5);
-            expect(formatRiddleLeaderboardMessage).toHaveBeenCalledWith(leaderboardData, 'testchannel');
+            expect(formatRiddleLeaderboardMessage).toHaveBeenCalledWith(leaderboardData, 'testchannel', null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Leaderboard message',
@@ -256,7 +258,7 @@ describe('Riddle Command Handler', () => {
             const context = createMockContext(['help']);
             await riddleHandler.execute(context);
 
-            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(false);
+            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(false, null);
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Riddle help message',
@@ -274,7 +276,7 @@ describe('Riddle Command Handler', () => {
 
             await riddleHandler.execute(context);
 
-            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(true);
+            expect(formatRiddleHelpMessage).toHaveBeenCalledWith(true, null);
         });
     });
 
@@ -301,6 +303,43 @@ describe('Riddle Command Handler', () => {
                 'Please provide a reason for reporting. Usage: !riddle report <your reason>',
                 { replyToId: '123' }
             );
+        });
+    });
+
+    describe('Config subcommands', () => {
+        const asMod = { username: 'moduser', 'display-name': 'ModUser', id: '123', mod: '1' };
+
+        it('routes "config" to the manager instead of starting a game', async () => {
+            await riddleHandler.execute(createMockContext(['config', 'difficulty', 'hard'], '#testchannel', asMod));
+
+            expect(mockRiddleManager.configureGame).toHaveBeenCalledWith('testchannel',
+                expect.objectContaining({ difficulty: 'hard' }));
+            expect(mockRiddleManager.startGame).not.toHaveBeenCalled();
+        });
+
+        it('routes "resetconfig" to the manager instead of starting a game', async () => {
+            await riddleHandler.execute(createMockContext(['resetconfig'], '#testchannel', asMod));
+
+            expect(mockRiddleManager.resetChannelConfig).toHaveBeenCalledWith('testchannel');
+            expect(mockRiddleManager.startGame).not.toHaveBeenCalled();
+        });
+
+        it('accepts every option that !riddle help advertises', async () => {
+            await riddleHandler.execute(createMockContext(
+                ['config', 'maxrounds', '5', 'pointsbase', '30', 'scoretracking', 'false', 'rounddelay', '8000'],
+                '#testchannel', asMod));
+
+            expect(mockRiddleManager.configureGame).toHaveBeenCalledWith('testchannel',
+                expect.objectContaining({
+                    maxRounds: 5, pointsBase: 30, scoreTracking: false, multiRoundDelayMs: 8000,
+                }));
+        });
+
+        it('does not let a non-mod configure the game', async () => {
+            await riddleHandler.execute(createMockContext(['config', 'difficulty', 'hard']));
+
+            expect(mockRiddleManager.configureGame).not.toHaveBeenCalled();
+            expect(mockRiddleManager.startGame).not.toHaveBeenCalled();
         });
     });
 });

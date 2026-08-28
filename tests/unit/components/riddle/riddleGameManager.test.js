@@ -178,3 +178,63 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         expect(verifyRiddleAnswer).toHaveBeenCalledTimes(1); // Still 1, because it was throttled
     });
 });
+
+describe('RiddleGameManager - answer ordering', () => {
+    let riddleGameManager;
+    let gameState;
+
+    beforeEach(async () => {
+        jest.clearAllMocks();
+        activeGames.clear();
+        riddleGameManager = getRiddleGameManager();
+        await riddleGameManager.initialize();
+        getContextManager.mockReturnValue({ getBotLanguage: jest.fn().mockReturnValue('english') });
+        logger.debug = jest.fn(); logger.info = jest.fn(); logger.warn = jest.fn(); logger.error = jest.fn();
+
+        await riddleGameManager.startGame('testchannel', null, 'starter', 1);
+        gameState = activeGames.get('testchannel');
+        gameState.state = 'inProgress';
+        gameState.startTime = Date.now();
+        gameState.currentRiddle = { question: 'Q?', answer: 'needle', keywords: [] };
+        gameState.processingQueue = [];
+        gameState.userLastGuessTime = {};
+    });
+
+    // The winner used to be whoever's LLM verification resolved first, which meant a viewer who
+    // answered second could win because their verification happened to come back faster.
+    it('awards the win to whoever answered first, even when their verification resolves last', async () => {
+        // Both answer correctly; resolvers are captured in call order so the test controls which
+        // verification returns first.
+        const resolvers = [];
+        verifyRiddleAnswer.mockImplementation(() =>
+            new Promise(resolve => { resolvers.push(resolve); }));
+
+        // "alice" answers first, "bob" second.
+        riddleGameManager.processPotentialAnswer('testchannel', 'alice', 'Alice', 'needle');
+        await new Promise(r => setImmediate(r));
+        riddleGameManager.processPotentialAnswer('testchannel', 'bob', 'Bob', 'a needle');
+        await new Promise(r => setImmediate(r));
+        expect(resolvers).toHaveLength(2);
+
+        // Bob's verification (second call) comes back first.
+        resolvers[1]({ isCorrect: true, confidence: 0.9 });
+        await new Promise(r => setImmediate(r));
+        expect(gameState.winner).toBeNull(); // must wait for the earlier answer to settle
+
+        resolvers[0]({ isCorrect: true, confidence: 0.9 });
+        for (let i = 0; i < 4; i++) await new Promise(r => setImmediate(r));
+
+        expect(gameState.winner).not.toBeNull();
+        expect(gameState.winner.username).toBe('alice');
+    });
+
+    it('clears the queue between rounds so a stale attempt cannot decide the next round', async () => {
+        gameState.processingQueue = [
+            { username: 'ghost', displayName: 'Ghost', answer: 'needle', timestamp: Date.now(), status: 'correct' },
+        ];
+        // _resetGameToIdle runs on game end; the queue must not survive it.
+        await riddleGameManager.startGame('testchannel2', null, 'starter', 1);
+        const fresh = activeGames.get('testchannel2');
+        expect(fresh.processingQueue).toEqual([]);
+    });
+});

@@ -1,5 +1,6 @@
 // src/components/customCommands/variableParser.js
 import logger from '../../lib/logger.js';
+import { t, toLocaleCode } from '../../lib/i18n.js';
 
 /**
  * Parses and resolves variables in a custom command response template.
@@ -61,9 +62,14 @@ export async function parseVariables(template, context) {
     // Resolve all variables (some may be async)
     let result = template;
 
-    // Process in reverse order to maintain correct indices during replacement
+    // Walk backwards and splice by recorded index. The indices are only valid while the text to
+    // their left is untouched, which is what reverse order guarantees. The previous version
+    // reverse-iterated but then called result.replace(fullMatch, ...), which rewrites the *first*
+    // occurrence rather than the matched one — so the recorded index was collected and never used,
+    // and a resolved value that happened to contain an earlier variable's literal text could be
+    // rewritten on the next pass.
     for (let i = matches.length - 1; i >= 0; i--) {
-        const { fullMatch, variableContent } = matches[i];
+        const { fullMatch, variableContent, index } = matches[i];
         let resolved;
 
         try {
@@ -83,7 +89,7 @@ export async function parseVariables(template, context) {
             resolved = '';
         }
 
-        result = result.replace(fullMatch, resolved);
+        result = result.slice(0, index) + resolved + result.slice(index + fullMatch.length);
     }
 
     return result;
@@ -239,10 +245,10 @@ export function formatDuration(ms) {
  * @param {string} followedAt - ISO 8601 timestamp of when the follow started.
  * @returns {string} Formatted follow duration (e.g., "2 years 3 months").
  */
-export function formatFollowAge(followedAt) {
+export function formatFollowAge(followedAt, lang = null) {
     const followDate = new Date(followedAt);
     if (isNaN(followDate.getTime())) {
-        return 'unknown';
+        return (lang && t('common.unknown', {}, lang)) || 'unknown';
     }
 
     const now = new Date();
@@ -270,11 +276,26 @@ export function formatFollowAge(followedAt) {
         days = days % 7;
     }
 
-    const parts = [];
-    if (years > 0) parts.push(`${years} year${years !== 1 ? 's' : ''}`);
-    if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
-    if (weeks > 0) parts.push(`${weeks} week${weeks !== 1 ? 's' : ''}`);
-    if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+    const units = [['year', years], ['month', months], ['week', weeks], ['day', days]]
+        .filter(([, value]) => value > 0);
 
-    return parts.length > 0 ? parts.join(' ') : 'just now';
+    if (units.length === 0) {
+        return (lang && t('common.justNow', {}, lang)) || 'just now';
+    }
+
+    // With a target language, let Intl handle unit names and plural forms. Doing this from a
+    // catalog would need a phrase per unit per plural category, and languages like Russian have
+    // three of those — Intl already encodes those rules.
+    const locale = toLocaleCode(lang);
+    if (locale && locale !== 'en') {
+        try {
+            const formatted = units.map(([unit, value]) =>
+                new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'long' }).format(value));
+            return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(formatted);
+        } catch {
+            // Fall through to English rather than failing a followage lookup over formatting.
+        }
+    }
+
+    return units.map(([unit, value]) => `${value} ${unit}${value !== 1 ? 's' : ''}`).join(' ');
 }

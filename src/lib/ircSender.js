@@ -31,6 +31,15 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @param {number} maxLength Maximum length including ellipsis
  * @returns {string} Truncated text with ellipsis if needed
  */
+/**
+ * Whether a value can be queued: a non-blank string.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+function _isSendableText(text) {
+    return typeof text === 'string' && text.trim().length > 0;
+}
+
 function _intelligentTruncate(text, maxLength) {
     if (!text || typeof text !== 'string') {
         return '';
@@ -50,19 +59,15 @@ function _intelligentTruncate(text, maxLength) {
     // First, ensure we don't cut in the middle of a UTF-8 character
     let truncated = text.substring(0, availableLength);
 
-    // Check if we cut in the middle of a multi-byte UTF-8 character
-    // by trying to encode and seeing if it's valid
-    try {
-        const encoded = Buffer.from(truncated, 'utf8');
-        const decoded = encoded.toString('utf8');
-        if (decoded.length < truncated.length) {
-            // We cut a multi-byte character, so trim it back
-            truncated = decoded;
-        }
-    } catch (error) {
-        // If there's an encoding error, play it safe and trim back further
-        logger.debug({ error: error.message }, 'UTF-8 truncation safety check triggered');
-        truncated = text.substring(0, Math.max(0, availableLength - 4));
+    // substring() slices UTF-16 code units, so it can land between the two halves of a surrogate
+    // pair and leave a lone high surrogate at the end — an emoji cut in half.
+    //
+    // The previous check round-tripped through a UTF-8 Buffer and compared lengths, but Node
+    // decodes a lone surrogate to U+FFFD, which is itself one code unit: the lengths matched, the
+    // guard never fired, and a replacement character went out to chat. Test the last code unit
+    // directly instead.
+    if (/[\uD800-\uDBFF]$/.test(truncated)) {
+        truncated = truncated.slice(0, -1);
     }
 
     // Now find the best break point to avoid cutting words
@@ -234,12 +239,12 @@ async function _translateIfNeeded(channelName, text) {
  * @returns {Promise<string>} Processed text ready for queuing.
  */
 async function _preprocessText(channel, text, skipTranslation, skipLengthProcessing, label = 'Message') {
+    const channelName = channel.substring(1); // Remove # prefix
     let finalText = text;
 
     // Translate if needed (unless explicitly skipped)
     if (!skipTranslation) {
-        const channelName = channel.substring(1); // Remove # prefix
-        finalText = await _translateIfNeeded(channelName, text);
+        finalText = await _translateIfNeeded(channelName, finalText);
     }
 
     // Handle length limits with summarization fallback (only if not already processed)
@@ -298,7 +303,7 @@ async function _preprocessText(channel, text, skipTranslation, skipLengthProcess
  * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation (already handled).
  */
 async function enqueueMessage(channel, text, options = {}) {
-    if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
+    if (!channel || !text || typeof channel !== 'string' || !_isSendableText(text)) {
         logger.warn({ channel, text }, 'Attempted to queue invalid message.');
         return;
     }
@@ -376,7 +381,7 @@ async function waitForQueueEmpty() {
  * @param {boolean} [options.skipLengthProcessing=false] If true, skips summarization and truncation.
  */
 async function enqueueAnnouncement(channel, text, color = 'primary', options = {}) {
-    if (!channel || !text || typeof channel !== 'string' || typeof text !== 'string' || text.trim().length === 0) {
+    if (!channel || !text || typeof channel !== 'string' || !_isSendableText(text)) {
         logger.warn({ channel, text }, 'Attempted to queue invalid announcement.');
         return;
     }

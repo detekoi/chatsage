@@ -4,6 +4,7 @@ import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, parseTranslateCommand, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
 import { buildContextPrompt } from '../../llm/geminiClient.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !translate command with LLM-based argument parsing.
@@ -24,7 +25,7 @@ const translateHandler = {
 
         // --- Input Validation ---
         if (args.length === 0) {
-            await enqueueMessage(channel, `Usage: !translate <language> [user] | !translate stop [user|all]`, { replyToId });
+            await sendLocalized(channel, 'cmd.translate.UsageTranslateLanguageUser', {}, `Usage: !translate <language> [user] | !translate stop [user|all]`, { replyToId });
             return;
         }
 
@@ -53,16 +54,16 @@ const translateHandler = {
         // --- Permission checks ---
         if (action === 'stop_all') {
             if (!isModOrBroadcaster) {
-                await enqueueMessage(channel, `Only mods or the broadcaster can stop all translations.`, { replyToId });
+                await sendLocalized(channel, 'cmd.translate.OnlyModsOrBroadcaster', {}, `Only mods or the broadcaster can stop all translations.`, { replyToId });
                 return;
             }
             try {
                 const count = contextManager.disableAllTranslationsInChannel(channelName);
-                await enqueueMessage(channel, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
+                await sendLocalized(channel, 'cmd.translate.OkayStoppedTranslationsGlobally', { count }, `Okay, stopped translations globally for ${count} user(s).`, { replyToId });
             } catch (e) {
                 logger.error({ err: e, channel: channelName }, 'Error disabling all translations.');
                 try {
-                    await enqueueMessage(channel, `Sorry, an error occurred trying to stop all translations.`, { replyToId });
+                    await sendLocalized(channel, 'cmd.translate.SorryErrorOccurredTrying', {}, `Sorry, an error occurred trying to stop all translations.`, { replyToId });
                 } catch (msgError) {
                     logger.warn({ err: msgError }, '[TranslateCommand] Failed to send error message to chat');
                 }
@@ -72,7 +73,7 @@ const translateHandler = {
 
         // Check permission for targeting other users
         if (targetUsernameLower !== invokingUsernameLower && !isModOrBroadcaster) {
-            await enqueueMessage(channel, `Only mods or the broadcaster can manage translation for other users.`, { replyToId });
+            await sendLocalized(channel, 'cmd.translate.OnlyModsOrBroadcaster2', {}, `Only mods or the broadcaster can manage translation for other users.`, { replyToId });
             return;
         }
 
@@ -92,7 +93,7 @@ const translateHandler = {
             } else {
                 // Enable translation
                 if (!language) {
-                    await enqueueMessage(channel, `Please specify a language. Example: !translate spanish`, { replyToId });
+                    await sendLocalized(channel, 'cmd.translate.PleaseSpecifyLanguageExample', {}, `Please specify a language. Example: !translate spanish`, { replyToId });
                     return;
                 }
 
@@ -111,7 +112,7 @@ const translateHandler = {
         } catch (e) {
             logger.error({ err: e, action, language, targetUsernameLower }, 'Error executing translate command action.');
             try {
-                await enqueueMessage(channel, `Sorry, an error occurred while processing the translate command.`, { replyToId });
+                await sendLocalized(channel, 'cmd.translate.SorryErrorOccurredWhile', {}, `Sorry, an error occurred while processing the translate command.`, { replyToId });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[TranslateCommand] Failed to send error message to chat');
             }

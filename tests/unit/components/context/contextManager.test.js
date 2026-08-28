@@ -478,3 +478,113 @@ describe('contextManager', () => {
         });
     });
 });
+
+describe('bot language auto-detection from Twitch', () => {
+    // getBotLanguage() falls back to the channel's broadcaster_language only when nobody has
+    // configured one. The three states are: never configured (undefined), explicitly off (null),
+    // explicitly set (a language name).
+    beforeEach(async () => {
+        jest.clearAllMocks();
+        getUsersByLogin.mockResolvedValue([]);
+        saveChannelLanguage.mockResolvedValue();
+        loadAllChannelLanguages.mockResolvedValue(new Map());
+        loadAllUserTranslations.mockResolvedValue([]);
+        await initializeContextManager(['langchannel']);
+    });
+
+    it('returns English when no language is configured and Twitch reports none', () => {
+        expect(getBotLanguage('langchannel')).toBeNull();
+    });
+
+    it('infers the language from broadcaster_language when nothing is configured', () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'es' });
+
+        expect(getBotLanguage('langchannel')).toBe('spanish');
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(true);
+    });
+
+    it('does not infer from "en", which is Twitch\'s default for unset channels', () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'en' });
+
+        expect(getBotLanguage('langchannel')).toBeNull();
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(false);
+    });
+
+    it('does not infer from a language code it cannot map to a name', () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'zz' });
+
+        expect(getBotLanguage('langchannel')).toBeNull();
+    });
+
+    it('lets an explicit !botlang override the inferred language', async () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'es' });
+        await setBotLanguage('langchannel', 'german');
+
+        expect(getBotLanguage('langchannel')).toBe('german');
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(false);
+    });
+
+    // The regression the tri-state exists to prevent: without it, `!botlang off` in a Spanish
+    // channel would immediately re-detect Spanish and appear to do nothing.
+    it('keeps English after "!botlang off" even when Twitch reports another language', async () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'es' });
+        await setBotLanguage('langchannel', null);
+
+        expect(getBotLanguage('langchannel')).toBeNull();
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(false);
+        expect(saveChannelLanguage).toHaveBeenCalledWith('langchannel', null);
+    });
+
+    // The boot-rehydration cases need a module registry with no channel state, since
+    // initializeContextManager() is a no-op once any channel exists.
+    async function withFreshContextManager(storedLanguages, run) {
+        await jest.isolateModulesAsync(async () => {
+            const langStorage = await import('../../../../src/components/context/languageStorage.js');
+            const transStorage = await import('../../../../src/components/context/translationStorage.js');
+            const helix = await import('../../../../src/components/twitch/helixClient.js');
+            const emotes = await import('../../../../src/lib/geminiEmoteDescriber.js');
+            langStorage.loadAllChannelLanguages.mockResolvedValue(storedLanguages);
+            langStorage.saveChannelLanguage.mockResolvedValue();
+            transStorage.loadAllUserTranslations.mockResolvedValue([]);
+            helix.getUsersByLogin.mockResolvedValue([]);
+            emotes.getEmoteContextString.mockResolvedValue(null);
+
+            const mod = await import('../../../../src/components/context/contextManager.js');
+            await mod.initializeContextManager([...storedLanguages.keys()]);
+            // updateStreamContext/isBotLanguageInferred live on the manager object, not as named exports.
+            await run(mod.getContextManager());
+        });
+    }
+
+    it('treats a stored explicit-off setting as explicit after a restart', async () => {
+        // A stored doc with language:null is what `!botlang off` writes; doc existence is what
+        // separates "explicitly English" from "never configured".
+        await withFreshContextManager(new Map([['restartchannel', null]]), cm => {
+            cm.updateStreamContext('restartchannel', { language: 'es' });
+
+            expect(cm.getBotLanguage('restartchannel')).toBeNull();
+            expect(cm.isBotLanguageInferred('restartchannel')).toBe(false);
+        });
+    });
+
+    it('restores an explicitly stored language after a restart', async () => {
+        await withFreshContextManager(new Map([['storedchannel', 'french']]), cm => {
+            expect(cm.getBotLanguage('storedchannel')).toBe('french');
+            expect(cm.isBotLanguageInferred('storedchannel')).toBe(false);
+        });
+    });
+
+    it('auto-detects after a restart for a channel with no stored setting', async () => {
+        await withFreshContextManager(new Map(), cm => {
+            cm.updateStreamContext('freshchannel', { language: 'ja' });
+
+            expect(cm.getBotLanguage('freshchannel')).toBe('japanese');
+            expect(cm.isBotLanguageInferred('freshchannel')).toBe(true);
+        });
+    });
+});
