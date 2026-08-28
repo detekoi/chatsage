@@ -77,7 +77,9 @@ async function main() {
     for (const code of targets) {
         const languageName = LANGUAGE_NAMES[code];
         const existing = flatten(await readCatalog(code));
-        const localeHashes = hashes[code] || {};
+        // Clone: mutating hashes[code] in place would persist hashes for keys whose catalog
+        // was never written on an aborted run, and the next run would then skip them forever.
+        const localeHashes = { ...(hashes[code] || {}) };
 
         const stale = englishKeys.filter(key =>
             force || existing[key] === undefined || localeHashes[key] !== hashOf(english[key]));

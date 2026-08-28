@@ -62,10 +62,10 @@ const channelStates = new Map();
 
 // --- Helpers ---
 /**
- * The stream's language as a readable name, or null when it is English or unknown.
- * English is the implicit default, so naming it would add a line to every prompt for no gain;
- * the line exists to help the bot settle on the right language on a non-English stream.
- * @param {string|null} code Twitch broadcaster_language.
+ * The one non-English language every participating stream shares, or null.
+ * Null when they disagree or any is English: a mixed-language shared session is exactly where the
+ * bot should mirror each speaker rather than be nudged toward one language.
+ * @param {Array<{language: string|null}>} streamInfos Per-channel stream info.
  * @returns {string|null}
  */
 function _sharedStreamLanguage(streamInfos) {
@@ -75,6 +75,8 @@ function _sharedStreamLanguage(streamInfos) {
 
 /**
  * The stream's language as a readable name, or null when it is English or unknown.
+ * English is the implicit default, so naming it would add a line to every prompt for no gain;
+ * the line exists to help the bot settle on the right language on a non-English stream.
  * @param {string|null} code Twitch broadcaster_language.
  * @returns {string|null}
  */
@@ -767,13 +769,9 @@ function getBotLanguage(channelName) {
  * @returns {string|null} English language name (e.g. 'spanish'), or null to use English.
  */
 function getInferredBotLanguage(channelName) {
-    const channelState = channelStates.get(channelName);
-    const code = channelState?.streamContext?.language;
-    if (!code) return null;
-    const name = nameFromCode(code);
-    // 'en' is Twitch's default for unset channels, so it is not evidence of intent.
-    if (!name || name === 'english') return null;
-    return name;
+    // Same rule as the prompt's stream-language line, including treating 'en' as no signal:
+    // it is Twitch's default for unset channels, so it is not evidence of intent.
+    return _nonEnglishStreamLanguage(channelStates.get(channelName)?.streamContext?.language);
 }
 
 /**

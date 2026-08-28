@@ -78,7 +78,9 @@ async function main() {
             const outPath = join(i18nDir, `${page}-${code}.json`);
             const existing = flatten(readJson(outPath, {}));
             const hashKey = `${page}:${code}`;
-            const pageHashes = hashes[hashKey] || {};
+            // Clone: mutating hashes[hashKey] in place would persist hashes for keys whose
+            // catalog was never written on an aborted run, and the next run would skip them.
+            const pageHashes = { ...(hashes[hashKey] || {}) };
 
             const stale = englishKeys.filter(key =>
                 force || existing[key] === undefined || pageHashes[key] !== hashOf(english[key]));

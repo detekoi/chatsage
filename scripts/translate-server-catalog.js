@@ -23,7 +23,12 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_FILE = join(REPO_ROOT, '..', 'chatsage-web-ui', 'functions', 'src', 'i18n', 'catalog.ts');
 
-/** Reads one `const <locale>: Catalog = { ... };` block out of the TypeScript module. */
+/**
+ * Reads one `const <locale>: Catalog = { ... };` block out of the TypeScript module.
+ *
+ * Brace matching skips over string literals: catalog values are LLM-generated prose and a stray
+ * `{` or `}` inside one would otherwise unbalance the count and truncate the block.
+ */
 function readBlock(src, locale) {
     const marker = `const ${locale}: Catalog = `;
     const start = src.indexOf(marker);
@@ -31,18 +36,37 @@ function readBlock(src, locale) {
     const open = src.indexOf('{', start);
     let depth = 0, i = open;
     for (; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}') {
+        const c = src[i];
+        if (c === '"' || c === "'" || c === '`') {
+            const quote = c;
+            i++;
+            while (i < src.length && src[i] !== quote) i += src[i] === '\\' ? 2 : 1;
+            continue;
+        }
+        if (c === '{') depth++;
+        else if (c === '}') {
             depth--;
             if (depth === 0) break;
         }
     }
+    if (depth !== 0) throw new Error(`Unbalanced catalog block for "${locale}"`);
     return { body: src.slice(open, i + 1), start: open, end: i + 1 };
 }
 
+/**
+ * Parses a block body. The file is TypeScript, not JSON: the project's lint rule requires trailing
+ * commas on multiline literals, and JSON.parse rejects those — so strip them before parsing.
+ */
+function parseBlock(body) {
+    return JSON.parse(body.replace(/,(\s*[}\]])/g, '$1'));
+}
+
+/** Writes a block back with trailing commas, so the result satisfies the repo's lint rule. */
 function writeBlock(src, locale, entries) {
     const { start, end } = readBlock(src, locale);
-    return src.slice(0, start) + JSON.stringify(entries, null, 2) + src.slice(end);
+    const json = JSON.stringify(entries, null, 2);
+    const withTrailingComma = json.replace(/\n\}$/, ',\n}');
+    return src.slice(0, start) + withTrailingComma + src.slice(end);
 }
 
 async function main() {
@@ -61,7 +85,7 @@ async function main() {
     if (!existsSync(file)) throw new Error(`No such file: ${file} (pass --file)`);
     let src = readFileSync(file, 'utf8');
 
-    const english = JSON.parse(readBlock(src, 'en').body);
+    const english = parseBlock(readBlock(src, 'en').body);
     const englishKeys = Object.keys(english);
     if (!englishKeys.length) throw new Error('The `en` catalog is empty');
 
@@ -75,8 +99,10 @@ async function main() {
     let llmReady = false;
 
     for (const code of targets) {
-        const existing = JSON.parse(readBlock(src, code).body);
-        const localeHashes = hashes[code] || {};
+        const existing = parseBlock(readBlock(src, code).body);
+        // Clone: mutating hashes[code] in place would persist hashes for keys whose catalog
+        // was never written on an aborted run, and the next run would then skip them forever.
+        const localeHashes = { ...(hashes[code] || {}) };
 
         const stale = englishKeys.filter(k =>
             force || existing[k] === undefined || localeHashes[k] !== hashOf(english[k]));
