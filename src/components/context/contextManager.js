@@ -61,6 +61,28 @@ const HARD_CAP = MAX_CHAT_HISTORY_LENGTH * 2; // Safety valve: force-prune even 
 const channelStates = new Map();
 
 // --- Helpers ---
+/**
+ * The stream's language as a readable name, or null when it is English or unknown.
+ * English is the implicit default, so naming it would add a line to every prompt for no gain;
+ * the line exists to help the bot settle on the right language on a non-English stream.
+ * @param {string|null} code Twitch broadcaster_language.
+ * @returns {string|null}
+ */
+function _sharedStreamLanguage(streamInfos) {
+    const names = new Set(streamInfos.map(info => _nonEnglishStreamLanguage(info.language)));
+    return names.size === 1 ? [...names][0] : null;
+}
+
+/**
+ * The stream's language as a readable name, or null when it is English or unknown.
+ * @param {string|null} code Twitch broadcaster_language.
+ * @returns {string|null}
+ */
+function _nonEnglishStreamLanguage(code) {
+    const name = nameFromCode(code);
+    return name && name !== 'english' ? name : null;
+}
+
 function _normalizeStringOrNull(value) {
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -401,6 +423,10 @@ function getContextForLLM(channelName, currentUsername, currentMessage, userPron
         streamGameId: state.streamContext.gameId,
         streamTitle: state.streamContext.title,
         streamTags: state.streamContext.tags?.join(', ') || null, // Join tags array
+        // Twitch's broadcaster_language, as a readable name. Supplied to the prompt as context so
+        // the bot can fall back to the stream's own language rather than English when the user's
+        // language is ambiguous. Never used to force a language.
+        streamLanguage: _nonEnglishStreamLanguage(state.streamContext.language),
         viewerCount: state.streamContext.viewerCount ?? 0,
         streamStartedAt: state.streamContext.startedAt ?? null,
         chatSummary: state.chatSummary || "No conversation summary available yet.", // Provide default
@@ -463,7 +489,8 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage, u
                 game: state.streamContext.game,
                 title: state.streamContext.title,
                 viewerCount: state.streamContext.viewerCount ?? 0,
-                startedAt: state.streamContext.startedAt
+                startedAt: state.streamContext.startedAt,
+                language: state.streamContext.language
             });
         }
 
@@ -514,6 +541,10 @@ function getMergedContextForLLM(channelNames, currentUsername, currentMessage, u
         streamGameId: null, // Not applicable for merged sessions
         streamTitle: `Shared stream: ${channelNames.join(' & ')}`,
         streamTags: null,
+        // Only worth stating when every participating channel agrees on one non-English language.
+        // Mixed-language raids are exactly the case where the bot should mirror each speaker
+        // instead of being nudged toward one language.
+        streamLanguage: _sharedStreamLanguage(streamInfos),
         viewerCount: streamInfos.reduce((sum, s) => sum + s.viewerCount, 0),
         streamStartedAt: null,
         streamContextDetails: streamContextText,

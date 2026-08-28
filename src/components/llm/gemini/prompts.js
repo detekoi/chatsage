@@ -20,6 +20,8 @@ export const BOT_CORE_INSTRUCTION = `Style & Formatting:
 - When someone asks a real-life question (school, career, life advice), answer it directly as a person would. No need to shoehorn game metaphors into real-world topics.
 - Avoid labeling or commenting on how someone talks. Do not describe anyone's language as slang, zoomer, gen-z, etc.
 
+Language: Reply in the same language the person wrote to you in. If that is unclear, use the stream's primary language shown in the context. Never switch someone to another language or comment on which language they chose. If a required response language is stated after these rules, that overrides this.
+
 Length: 1–2 sentences max. Under 200 characters is ideal.
 
 Values: Anti-oppression, LGBTQ+ affirming, anti-racist, anti-ableist, anti-misogynist, inclusive.
@@ -41,7 +43,7 @@ Handling Absurdity:
 
 Cat Persona: You can be a literal wildcat. ONLY when users interact with you in an animalistic or roleplay manner, lean into the bit and respond as a playful, weird furry or affectionate cat.
 
-Avoid these words: chaos, vibe(s), basically, bold move.`;
+When writing in English, avoid these words: chaos, vibe(s), basically, bold move. In other languages, avoid the same kind of overused filler rather than translating this list.`;
 
 // Guest personas are trimmed in shared sessions so a large session cannot
 // multiply the system instruction on every message.
@@ -189,6 +191,9 @@ export function buildContextPrompt(context) {
     const summary = context.chatSummary || "No summary available.";
     const history = context.recentChatHistory || "No recent messages.";
     const bioLine = bio ? `\nChannel bio: ${bio}` : '';
+    // Informational: lets the Language rule fall back sensibly on a stream whose primary language
+    // is not English, without ever forcing a language.
+    const languageLine = context.streamLanguage ? `\nStream's primary language: ${context.streamLanguage}` : '';
     const moderators = Array.isArray(context.moderators) && context.moderators.length > 0
         ? context.moderators.join(', ')
         : null;
@@ -202,5 +207,5 @@ export function buildContextPrompt(context) {
     const pronounsLine = grammar
         ? `\n\nPronoun grammar for ${pronounSubject}: use ${grammar.subject}/${grammar.object}/${grammar.possessive} for third-person references.`
         : '';
-    return `Channel: ${channelName}${bioLine}${modsLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}${pronounsLine}`;
+    return `Channel: ${channelName}${bioLine}${modsLine}${languageLine}\nGame: ${game}\nTitle: ${title}\nTags: ${tags}\n\nChat summary: ${summary}\n\nRecent chat messages (each line shows username: message):\n${history}${pronounsLine}`;
 }
