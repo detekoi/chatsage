@@ -6,6 +6,7 @@ import { startTimerManager, stopTimerManager } from '../../../src/components/tim
 import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
 import { listenForChannelChanges } from '../../../src/components/twitch/channelManager.js';
 import { onPersonaChanges } from '../../../src/components/context/personaStorage.js';
+import { onChannelLanguageChanges } from '../../../src/components/context/languageStorage.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');
@@ -31,6 +32,9 @@ jest.mock('../../../src/components/twitch/channelManager.js', () => ({
 }));
 jest.mock('../../../src/components/context/personaStorage.js', () => ({
     onPersonaChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/context/languageStorage.js', () => ({
+    onChannelLanguageChanges: jest.fn(() => jest.fn()),
 }));
 jest.mock('../../../src/components/llm/llmClient.js', () => ({
     resetChatSession: jest.fn(),
@@ -92,8 +96,10 @@ describe('LifecycleManager', () => {
         test('should stop all pollers, managers, and unsubscribe listeners', async () => {
             const mockUnsubChannel = jest.fn();
             const mockUnsubPersona = jest.fn();
+            const mockUnsubLanguage = jest.fn();
             listenForChannelChanges.mockReturnValue(mockUnsubChannel);
             onPersonaChanges.mockReturnValue(mockUnsubPersona);
+            onChannelLanguageChanges.mockReturnValue(mockUnsubLanguage);
 
             await lifecycleManager.startMonitoring();
             expect(lifecycleManager.isMonitoring).toBe(true);
@@ -103,6 +109,7 @@ describe('LifecycleManager', () => {
 
             expect(mockUnsubChannel).toHaveBeenCalled();
             expect(mockUnsubPersona).toHaveBeenCalled();
+            expect(mockUnsubLanguage).toHaveBeenCalled();
             expect(stopStreamInfoPolling).toHaveBeenCalled();
             expect(stopAdSchedulePoller).toHaveBeenCalled();
             expect(stopTimerManager).toHaveBeenCalled();

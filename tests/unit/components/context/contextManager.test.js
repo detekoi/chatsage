@@ -540,6 +540,43 @@ describe('bot language auto-detection from Twitch', () => {
         expect(saveChannelLanguage).toHaveBeenCalledWith('langchannel', null);
     });
 
+    // The dashboard writes the same Firestore documents `!botlang` does, and a listener feeds them
+    // back here. That path must not write to Firestore again, or the listener and the write would
+    // chase each other.
+    it('applies a language the dashboard stored without writing it back', () => {
+        const cm = getContextManager();
+
+        expect(cm.applyStoredBotLanguage('langchannel', 'japanese')).toBe(true);
+        expect(getBotLanguage('langchannel')).toBe('japanese');
+        expect(saveChannelLanguage).not.toHaveBeenCalled();
+    });
+
+    it('applies a stored null as an explicit choice of English', () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'es' });
+        cm.applyStoredBotLanguage('langchannel', null);
+
+        expect(getBotLanguage('langchannel')).toBeNull();
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(false);
+    });
+
+    // The dashboard deletes the document to hand the channel back to detection, which arrives here
+    // as undefined. Storing null instead would hold the channel in English.
+    it('restores auto-detection when the stored document is removed', async () => {
+        const cm = getContextManager();
+        cm.updateStreamContext('langchannel', { language: 'es' });
+        await setBotLanguage('langchannel', 'german');
+
+        cm.applyStoredBotLanguage('langchannel', undefined);
+
+        expect(getBotLanguage('langchannel')).toBe('spanish');
+        expect(cm.isBotLanguageInferred('langchannel')).toBe(true);
+    });
+
+    it('ignores a channel it does not track', () => {
+        expect(getContextManager().applyStoredBotLanguage('unknownchannel', 'french')).toBe(false);
+    });
+
     // The boot-rehydration cases need a module registry with no channel state, since
     // initializeContextManager() is a no-op once any channel exists.
     async function withFreshContextManager(storedLanguages, run) {
