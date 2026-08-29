@@ -268,6 +268,16 @@ describe('variableParser', () => {
     // formatFollowAge
     // =========================================================================
     describe('formatFollowAge', () => {
+        // These tests build a follow date by walking back from "now" with setMonth()/setFullYear(),
+        // which clamp into the next month when the target month is shorter than today's date.
+        // On 29-31 August, setMonth(month - 6) lands on 1-3 March rather than 29-31 February, so
+        // "six months ago" is really five months and 28 days and the assertion below fails. It hit
+        // CI on 29 August, and 47 days across any four-year window are affected. Pinning the clock
+        // to the 15th keeps every subtraction inside a month that is long enough to hold it.
+        beforeEach(() => {
+            jest.useFakeTimers({ now: new Date('2026-06-15T12:00:00Z'), doNotFake: ['nextTick', 'setImmediate'] });
+        });
+
         test('returns "unknown" for invalid date', () => {
             expect(formatFollowAge('not-a-date')).toBe('unknown');
         });
