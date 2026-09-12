@@ -1,9 +1,12 @@
 import http from 'http';
+import crypto from 'crypto';
 import logger from '../lib/logger.js';
+import config from '../config/index.js';
 import { eventSubHandler } from '../components/twitch/eventsub.js';
-import { getSecretManagerStatus } from '../lib/secretManager.js';
+import { getSecretManagerStatus, getSecretValue } from '../lib/secretManager.js';
 import { verifyTaskRequest } from '../lib/cloudTasks.js';
 import { handleAdNotificationTask } from '../components/twitch/adSchedulePoller.js';
+import { generatePreview, validatePreviewRequest } from '../components/customCommands/previewService.js';
 
 /**
  * Reads a request body with a size cap, so a hostile or malformed request
@@ -76,6 +79,83 @@ async function scheduledTaskHandler(req, res) {
         logger.error({ err, kind: payload?.kind }, '[ScheduledTask] Task handler failed, will be retried');
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('Task handler failed');
+    }
+}
+
+function sendJson(res, status, body) {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+}
+
+/**
+ * Verifies a dashboard-originated request against the shared internal token.
+ * The same secret already authenticates bot → web UI calls; this is the
+ * reverse direction. Compared as fixed-length digests so the check is
+ * constant-time and cannot throw on mismatched byte lengths.
+ * @param {string|undefined} authHeader
+ * @returns {Promise<{ valid: boolean, reason?: string, status?: number }>}
+ */
+async function verifyInternalToken(authHeader) {
+    if (!config.webui?.internalToken) {
+        return { valid: false, status: 503, reason: 'WEBUI_INTERNAL_TOKEN is not configured' };
+    }
+    const header = authHeader || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    if (!token) {
+        return { valid: false, status: 401, reason: 'missing bearer token' };
+    }
+    const expected = await getSecretValue(config.webui.internalToken);
+    if (!expected) {
+        return { valid: false, status: 503, reason: 'internal token unavailable from Secret Manager' };
+    }
+    const a = crypto.createHash('sha256').update(token, 'utf8').digest();
+    const b = crypto.createHash('sha256').update(expected, 'utf8').digest();
+    return crypto.timingSafeEqual(a, b)
+        ? { valid: true }
+        : { valid: false, status: 401, reason: 'invalid bearer token' };
+}
+
+/**
+ * Handles a dashboard "preview" request: generates a sample AI response for a
+ * custom command, timer, or check-in prompt without sending anything to chat.
+ * The web UI has already authenticated the broadcaster and supplies their
+ * channel; this endpoint trusts that only because the shared token checks out.
+ */
+async function previewHandler(req, res) {
+    const auth = await verifyInternalToken(req.headers.authorization);
+    if (!auth.valid) {
+        logger.warn({ reason: auth.reason }, '[Preview] Rejected preview request');
+        sendJson(res, auth.status, { success: false, message: auth.status === 503 ? 'Preview is not configured' : 'Unauthorized' });
+        return;
+    }
+
+    let payload;
+    try {
+        payload = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8'));
+    } catch (err) {
+        logger.warn({ err }, '[Preview] Malformed preview payload');
+        sendJson(res, 400, { success: false, message: 'Bad Request' });
+        return;
+    }
+
+    const validationError = validatePreviewRequest(payload);
+    if (validationError) {
+        sendJson(res, 400, { success: false, message: validationError });
+        return;
+    }
+
+    try {
+        const preview = await generatePreview({
+            channel: payload.channel,
+            kind: payload.kind,
+            prompt: payload.prompt,
+            name: payload.name || null,
+            args: payload.args || '',
+        });
+        sendJson(res, 200, { success: true, preview });
+    } catch (err) {
+        logger.error({ err, channel: payload.channel, kind: payload.kind }, '[Preview] Failed to generate preview');
+        sendJson(res, 500, { success: false, message: 'Failed to generate preview' });
     }
 }
 
@@ -160,6 +240,18 @@ export async function createHealthServer({ port, isDev, getIsFullyInitialized })
         if (req.method === 'POST' && req.url === '/internal/scheduled-task') {
             scheduledTaskHandler(req, res).catch(err => {
                 logger.error({ err }, 'Unhandled error in scheduledTaskHandler');
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                    res.end('Internal Server Error');
+                }
+            });
+            return;
+        }
+
+        // Dashboard preview endpoint (web UI → bot, shared internal token)
+        if (req.method === 'POST' && req.url === '/internal/preview') {
+            previewHandler(req, res).catch(err => {
+                logger.error({ err }, 'Unhandled error in previewHandler');
                 if (!res.headersSent) {
                     res.writeHead(500, { 'Content-Type': 'text/plain' });
                     res.end('Internal Server Error');

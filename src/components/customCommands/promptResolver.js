@@ -68,9 +68,13 @@ function buildResolverSystemInstruction(language, isCheckin = false, channel = n
  * @param {string|null} [options.channel=null] - Channel name for dedup (enables history read/write).
  * @param {string|null} [options.source=null] - Source key for dedup (use constants from inferenceHistoryStorage).
  * @param {string|null} [options.chatContext=null] - Formatted recent chat messages for conversational flow.
+ * @param {string|null} [options.serviceTier='flex'] - LLM service tier.
+ * @param {boolean} [options.dryRun=false] - When true, the recent-inference history is still read
+ *   (so the dedup block matches production) but the new response is NOT logged. Used by the
+ *   dashboard preview so a preview never suppresses a real response as a "repeat".
  * @returns {Promise<string|null>} The generated response, or null on error/empty.
  */
-export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = 'flex' } = {}) {
+export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = 'flex', dryRun = false } = {}) {
     if (!prompt) {
         return '';
     }
@@ -109,7 +113,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             fullPrompt += `\n\nNow complete the original task stated at the top of this prompt. The sections above are background context only.`;
         }
 
-        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length, serviceTier }, '[PromptResolver] Generating response for custom command prompt');
+        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length, serviceTier, dryRun }, '[PromptResolver] Generating response for custom command prompt');
 
         const systemInstruction = buildResolverSystemInstruction(language, isCheckin, channel);
 
@@ -137,7 +141,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         }
 
         // Fire-and-forget: log inference for future dedup (only real responses)
-        if (channel && source) {
+        if (channel && source && !dryRun) {
             logInference(channel, source, cleanText);
         }
 

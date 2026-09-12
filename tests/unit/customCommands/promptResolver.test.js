@@ -36,6 +36,18 @@ describe('promptResolver', () => {
         generateLiteContent.mockResolvedValue('Mocked response');
     });
 
+    test('dryRun reads history for dedup but never logs the new response', async () => {
+        getRecentInferences.mockResolvedValueOnce(['old joke']);
+        const result = await resolvePrompt('Tell a joke', null, null, false, {
+            channel: 'chan', source: 'custom:joke', dryRun: true,
+        });
+
+        expect(result).toBe('Mocked response');
+        expect(getRecentInferences).toHaveBeenCalledWith('chan', 'custom:joke');
+        expect(generateLiteContent.mock.calls[0][0]).toContain('old joke');
+        expect(logInference).not.toHaveBeenCalled();
+    });
+
     test('returns empty string if prompt is empty', async () => {
         expect(await resolvePrompt(null)).toBe('');
         expect(await resolvePrompt('')).toBe('');

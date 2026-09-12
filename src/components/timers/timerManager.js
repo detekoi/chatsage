@@ -111,18 +111,27 @@ function isEligible(channelName, timer, nowMs) {
     return true;
 }
 
-async function generatePromptTimerOutput(channelName, timer, resolvedText) {
-    const contextManager = getContextManager();
-    const botLanguage = contextManager.getBotLanguage(channelName);
-    const llmContext = contextManager.getContextForLLM(channelName, 'system', 'timer');
-
+/**
+ * Builds the compact one-line stream context that prompt timers hand to the LLM.
+ * Exported so the dashboard preview can reproduce a timer's context exactly.
+ * @param {object|null} llmContext - Result of contextManager.getContextForLLM().
+ * @returns {string|null} e.g. "Game: Celeste | Title: chill run | Uptime: 1h 12m", or null when nothing is known.
+ */
+export function buildTimerStreamContext(llmContext) {
     const contextParts = [];
     if (llmContext?.streamGame && llmContext.streamGame !== 'N/A') contextParts.push(`Game: ${llmContext.streamGame}`);
     if (llmContext?.streamTitle) contextParts.push(`Title: ${llmContext.streamTitle}`);
     if (llmContext?.streamStartedAt) {
         contextParts.push(`Uptime: ${formatDuration(Date.now() - new Date(llmContext.streamStartedAt).getTime())}`);
     }
-    const streamContextString = contextParts.length ? contextParts.join(' | ') : null;
+    return contextParts.length ? contextParts.join(' | ') : null;
+}
+
+async function generatePromptTimerOutput(channelName, timer, resolvedText) {
+    const contextManager = getContextManager();
+    const botLanguage = contextManager.getBotLanguage(channelName);
+    const llmContext = contextManager.getContextForLLM(channelName, 'system', 'timer');
+    const streamContextString = buildTimerStreamContext(llmContext);
 
     return await resolvePrompt(resolvedText, botLanguage || null, streamContextString, false, {
         channel: channelName,
