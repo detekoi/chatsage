@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 // Shared with the runtime so the two cannot drift.
 export { flatten } from '../../src/lib/i18n.js';
 
-export const DEFAULT_MODEL_ID = 'gemini-3.7-flash';
+export const DEFAULT_MODEL_ID = 'gemini-3.8-flash';
 export const BATCH_SIZE = 20;
 
 /** Locale code -> the language name given to the model. */
