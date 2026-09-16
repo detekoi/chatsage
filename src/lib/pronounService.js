@@ -1,25 +1,67 @@
 // src/lib/pronounService.js
 import logger from './logger.js';
 
-const BASE_URL = 'https://pronouns.alejo.io/api';
+// Twitch Chat Pronouns v1 API (https://pr.alejo.io/). The legacy
+// https://pronouns.alejo.io/api endpoint served combined IDs such as `hethem`
+// and returned an array. v1 returns a single object per user and models
+// mixed pronouns as `pronoun_id` plus an optional `alt_pronoun_id`.
+const BASE_URL = 'https://api.pronouns.alejo.io/v1';
 const VALID_USERNAME_RE = /^[a-zA-Z0-9_]{1,25}$/;
 
-const GRAMMAR = {
-    hehim:    { display: 'He/Him', subject: 'he',   Subject: 'He',   object: 'him',  Object: 'Him',  possessive: 'his',   Possessive: 'His',   reflexive: 'himself',  Reflexive: 'Himself' },
-    sheher:   { display: 'She/Her', subject: 'she',  Subject: 'She',  object: 'her',  Object: 'Her',  possessive: 'her',   Possessive: 'Her',   reflexive: 'herself',  Reflexive: 'Herself' },
-    theythem: { display: 'They/Them', subject: 'they', Subject: 'They', object: 'them', Object: 'Them', possessive: 'their', Possessive: 'Their', reflexive: 'themself', Reflexive: 'Themself' },
-    hethem:   { display: 'He/They', subject: 'he',   Subject: 'He',   object: 'him',  Object: 'Him',  possessive: 'his',   Possessive: 'His',   reflexive: 'himself',  Reflexive: 'Himself' },
-    shethem:  { display: 'She/They', subject: 'she',  Subject: 'She',  object: 'her',  Object: 'Her',  possessive: 'her',   Possessive: 'Her',   reflexive: 'herself',  Reflexive: 'Herself' },
-    heshe:    { display: 'He/She', subject: 'he',   Subject: 'He',   object: 'him',  Object: 'Him',  possessive: 'his',   Possessive: 'His',   reflexive: 'himself',  Reflexive: 'Himself' },
-    xexem:    { display: 'Xe/Xem', subject: 'xe',   Subject: 'Xe',   object: 'xem',  Object: 'Xem',  possessive: 'xyr',   Possessive: 'Xyr',   reflexive: 'xemself',  Reflexive: 'Xemself' },
-    faefaer:  { display: 'Fae/Faer', subject: 'fae',  Subject: 'Fae',  object: 'faer', Object: 'Faer', possessive: 'faer',  Possessive: 'Faer',  reflexive: 'faerself', Reflexive: 'Faerself' },
-    vever:    { display: 'Ve/Ver', subject: 've',   Subject: 'Ve',   object: 'ver',  Object: 'Ver',  possessive: 'vis',   Possessive: 'Vis',   reflexive: 'verself',  Reflexive: 'Verself' },
-    aeaer:    { display: 'Ae/Aer', subject: 'ae',   Subject: 'Ae',   object: 'aer',  Object: 'Aer',  possessive: 'aer',   Possessive: 'Aer',   reflexive: 'aerself',  Reflexive: 'Aerself' },
-    ziehir:   { display: 'Zie/Hir', subject: 'zie',  Subject: 'Zie',  object: 'hir',  Object: 'Hir',  possessive: 'hir',   Possessive: 'Hir',   reflexive: 'hirself',  Reflexive: 'Hirself' },
-    perper:   { display: 'Per/Per', subject: 'per',  Subject: 'Per',  object: 'per',  Object: 'Per',  possessive: 'per',   Possessive: 'Per',   reflexive: 'perself',  Reflexive: 'Perself' },
-    eem:      { display: 'E/Em', subject: 'e',    Subject: 'E',    object: 'em',   Object: 'Em',   possessive: 'eir',   Possessive: 'Eir',   reflexive: 'emself',   Reflexive: 'Emself' },
-    itits:    { display: 'It/Its', subject: 'it',   Subject: 'It',   object: 'it',   Object: 'It',   possessive: 'its',   Possessive: 'Its',   reflexive: 'itself',   Reflexive: 'Itself' },
+/**
+ * Pronoun sets keyed by v1 pronoun ID (the keys of GET /v1/pronouns).
+ * `singular` sets ("Any", "Other") display as one word rather than subject/object.
+ * Grammar for singular sets falls back to they/them so callers still get usable forms.
+ */
+const PRONOUNS = {
+    hehim:    { subject: 'he',   Subject: 'He',   object: 'him',  Object: 'Him',  possessive: 'his',   Possessive: 'His',   reflexive: 'himself',  Reflexive: 'Himself' },
+    sheher:   { subject: 'she',  Subject: 'She',  object: 'her',  Object: 'Her',  possessive: 'her',   Possessive: 'Her',   reflexive: 'herself',  Reflexive: 'Herself' },
+    theythem: { subject: 'they', Subject: 'They', object: 'them', Object: 'Them', possessive: 'their', Possessive: 'Their', reflexive: 'themself', Reflexive: 'Themself' },
+    xexem:    { subject: 'xe',   Subject: 'Xe',   object: 'xem',  Object: 'Xem',  possessive: 'xyr',   Possessive: 'Xyr',   reflexive: 'xemself',  Reflexive: 'Xemself' },
+    faefaer:  { subject: 'fae',  Subject: 'Fae',  object: 'faer', Object: 'Faer', possessive: 'faer',  Possessive: 'Faer',  reflexive: 'faerself', Reflexive: 'Faerself' },
+    vever:    { subject: 've',   Subject: 'Ve',   object: 'ver',  Object: 'Ver',  possessive: 'vis',   Possessive: 'Vis',   reflexive: 'verself',  Reflexive: 'Verself' },
+    aeaer:    { subject: 'ae',   Subject: 'Ae',   object: 'aer',  Object: 'Aer',  possessive: 'aer',   Possessive: 'Aer',   reflexive: 'aerself',  Reflexive: 'Aerself' },
+    ziehir:   { subject: 'zie',  Subject: 'Zie',  object: 'hir',  Object: 'Hir',  possessive: 'hir',   Possessive: 'Hir',   reflexive: 'hirself',  Reflexive: 'Hirself' },
+    perper:   { subject: 'per',  Subject: 'Per',  object: 'per',  Object: 'Per',  possessive: 'per',   Possessive: 'Per',   reflexive: 'perself',  Reflexive: 'Perself' },
+    eem:      { subject: 'e',    Subject: 'E',    object: 'em',   Object: 'Em',   possessive: 'eir',   Possessive: 'Eir',   reflexive: 'emself',   Reflexive: 'Emself' },
+    itits:    { subject: 'it',   Subject: 'It',   object: 'it',   Object: 'It',   possessive: 'its',   Possessive: 'Its',   reflexive: 'itself',   Reflexive: 'Itself' },
+    any:      { singular: true, label: 'Any' },
+    other:    { singular: true, label: 'Other' },
 };
+
+function lookupPronoun(id) {
+    return typeof id === 'string' && Object.hasOwn(PRONOUNS, id) ? PRONOUNS[id] : null;
+}
+
+/**
+ * Build the grammar object for a primary + optional alt pronoun ID, following the
+ * display rules of the official extension: singular sets show their label alone,
+ * mixed sets show "Primary/Alt" subjects, plain sets show "Subject/Object".
+ * Grammatical forms always come from the primary set (or they/them for singular).
+ * @param {string} pronounId
+ * @param {string|null|undefined} altPronounId
+ * @returns {object|null}
+ */
+export function buildGrammar(pronounId, altPronounId) {
+    const primary = lookupPronoun(pronounId);
+    if (!primary) return null;
+
+    const forms = primary.singular ? PRONOUNS.theythem : primary;
+
+    let display;
+    if (primary.singular) {
+        display = primary.label;
+    } else {
+        const alt = lookupPronoun(altPronounId);
+        if (alt) {
+            display = `${primary.Subject}/${alt.singular ? alt.label : alt.Subject}`;
+        } else {
+            display = `${primary.Subject}/${primary.Object}`;
+        }
+    }
+
+    return { display, ...forms };
+}
 
 class LRUCache {
     constructor(maxSize) {
@@ -50,7 +92,8 @@ class LRUCache {
 
 class PronounService {
     constructor() {
-        this.userPronounsCache = new LRUCache(5000); // login -> { pronounId: string | null, fetchedAt: number }
+        // login -> { pronounId: string | null, altPronounId: string | null, fetchedAt: number }
+        this.userPronounsCache = new LRUCache(5000);
         this.pendingRequests = new Map(); // login -> Promise
         this.CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
         this.NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 60 seconds for errors like 429
@@ -60,17 +103,27 @@ class PronounService {
         return typeof username === 'string' && VALID_USERNAME_RE.test(username);
     }
 
+    _cacheEntry(login, pronounId, altPronounId, fetchedAt = Date.now()) {
+        const entry = { pronounId: pronounId || null, altPronounId: altPronounId || null, fetchedAt };
+        this.userPronounsCache.set(login, entry);
+        return entry;
+    }
 
-
-    async _fetchUserPronounId(login) {
-        if (!login) return null;
+    /**
+     * Resolve a user's pronoun IDs from the v1 API, with caching and request dedup.
+     * @param {string} login Twitch username
+     * @returns {Promise<{pronounId: string|null, altPronounId: string|null}>}
+     */
+    async _fetchUserPronounIds(login) {
+        const none = { pronounId: null, altPronounId: null };
+        if (!login) return none;
         const lowerUser = login.toLowerCase();
-        if (!this.isValidUsername(lowerUser)) return null;
+        if (!this.isValidUsername(lowerUser)) return none;
 
         const now = Date.now();
         const cached = this.userPronounsCache.get(lowerUser);
         if (cached && (now - cached.fetchedAt) < this.CACHE_TTL_MS) {
-            return cached.pronounId;
+            return cached;
         }
 
         if (this.pendingRequests.has(lowerUser)) {
@@ -85,27 +138,21 @@ class PronounService {
                 const response = await fetch(`${BASE_URL}/users/${encodeURIComponent(lowerUser)}`, { signal: controller.signal });
 
                 if (response.ok) {
-                    const rawData = await response.json();
-                    const data = Array.isArray(rawData) ? rawData[0] : rawData;
-
-                    if (data && data.pronoun_id) {
-                        this.userPronounsCache.set(lowerUser, { pronounId: data.pronoun_id, fetchedAt: Date.now() });
-                        return data.pronoun_id;
-                    } else {
-                        this.userPronounsCache.set(lowerUser, { pronounId: null, fetchedAt: Date.now() });
-                        return null;
+                    const data = await response.json();
+                    if (data && typeof data.pronoun_id === 'string' && data.pronoun_id) {
+                        return this._cacheEntry(lowerUser, data.pronoun_id, data.alt_pronoun_id);
                     }
+                    return this._cacheEntry(lowerUser, null, null);
                 } else if (response.status === 404) {
-                    this.userPronounsCache.set(lowerUser, { pronounId: null, fetchedAt: Date.now() });
-                    return null;
+                    // v1 returns 404 when the user has not set pronouns.
+                    return this._cacheEntry(lowerUser, null, null);
                 } else {
                     // Cache negative result for a short time on 429/500 errors to prevent retry storms
-                    this.userPronounsCache.set(lowerUser, { pronounId: null, fetchedAt: Date.now() - this.CACHE_TTL_MS + this.NEGATIVE_CACHE_TTL_MS });
-                    return null;
+                    return this._cacheEntry(lowerUser, null, null, Date.now() - this.CACHE_TTL_MS + this.NEGATIVE_CACHE_TTL_MS);
                 }
             } catch (error) {
                 logger.warn({ user: lowerUser, error: error.message }, '[PronounService] Error fetching for user');
-                return null;
+                return none;
             } finally {
                 if (timeoutId) {
                     clearTimeout(timeoutId);
@@ -121,14 +168,11 @@ class PronounService {
     /**
      * Get the grammatical forms for a user's pronouns.
      * @param {string} login Twitch username
-     * @returns {Promise<object|null>} Grammar object containing subject, object, etc., or null if none
+     * @returns {Promise<object|null>} Grammar object containing display, subject, object, etc., or null if none
      */
     async getUserPronouns(login) {
-        const pronounId = await this._fetchUserPronounId(login);
-        if (pronounId && GRAMMAR[pronounId]) {
-            return GRAMMAR[pronounId];
-        }
-        return null;
+        const { pronounId, altPronounId } = await this._fetchUserPronounIds(login);
+        return buildGrammar(pronounId, altPronounId);
     }
 }
 
