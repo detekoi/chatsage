@@ -124,7 +124,7 @@ class PronounService {
      */
     async _fetchUserPronounIds(login) {
         const none = { pronounId: null, altPronounId: null };
-        if (!login) return none;
+        if (!login || typeof login !== 'string') return none;
         const lowerUser = login.toLowerCase();
         if (!this.isValidUsername(lowerUser)) return none;
 

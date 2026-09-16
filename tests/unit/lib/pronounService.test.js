@@ -155,6 +155,8 @@ describe('pronounService', () => {
         expect(await pronounService.getUserPronouns('bad name!')).toBeNull();
         expect(await pronounService.getUserPronouns('')).toBeNull();
         expect(await pronounService.getUserPronouns(null)).toBeNull();
+        expect(await pronounService.getUserPronouns(12345)).toBeNull();
+        expect(await pronounService.getUserPronouns({ login: 'x' })).toBeNull();
         expect(global.fetch).not.toHaveBeenCalled();
     });
 });
