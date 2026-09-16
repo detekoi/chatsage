@@ -10,6 +10,7 @@ describe('pronounService', () => {
     beforeEach(() => {
         pronounService.userPronounsCache.cache.clear();
         pronounService.pendingRequests.clear();
+        pronounService.backoffUntil = 0;
 
         global.fetch = jest.fn();
     });
@@ -26,6 +27,10 @@ describe('pronounService', () => {
         await pronounService.getUserPronouns('TestUser');
         expect(global.fetch).toHaveBeenCalledTimes(1);
         expect(global.fetch.mock.calls[0][0]).toBe('https://api.pronouns.alejo.io/v1/users/testuser');
+        expect(global.fetch.mock.calls[0][1].headers).toEqual(expect.objectContaining({
+            'Accept': 'application/json',
+            'User-Agent': expect.stringContaining('github.com/detekoi'),
+        }));
     });
 
     test('getUserPronouns returns full grammar from a v1 object response', async () => {
@@ -99,6 +104,32 @@ describe('pronounService', () => {
         );
     });
 
+    test('a 429 or 5xx pauses lookups for other users until the negative window passes', async () => {
+        global.fetch.mockResolvedValueOnce(errorResponse(503));
+        expect(await pronounService.getUserPronouns('first')).toBeNull();
+        expect(pronounService.backoffUntil).toBeGreaterThan(Date.now());
+
+        // A different, uncached user does not hit the API while backed off
+        expect(await pronounService.getUserPronouns('second')).toBeNull();
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+
+        // Already-cached positive entries are still served
+        pronounService.userPronounsCache.set('third', { pronounId: 'hehim', altPronounId: null, fetchedAt: Date.now() });
+        expect((await pronounService.getUserPronouns('third')).display).toBe('He/Him');
+
+        // Once the window passes, requests resume
+        pronounService.backoffUntil = Date.now() - 1;
+        global.fetch.mockResolvedValueOnce(okResponse({ pronoun_id: 'sheher' }));
+        expect((await pronounService.getUserPronouns('second')).display).toBe('She/Her');
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('a 404 does not trigger the global backoff', async () => {
+        global.fetch.mockResolvedValueOnce(errorResponse(404));
+        await pronounService.getUserPronouns('nobody');
+        expect(pronounService.backoffUntil).toBe(0);
+    });
+
     test('network errors return null and are not cached', async () => {
         global.fetch.mockRejectedValueOnce(new Error('boom'));
         expect(await pronounService.getUserPronouns('flaky')).toBeNull();
@@ -131,6 +162,23 @@ describe('pronounService', () => {
 describe('buildGrammar', () => {
     test('plain set displays Subject/Object', () => {
         expect(buildGrammar('faefaer', null).display).toBe('Fae/Faer');
+        expect(buildGrammar('hehim', null).display).toBe('He/Him');
+    });
+
+    test('itits displays It/Its while keeping "it" as the grammatical object', () => {
+        const g = buildGrammar('itits', null);
+        expect(g.display).toBe('It/Its');
+        expect(g.object).toBe('it');
+        expect(g.possessive).toBe('its');
+    });
+
+    test('itits as an alt uses its subject', () => {
+        expect(buildGrammar('sheher', 'itits').display).toBe('She/It');
+    });
+
+    test('an alt equal to the primary is treated as no alt', () => {
+        expect(buildGrammar('hehim', 'hehim').display).toBe('He/Him');
+        expect(buildGrammar('itits', 'itits').display).toBe('It/Its');
     });
 
     test('alt set displays Subject/AltSubject', () => {

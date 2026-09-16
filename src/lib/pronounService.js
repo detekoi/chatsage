@@ -6,12 +6,15 @@ import logger from './logger.js';
 // and returned an array. v1 returns a single object per user and models
 // mixed pronouns as `pronoun_id` plus an optional `alt_pronoun_id`.
 const BASE_URL = 'https://api.pronouns.alejo.io/v1';
+const USER_AGENT = 'wildcatsage (+https://github.com/detekoi/chatsage)';
 const VALID_USERNAME_RE = /^[a-zA-Z0-9_]{1,25}$/;
 
 /**
  * Pronoun sets keyed by v1 pronoun ID (the keys of GET /v1/pronouns).
  * `singular` sets ("Any", "Other") display as one word rather than subject/object.
  * Grammar for singular sets falls back to they/them so callers still get usable forms.
+ * `display` overrides the default "Subject/Object" badge where the grammatical object
+ * form differs from the conventional badge (it/its: object "it", badge "It/Its").
  */
 const PRONOUNS = {
     hehim:    { subject: 'he',   Subject: 'He',   object: 'him',  Object: 'Him',  possessive: 'his',   Possessive: 'His',   reflexive: 'himself',  Reflexive: 'Himself' },
@@ -24,7 +27,7 @@ const PRONOUNS = {
     ziehir:   { subject: 'zie',  Subject: 'Zie',  object: 'hir',  Object: 'Hir',  possessive: 'hir',   Possessive: 'Hir',   reflexive: 'hirself',  Reflexive: 'Hirself' },
     perper:   { subject: 'per',  Subject: 'Per',  object: 'per',  Object: 'Per',  possessive: 'per',   Possessive: 'Per',   reflexive: 'perself',  Reflexive: 'Perself' },
     eem:      { subject: 'e',    Subject: 'E',    object: 'em',   Object: 'Em',   possessive: 'eir',   Possessive: 'Eir',   reflexive: 'emself',   Reflexive: 'Emself' },
-    itits:    { subject: 'it',   Subject: 'It',   object: 'it',   Object: 'It',   possessive: 'its',   Possessive: 'Its',   reflexive: 'itself',   Reflexive: 'Itself' },
+    itits:    { display: 'It/Its', subject: 'it', Subject: 'It', object: 'it', Object: 'It', possessive: 'its', Possessive: 'Its', reflexive: 'itself', Reflexive: 'Itself' },
     any:      { singular: true, label: 'Any' },
     other:    { singular: true, label: 'Other' },
 };
@@ -36,8 +39,9 @@ function lookupPronoun(id) {
 /**
  * Build the grammar object for a primary + optional alt pronoun ID, following the
  * display rules of the official extension: singular sets show their label alone,
- * mixed sets show "Primary/Alt" subjects, plain sets show "Subject/Object".
- * Grammatical forms always come from the primary set (or they/them for singular).
+ * mixed sets show "Primary/Alt" subjects, plain sets show "Subject/Object". An alt
+ * equal to the primary is treated as no alt. Grammatical forms always come from the
+ * primary set (or they/them for singular).
  * @param {string} pronounId
  * @param {string|null|undefined} altPronounId
  * @returns {object|null}
@@ -52,15 +56,16 @@ export function buildGrammar(pronounId, altPronounId) {
     if (primary.singular) {
         display = primary.label;
     } else {
-        const alt = lookupPronoun(altPronounId);
+        const alt = altPronounId !== pronounId ? lookupPronoun(altPronounId) : null;
         if (alt) {
             display = `${primary.Subject}/${alt.singular ? alt.label : alt.Subject}`;
         } else {
-            display = `${primary.Subject}/${primary.Object}`;
+            display = primary.display || `${primary.Subject}/${primary.Object}`;
         }
     }
 
-    return { display, ...forms };
+    // Spread first so the computed display wins over any per-set override.
+    return { ...forms, display };
 }
 
 class LRUCache {
@@ -97,6 +102,9 @@ class PronounService {
         this.pendingRequests = new Map(); // login -> Promise
         this.CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
         this.NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 60 seconds for errors like 429
+        // Service-wide pause after a 429/5xx so new chatters don't each pay a fresh
+        // request (and a possible 3s timeout) while the API is rate limiting or down.
+        this.backoffUntil = 0;
     }
 
     isValidUsername(username) {
@@ -126,6 +134,10 @@ class PronounService {
             return cached;
         }
 
+        if (now < this.backoffUntil) {
+            return none;
+        }
+
         if (this.pendingRequests.has(lowerUser)) {
             return this.pendingRequests.get(lowerUser);
         }
@@ -135,7 +147,10 @@ class PronounService {
             try {
                 const controller = new AbortController();
                 timeoutId = setTimeout(() => controller.abort(), 3000);
-                const response = await fetch(`${BASE_URL}/users/${encodeURIComponent(lowerUser)}`, { signal: controller.signal });
+                const response = await fetch(`${BASE_URL}/users/${encodeURIComponent(lowerUser)}`, {
+                    signal: controller.signal,
+                    headers: { 'Accept': 'application/json', 'User-Agent': USER_AGENT },
+                });
 
                 if (response.ok) {
                     const data = await response.json();
@@ -147,7 +162,10 @@ class PronounService {
                     // v1 returns 404 when the user has not set pronouns.
                     return this._cacheEntry(lowerUser, null, null);
                 } else {
-                    // Cache negative result for a short time on 429/500 errors to prevent retry storms
+                    // Cache negative result for a short time on 429/500 errors to prevent retry storms,
+                    // and pause all lookups for the same window.
+                    logger.warn({ user: lowerUser, status: response.status }, '[PronounService] Unexpected API status; backing off');
+                    this.backoffUntil = Date.now() + this.NEGATIVE_CACHE_TTL_MS;
                     return this._cacheEntry(lowerUser, null, null, Date.now() - this.CACHE_TTL_MS + this.NEGATIVE_CACHE_TTL_MS);
                 }
             } catch (error) {
