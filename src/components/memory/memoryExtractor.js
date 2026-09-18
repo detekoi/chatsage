@@ -21,6 +21,7 @@ import { MemoryExtractionSchema, ManualMemorySchema } from '../llm/schemaUtils.j
 import { savePendingMessages, takePendingMessages } from './memoryStorage.js';
 import {
     isMemoryEnabled,
+    onMemoryDisabled,
     isUserOptedOut,
     findRelatedMemories,
     saveMemory,
@@ -64,6 +65,9 @@ const backlogs = new Map();
 const pendingChecked = new Set();
 /** @type {Set<string>} channels with an extraction in flight */
 const extracting = new Set();
+
+// A channel that turns memory off has its waiting chat dropped from RAM at once, not on its next message.
+onMemoryDisabled(channel => backlogs.delete(channel));
 
 function _toLine(msg) {
     const ts = msg.ts ?? (msg.timestamp instanceof Date ? msg.timestamp.getTime() : Date.now());
@@ -110,6 +114,9 @@ async function _withoutOptedOut(channel, lines) {
 
 // Hands over the backlog once it is worth a model call; until then the lines keep waiting.
 async function _takeBatch(channel) {
+    // Filtering opted-out users only ever shrinks the backlog, so an undersized one cannot qualify.
+    if ((backlogs.get(channel)?.length || 0) < MIN_MESSAGES_TO_EXTRACT) return null;
+
     // Swapped out synchronously, so lines ingested during the await below queue up behind these.
     const taken = backlogs.get(channel) || [];
     backlogs.set(channel, []);
@@ -265,7 +272,11 @@ export async function stashUnextractedMessages(channelStates) {
             if (!(await isMemoryEnabled(channel))) return;
 
             _ingest(channel, histories.get(channel));
-            const lines = await _withoutOptedOut(channel, backlogs.get(channel) || []);
+            // Taken out synchronously: an extraction still in flight must not pick these lines up
+            // as well, or the next process would run them through the model a second time.
+            const taken = backlogs.get(channel) || [];
+            backlogs.delete(channel);
+            const lines = await _withoutOptedOut(channel, taken);
             if (lines.length < MIN_MESSAGES_TO_STASH) return;
             await savePendingMessages(channel, lines);
         } catch (err) {

@@ -38,6 +38,7 @@ const {
     forgetByQuery,
     forgetUser,
     setMemoryEnabled,
+    onMemoryDisabled,
     getMemoryStatus,
     MAX_MEMORIES_PER_CHANNEL,
     _clearMemoryCache,
@@ -258,6 +259,19 @@ describe('channel opt-out', () => {
         await setMemoryEnabled('chan', false);
         expect(storage.setChannelMemoryEnabled).toHaveBeenCalledWith('chan', false);
         expect((await getMemoryStatus('chan')).enabled).toBe(false);
+    });
+
+    it('tells listeners when a channel turns memory off, and survives a listener that throws', async () => {
+        const listener = jest.fn();
+        onMemoryDisabled(() => { throw new Error('listener bug'); });
+        onMemoryDisabled(listener);
+
+        await setMemoryEnabled('Chan', true);
+        expect(listener).not.toHaveBeenCalled();
+
+        await setMemoryEnabled('Chan', false);
+        expect(listener).toHaveBeenCalledWith('chan');
+        expect(storage.takePendingMessages).toHaveBeenCalledWith('Chan');
     });
 
     it('discards chat stashed at an earlier shutdown when the channel opts out', async () => {

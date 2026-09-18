@@ -150,6 +150,19 @@ export async function isMemoryEnabled(channelName) {
     return cache.enabled;
 }
 
+/** @type {Set<(channel: string) => void>} */
+const disabledListeners = new Set();
+
+/**
+ * Registers a callback for when a channel turns memory off, so modules that hold chat for that
+ * channel can let go of it straight away. The extractor cannot be imported from here (it imports
+ * this module), hence the hook.
+ * @param {(channel: string) => void} listener Receives the lowercase channel name.
+ */
+export function onMemoryDisabled(listener) {
+    disabledListeners.add(listener);
+}
+
 /**
  * @param {string} channelName
  * @param {boolean} enabled
@@ -159,6 +172,13 @@ export async function setMemoryEnabled(channelName, enabled) {
     await setChannelMemoryEnabled(channelName, enabled);
     cache.enabled = !!enabled;
     if (!enabled) {
+        for (const listener of disabledListeners) {
+            try {
+                listener(channelName.toLowerCase());
+            } catch (err) {
+                logger.warn({ err, channel: channelName }, '[Memory] Memory-disabled listener failed');
+            }
+        }
         // Chat stashed at an earlier shutdown must not sit in Firestore, or be replayed if the
         // channel opts back in later.
         await takePendingMessages(channelName);

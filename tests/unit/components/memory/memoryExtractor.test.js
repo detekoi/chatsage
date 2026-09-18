@@ -11,6 +11,7 @@ jest.mock('../../../../src/components/memory/memoryStorage.js', () => ({
 
 jest.mock('../../../../src/components/memory/memoryManager.js', () => ({
     isMemoryEnabled: jest.fn().mockResolvedValue(true),
+    onMemoryDisabled: jest.fn(),
     isUserOptedOut: jest.fn().mockResolvedValue(false),
     findRelatedMemories: jest.fn().mockResolvedValue([]),
     saveMemory: jest.fn().mockResolvedValue({ action: 'added' }),
@@ -35,6 +36,9 @@ const {
     structureManualMemory,
     _resetExtractorState,
 } = require('../../../../src/components/memory/memoryExtractor.js');
+
+// Registered once at module load, so grab it before beforeEach clears the mock's call log.
+const memoryDisabledListener = manager.onMemoryDisabled.mock.calls[0][0];
 
 const BOT = String(config.twitch.username).toLowerCase();
 let clock = 1000;
@@ -109,6 +113,20 @@ describe('captureMemories', () => {
         const prompt = generateStructuredJson.mock.calls[0][0].prompt;
         expect(prompt).toContain('alice: message number 0');
         expect(prompt).toContain('bob: message number 2');
+    });
+
+    it('does not look up opt-outs for a backlog that is too small to extract anyway', async () => {
+        await captureMemories('chan', chat(3));
+        expect(manager.isUserOptedOut).not.toHaveBeenCalled();
+    });
+
+    it('drops waiting chat from RAM as soon as the channel turns memory off', async () => {
+        await captureMemories('chan', chat(4, 'alice'));
+        memoryDisabledListener('chan');
+
+        // Had the 4 held lines survived, these 4 would make 8 and be stashed.
+        await stashUnextractedMessages(new Map([['chan', { chatHistory: chat(4, 'bob') }]]));
+        expect(storage.savePendingMessages).not.toHaveBeenCalled();
     });
 
     it('queues a slice that arrives while a call is in flight and extracts it afterwards', async () => {
@@ -215,6 +233,25 @@ describe('stashUnextractedMessages', () => {
         const [channel, lines] = storage.savePendingMessages.mock.calls[0];
         expect(channel).toBe('chan');
         expect(lines.map(l => l.username)).toEqual([...Array(4).fill('alice'), ...Array(4).fill('bob')]);
+    });
+
+    it('hands stashed lines to the next process only, even if a call in flight finishes first', async () => {
+        let releaseFirst;
+        generateStructuredJson
+            .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = () => resolve({ operations: [] }); }))
+            .mockResolvedValue({ operations: [] });
+
+        const first = captureMemories('chan', chat(6, 'alice'));
+        await new Promise(resolve => setImmediate(resolve));
+        await captureMemories('chan', chat(8, 'bob')); // queued behind the running call
+
+        await stashUnextractedMessages(new Map());
+        expect(storage.savePendingMessages.mock.calls[0][1]).toHaveLength(8);
+
+        // The running call completes before the process exits: it must not extract bob's lines too.
+        releaseFirst();
+        await first;
+        expect(generateStructuredJson).toHaveBeenCalledTimes(1);
     });
 
     it('does not stash chat from a channel that turned memory off', async () => {
