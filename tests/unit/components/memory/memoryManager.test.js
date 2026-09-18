@@ -17,6 +17,7 @@ jest.mock('../../../../src/components/memory/memoryStorage.js', () => ({
     addOptOut: jest.fn().mockResolvedValue(),
     setChannelMemoryEnabled: jest.fn().mockResolvedValue(),
     bumpUsage: jest.fn(),
+    takePendingMessages: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('../../../../src/lib/logger.js', () => ({
@@ -257,5 +258,12 @@ describe('channel opt-out', () => {
         await setMemoryEnabled('chan', false);
         expect(storage.setChannelMemoryEnabled).toHaveBeenCalledWith('chan', false);
         expect((await getMemoryStatus('chan')).enabled).toBe(false);
+    });
+
+    it('discards chat stashed at an earlier shutdown when the channel opts out', async () => {
+        await setMemoryEnabled('chan', true);
+        expect(storage.takePendingMessages).not.toHaveBeenCalled();
+        await setMemoryEnabled('chan', false);
+        expect(storage.takePendingMessages).toHaveBeenCalledWith('chan');
     });
 });

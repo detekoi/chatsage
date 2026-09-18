@@ -14,6 +14,7 @@ import {
     addOptOut,
     setChannelMemoryEnabled,
     bumpUsage,
+    takePendingMessages,
 } from './memoryStorage.js';
 
 export const MAX_MEMORIES_PER_CHANNEL = 300;
@@ -157,6 +158,11 @@ export async function setMemoryEnabled(channelName, enabled) {
     const cache = await _ensureLoaded(channelName);
     await setChannelMemoryEnabled(channelName, enabled);
     cache.enabled = !!enabled;
+    if (!enabled) {
+        // Chat stashed at an earlier shutdown must not sit in Firestore, or be replayed if the
+        // channel opts back in later.
+        await takePendingMessages(channelName);
+    }
 }
 
 /**

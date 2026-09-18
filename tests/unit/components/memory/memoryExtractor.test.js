@@ -68,11 +68,18 @@ describe('captureMemories', () => {
         expect(manager.saveMemory).not.toHaveBeenCalled();
     });
 
-    it('does nothing when the channel opted out', async () => {
+    it('captures nothing when the channel opted out, and discards any stash left for it', async () => {
         manager.isMemoryEnabled.mockResolvedValue(false);
-        await captureMemories('chan', chat(10));
+        const history = chat(10);
+        await captureMemories('chan', history);
+        await captureMemories('chan', history);
         expect(generateStructuredJson).not.toHaveBeenCalled();
-        expect(storage.takePendingMessages).not.toHaveBeenCalled();
+        // Read-and-delete, once per process, so an orphaned stash cannot linger or be replayed.
+        expect(storage.takePendingMessages).toHaveBeenCalledTimes(1);
+
+        // Nothing was held in RAM while opted out either.
+        await stashUnextractedMessages(new Map());
+        expect(storage.savePendingMessages).not.toHaveBeenCalled();
     });
 
     it('filters out the bot, commands and opted-out users before calling the model', async () => {
@@ -92,9 +99,45 @@ describe('captureMemories', () => {
         expect(prompt).not.toContain('ghost');
     });
 
-    it('skips slices that are too small to be worth a call', async () => {
+    it('holds a slice that is too small for a call instead of dropping it', async () => {
         await captureMemories('chan', chat(3));
         expect(generateStructuredJson).not.toHaveBeenCalled();
+
+        // e.g. a quiet stream goes offline with 3 lines, then 3 more arrive next stream
+        await captureMemories('chan', chat(3, 'bob'));
+        expect(generateStructuredJson).toHaveBeenCalledTimes(1);
+        const prompt = generateStructuredJson.mock.calls[0][0].prompt;
+        expect(prompt).toContain('alice: message number 0');
+        expect(prompt).toContain('bob: message number 2');
+    });
+
+    it('queues a slice that arrives while a call is in flight and extracts it afterwards', async () => {
+        let releaseFirst;
+        generateStructuredJson
+            .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = () => resolve({ operations: [] }); }))
+            .mockResolvedValue({ operations: [] });
+
+        const first = captureMemories('chan', chat(6, 'alice'));
+        await new Promise(resolve => setImmediate(resolve));
+        expect(generateStructuredJson).toHaveBeenCalledTimes(1);
+
+        // contextManager evicts again while the first call is still running
+        await captureMemories('chan', chat(6, 'bob'));
+        expect(generateStructuredJson).toHaveBeenCalledTimes(1);
+
+        releaseFirst();
+        await first;
+        expect(generateStructuredJson).toHaveBeenCalledTimes(2);
+        expect(generateStructuredJson.mock.calls[1][0].prompt).toContain('bob: message number 5');
+        expect(generateStructuredJson.mock.calls[1][0].prompt).not.toContain('alice:');
+    });
+
+    it('drops a batch whose extraction failed rather than retrying it', async () => {
+        generateStructuredJson.mockRejectedValueOnce(new Error('boom'));
+        await captureMemories('chan', chat(6, 'alice'));
+        await captureMemories('chan', chat(6, 'bob'));
+        expect(generateStructuredJson).toHaveBeenCalledTimes(2);
+        expect(generateStructuredJson.mock.calls[1][0].prompt).not.toContain('alice:');
     });
 
     it('never looks at the same line twice', async () => {
@@ -162,6 +205,35 @@ describe('stashUnextractedMessages', () => {
         expect(channel).toBe('busy');
         expect(lines).toHaveLength(9);
         expect(lines[0]).toEqual({ username: 'alice', message: 'message number 0', ts: expect.any(Number) });
+    });
+
+    it('stashes lines that were handed over but are still waiting for a call', async () => {
+        // Evicted from contextManager already, so the backlog is the only copy.
+        await captureMemories('chan', chat(4, 'alice'));
+        await stashUnextractedMessages(new Map([['chan', { chatHistory: chat(4, 'bob') }]]));
+
+        const [channel, lines] = storage.savePendingMessages.mock.calls[0];
+        expect(channel).toBe('chan');
+        expect(lines.map(l => l.username)).toEqual([...Array(4).fill('alice'), ...Array(4).fill('bob')]);
+    });
+
+    it('does not stash chat from a channel that turned memory off', async () => {
+        manager.isMemoryEnabled.mockResolvedValue(false);
+        await stashUnextractedMessages(new Map([['busy', { chatHistory: chat(9) }]]));
+        expect(storage.savePendingMessages).not.toHaveBeenCalled();
+    });
+
+    it('leaves opted-out users out of the stash', async () => {
+        manager.isUserOptedOut.mockImplementation(async (channel, login) => login === 'ghost');
+        await stashUnextractedMessages(new Map([['busy', { chatHistory: [...chat(8), line('ghost', 'not me')] }]]));
+        const [, lines] = storage.savePendingMessages.mock.calls[0];
+        expect(lines).toHaveLength(8);
+        expect(lines.some(l => l.username === 'ghost')).toBe(false);
+    });
+
+    it('does not read channel settings for idle channels at shutdown', async () => {
+        await stashUnextractedMessages(new Map([['quiet', { chatHistory: chat(2) }]]));
+        expect(manager.isMemoryEnabled).not.toHaveBeenCalled();
     });
 
     it('does not stash lines that were already extracted', async () => {
