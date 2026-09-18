@@ -4,6 +4,7 @@ import logger from '../../lib/logger.js';
 import { isChannelActive } from './channelManager.js';
 import { isDevChannel } from '../../lib/devChannels.js';
 import { getContextManager } from '../context/contextManager.js';
+import { captureMemories } from '../memory/memoryExtractor.js';
 
 import { notifyStreamOnline, notifyStreamOffline, notifyFollow, notifySubscription, notifyGiftSubs, notifyRaid, notifyAdBreak } from '../autoChat/autoChatManager.js';
 import * as sharedChatManager from './sharedChatManager.js';
@@ -242,6 +243,10 @@ export async function eventSubHandler(req, res, rawBody) {
 
                 // Notify Lifecycle Manager for stream tracking
                 await lifecycle.onStreamStatusChange(login, false);
+
+                // Quiet channels may never fill the chat buffer, so end of stream is their
+                // chance to have the session's chat looked at for long-term memory.
+                captureMemories(login, getContextManager().getAllChannelStates().get(login)?.chatHistory);
 
                 // Clear the stream context
                 getContextManager().clearStreamContext(login);

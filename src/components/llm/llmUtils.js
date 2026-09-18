@@ -6,6 +6,7 @@ import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './gem
 import { sendBotResponse } from './botResponseHandler.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 import { pronounService } from '../../lib/pronounService.js';
+import { retrieveMemories, formatMemoriesForPrompt } from '../memory/memoryManager.js';
 
 /**
  * Helper to generate user-friendly error messages based on error type
@@ -226,7 +227,25 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         const messageForChat = `USER: ${displayName} says: ${userMessage}`;
         // Include emote images as inline multimodal parts if present
         const messageParts = [{ text: messageForChat }, ...emoteImageParts];
-        const chatResult = await chatSession.sendMessage({ message: messageParts });
+
+        // Long-term channel memory. The model will not ask about a term it thinks it already
+        // knows, so matching lore is handed over up front. A memory failure never blocks a reply.
+        let memoryContext = null;
+        try {
+            const recentText = (contextManager.getAllChannelStates().get(cleanChannel)?.chatHistory || [])
+                .slice(-5)
+                .map(msg => msg.message)
+                .join('\n');
+            const memories = await retrieveMemories(cleanChannel, { text: userMessage, username: lowerUsername, recentText });
+            memoryContext = formatMemoriesForPrompt(memories);
+            if (memoryContext) {
+                logger.info({ ...logContext, memoryIds: memories.map(m => m.id) }, '[Memory] Channel memory added to LLM turn');
+            }
+        } catch (memoryErr) {
+            logger.warn({ err: memoryErr, channel: cleanChannel }, '[Memory] Retrieval failed, replying without channel memory');
+        }
+
+        const chatResult = await chatSession.sendMessage({ message: messageParts, ephemeralContext: memoryContext });
         let initialResponseText = typeof chatResult?.text === 'function' ? chatResult.text() : (typeof chatResult?.text === 'string' ? chatResult.text : '');
 
         // Log Google Search grounding metadata and citations if present

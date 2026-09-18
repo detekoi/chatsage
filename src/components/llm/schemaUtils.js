@@ -248,3 +248,37 @@ export const TranslationResponseSchema = {
     },
     required: ['same_language', 'translated_text']
 };
+
+export const MemoryExtractionSchema = {
+    type: 'object',
+    properties: {
+        operations: {
+            type: 'array',
+            description: 'Memory changes worth making. Empty when the chat holds nothing worth keeping, which is the usual case.',
+            items: {
+                type: 'object',
+                properties: {
+                    op: { type: 'string', description: 'add = new lore; update = an existing memory changed or got clearer; reinforce = an existing memory came up again unchanged.', enum: ['add', 'update', 'reinforce'] },
+                    id: { type: 'string', description: 'Id of the existing memory for update/reinforce. Empty for add.' },
+                    text: { type: 'string', description: 'One short third-person factual sentence. Empty for reinforce.' },
+                    keys: { type: 'array', items: { type: 'string' }, description: 'The 1-4 word phrases chatters would type when bringing this up again, exactly as they write them.' },
+                    subjects: { type: 'array', items: { type: 'string' }, description: 'Logins of the chatters this memory is about, if any.' },
+                    kind: { type: 'string', description: 'Category', enum: ['lore', 'joke', 'member', 'other'] }
+                },
+                required: ['op']
+            }
+        }
+    },
+    required: ['operations']
+};
+
+export const ManualMemorySchema = {
+    type: 'object',
+    properties: {
+        text: { type: 'string', description: 'The fact as one short third-person sentence.' },
+        keys: { type: 'array', items: { type: 'string' }, description: 'The 1-4 word phrases chatters would type when bringing this up again.' },
+        subjects: { type: 'array', items: { type: 'string' }, description: 'Logins of the chatters this fact is about, if any.' },
+        kind: { type: 'string', description: 'Category', enum: ['lore', 'joke', 'member', 'other'] }
+    },
+    required: ['text', 'keys']
+};

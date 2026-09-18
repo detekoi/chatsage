@@ -6,6 +6,8 @@ import { clearMessageQueue } from './lib/ircSender.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
 import { stopTimerManager } from './components/timers/timerManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
+import { getContextManager } from './components/context/contextManager.js';
+import { stashUnextractedMessages } from './components/memory/memoryExtractor.js';
 import { hasDevChannels } from './lib/devChannels.js';
 
 // Extracted modules
@@ -52,6 +54,10 @@ async function gracefulShutdown(signal) {
     } catch (error) {
         logger.error({ err: error }, 'Error stopping timer manager during shutdown.');
     }
+
+    // No time for an LLM call here, so chat that has not been through memory extraction is
+    // stashed for the next process to pick up.
+    shutdownTasks.push(stashUnextractedMessages(getContextManager().getAllChannelStates()));
 
     // Clear message queue
     clearMessageQueue();

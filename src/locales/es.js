@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "La traducción ya estaba desactivada.",
             "StoppedTranslationFor": "Se detuvo la traducción para {user}.",
             "TranslationAlreadyOffFor": "La traducción ya estaba desactivada para {user}."
+        },
+        "memory": {
+            "UsageRemember": "Uso: !remember <dato>. Ejemplo: !remember gary = el patito de goma en el escritorio",
+            "Remembered": "Entendido, lo recordaré.",
+            "UpdatedMemory": "Entendido, actualicé lo que sabía sobre eso.",
+            "MemoryFull": "Mi memoria para este canal está llena. Usa !forget <frase> para hacer espacio.",
+            "CouldNotRemember": "No pude entender cómo clasificar eso. Prueba: !remember <frase> = <qué significa>",
+            "MemoryIsOff": "La memoria está desactivada en este canal. Un mod puede activarla con !memory on.",
+            "UsageForget": "Uso: !forget <frase>",
+            "ForgotCount": "Olvidé {count} recuerdos que coinciden con \"{phrase}\".",
+            "NothingToForget": "No tengo nada guardado sobre \"{phrase}\".",
+            "ForgotUser": "Listo. He olvidado lo que sabía sobre ti aquí y no te recordaré en el futuro.",
+            "TurnedOn": "Memoria activada. Recordaré el lore y los chistes internos de este canal. Desactívala con !memory off.",
+            "TurnedOff": "Memoria desactivada. No guardaré ni usaré recuerdos del canal. Vuelve a activarla con !memory on.",
+            "StatusOn": "La memoria está activada con {count} recuerdos guardados. Mods: !memory off | !remember <dato> | !forget <frase>. Todos: !forgetme",
+            "StatusOff": "La memoria está desactivada con {count} recuerdos guardados. Los mods pueden activarla con !memory on.",
+            "SorrySomethingWentWrong": "Perdón, algo salió mal con mi memoria. Inténtalo de nuevo más tarde."
         }
     },
     "result": {

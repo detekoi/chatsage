@@ -4,6 +4,7 @@ import { initializeFirestore } from '../lib/firestore.js';
 import { initializeSecretManager, validateSecretManager } from '../lib/secretManager.js';
 import { initializeChannelManager, getActiveManagedChannels } from '../components/twitch/channelManager.js';
 import { initializeLanguageStorage } from '../components/context/languageStorage.js';
+import { initializeMemoryStorage } from '../components/memory/memoryStorage.js';
 import { loadCatalogs } from '../lib/i18n.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
 import { initializePersonaStorage, loadAllChannelPersonas, publishBotDefaults } from '../components/context/personaStorage.js';
@@ -91,6 +92,9 @@ export async function initializeStorageComponents() {
 
     logger.info('Initializing Language Storage...');
     await initializeLanguageStorage();
+
+    logger.info('Initializing Memory Storage...');
+    await initializeMemoryStorage();
 
     logger.info('Initializing Auto-Chat Storage...');
     await initializeAutoChatStorage();

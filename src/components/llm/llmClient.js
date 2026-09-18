@@ -133,7 +133,8 @@ export async function generateStructuredJson({
     model = 'main',
     tools,
     multimodalParts,
-    returnMeta = false
+    returnMeta = false,
+    serviceTier
 }) {
     if (model === 'lite') {
         const geminiModel = geminiCore.getGeminiClient();
@@ -150,6 +151,7 @@ export async function generateStructuredJson({
             contents: [{ role: 'user', parts }],
             ...(systemInstruction ? { systemInstruction } : {}),
             ...(tools ? { tools } : {}),
+            ...(serviceTier ? { serviceTier } : {}),
             generationConfig: genConfig
         });
 

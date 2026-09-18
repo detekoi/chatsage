@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "翻訳はすでにオフになっています。",
             "StoppedTranslationFor": "{user} の翻訳を停止しました。",
             "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
+        },
+        "memory": {
+            "UsageRemember": "使い方: !remember <覚える内容>。例: !remember ゲイリー = デスクの上のラバーダック",
+            "Remembered": "了解、覚えておくね。",
+            "UpdatedMemory": "了解、その記憶を更新したよ。",
+            "MemoryFull": "このチャンネルの記憶容量がいっぱいです。!forget <フレーズ> で空きを作ってね。",
+            "CouldNotRemember": "どう整理していいか分からなかったよ。次のように試してみて: !remember <フレーズ> = <意味>",
+            "MemoryIsOff": "このチャンネルでは記憶機能がオフになっています。モデレーターは !memory on でオンにできます。",
+            "UsageForget": "使い方: !forget <フレーズ>",
+            "ForgotCount": "「{phrase}」に一致する記憶を{count}件忘れたよ。",
+            "NothingToForget": "「{phrase}」については何も覚えてないよ。",
+            "ForgotUser": "完了。このチャンネルでのあなたについての記憶を削除したよ。今後も記憶しないようにするね。",
+            "TurnedOn": "記憶機能をオンにしたよ。このチャンネルの歴史や身内ネタを覚えます。オフにするには !memory off。",
+            "TurnedOff": "記憶機能をオフにしたよ。チャンネルの記憶を記録・使用しません。オンに戻すには !memory on。",
+            "StatusOn": "記憶機能はオンです（保存済み: {count}件）。モデレーター: !memory off | !remember <覚える内容> | !forget <フレーズ>。誰でも: !forgetme",
+            "StatusOff": "記憶機能はオフです（保存済み: {count}件）。モデレーターは !memory on でオンにできます。",
+            "SorrySomethingWentWrong": "ごめん、記憶の処理で問題が発生したよ。後でもう一度試してね。"
         }
     },
     "result": {

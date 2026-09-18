@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "La traduction était déjà désactivée.",
             "StoppedTranslationFor": "Traduction arrêtée pour {user}.",
             "TranslationAlreadyOffFor": "La traduction était déjà désactivée pour {user}."
+        },
+        "memory": {
+            "UsageRemember": "Utilisation : !remember <fait>. Exemple : !remember gary = le canard en plastique sur le bureau",
+            "Remembered": "C'est noté, je m'en souviendrai.",
+            "UpdatedMemory": "C'est noté, j'ai mis à jour ce que je savais là-dessus.",
+            "MemoryFull": "Ma mémoire pour cette chaîne est pleine. Utilise !forget <terme> pour faire de la place.",
+            "CouldNotRemember": "Je n'ai pas réussi à classer ça. Essaie : !remember <terme> = <ce que ça veut dire>",
+            "MemoryIsOff": "La mémoire est désactivée sur cette chaîne. Un modo peut l'activer avec !memory on.",
+            "UsageForget": "Utilisation : !forget <terme>",
+            "ForgotCount": "{count} souvenirs correspondant à \"{phrase}\" oubliés.",
+            "NothingToForget": "Je n'ai rien en mémoire sur \"{phrase}\".",
+            "ForgotUser": "C'est fait. J'ai oublié ce que je savais sur toi ici et je ne retiendrai plus rien à l'avenir.",
+            "TurnedOn": "Mémoire activée. Je retiendrai le lore et les délires de la chaîne. Désactive-la avec !memory off.",
+            "TurnedOff": "Mémoire désactivée. Je n'enregistrerai ni n'utiliserai les souvenirs de la chaîne. Réactive-la avec !memory on.",
+            "StatusOn": "Mémoire activée ({count} souvenirs stockés). Modos : !memory off | !remember <fait> | !forget <terme>. Tout le monde : !forgetme",
+            "StatusOff": "Mémoire désactivée ({count} souvenirs stockés). Les modos peuvent l'activer avec !memory on.",
+            "SorrySomethingWentWrong": "Désolé, un problème est survenu avec ma mémoire. Réessaie plus tard."
         }
     },
     "result": {

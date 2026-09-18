@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "Übersetzung war bereits ausgeschaltet.",
             "StoppedTranslationFor": "Übersetzung für {user} gestoppt.",
             "TranslationAlreadyOffFor": "Übersetzung für {user} war bereits ausgeschaltet."
+        },
+        "memory": {
+            "UsageRemember": "Verwendung: !remember <Fakt>. Beispiel: !remember Gary = die Quietscheente auf dem Schreibtisch",
+            "Remembered": "Alles klar, ich merke mir das.",
+            "UpdatedMemory": "Alles klar, ich habe mein Wissen dazu aktualisiert.",
+            "MemoryFull": "Mein Speicher für diesen Kanal ist voll. Nutze !forget <Begriff>, um Platz zu schaffen.",
+            "CouldNotRemember": "Ich konnte das nicht richtig zuordnen. Versuch es so: !remember <Begriff> = <Bedeutung>",
+            "MemoryIsOff": "Die Memory-Funktion ist in diesem Kanal deaktiviert. Ein Mod kann sie mit !memory on einschalten.",
+            "UsageForget": "Verwendung: !forget <Begriff>",
+            "ForgotCount": "{count} Erinnerungen zu \"{phrase}\" vergessen.",
+            "NothingToForget": "Ich habe nichts zu \"{phrase}\" gespeichert.",
+            "ForgotUser": "Erledigt. Ich habe alles vergessen, was ich hier über dich wusste, und merke mir künftig nichts mehr über dich.",
+            "TurnedOn": "Memory ist an. Ich merke mir die Lore und Insider dieses Kanals. Ausschalten mit !memory off.",
+            "TurnedOff": "Memory ist aus. Ich werde keine Kanal-Erinnerungen mehr erfassen oder nutzen. Wieder einschalten mit !memory on.",
+            "StatusOn": "Memory ist an ({count} Erinnerungen gespeichert). Mods: !memory off | !remember <Fakt> | !forget <Begriff>. Alle: !forgetme",
+            "StatusOff": "Memory ist aus ({count} Erinnerungen gespeichert). Mods können es mit !memory on einschalten.",
+            "SorrySomethingWentWrong": "Sorry, bei meinem Speicher ist etwas schiefgelaufen. Bitte versuch es später noch einmal."
         }
     },
     "result": {

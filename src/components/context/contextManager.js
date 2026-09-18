@@ -5,6 +5,7 @@ import { saveChannelLanguage, loadAllChannelLanguages } from './languageStorage.
 import { nameFromCode } from '../../lib/i18n.js';
 import { saveUserTranslation, removeUserTranslation, loadAllUserTranslations } from './translationStorage.js';
 import { getEmoteContextString } from '../../lib/geminiEmoteDescriber.js';
+import { captureMemories } from '../memory/memoryExtractor.js';
 
 // --- Interfaces (for clarity, not strictly enforced in JS) ---
 /*
@@ -256,6 +257,9 @@ async function addMessage(channelName, username, message, tags) {
             // This avoids the "Echo Chamber" bug where kept messages appear
             // in both the summary and the raw window.
             const toEvict = state.chatHistory.slice(0, boundaryLength - KEEP_RAW);
+            // These lines are about to be reduced to a summary, so long-term memory gets its
+            // look first. Fire-and-forget: it never throws and must not hold up the summarizer.
+            captureMemories(channelName, toEvict);
             const summary = await triggerSummarizationIfNeeded(
                 channelName,
                 toEvict,

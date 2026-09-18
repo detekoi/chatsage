@@ -56,6 +56,40 @@ describe('OpenAI Chat Session Module', () => {
         ]);
     });
 
+    test('sendMessage sends ephemeralContext with the request but keeps it out of history', async () => {
+        const instance = getOpenAiInstance();
+        const createSpy = jest.spyOn(instance.responses, 'create').mockResolvedValue({
+            output_text: 'Oh yeah, that one.'
+        });
+
+        const session = getOrCreateChatSession('testchannel');
+        const memoryBlock = '--- CHANNEL MEMORY ---\n- Gary is the duck.\n--- END CHANNEL MEMORY ---';
+        await session.sendMessage({ message: [{ text: 'USER: alice says: who is gary' }], ephemeralContext: memoryBlock });
+
+        const sentInput = createSpy.mock.calls[0][0].input;
+        expect(sentInput[sentInput.length - 1].content).toEqual([
+            { type: 'input_text', text: memoryBlock },
+            { type: 'input_text', text: 'USER: alice says: who is gary' }
+        ]);
+        expect(JSON.stringify(session.history)).not.toContain('CHANNEL MEMORY');
+
+        // The next turn must not re-send the earlier turn's memory block.
+        await session.sendMessage('thanks');
+        expect(JSON.stringify(createSpy.mock.calls[1][0].input)).not.toContain('CHANNEL MEMORY');
+    });
+
+    test('sendMessage prepends ephemeralContext to a plain string message', async () => {
+        const instance = getOpenAiInstance();
+        const createSpy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({ output_text: 'ok' });
+
+        const session = getOrCreateChatSession('testchannel');
+        await session.sendMessage({ message: 'who is gary', ephemeralContext: 'MEMO' });
+
+        const sentInput = createSpy.mock.calls[0][0].input;
+        expect(sentInput[sentInput.length - 1].content).toBe('MEMO\n\nwho is gary');
+        expect(session.history[0].content).toBe('who is gary');
+    });
+
     test('resetChatSession removes channel session', () => {
         const s1 = getOrCreateChatSession('testchannel');
         resetChatSession('testchannel');

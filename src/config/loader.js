@@ -98,6 +98,11 @@ function loadConfig() {
             invokerServiceAccount: process.env.CLOUD_TASKS_INVOKER_SA || null,
         },
 
+        // Long-term channel memory (lore, in-jokes, regulars). Kill switch only.
+        memory: {
+            enabled: process.env.MEMORY_ENABLED !== 'false',
+        },
+
         // Emote Description (Vision)
         emote: {
             geminiModel: process.env.EMOTE_GEMINI_MODEL || 'gemini-flash-lite-latest',

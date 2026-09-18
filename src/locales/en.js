@@ -196,6 +196,23 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help",
             "UnknownCommandFormatOr": "Unknown command format or extra arguments provided. Use !geo help."
         },
+        "memory": {
+            "UsageRemember": "Usage: !remember <fact>. Example: !remember gary = the rubber duck on the desk",
+            "Remembered": "Got it, I'll remember that.",
+            "UpdatedMemory": "Got it, I updated what I knew about that.",
+            "MemoryFull": "My memory for this channel is full. Use !forget <phrase> to make room.",
+            "CouldNotRemember": "I couldn't work out what to file that under. Try: !remember <phrase> = <what it means>",
+            "MemoryIsOff": "Memory is off in this channel. A mod can turn it on with !memory on.",
+            "UsageForget": "Usage: !forget <phrase>",
+            "ForgotCount": "Forgot {count} memories matching \"{phrase}\".",
+            "NothingToForget": "I don't have anything stored about \"{phrase}\".",
+            "ForgotUser": "Done. I've forgotten what I knew about you here and won't remember you going forward.",
+            "TurnedOn": "Memory is on. I'll remember this channel's lore and in-jokes. Turn it off with !memory off.",
+            "TurnedOff": "Memory is off. I won't capture or use channel memories. Turn it back on with !memory on.",
+            "StatusOn": "Memory is on with {count} memories stored. Mods: !memory off | !remember <fact> | !forget <phrase>. Anyone: !forgetme",
+            "StatusOff": "Memory is off with {count} memories stored. Mods can turn it on with !memory on.",
+            "SorrySomethingWentWrong": "Sorry, something went wrong with my memory. Please try again later."
+        },
         "quote": {
             "NoQuotesYetAdd": "No quotes yet. Add one with \"!quote add <text [- author]>\"",
             "QuoteNotFound": "Quote #{id} not found.",

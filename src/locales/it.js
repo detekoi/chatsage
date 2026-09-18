@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "La traduzione era già disattivata.",
             "StoppedTranslationFor": "Traduzione interrotta per {user}.",
             "TranslationAlreadyOffFor": "La traduzione era già disattivata per {user}."
+        },
+        "memory": {
+            "UsageRemember": "Uso: !remember <fatto>. Esempio: !remember gary = la paperella di gomma sulla scrivania",
+            "Remembered": "Ricevuto, me lo ricorderò.",
+            "UpdatedMemory": "Ricevuto, ho aggiornato le informazioni al riguardo.",
+            "MemoryFull": "La mia memoria per questo canale è piena. Usa !forget <frase> per fare spazio.",
+            "CouldNotRemember": "Non ho capito come archiviarlo. Prova: !remember <frase> = <cosa significa>",
+            "MemoryIsOff": "La memoria è disattivata in questo canale. Un mod può attivarla con !memory on.",
+            "UsageForget": "Uso: !forget <frase>",
+            "ForgotCount": "Dimenticati {count} ricordi corrispondenti a \"{phrase}\".",
+            "NothingToForget": "Non ho nulla di memorizzato su \"{phrase}\".",
+            "ForgotUser": "Fatto. Ho dimenticato ciò che sapevo su di te qui e non salverò altro in futuro.",
+            "TurnedOn": "La memoria è attiva. Ricorderò lore e in-joke del canale. Disattivala con !memory off.",
+            "TurnedOff": "La memoria è disattivata. Non salverò né userò i ricordi del canale. Riattivala con !memory on.",
+            "StatusOn": "Memoria attiva con {count} ricordi salvati. Mod: !memory off | !remember <fatto> | !forget <frase>. Tutti: !forgetme",
+            "StatusOff": "Memoria disattivata con {count} ricordi salvati. I mod possono attivarla con !memory on.",
+            "SorrySomethingWentWrong": "Scusa, qualcosa è andato storto con la mia memoria. Riprova più tardi."
         }
     },
     "result": {

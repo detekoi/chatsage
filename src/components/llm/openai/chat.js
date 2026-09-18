@@ -17,6 +17,11 @@ function _convertChatHistoryToOpenAiHistory(chatHistory, maxMessages = 15) {
     }));
 }
 
+function _withEphemeralContext(content, ephemeralContext) {
+    if (typeof content === 'string') return `${ephemeralContext}\n\n${content}`;
+    return [{ type: 'input_text', text: ephemeralContext }, ...content];
+}
+
 export class OpenAiChatSession {
     constructor(channelName, systemInstruction, initialHistory = [], options = {}) {
         this.channelName = channelName;
@@ -33,6 +38,12 @@ export class OpenAiChatSession {
         // or an envelope { message: parts } where parts are {text}/{inlineData}
         // objects (llmUtils.js sends emote images this way). Convert image parts
         // to input_image content instead of serializing them as JSON text.
+        //
+        // The envelope may also carry ephemeralContext (e.g. retrieved channel
+        // memory): text that belongs to this one request only.
+        const ephemeralContext = typeof messageText?.ephemeralContext === 'string' && messageText.ephemeralContext.trim()
+            ? messageText.ephemeralContext
+            : null;
         let content;
         if (typeof messageText === 'string') {
             content = messageText;
@@ -56,6 +67,14 @@ export class OpenAiChatSession {
             // Snapshot the history — the live array gets the assistant turn
             // pushed after the call, and the request must not be mutated.
             const inputSnapshot = [...this.history];
+            if (ephemeralContext) {
+                // this.history keeps the plain turn, so retrieved context never
+                // piles up in the rolling window and gets re-sent on every later turn.
+                inputSnapshot[inputSnapshot.length - 1] = {
+                    role: 'user',
+                    content: _withEphemeralContext(content, ephemeralContext)
+                };
+            }
             const response = await retryWithBackoff(async () => {
                 return await openai.responses.create({
                     model,

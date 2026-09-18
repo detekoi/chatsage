@@ -285,6 +285,23 @@ export default {
             "TranslationAlreadyOff": "A tradução já estava desativada.",
             "StoppedTranslationFor": "Tradução parada para {user}.",
             "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
+        },
+        "memory": {
+            "UsageRemember": "Uso: !remember <fato>. Exemplo: !remember gary = o pato de borracha na mesa",
+            "Remembered": "Beleza, vou me lembrar disso.",
+            "UpdatedMemory": "Beleza, atualizei o que eu sabia sobre isso.",
+            "MemoryFull": "Minha memória para este canal está cheia. Use !forget <frase> para liberar espaço.",
+            "CouldNotRemember": "Não consegui entender onde arquivar isso. Tente: !remember <frase> = <o que significa>",
+            "MemoryIsOff": "A memória está desativada neste canal. Um mod pode ativá-la com !memory on.",
+            "UsageForget": "Uso: !forget <frase>",
+            "ForgotCount": "Esqueci {count} memórias correspondentes a \"{phrase}\".",
+            "NothingToForget": "Não tenho nada guardado sobre \"{phrase}\".",
+            "ForgotUser": "Pronto. Esqueci o que sabia sobre você aqui e não vou mais me lembrar daqui para frente.",
+            "TurnedOn": "A memória está ativada. Vou me lembrar das piadas internas e da lore do canal. Desative com !memory off.",
+            "TurnedOff": "A memória está desativada. Não vou registrar nem usar memórias do canal. Ative novamente com !memory on.",
+            "StatusOn": "A memória está ativada com {count} memórias salvas. Mods: !memory off | !remember <fato> | !forget <frase>. Qualquer um: !forgetme",
+            "StatusOff": "A memória está desativada com {count} memórias salvas. Mods podem ativá-la com !memory on.",
+            "SorrySomethingWentWrong": "Desculpe, algo deu errado com a minha memória. Tente novamente mais tarde."
         }
     },
     "result": {

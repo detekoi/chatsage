@@ -27,8 +27,10 @@ import quote from './quote.js';
 
 // Context Management Commands (Likely Mod/Broadcaster only)
 // import context from './contextCmd.js'; // Renamed to avoid JS keyword clash
-// import remember from './remember.js';
-// import forget from './forget.js';
+import remember from './remember.js';
+import forget from './forget.js';
+import forgetme from './forgetme.js';
+import memory from './memory.js';
 // import summary from './summary.js';
 // import reset from './reset.js';
 
@@ -78,8 +80,10 @@ const commandHandlers = {
 
     // --- Context Management Commands ---
     // context: context, // !context command (for mods)
-    // remember: remember, // !remember command (for mods)
-    // forget: forget,   // !forget command (for mods)
+    remember: remember, // Teach the bot channel lore (mods)
+    forget: forget, // Delete channel memories by phrase (mods)
+    forgetme: forgetme, // Any viewer: delete memories about me and opt out
+    memory: memory, // Channel-level on/off and status (mods)
     // summary: summary, // !summary command (for mods)
     // reset: reset,   // !reset command (for mods)
 
