@@ -1,6 +1,6 @@
 // scripts/verify-summarizer.js
 // End-to-end check of the map/reduce summarization flow through the LLM facade.
-// Provider-aware: run with LLM_PROVIDER=openai (or gemini, the default).
+// Summarization runs on the Gemini lite tier; the facade still requires both provider keys.
 
 import dotenv from 'dotenv';
 import logger from '../src/lib/logger.js';
@@ -47,14 +47,7 @@ function buildSyntheticTranscript(totalMessages = 120) {
 
 async function main() {
     try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        const modelId = process.env.GEMINI_MODEL_ID || 'gemini-flash-lite-latest';
-        if (!apiKey) {
-            logger.fatal('GEMINI_API_KEY is missing in environment. Add it to your .env and retry.');
-            process.exit(1);
-        }
-
-        initializeLlmClient({ apiKey, modelId });
+        initializeLlmClient();
 
         const channel = 'verify-channel';
         const transcript = buildSyntheticTranscript(120);

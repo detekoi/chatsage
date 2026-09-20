@@ -90,6 +90,24 @@ describe('OpenAI Chat Session Module', () => {
         expect(session.history[0].content).toBe('who is gary');
     });
 
+    test('sendMessage rolls back the user turn when the request fails', async () => {
+        const instance = getOpenAiInstance();
+        const createSpy = jest.spyOn(instance.responses, 'create');
+        createSpy.mockResolvedValueOnce({ output_text: 'First reply' });
+
+        const session = getOrCreateChatSession('testchannel');
+        await session.sendMessage('First message');
+
+        // Non-retryable, so retryWithBackoff fails straight away.
+        createSpy.mockRejectedValueOnce(Object.assign(new Error('Invalid request'), { status: 400 }));
+        await expect(session.sendMessage('Poison message')).rejects.toThrow('Invalid request');
+
+        expect(session.history).toEqual([
+            { role: 'user', content: 'First message' },
+            { role: 'assistant', content: 'First reply' }
+        ]);
+    });
+
     test('resetChatSession removes channel session', () => {
         const s1 = getOrCreateChatSession('testchannel');
         resetChatSession('testchannel');

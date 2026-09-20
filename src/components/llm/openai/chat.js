@@ -56,7 +56,8 @@ export class OpenAiChatSession {
             content = formatOpenAiContent(null, parts);
         }
 
-        this.history.push({ role: 'user', content });
+        const userTurn = { role: 'user', content };
+        this.history.push(userTurn);
 
         // Trim history to sliding window
         if (this.history.length > MAX_HISTORY_MESSAGES) {
@@ -105,6 +106,9 @@ export class OpenAiChatSession {
                 ]
             };
         } catch (error) {
+            // Roll back the unanswered turn: the session is cached per channel, so an
+            // orphaned user message would be re-sent with every later request.
+            this.history = this.history.filter(turn => turn !== userTurn);
             logger.error({ err: error, channelName: this.channelName }, 'Error sending chat message in OpenAI session');
             throw error;
         }

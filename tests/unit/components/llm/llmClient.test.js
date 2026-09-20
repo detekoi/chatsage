@@ -1,6 +1,4 @@
 // tests/unit/components/llm/llmClient.test.js
-import { createRequire } from 'module';
-
 if (typeof jest === 'undefined') {
     globalThis.jest = {
         mock: () => {},
@@ -24,14 +22,13 @@ if (typeof jest === 'undefined') {
             }
         },
     });
-    globalThis.require = createRequire(process.cwd() + '/tests/unit/components/llm/llmClient.test.js');
 }
 
 jest.mock('../../../../src/lib/logger.js');
 
-import {
-    buildContextPrompt
-} from '../../../../src/components/llm/llmClient.js';
+import * as llmClient from '../../../../src/components/llm/llmClient.js';
+
+const { buildContextPrompt } = llmClient;
 
 describe('llmClient utility functions', () => {
     beforeEach(() => {
@@ -95,8 +92,6 @@ describe('llmClient utility functions', () => {
 
         it('should export all critical functions', () => {
             // Test that all critical functions exist (even if we don't test them directly due to API complexity)
-            const llmClient = require('../../../../src/components/llm/llmClient.js');
-
             expect(typeof llmClient.initializeLlmClient).toBe('function');
             expect(typeof llmClient.getGenAIInstance).toBe('function');
             expect(typeof llmClient.getOrCreateChatSession).toBe('function');
@@ -110,8 +105,6 @@ describe('llmClient utility functions', () => {
         });
 
         it('should have proper function signatures for key functions', () => {
-            const llmClient = require('../../../../src/components/llm/llmClient.js');
-
             // Test that buildContextPrompt has the expected signature
             expect(llmClient.buildContextPrompt.length).toBe(1); // context
 

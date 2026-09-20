@@ -1,4 +1,4 @@
-import config from '../../config/loader.js';
+import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 
 import * as geminiCore from './gemini/core.js';
@@ -149,7 +149,8 @@ export async function generateStructuredJson({
             modelId: config.openai.modelId,
             reasoningEffort: config.openai.reasoningEffort,
             tools,
-            multimodalParts
+            multimodalParts,
+            serviceTier
         });
         let parsed = null;
         if (text) {
