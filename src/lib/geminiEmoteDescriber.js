@@ -2,7 +2,7 @@
 // Uses LLM Vision to describe Twitch emotes visually for LLM context enrichment.
 // Works directly with EventSub message fragments. Supports animated emotes via sharp.
 import sharp from 'sharp';
-import { getGenAIInstance } from '../components/llm/geminiClient.js';
+import { getGenAIInstance } from '../components/llm/llmClient.js';
 import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';

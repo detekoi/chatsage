@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { initializeGeminiClient, generateLiteContent } from '../src/components/llm/llmClient.js';
+import { initializeLlmClient, generateLiteContent } from '../src/components/llm/llmClient.js';
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from '../src/lib/i18n.js';
 import {
     LANGUAGE_NAMES, DEFAULT_MODEL_ID, BATCH_SIZE,
@@ -100,7 +100,7 @@ async function main() {
             console.log(`${page}/${code}: ${stale.length} to translate, ${removed.length} obsolete to drop`);
             if (dryRun) continue;
 
-            if (!llmReady) { initializeGeminiClient(); llmReady = true; }
+            if (!llmReady) { initializeLlmClient(); llmReady = true; }
 
             let updated = 0;
             const result = {};

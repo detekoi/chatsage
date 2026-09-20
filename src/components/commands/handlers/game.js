@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 // Need context manager to get the current game
 import { getContextManager } from '../../context/contextManager.js';
 // Need LLM functions for search, summarization, and context builder
-import { buildContextPrompt, generateSearchResponse, generateStandardResponse, summarizeText } from '../../llm/geminiClient.js';
+import { buildContextPrompt, generateSearchResponse, generateStandardResponse, summarizeText } from '../../llm/llmClient.js';
 // Need image analysis functions
 import { fetchStreamThumbnail } from '../../twitch/streamImageCapture.js';
 import { getCurrentGameInfo } from '../../twitch/streamInfoPoller.js';

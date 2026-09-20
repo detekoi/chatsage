@@ -10,7 +10,7 @@ jest.mock('../../../src/components/context/autoChatStorage.js');
 jest.mock('../../../src/components/context/commandStateManager.js');
 jest.mock('../../../src/components/customCommands/customCommandsStorage.js');
 jest.mock('../../../src/components/llm/conversationStorage.js');
-jest.mock('../../../src/components/llm/geminiClient.js');
+jest.mock('../../../src/components/llm/llmClient.js');
 jest.mock('../../../src/components/twitch/helixClient.js');
 jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/commands/commandProcessor.js');
@@ -39,7 +39,7 @@ import { initializeAutoChatStorage } from '../../../src/components/context/autoC
 import { initializeCommandStateManager } from '../../../src/components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../../../src/components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../../../src/components/llm/conversationStorage.js';
-import { initializeGeminiClient, initializeLlmClient } from '../../../src/components/llm/geminiClient.js';
+import { initializeLlmClient } from '../../../src/components/llm/llmClient.js';
 import { initializeHelixClient } from '../../../src/components/twitch/helixClient.js';
 import { initializeContextManager } from '../../../src/components/context/contextManager.js';
 import { initializeCommandProcessor } from '../../../src/components/commands/commandProcessor.js';
@@ -338,7 +338,7 @@ describe('Component Initialization', () => {
             initializeCommandStateManager.mockResolvedValue();
             initializeCustomCommandsStorage.mockResolvedValue();
             initializeConversationStorage.mockResolvedValue();
-            initializeGeminiClient.mockReturnValue();
+            initializeLlmClient.mockReturnValue();
             initializeHelixClient.mockResolvedValue();
             initializeContextManager.mockResolvedValue();
 

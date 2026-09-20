@@ -17,7 +17,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { initializeGeminiClient, generateLiteContent } from '../src/components/llm/llmClient.js';
+import { initializeLlmClient, generateLiteContent } from '../src/components/llm/llmClient.js';
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from '../src/lib/i18n.js';
 import {
     LANGUAGE_NAMES, DEFAULT_MODEL_ID, BATCH_SIZE,
@@ -76,7 +76,7 @@ async function main() {
     // Initialize once up front rather than lazily inside each locale, which would race.
     // Always Gemini regardless of the runtime LLM_PROVIDER setting, so catalog output is
     // reproducible and does not change with the bot's provider flag.
-    if (!dryRun && targets.length) initializeGeminiClient();
+    if (!dryRun && targets.length) initializeLlmClient();
 
     async function translateLocale(code) {
         const languageName = LANGUAGE_NAMES[code];

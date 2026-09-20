@@ -4,7 +4,7 @@ jest.mock('../../../src/lib/logger.js');
 jest.mock('sharp');
 
 const mockGenerateContent = jest.fn();
-jest.mock('../../../src/components/llm/geminiClient.js', () => ({
+jest.mock('../../../src/components/llm/llmClient.js', () => ({
     getGenAIInstance: jest.fn(() => ({
         models: {
             generateContent: mockGenerateContent,

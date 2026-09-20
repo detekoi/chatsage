@@ -1,7 +1,7 @@
 // tests/unit/components/commands/handlers/lurk.test.js
 // Mock dependencies before imports to avoid hoisting issues
 jest.mock('../../../../../src/components/context/contextManager.js');
-jest.mock('../../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/components/llm/botResponseHandler.js');
@@ -11,7 +11,7 @@ import { getContextManager } from '../../../../../src/components/context/context
 import {
     buildContextPrompt,
     generateLiteContent
-} from '../../../../../src/components/llm/geminiClient.js';
+} from '../../../../../src/components/llm/llmClient.js';
 import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
 import { sendBotResponse } from '../../../../../src/components/llm/botResponseHandler.js';
 

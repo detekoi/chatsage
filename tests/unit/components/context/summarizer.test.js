@@ -5,12 +5,12 @@ jest.mock('../../../../src/lib/logger.js');
 import logger from '../../../../src/lib/logger.js';
 import { triggerSummarizationIfNeeded } from '../../../../src/components/context/summarizer.js';
 
-// Mock the geminiClient
-jest.mock('../../../../src/components/llm/geminiClient.js', () => ({
+// Mock the llmClient
+jest.mock('../../../../src/components/llm/llmClient.js', () => ({
     summarizeText: jest.fn()
 }));
 
-import { summarizeText } from '../../../../src/components/llm/geminiClient.js';
+import { summarizeText } from '../../../../src/components/llm/llmClient.js';
 
 describe('summarizer.triggerSummarizationIfNeeded', () => {
     beforeEach(() => {

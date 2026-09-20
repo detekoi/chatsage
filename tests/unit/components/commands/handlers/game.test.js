@@ -1,7 +1,7 @@
 // tests/unit/components/commands/handlers/game.test.js
 // Mock dependencies before imports to avoid hoisting issues
 jest.mock('../../../../../src/components/context/contextManager.js');
-jest.mock('../../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../../src/components/llm/geminiImageClient.js');
 jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/components/twitch/streamImageCapture.js');
@@ -16,7 +16,7 @@ import {
     generateSearchResponse,
     generateStandardResponse,
     summarizeText
-} from '../../../../../src/components/llm/geminiClient.js';
+} from '../../../../../src/components/llm/llmClient.js';
 import { analyzeImage } from '../../../../../src/components/llm/geminiImageClient.js';
 import { removeMarkdownAsterisks, smartTruncate } from '../../../../../src/components/llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../../../../../src/components/twitch/streamImageCapture.js';

@@ -1,5 +1,5 @@
 import logger from '../../lib/logger.js';
-import { summarizeText } from '../llm/geminiClient.js'; // Use the specialized summarizeText function
+import { summarizeText } from '../llm/llmClient.js'; // Use the specialized summarizeText function
 
 /**
  * Formats chat history into a plain text block suitable for a summarization prompt.

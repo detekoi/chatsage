@@ -1,7 +1,7 @@
 // src/components/commands/handlers/lurk.js
 import logger from '../../../lib/logger.js';
 import { sendBotResponse } from '../../llm/botResponseHandler.js';
-import { buildContextPrompt, generateLiteContent } from '../../llm/geminiClient.js';
+import { buildContextPrompt, generateLiteContent } from '../../llm/llmClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';

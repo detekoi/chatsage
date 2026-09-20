@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, parseTranslateCommand, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
-import { buildContextPrompt } from '../../llm/geminiClient.js';
+import { buildContextPrompt } from '../../llm/llmClient.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 

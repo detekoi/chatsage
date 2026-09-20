@@ -2,7 +2,7 @@ import logger from './logger.js';
 import { sendMessage as helixSendMessage, sendAnnouncement as helixSendAnnouncement } from '../components/twitch/chatClient.js';
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
-import { summarizeText } from '../components/llm/geminiClient.js';
+import { summarizeText } from '../components/llm/llmClient.js';
 
 // --- Module State ---
 const messageQueue = [];

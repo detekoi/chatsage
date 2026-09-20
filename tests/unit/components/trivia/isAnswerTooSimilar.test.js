@@ -6,7 +6,7 @@ import { _isAnswerTooSimilar } from '../../../../src/components/trivia/triviaGam
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/trivia/triviaQuestionService.js', () => ({
     generateQuestion: jest.fn(),

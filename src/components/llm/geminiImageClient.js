@@ -1,6 +1,6 @@
 // src/components/llm/geminiImageClient.js
 import logger from '../../lib/logger.js';
-import { describeImages } from './geminiClient.js';
+import { describeImages } from './llmClient.js';
 import config from '../../config/loader.js';
 import axios from 'axios';
 

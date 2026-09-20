@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { initializeGeminiClient, generateLiteContent } from '../src/components/llm/llmClient.js';
+import { initializeLlmClient, generateLiteContent } from '../src/components/llm/llmClient.js';
 import {
     LANGUAGE_NAMES, DEFAULT_MODEL_ID, BATCH_SIZE,
     hashOf, translateBatch, validate, parseFlag
@@ -122,7 +122,7 @@ async function main() {
         console.log(`${code}: ${stale.length} to translate, ${removed.length} obsolete to drop`);
         if (dryRun) continue;
 
-        if (!llmReady) { initializeGeminiClient(); llmReady = true; }
+        if (!llmReady) { initializeLlmClient(); llmReady = true; }
 
         let updated = 0;
         const result = {};

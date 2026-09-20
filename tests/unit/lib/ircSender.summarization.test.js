@@ -5,12 +5,12 @@ jest.mock('../../../src/lib/logger');
 jest.mock('../../../src/components/twitch/chatClient.js', () => ({
     sendMessage: jest.fn(async () => true),
 }));
-jest.mock('../../../src/components/llm/geminiClient.js', () => ({
+jest.mock('../../../src/components/llm/llmClient.js', () => ({
     summarizeText: jest.fn()
 }));
 
 import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
-import * as geminiClient from '../../../src/components/llm/geminiClient.js';
+import * as llmClient from '../../../src/components/llm/llmClient.js';
 import { sendMessage as mockHelixSendMessage } from '../../../src/components/twitch/chatClient.js';
 
 function buildLongText(len = 1200) {
@@ -37,13 +37,13 @@ describe('ircSender enqueueMessage summarization behavior', () => {
     test('summarizes long messages via summarizeText and sends summary', async () => {
         const longText = buildLongText(1200);
         const summary = 'Short summary within 400 chars.';
-        geminiClient.summarizeText.mockResolvedValue(summary);
+        llmClient.summarizeText.mockResolvedValue(summary);
 
         await enqueueMessage('#test', longText, { replyToId: null, skipTranslation: true });
 
         // Verify summarization was called with correct parameters
-        expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
-        expect(geminiClient.summarizeText).toHaveBeenCalledWith(longText, 400); // SUMMARY_TARGET_LENGTH constant
+        expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
+        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400); // SUMMARY_TARGET_LENGTH constant
 
         // Wait for queue processing to complete
         await waitForQueueEmpty();
@@ -58,13 +58,13 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('falls back to truncation when summarization returns null', async () => {
         const longText = buildLongText(1200);
-        geminiClient.summarizeText.mockResolvedValue(null);
+        llmClient.summarizeText.mockResolvedValue(null);
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was attempted
-        expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
-        expect(geminiClient.summarizeText).toHaveBeenCalledWith(longText, 400);
+        expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
+        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400);
 
         await waitForQueueEmpty();
 
@@ -81,12 +81,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('skips summarization when skipLengthProcessing is true but still truncates if needed', async () => {
         const longText = buildLongText(1000);
-        geminiClient.summarizeText.mockResolvedValue('irrelevant');
+        llmClient.summarizeText.mockResolvedValue('irrelevant');
 
         await enqueueMessage('#test', longText, { skipTranslation: true, skipLengthProcessing: true });
 
         // Verify summarization was NOT called
-        expect(geminiClient.summarizeText).not.toHaveBeenCalled();
+        expect(llmClient.summarizeText).not.toHaveBeenCalled();
 
         await waitForQueueEmpty();
 
@@ -105,12 +105,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         const longText = buildLongText(1200);
         // Return a summary that is still too long (longer than 500 chars)
         const tooLongSummary = 'A'.repeat(600);
-        geminiClient.summarizeText.mockResolvedValue(tooLongSummary);
+        llmClient.summarizeText.mockResolvedValue(tooLongSummary);
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was called
-        expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
+        expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
@@ -126,12 +126,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
     test('handles empty summary result after trimming', async () => {
         const longText = buildLongText(1200);
         // Return a summary that becomes empty after trimming
-        geminiClient.summarizeText.mockResolvedValue('   ');
+        llmClient.summarizeText.mockResolvedValue('   ');
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was called
-        expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
+        expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
@@ -145,12 +145,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('handles summarization API errors gracefully', async () => {
         const longText = buildLongText(1200);
-        geminiClient.summarizeText.mockRejectedValue(new Error('API Error'));
+        llmClient.summarizeText.mockRejectedValue(new Error('API Error'));
 
         await enqueueMessage('#test', longText, { skipTranslation: true });
 
         // Verify summarization was attempted
-        expect(geminiClient.summarizeText).toHaveBeenCalledTimes(1);
+        expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
 
         await waitForQueueEmpty();
 
@@ -164,12 +164,12 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
     test('processes messages at or below IRC limit without summarization', async () => {
         const shortText = 'This is a short message under 500 characters.';
-        geminiClient.summarizeText.mockResolvedValue('should not be called');
+        llmClient.summarizeText.mockResolvedValue('should not be called');
 
         await enqueueMessage('#test', shortText, { skipTranslation: true });
 
         // Verify summarization was NOT called for short messages
-        expect(geminiClient.summarizeText).not.toHaveBeenCalled();
+        expect(llmClient.summarizeText).not.toHaveBeenCalled();
 
         await waitForQueueEmpty();
 
@@ -197,7 +197,7 @@ describe('ircSender truncation and surrogate pairs', () => {
     // decodes a lone surrogate to U+FFFD — itself one code unit — so the lengths matched, the guard
     // never fired, and a replacement character was sent to chat.
     test('does not emit a lone surrogate when truncation splits an emoji', async () => {
-        geminiClient.summarizeText.mockResolvedValue(null); // force the truncation path
+        llmClient.summarizeText.mockResolvedValue(null); // force the truncation path
 
         // 496 filler + emoji puts the surrogate pair across the 497-char cut (500 minus '...').
         // No spaces, so the word-break logic cannot pull the cut back and mask the problem.
@@ -215,7 +215,7 @@ describe('ircSender truncation and surrogate pairs', () => {
     });
 
     test('keeps an emoji intact when it falls entirely inside the limit', async () => {
-        geminiClient.summarizeText.mockResolvedValue(null);
+        llmClient.summarizeText.mockResolvedValue(null);
 
         const text = '\u{1F389} party ' + 'c'.repeat(900);
         await enqueueMessage('#chan', text);

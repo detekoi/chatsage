@@ -1,4 +1,4 @@
-// tests/unit/components/llm/geminiClient.test.js
+// tests/unit/components/llm/llmClient.test.js
 import { createRequire } from 'module';
 
 if (typeof jest === 'undefined') {
@@ -24,16 +24,16 @@ if (typeof jest === 'undefined') {
             }
         },
     });
-    globalThis.require = createRequire(process.cwd() + '/tests/unit/components/llm/geminiClient.test.js');
+    globalThis.require = createRequire(process.cwd() + '/tests/unit/components/llm/llmClient.test.js');
 }
 
 jest.mock('../../../../src/lib/logger.js');
 
 import {
     buildContextPrompt
-} from '../../../../src/components/llm/geminiClient.js';
+} from '../../../../src/components/llm/llmClient.js';
 
-describe('geminiClient utility functions', () => {
+describe('llmClient utility functions', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
@@ -95,31 +95,30 @@ describe('geminiClient utility functions', () => {
 
         it('should export all critical functions', () => {
             // Test that all critical functions exist (even if we don't test them directly due to API complexity)
-            const geminiClient = require('../../../../src/components/llm/geminiClient.js');
+            const llmClient = require('../../../../src/components/llm/llmClient.js');
 
-            expect(typeof geminiClient.initializeGeminiClient).toBe('function');
-            expect(typeof geminiClient.getGenAIInstance).toBe('function');
-            expect(typeof geminiClient.getGeminiClient).toBe('function');
-            expect(typeof geminiClient.getOrCreateChatSession).toBe('function');
-            expect(typeof geminiClient.resetChatSession).toBe('function');
-            expect(typeof geminiClient.buildContextPrompt).toBe('function');
-            expect(typeof geminiClient.generateStandardResponse).toBe('function');
-            expect(typeof geminiClient.generateSearchResponse).toBe('function');
-            expect(typeof geminiClient.generateUnifiedResponse).toBe('function');
-            expect(typeof geminiClient.decideSearchWithStructuredOutput).toBe('function');
-            expect(typeof geminiClient.summarizeText).toBe('function');
+            expect(typeof llmClient.initializeLlmClient).toBe('function');
+            expect(typeof llmClient.getGenAIInstance).toBe('function');
+            expect(typeof llmClient.getOrCreateChatSession).toBe('function');
+            expect(typeof llmClient.resetChatSession).toBe('function');
+            expect(typeof llmClient.buildContextPrompt).toBe('function');
+            expect(typeof llmClient.generateStandardResponse).toBe('function');
+            expect(typeof llmClient.generateSearchResponse).toBe('function');
+            expect(typeof llmClient.generateUnifiedResponse).toBe('function');
+            expect(typeof llmClient.decideSearchWithStructuredOutput).toBe('function');
+            expect(typeof llmClient.summarizeText).toBe('function');
         });
 
         it('should have proper function signatures for key functions', () => {
-            const geminiClient = require('../../../../src/components/llm/geminiClient.js');
+            const llmClient = require('../../../../src/components/llm/llmClient.js');
 
             // Test that buildContextPrompt has the expected signature
-            expect(geminiClient.buildContextPrompt.length).toBe(1); // context
+            expect(llmClient.buildContextPrompt.length).toBe(1); // context
 
             // Test that key async functions exist and are functions
-            expect(typeof geminiClient.summarizeText).toBe('function');
-            expect(typeof geminiClient.generateStandardResponse).toBe('function');
-            expect(typeof geminiClient.generateSearchResponse).toBe('function');
+            expect(typeof llmClient.summarizeText).toBe('function');
+            expect(typeof llmClient.generateStandardResponse).toBe('function');
+            expect(typeof llmClient.generateSearchResponse).toBe('function');
         });
     });
 });

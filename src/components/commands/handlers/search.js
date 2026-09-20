@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 import { escapeRegExp } from '../../../lib/regexUtils.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
-import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/geminiClient.js';
+import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/llmClient.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { logConversation } from '../../llm/conversationStorage.js';

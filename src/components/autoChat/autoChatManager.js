@@ -1,7 +1,7 @@
 import logger from '../../lib/logger.js';
 import { enqueueMessage, enqueueAnnouncement } from '../../lib/ircSender.js';
 import { getContextManager } from '../context/contextManager.js';
-import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/geminiClient.js';
+import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/llmClient.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';

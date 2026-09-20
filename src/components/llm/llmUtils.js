@@ -2,7 +2,7 @@ import logger from '../../lib/logger.js';
 import { logBotResponse } from '../../lib/activityLogger.js';
 import { logConversation } from './conversationStorage.js';
 import { getContextManager } from '../context/contextManager.js';
-import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './geminiClient.js';
+import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './llmClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 import { pronounService } from '../../lib/pronounService.js';

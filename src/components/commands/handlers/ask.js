@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { escapeRegExp } from '../../../lib/regexUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
-// Import the relevant functions from geminiClient
+// Import the relevant functions from llmClient
 import {
     buildContextPrompt,
     generateSearchResponse,
@@ -9,7 +9,7 @@ import {
     decideSearchWithStructuredOutput,
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
-} from '../../llm/geminiClient.js';
+} from '../../llm/llmClient.js';
 import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../llm/llmUtils.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue

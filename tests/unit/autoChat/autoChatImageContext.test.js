@@ -4,7 +4,7 @@ import { refreshImageContext, buildImageContextLine, _getRuntime } from '../../.
 jest.mock('../../../src/lib/logger.js');
 jest.mock('../../../src/lib/ircSender.js');
 jest.mock('../../../src/components/context/contextManager.js');
-jest.mock('../../../src/components/llm/geminiClient.js');
+jest.mock('../../../src/components/llm/llmClient.js');
 jest.mock('../../../src/components/context/autoChatStorage.js');
 jest.mock('../../../src/components/llm/llmUtils.js', () => ({
     removeMarkdownAsterisks: jest.fn(t => t),

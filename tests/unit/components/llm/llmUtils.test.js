@@ -3,7 +3,7 @@
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/lib/activityLogger.js');
 jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../src/components/llm/botResponseHandler.js');
 jest.mock('../../../../src/components/llm/conversationStorage.js');
 jest.mock('../../../../src/components/twitch/sharedChatManager.js');
@@ -23,7 +23,7 @@ import {
     buildContextPrompt,
     summarizeText,
     getOrCreateChatSession
-} from '../../../../src/components/llm/geminiClient.js';
+} from '../../../../src/components/llm/llmClient.js';
 import { sendBotResponse } from '../../../../src/components/llm/botResponseHandler.js';
 
 describe('llmUtils', () => {

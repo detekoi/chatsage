@@ -1,7 +1,7 @@
 // tests/unit/components/commands/handlers/ask.test.js
 // Mock dependencies before imports to avoid hoisting issues
 jest.mock('../../../../../src/components/context/contextManager.js');
-jest.mock('../../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/lib/timeUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
@@ -14,7 +14,7 @@ import {
     generateSearchResponse,
     generateStandardResponse,
     decideSearchWithStructuredOutput
-} from '../../../../../src/components/llm/geminiClient.js';
+} from '../../../../../src/components/llm/llmClient.js';
 import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 

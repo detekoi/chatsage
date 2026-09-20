@@ -515,7 +515,7 @@ export async function eventSubHandler(req, res, rawBody) {
                 logger.info({ sessionId }, '[EventSub] Shared chat session ended');
 
                 // Clean up Gemini chat sessions for this shared session
-                const { clearChatSession } = await import('../llm/geminiClient.js');
+                const { clearChatSession } = await import('../llm/llmClient.js');
                 clearChatSession(sessionId);
 
                 sharedChatManager.removeSession(sessionId);

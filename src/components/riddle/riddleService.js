@@ -1,7 +1,7 @@
 // src/components/riddle/riddleService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { generateStructuredJson } from '../llm/geminiClient.js';
+import { generateStructuredJson } from '../llm/llmClient.js';
 import { RiddleSchema, LocalizedRiddleSchema, RiddleVerificationSchema } from '../llm/schemaUtils.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers

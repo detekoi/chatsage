@@ -12,7 +12,7 @@ import { BOT_CORE_INSTRUCTION, DEFAULT_BOT_PERSONA } from '../components/llm/gem
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
 import { initializeConversationStorage } from '../components/llm/conversationStorage.js';
-import { initializeLlmClient } from '../components/llm/geminiClient.js';
+import { initializeLlmClient } from '../components/llm/llmClient.js';
 import { initializeHelixClient } from '../components/twitch/helixClient.js';
 import { initializeContextManager } from '../components/context/contextManager.js';
 

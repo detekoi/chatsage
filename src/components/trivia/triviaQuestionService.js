@@ -1,7 +1,7 @@
 // src/components/trivia/triviaQuestionService.js
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
-import { generateStructuredJson } from '../llm/geminiClient.js';
+import { generateStructuredJson } from '../llm/llmClient.js';
 import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerificationSchema } from '../llm/schemaUtils.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
 
@@ -267,7 +267,7 @@ Return STRICT JSON.`;
  * Generates an explanation for a trivia answer.
  */
 export async function generateExplanation(question, answer, topic = "general") {
-    const { generateText } = await import('../llm/geminiClient.js');
+    const { generateText } = await import('../llm/llmClient.js');
     const prompt = `Provide a brief, interesting explanation for this trivia answer:
 
 Question: ${question}

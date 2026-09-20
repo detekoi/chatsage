@@ -8,7 +8,7 @@ jest.mock('../../../../../src/lib/translationUtils.js', () => ({
     COMMON_LANGUAGES: ['english', 'spanish', 'french', 'german']
 }));
 jest.mock('../../../../../src/components/context/contextManager.js');
-jest.mock('../../../../../src/components/llm/geminiClient.js', () => ({
+jest.mock('../../../../../src/components/llm/llmClient.js', () => ({
     buildContextPrompt: jest.fn().mockReturnValue('mock chat context')
 }));
 

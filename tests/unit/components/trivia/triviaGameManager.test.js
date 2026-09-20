@@ -8,7 +8,7 @@ import { getTriviaGameManager, activeGames } from '../../../../src/components/tr
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
-jest.mock('../../../../src/components/llm/geminiClient.js');
+jest.mock('../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../src/lib/translationUtils.js');
 jest.mock('../../../../src/components/trivia/triviaQuestionService.js');
 jest.mock('../../../../src/lib/logger.js');

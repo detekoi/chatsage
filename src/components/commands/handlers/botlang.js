@@ -2,7 +2,7 @@ import logger from '../../../lib/logger.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../lib/translationUtils.js';
-import { resetChatSession } from '../../llm/gemini/chat.js';
+import { resetChatSession } from '../../llm/llmClient.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 import { localizedLanguageName } from '../../../lib/i18n.js';
 

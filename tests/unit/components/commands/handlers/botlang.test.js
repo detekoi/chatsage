@@ -4,12 +4,14 @@ jest.mock('../../../../../src/components/context/contextManager.js');
 jest.mock('../../../../../src/lib/translationUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/lib/ircSender.js');
+jest.mock('../../../../../src/components/llm/llmClient.js');
 
 import botLangHandler from '../../../../../src/components/commands/handlers/botlang.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../../src/lib/translationUtils.js';
 import logger from '../../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
+import { resetChatSession } from '../../../../../src/components/llm/llmClient.js';
 
 describe('BotLang Command Handler', () => {
     let mockContextManager;
@@ -106,6 +108,7 @@ describe('BotLang Command Handler', () => {
             await botLangHandler.execute(context);
 
             expect(mockContextManager.setBotLanguage).toHaveBeenCalledWith('testchannel', null);
+            expect(resetChatSession).toHaveBeenCalledWith('testchannel');
             expect(mockEnqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Bot language has been reset to English (default).',
@@ -155,6 +158,9 @@ describe('BotLang Command Handler', () => {
 
             // Should set the language
             expect(mockContextManager.setBotLanguage).toHaveBeenCalledWith('testchannel', targetLanguage);
+
+            // Should invalidate the live chat session so the next reply uses the new language
+            expect(resetChatSession).toHaveBeenCalledWith('testchannel');
 
             // Should send English confirmation
             expect(mockEnqueueMessage).toHaveBeenCalledWith(

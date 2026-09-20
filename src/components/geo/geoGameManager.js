@@ -9,7 +9,7 @@ import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from '
 import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage, formatRevealMessage } from './geoMessageFormatter.js';
 import { t, isCatalogued } from '../../lib/i18n.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
-import { summarizeText } from '../llm/geminiClient.js';
+import { summarizeText } from '../llm/llmClient.js';
 import crypto from 'crypto';
 
 // --- Game State & Config Interfaces (Conceptual) ---

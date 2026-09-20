@@ -4,7 +4,7 @@
 
 import dotenv from 'dotenv';
 import logger from '../src/lib/logger.js';
-import { initializeGeminiClient, summarizeText } from '../src/components/llm/geminiClient.js';
+import { initializeLlmClient, summarizeText } from '../src/components/llm/llmClient.js';
 import { triggerSummarizationIfNeeded } from '../src/components/context/summarizer.js';
 
 dotenv.config();
@@ -54,7 +54,7 @@ async function main() {
             process.exit(1);
         }
 
-        initializeGeminiClient({ apiKey, modelId });
+        initializeLlmClient({ apiKey, modelId });
 
         const channel = 'verify-channel';
         const transcript = buildSyntheticTranscript(120);

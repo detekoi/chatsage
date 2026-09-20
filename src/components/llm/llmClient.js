@@ -40,16 +40,8 @@ export function initializeLlmClient(appConfig = config) {
     geminiCore.initializeGeminiClient(geminiConfig);
 }
 
-export function initializeGeminiClient(configOrGeminiConfig) {
-    return initializeLlmClient(configOrGeminiConfig);
-}
-
 export function getGenAIInstance() {
     return geminiCore.getGenAIInstance();
-}
-
-export function getGeminiClient() {
-    return geminiCore.getGeminiClient();
 }
 
 /**
@@ -103,19 +95,6 @@ export function fetchIanaTimezoneForLocation(locationName) {
 
 export function decideSearchWithStructuredOutput(contextPrompt, userQuery) {
     return openAiDec.decideSearchWithStructuredOutput(contextPrompt, userQuery);
-}
-
-// safeExtractText / safeParseJsonResponse are re-exported for backward compatibility
-// via geminiClient.js, but no production caller imports them from this facade.
-// All real callers use the provider-specific utils directly.
-// Delegate to Gemini utils since that's the only provider that returns raw
-// result objects through generateLiteContent (OpenAI paths extract text internally).
-export function safeExtractText(result, logContext = 'llm') {
-    return geminiUtils.safeExtractText(result, logContext);
-}
-
-export function safeParseJsonResponse(result, logContext = 'llm') {
-    return geminiUtils.safeParseJsonResponse(result, logContext);
 }
 
 // --- Provider-Agnostic Facade Helpers ---

@@ -1,4 +1,4 @@
-import { generateStructuredJson } from '../llm/geminiClient.js';
+import { generateStructuredJson } from '../llm/llmClient.js';
 import logger from '../../lib/logger.js';
 import { GeoClueSchema, GeoRevealSchema } from '../llm/schemaUtils.js';
 

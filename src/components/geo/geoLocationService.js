@@ -1,4 +1,4 @@
-import { generateText, generateStructuredJson } from '../llm/geminiClient.js';
+import { generateText, generateStructuredJson } from '../llm/llmClient.js';
 import logger from '../../lib/logger.js';
 import { getLocationSelectionPrompt } from './geoPrompts.js';
 import { GeoCheckGuessSchema } from '../llm/schemaUtils.js';
