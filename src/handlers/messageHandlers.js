@@ -249,6 +249,19 @@ export async function handleBotMention({
     logInteraction(cleanChannel, triggerType);
     const replyToId = tags?.id || tags?.['message-id'] || null;
 
+    // The message being replied to. For a reply to the bot this is usually a one-shot
+    // command answer (!game, !ask, !search) that never went through the chat session,
+    // so without it "how do I connect it" has nothing to resolve against.
+    const parentBody = typeof tags?.['reply-parent-msg-body'] === 'string' ? tags['reply-parent-msg-body'].trim() : '';
+    const replyParent = parentBody
+        ? {
+            displayName: tags['reply-parent-display-name'] || tags['reply-parent-user-login'] || null,
+            text: parentBody,
+            isBot: isReplyToBot
+        }
+        : null;
+    const queryOptions = { replyParent };
+
     // Check if channel is in a shared chat session
     const contextManager = getContextManager();
     const broadcasterId = await contextManager.getBroadcasterId(cleanChannel);
@@ -267,13 +280,13 @@ export async function handleBotMention({
         }, `[SharedChat:${sessionId}] Bot interaction detected in shared session with: ${channelLogins.join(', ')}`);
 
         // Use session ID for context instead of single channel
-        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, sessionId, emoteImageParts)
+        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, sessionId, emoteImageParts, queryOptions)
             .catch(err => logger.error({ err, sessionId }, 'Error in async shared chat interaction handler call'));
     } else {
         // Normal single-channel interaction
         logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'Bot interaction detected, triggering standard LLM query...');
 
-        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, null, emoteImageParts)
+        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, null, emoteImageParts, queryOptions)
             .catch(err => logger.error({ err }, 'Error in async interaction handler call'));
     }
 }

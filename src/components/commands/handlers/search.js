@@ -3,7 +3,7 @@ import { escapeRegExp } from '../../../lib/regexUtils.js';
 // Import context manager and prompt builder
 import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/llmClient.js';
-import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
+import { removeMarkdownAsterisks, recordBotExchange } from '../../llm/llmUtils.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
@@ -124,6 +124,7 @@ const searchHandler = {
             }
             await enqueueMessage(channel, finalMessage, { replyToId });
             logConversation(channelName, userQuery, finalMessage, { trigger: 'command' });
+            recordBotExchange(channelName, userName, `!search ${userQuery}`, finalMessage);
 
         } catch (error) {
             logger.error({ err: error, command: 'search', query: userQuery }, `Error executing !search command.`);

@@ -1,6 +1,7 @@
 import { initializeOpenAiClient, getOpenAiInstance } from '../../../../../src/components/llm/openai/core.js';
 import {
     getOrCreateChatSession,
+    getChatSession,
     resetChatSession
 } from '../../../../../src/components/llm/openai/chat.js';
 
@@ -106,6 +107,47 @@ describe('OpenAI Chat Session Module', () => {
             { role: 'user', content: 'First message' },
             { role: 'assistant', content: 'First reply' }
         ]);
+    });
+
+    test('getChatSession returns the cached session without creating one', () => {
+        expect(getChatSession('testchannel')).toBeNull();
+        const created = getOrCreateChatSession('testchannel');
+        expect(getChatSession('testchannel')).toBe(created);
+        expect(getChatSession('')).toBeNull();
+    });
+
+    test('recordExchange appends a user/assistant pair that the next request includes', async () => {
+        const instance = getOpenAiInstance();
+        const createSpy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
+            output_text: 'Plug the cable into the service port.'
+        });
+
+        const session = getOrCreateChatSession('testchannel');
+        session.recordExchange('USER: alice says: !game how do i update pokia firmware', 'For Pokia: connect it for servicing, then run the update.');
+        expect(session.history).toEqual([
+            { role: 'user', content: 'USER: alice says: !game how do i update pokia firmware' },
+            { role: 'assistant', content: 'For Pokia: connect it for servicing, then run the update.' }
+        ]);
+
+        await session.sendMessage('USER: alice says: how do i connect it');
+
+        const sentInput = createSpy.mock.calls[0][0].input;
+        expect(sentInput.map(t => t.role)).toEqual(['user', 'assistant', 'user']);
+        expect(sentInput[1].content).toBe('For Pokia: connect it for servicing, then run the update.');
+    });
+
+    test('recordExchange ignores empty turns and keeps the history window bounded', () => {
+        const session = getOrCreateChatSession('testchannel');
+        session.recordExchange('', 'reply');
+        session.recordExchange('question', '   ');
+        expect(session.history).toEqual([]);
+
+        for (let i = 0; i < 20; i++) {
+            session.recordExchange(`q${i}`, `a${i}`);
+        }
+        expect(session.history.length).toBe(30);
+        expect(session.history[0]).toEqual({ role: 'user', content: 'q5' });
+        expect(session.history[29]).toEqual({ role: 'assistant', content: 'a19' });
     });
 
     test('resetChatSession removes channel session', () => {

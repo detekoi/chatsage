@@ -10,7 +10,7 @@ import {
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
 } from '../../llm/llmClient.js';
-import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../llm/llmUtils.js';
+import { removeMarkdownAsterisks, getUserFriendlyErrorMessage, recordBotExchange } from '../../llm/llmUtils.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
@@ -109,6 +109,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
     logger.info(`[!ask] Enqueueing message (${finalLength} chars) for ${userName}`);
     await enqueueMessage(channel, finalReplyText, { replyToId });
     logConversation(channel.substring(1), userQuery, finalReplyText, { trigger: 'command' });
+    recordBotExchange(channel.substring(1), userName, `!ask ${userQuery}`, finalReplyText);
 }
 
 /**

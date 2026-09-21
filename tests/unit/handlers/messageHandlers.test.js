@@ -556,7 +556,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'msg-123',
                 null,
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
 
@@ -571,6 +572,66 @@ describe('Message Handlers', () => {
             });
 
             expect(handleStandardLlmQuery).toHaveBeenCalled();
+        });
+
+        test('should pass the bot message being replied to as replyParent', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: '@testbot how do i connect it',
+                tags: {
+                    id: 'msg-456',
+                    'reply-parent-msg-id': 'msg-123',
+                    'reply-parent-user-login': 'testbot',
+                    'reply-parent-display-name': 'TestBot',
+                    'reply-parent-msg-body': 'For Pokia: finish the physical repair, connect it for servicing, run the firmware update.'
+                }
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'how do i connect it',
+                'reply',
+                'msg-456',
+                null,
+                expect.any(Array),
+                {
+                    replyParent: {
+                        displayName: 'TestBot',
+                        text: 'For Pokia: finish the physical repair, connect it for servicing, run the firmware update.',
+                        isBot: true
+                    }
+                }
+            );
+        });
+
+        test('should pass another user\'s message as replyParent when the bot is mentioned in a reply', async () => {
+            await handleBotMention({
+                ...createBaseParams(),
+                message: '@testbot is this true?',
+                tags: {
+                    id: 'msg-789',
+                    'reply-parent-msg-id': 'msg-100',
+                    'reply-parent-user-login': 'alice',
+                    'reply-parent-display-name': 'Alice',
+                    'reply-parent-msg-body': 'the boss has 3 phases'
+                }
+            });
+
+            expect(handleStandardLlmQuery).toHaveBeenCalledWith(
+                '#testchannel',
+                'testchannel',
+                'TestUser',
+                'testuser',
+                'is this true?',
+                'mention',
+                'msg-789',
+                null,
+                expect.any(Array),
+                { replyParent: { displayName: 'Alice', text: 'the boss has 3 phases', isBot: false } }
+            );
         });
 
         test('should skip commands starting with !', async () => {
@@ -630,7 +691,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'msg-123',
                 'session-456',
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
 
@@ -649,7 +711,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'msg-123',
                 null,
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
 
@@ -668,7 +731,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'fallback-id',
                 null,
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
 
@@ -687,7 +751,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'msg-123',
                 null,
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
 
@@ -706,7 +771,8 @@ describe('Message Handlers', () => {
                 'mention',
                 'msg-123',
                 null,
-                expect.any(Array)
+                expect.any(Array),
+                { replyParent: null }
             );
         });
     });

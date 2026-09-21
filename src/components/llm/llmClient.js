@@ -65,6 +65,10 @@ export function getOrCreateChatSession(sessionKey, initialContext = null, chatHi
     return openAiChat.getOrCreateChatSession(sessionKey, initialContext, chatHistory, botLanguage, personaScope);
 }
 
+export function getChatSession(sessionKey) {
+    return openAiChat.getChatSession(sessionKey);
+}
+
 export function resetChatSession(channelName) {
     return openAiChat.resetChatSession(channelName);
 }

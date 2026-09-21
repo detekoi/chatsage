@@ -15,16 +15,19 @@ jest.mock('../../../../src/lib/pronounService.js', () => ({
 
 import {
     removeMarkdownAsterisks,
-    handleStandardLlmQuery
+    handleStandardLlmQuery,
+    recordBotExchange
 } from '../../../../src/components/llm/llmUtils.js';
 import logger from '../../../../src/lib/logger.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import {
     buildContextPrompt,
     summarizeText,
-    getOrCreateChatSession
+    getOrCreateChatSession,
+    getChatSession
 } from '../../../../src/components/llm/llmClient.js';
 import { sendBotResponse } from '../../../../src/components/llm/botResponseHandler.js';
+import * as sharedChatManager from '../../../../src/components/twitch/sharedChatManager.js';
 
 describe('llmUtils', () => {
     beforeEach(() => {
@@ -45,8 +48,11 @@ describe('llmUtils', () => {
                 botLanguage: 'en'
             }),
             getAllChannelStates: jest.fn().mockReturnValue(mockChannelState),
-            getBotLanguage: jest.fn().mockReturnValue(null)
+            getBotLanguage: jest.fn().mockReturnValue(null),
+            getBroadcasterId: jest.fn().mockResolvedValue('broadcaster-1')
         });
+        sharedChatManager.getSessionForChannel.mockReturnValue(null);
+        getChatSession.mockReturnValue(null);
 
         buildContextPrompt.mockReturnValue('Mock context prompt');
         getOrCreateChatSession.mockReturnValue({
@@ -365,6 +371,90 @@ describe('llmUtils', () => {
                 expect.objectContaining({ usedGoogleSearch: false }),
                 '[StandardChat] No search grounding metadata present.'
             );
+        });
+    });
+
+    describe('handleStandardLlmQuery reply context', () => {
+        const sendMessageText = (sendMessage) => sendMessage.mock.calls[0][0].message[0].text;
+
+        it('prefixes the turn with the bot message being replied to', async () => {
+            const sendMessage = jest.fn().mockResolvedValue({ text: () => 'Connect it over USB.' });
+            getOrCreateChatSession.mockReturnValue({ sendMessage });
+
+            await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'how do i connect it', 'reply', 'msg-2', null, [], {
+                replyParent: { displayName: 'TestBot', text: 'For Pokia: finish the repair, connect it for servicing.', isBot: true }
+            });
+
+            expect(sendMessageText(sendMessage)).toBe(
+                '[Replying to your earlier message: "For Pokia: finish the repair, connect it for servicing."]\nUSER: TestUser says: how do i connect it'
+            );
+        });
+
+        it('attributes a reply to another user\'s message', async () => {
+            const sendMessage = jest.fn().mockResolvedValue({ text: () => 'Yes.' });
+            getOrCreateChatSession.mockReturnValue({ sendMessage });
+
+            await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'is this true?', 'mention', 'msg-3', null, [], {
+                replyParent: { displayName: 'Alice', text: 'the boss has 3 phases', isBot: false }
+            });
+
+            expect(sendMessageText(sendMessage)).toBe('[Replying to Alice\'s message: "the boss has 3 phases"]\nUSER: TestUser says: is this true?');
+        });
+
+        it('sends the plain turn when there is no reply parent', async () => {
+            const sendMessage = jest.fn().mockResolvedValue({ text: () => 'Hi.' });
+            getOrCreateChatSession.mockReturnValue({ sendMessage });
+
+            await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'hello', 'mention', 'msg-4', null, [], { replyParent: null });
+
+            expect(sendMessageText(sendMessage)).toBe('USER: TestUser says: hello');
+        });
+    });
+
+    describe('recordBotExchange', () => {
+        it('records the command and reply into the existing channel session', async () => {
+            const recordExchange = jest.fn();
+            getChatSession.mockReturnValue({ recordExchange });
+
+            await recordBotExchange('testchannel', 'TestUser', '!game how do i update pokia firmware', 'For Pokia: finish the repair first.');
+
+            expect(getChatSession).toHaveBeenCalledWith('testchannel');
+            expect(recordExchange).toHaveBeenCalledWith(
+                'USER: TestUser says: !game how do i update pokia firmware',
+                'For Pokia: finish the repair first.'
+            );
+        });
+
+        it('uses the shared chat session key when the channel is in a shared session', async () => {
+            const recordExchange = jest.fn();
+            sharedChatManager.getSessionForChannel.mockReturnValue('shared-session-9');
+            getChatSession.mockReturnValue({ recordExchange });
+
+            await recordBotExchange('testchannel', 'TestUser', '!ask what time is it', 'It is noon.');
+
+            expect(sharedChatManager.getSessionForChannel).toHaveBeenCalledWith('broadcaster-1');
+            expect(getChatSession).toHaveBeenCalledWith('shared-session-9');
+            expect(recordExchange).toHaveBeenCalled();
+        });
+
+        it('does nothing when no session exists yet', async () => {
+            getChatSession.mockReturnValue(null);
+
+            await expect(recordBotExchange('testchannel', 'TestUser', '!game tips', 'Some tips.')).resolves.toBeUndefined();
+            expect(getOrCreateChatSession).not.toHaveBeenCalled();
+        });
+
+        it('skips empty replies and never throws', async () => {
+            const recordExchange = jest.fn();
+            getChatSession.mockReturnValue({ recordExchange });
+
+            await recordBotExchange('testchannel', 'TestUser', '!game tips', '   ');
+            expect(recordExchange).not.toHaveBeenCalled();
+
+            getContextManager.mockReturnValue({ getBroadcasterId: jest.fn().mockRejectedValue(new Error('boom')) });
+            await expect(recordBotExchange('testchannel', 'TestUser', '!game tips', 'Tips.')).resolves.toBeUndefined();
+            expect(getChatSession).toHaveBeenLastCalledWith('testchannel');
+            expect(recordExchange).toHaveBeenCalledWith('USER: TestUser says: !game tips', 'Tips.');
         });
     });
 });

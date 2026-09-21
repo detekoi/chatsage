@@ -30,6 +30,24 @@ export class OpenAiChatSession {
         this.options = options;
     }
 
+    /**
+     * Appends a completed user/assistant exchange to the rolling history without
+     * calling the API. Lets one-shot command replies (!game, !ask, !search) show
+     * up in later mention/reply turns, so a follow-up such as "how do I connect
+     * it" still has the answer it refers to.
+     * @param {string} userContent - The user turn, in the session's usual format.
+     * @param {string} assistantContent - What the bot sent to chat.
+     */
+    recordExchange(userContent, assistantContent) {
+        if (typeof userContent !== 'string' || !userContent.trim()) return;
+        if (typeof assistantContent !== 'string' || !assistantContent.trim()) return;
+        this.history.push({ role: 'user', content: userContent });
+        this.history.push({ role: 'assistant', content: assistantContent });
+        if (this.history.length > MAX_HISTORY_MESSAGES) {
+            this.history = this.history.slice(-MAX_HISTORY_MESSAGES);
+        }
+    }
+
     async sendMessage(messageText) {
         const openai = getOpenAiInstance();
         const model = getConfiguredModelId();
@@ -172,6 +190,18 @@ ${initialContext}`;
     }, 'Created new OpenAI chat session');
 
     return session;
+}
+
+/**
+ * Returns the cached session for a key, or null. Never creates one: a session
+ * created here would have no context prompt, and a later getOrCreateChatSession
+ * call would then be stuck with it.
+ * @param {string} sessionKey
+ * @returns {OpenAiChatSession|null}
+ */
+export function getChatSession(sessionKey) {
+    if (!sessionKey || typeof sessionKey !== 'string') return null;
+    return channelChatSessions.get(sessionKey) || null;
 }
 
 export function resetChatSession(channelName) {

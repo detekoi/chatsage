@@ -18,7 +18,7 @@ import {
     summarizeText
 } from '../../../../../src/components/llm/llmClient.js';
 import { analyzeImage } from '../../../../../src/components/llm/geminiImageClient.js';
-import { removeMarkdownAsterisks, smartTruncate } from '../../../../../src/components/llm/llmUtils.js';
+import { removeMarkdownAsterisks, smartTruncate, recordBotExchange } from '../../../../../src/components/llm/llmUtils.js';
 import { fetchStreamThumbnail } from '../../../../../src/components/twitch/streamImageCapture.js';
 import { getCurrentGameInfo } from '../../../../../src/components/twitch/streamInfoPoller.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
@@ -44,6 +44,7 @@ describe('Game Command Handler', () => {
         summarizeText.mockClear();
         analyzeImage.mockClear();
         removeMarkdownAsterisks.mockClear();
+        recordBotExchange.mockClear();
         fetchStreamThumbnail.mockClear();
         getCurrentGameInfo.mockClear();
         enqueueMessage.mockClear();
@@ -269,6 +270,34 @@ describe('Game Command Handler', () => {
             const callArgs = generateSearchResponse.mock.calls[0];
             expect(callArgs[1]).toContain('how to beat boss');
             expect(callArgs[1]).toContain('Test Game');
+        });
+
+        test('should record the help exchange into the chat session so follow-ups keep the thread', async () => {
+            generateSearchResponse.mockResolvedValue('Finish the repair, then connect it for servicing.');
+
+            const context = createMockContext(['how', 'do', 'i', 'update', 'pokia', 'firmware']);
+            await gameHandler.execute(context);
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Finish the repair, then connect it for servicing.',
+                { replyToId: '123' }
+            );
+            expect(recordBotExchange).toHaveBeenCalledWith(
+                'testchannel',
+                'TestUser',
+                '!game how do i update pokia firmware',
+                'Finish the repair, then connect it for servicing.'
+            );
+        });
+
+        test('should not record an exchange when the help search returns nothing', async () => {
+            generateSearchResponse.mockResolvedValue('');
+
+            const context = createMockContext(['tips']);
+            await gameHandler.execute(context);
+
+            expect(recordBotExchange).not.toHaveBeenCalled();
         });
 
         test('should summarize long help responses', async () => {

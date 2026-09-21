@@ -13,7 +13,7 @@ import { analyzeImage } from '../../llm/geminiImageClient.js';
 // Need message queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
 // Import markdown removal and smart truncation utilities
-import { removeMarkdownAsterisks, smartTruncate } from '../../llm/llmUtils.js';
+import { removeMarkdownAsterisks, smartTruncate, recordBotExchange } from '../../llm/llmUtils.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 
@@ -231,6 +231,7 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
 
         if (sendToChat) {
             await enqueueMessage(channel, finalResponse, { replyToId });
+            recordBotExchange(channelName, userName, '!game analyze', finalResponse);
         }
 
         // Return the full description for use in help queries
@@ -349,6 +350,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
             const scrubbed = responseText.replace(/^(Thinking Process|Reasoning|Analysis)[:-].*$/i, '').trim();
             await enqueueMessage(channel, scrubbed, { replyToId });
             logConversation(channelName, `!game (${gameName})`, scrubbed, { trigger: 'command' });
+            recordBotExchange(channelName, userName, '!game', scrubbed);
         } else {
             // If no additional info is found, provide the basic game info with a helpful message
             logger.warn(`[${channelName}] No additional info found for game: ${gameName}. Sending basic response.`);
@@ -457,6 +459,9 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
 
         await enqueueMessage(channel, finalReplyText, { replyToId });
         logConversation(channelName, `!game ${helpQuery}`, finalReplyText, { trigger: 'command' });
+        // Keep the thread alive: a follow-up like "how do I connect it" arrives as a
+        // mention/reply and is answered from the chat session, not from this handler.
+        recordBotExchange(channelName, userName, `!game ${helpQuery}`, finalReplyText);
 
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: userName, helpQuery }, `Error processing game help request.`);

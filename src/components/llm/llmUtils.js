@@ -2,7 +2,7 @@ import logger from '../../lib/logger.js';
 import { logBotResponse } from '../../lib/activityLogger.js';
 import { logConversation } from './conversationStorage.js';
 import { getContextManager } from '../context/contextManager.js';
-import { buildContextPrompt, summarizeText, getOrCreateChatSession } from './llmClient.js';
+import { buildContextPrompt, summarizeText, getOrCreateChatSession, getChatSession } from './llmClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 import { pronounService } from '../../lib/pronounService.js';
@@ -145,6 +145,71 @@ export function smartTruncate(text, maxLength) {
     return text.substring(0, maxLength - 1).trim() + '.';
 }
 
+// Twitch caps a chat message at 500 chars, so a parent body never exceeds this; the
+// guard only matters if a caller hands in something else.
+const MAX_REPLY_PARENT_CHARS = 500;
+
+/**
+ * Resolves the chat-session key for a channel: the shared-chat session ID when the
+ * channel is in one, otherwise the channel name. Mirrors handleBotMention's lookup so
+ * recorded exchanges land in the same session that later mentions and replies use.
+ * @param {string} cleanChannel - Channel name without '#'.
+ * @returns {Promise<string>}
+ */
+async function resolveChatSessionKey(cleanChannel) {
+    try {
+        const broadcasterId = await getContextManager().getBroadcasterId(cleanChannel);
+        const sessionId = broadcasterId ? sharedChatManager.getSessionForChannel(broadcasterId) : null;
+        return sessionId || cleanChannel;
+    } catch (err) {
+        logger.debug({ err, channel: cleanChannel }, '[ChatSession] Could not resolve shared session, using channel key');
+        return cleanChannel;
+    }
+}
+
+/**
+ * Records a one-shot command exchange (e.g. "!game how do I update the firmware" and
+ * the searched answer) into the channel's persistent chat session, so a follow-up
+ * mention or reply is answered with that thread in view instead of cold.
+ *
+ * Only an existing session is written to. When none exists yet, the next
+ * getOrCreateChatSession call seeds from the channel's recent chat history, which
+ * already includes the bot's own message. Never throws: a missed record only means a
+ * follow-up loses context, which must not break the command that just answered.
+ * @param {string} cleanChannel - Channel name without '#'.
+ * @param {string} displayName - Display name of the user who ran the command.
+ * @param {string} userMessage - What the user typed, including the command (e.g. "!game how do I connect it").
+ * @param {string} botReply - The text the bot sent to chat.
+ */
+export async function recordBotExchange(cleanChannel, displayName, userMessage, botReply) {
+    try {
+        if (!cleanChannel || !botReply?.trim() || !userMessage?.trim()) return;
+        const sessionKey = await resolveChatSessionKey(cleanChannel);
+        const chatSession = getChatSession(sessionKey);
+        if (!chatSession || typeof chatSession.recordExchange !== 'function') {
+            logger.debug({ channel: cleanChannel, sessionKey }, '[ChatSession] No live session to record command exchange into');
+            return;
+        }
+        chatSession.recordExchange(`USER: ${displayName} says: ${userMessage}`, botReply);
+        logger.debug({ channel: cleanChannel, sessionKey }, '[ChatSession] Recorded command exchange into chat session');
+    } catch (err) {
+        logger.warn({ err, channel: cleanChannel }, '[ChatSession] Failed to record command exchange');
+    }
+}
+
+/**
+ * Formats the message the user replied to so the model sees what "it" refers to.
+ * @param {{displayName?: string, text?: string, isBot?: boolean}|null} replyParent
+ * @returns {string|null}
+ */
+function formatReplyParent(replyParent) {
+    const text = typeof replyParent?.text === 'string' ? replyParent.text.trim() : '';
+    if (!text) return null;
+    const clipped = text.length > MAX_REPLY_PARENT_CHARS ? `${text.slice(0, MAX_REPLY_PARENT_CHARS - 1)}…` : text;
+    const who = replyParent.isBot ? 'your earlier message' : `${replyParent.displayName || 'another user'}'s message`;
+    return `[Replying to ${who}: "${clipped}"]`;
+}
+
 /**
  * Handles getting context, calling the standard LLM, summarizing/truncating, and replying.
  * @param {string} channel - Channel name with '#'.
@@ -155,8 +220,13 @@ export function smartTruncate(text, maxLength) {
  * @param {string} triggerType - For logging ("mention" or "command").
  * @param {string|null} replyToId - The ID of the message to reply to.
  * @param {string|null} sessionId - Optional shared chat session ID for merged context.
+ * @param {Array} emoteImageParts - Inline emote image parts for multimodal input.
+ * @param {object} [options]
+ * @param {{displayName?: string, text?: string, isBot?: boolean}|null} [options.replyParent] - The message
+ *   this one is a Twitch reply to. Included in the turn so "how do I connect it" resolves against the
+ *   answer it was sent under, even when that answer came from a one-shot command.
  */
-export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null, emoteImageParts = []) {
+export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null, emoteImageParts = [], options = {}) {
     const logContext = sessionId 
         ? { channel: cleanChannel, user: lowerUsername, trigger: triggerType, sessionId }
         : { channel: cleanChannel, user: lowerUsername, trigger: triggerType };
@@ -224,7 +294,10 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // Also pass botLanguage so the system instruction includes the native-language directive
         const botLanguage = contextManager.getBotLanguage(cleanChannel) || null;
         const chatSession = getOrCreateChatSession(chatSessionKey, contextPrompt, rawChatHistory, botLanguage, personaScope);
-        const messageForChat = `USER: ${displayName} says: ${userMessage}`;
+        const replyParentLine = formatReplyParent(options?.replyParent);
+        const messageForChat = replyParentLine
+            ? `${replyParentLine}\nUSER: ${displayName} says: ${userMessage}`
+            : `USER: ${displayName} says: ${userMessage}`;
         // Include emote images as inline multimodal parts if present
         const messageParts = [{ text: messageForChat }, ...emoteImageParts];
 
