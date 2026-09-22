@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerificationSchema } from '../llm/schemaUtils.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
 
@@ -82,14 +83,14 @@ Only use web search if the question requires very recent or obscure facts that m
     try {
         logger.debug({ topic: specificTopic, language }, `[TriviaService] Generating question via Structured Output.`);
 
-        const { parsed, searchUsed: groundingSearchUsed } = await generateStructuredJson({
+        const { parsed, searchUsed: groundingSearchUsed } = await withLlmCaller('trivia', () => generateStructuredJson({
             prompt,
             schema: activeSchema,
             schemaName: 'trivia_question',
             temperature: 0.7,
             tools: [{ googleSearch: {} }],
             returnMeta: true
-        });
+        }));
 
         if (!parsed) {
             return null;
@@ -228,12 +229,12 @@ Verify if the Player's Answer is correct.
 Return STRICT JSON.`;
 
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('trivia', () => generateStructuredJson({
             prompt,
             schema: TriviaVerificationSchema,
             schemaName: 'trivia_verification',
             temperature: 0.0
-        });
+        }));
 
         if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[TriviaService] Verified via Structured Output.');
@@ -277,7 +278,7 @@ Topic: ${topic}
 Your explanation should be informative, engaging, and around 1-2 sentences long.`;
 
     try {
-        const explanation = await generateText(prompt, { temperature: 0.7 });
+        const explanation = await withLlmCaller('trivia', () => generateText(prompt, { temperature: 0.7 }));
         return explanation?.trim() || `The correct answer is ${answer}.`;
     } catch (error) {
         logger.error({ err: error }, 'Error generating explanation');

@@ -15,6 +15,7 @@ import { getChannelFollower, getUsersByLogin } from '../twitch/helixClient.js';
 import { getBroadcasterAccessToken } from '../twitch/broadcasterTokenHelper.js';
 import { formatFollowAge } from '../customCommands/variableParser.js';
 import { resolvePrompt } from '../customCommands/promptResolver.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { customCommandSource } from '../llm/inferenceHistoryStorage.js';
 import config from '../../config/index.js';
 import { hasPermissionLevel } from '../../lib/permissions.js';
@@ -239,7 +240,7 @@ async function processMessage(channelName, tags, message) {
             logger: logger                   // Provide logger instance
         };
         // Execute the command's handler function
-        await handler.execute(context);
+        await withLlmCaller(`cmd.${command}`, () => handler.execute(context));
         logCommand(channelName, command, 'builtin');
         return true; // Command was successfully executed
 
@@ -350,11 +351,11 @@ async function _tryCustomCommand(channelName, tags, commandCandidates, args) {
 
             // resolvePrompt encapsulates the full dedup lifecycle:
             // fetch history → inject into prompt → generate → log response
-            finalOutput = await resolvePrompt(resolvedText, botLanguage || null, null, false, {
+            finalOutput = await withLlmCaller('custom-command', () => resolvePrompt(resolvedText, botLanguage || null, null, false, {
                 channel: channelName,
                 source: customCommandSource(command),
                 chatContext,
-            });
+            }));
 
             if (!finalOutput) {
                 // AI generation failed — send a user-friendly fallback

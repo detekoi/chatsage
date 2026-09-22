@@ -6,6 +6,7 @@ import { enqueueMessage } from '../lib/ircSender.js';
 import { getCheckinConfig, recordCheckin } from '../components/customCommands/checkinStorage.js';
 import { parseVariables } from '../components/customCommands/variableParser.js';
 import { resolvePrompt } from '../components/customCommands/promptResolver.js';
+import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { buildContextPrompt } from '../components/llm/gemini/prompts.js';
 import { CHECKIN_SOURCE } from '../components/llm/inferenceHistoryStorage.js';
@@ -106,11 +107,11 @@ export async function handleCheckinRedemption(event) {
 
             // resolvePrompt encapsulates the full dedup lifecycle:
             // fetch history → inject into prompt → generate → log response
-            const aiResponse = await resolvePrompt(resolvedPrompt, botLanguage, streamContextString, true /* isCheckin */, {
+            const aiResponse = await withLlmCaller('checkin', () => resolvePrompt(resolvedPrompt, botLanguage, streamContextString, true /* isCheckin */, {
                 channel: channelLogin,
                 source: CHECKIN_SOURCE,
                 chatContext,
-            });
+            }));
 
             const elapsed = Date.now() - startTime;
 

@@ -17,6 +17,7 @@
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { MemoryExtractionSchema, ManualMemorySchema } from '../llm/schemaUtils.js';
 import { savePendingMessages, takePendingMessages } from './memoryStorage.js';
 import {
@@ -174,7 +175,7 @@ ${relatedBlock}
 Chat slice:
 ${chatText}`;
 
-    const parsed = await generateStructuredJson({
+    const parsed = await withLlmCaller('memory-extract', () => generateStructuredJson({
         prompt,
         schema: MemoryExtractionSchema,
         schemaName: 'memory_extraction',
@@ -182,7 +183,7 @@ ${chatText}`;
         temperature: 0.2,
         model: 'lite',
         serviceTier: 'flex',
-    });
+    }));
 
     const operations = Array.isArray(parsed?.operations) ? parsed.operations : [];
     if (operations.length === 0) {
@@ -301,14 +302,14 @@ function _deriveManualMemory(rawText) {
  */
 export async function structureManualMemory(rawText) {
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('memory-manual', () => generateStructuredJson({
             prompt: `Fact to remember:\n${rawText}`,
             schema: ManualMemorySchema,
             schemaName: 'manual_memory',
             systemInstruction: MANUAL_SYSTEM_INSTRUCTION,
             temperature: 0.1,
             model: 'lite',
-        });
+        }));
         if (parsed?.text && Array.isArray(parsed.keys) && parsed.keys.length > 0) {
             return {
                 text: parsed.text,

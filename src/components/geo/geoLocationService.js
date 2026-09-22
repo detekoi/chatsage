@@ -1,4 +1,5 @@
 import { generateText, generateStructuredJson } from '../llm/llmClient.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import logger from '../../lib/logger.js';
 import { getLocationSelectionPrompt } from './geoPrompts.js';
 import { GeoCheckGuessSchema } from '../llm/schemaUtils.js';
@@ -20,10 +21,10 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
         if (mode === 'game') {
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
         }
-        const text = await generateText(prompt, {
+        const text = await withLlmCaller('geo', () => generateText(prompt, {
             temperature: 0.5, // Moderate temp for variety
             webSearch: mode === 'game'
-        });
+        }));
 
         if (!text) {
             logger.warn('[GeoLocation] Could not extract text from location selection response');
@@ -64,12 +65,12 @@ Otherwise, mark as incorrect. Provide brief reasoning. Return STRICT JSON.`;
 
     logger.debug({ targetName, guess, alternateNames }, '[GeoLocation] Validating guess');
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
             schema: GeoCheckGuessSchema,
             schemaName: 'geo_check_guess',
             temperature: 0.0
-        });
+        }));
 
         if (parsed) {
             const validationData = {

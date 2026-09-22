@@ -3,6 +3,7 @@
 // Works directly with EventSub message fragments. Supports animated emotes via sharp.
 import sharp from 'sharp';
 import { getGenAIInstance } from '../components/llm/llmClient.js';
+import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { getFirestore, FieldValue } from './firestore.js';
 import config from '../config/index.js';
 import logger from './logger.js';
@@ -236,7 +237,7 @@ export async function describeSingleEmote(emoteId, emoteName, isAnimated = false
         // This is faster and cheaper than routing through OpenAI for small emote images.
         const activeModel = geminiModel || 'gemini-flash-lite-latest';
 
-        const workPromise = genAI.models.generateContent({
+        const workPromise = withLlmCaller('emote-describe', () => genAI.models.generateContent({
                 model: activeModel,
                 contents,
                 config: {
@@ -250,7 +251,7 @@ export async function describeSingleEmote(emoteId, emoteName, isAnimated = false
                         required: ['description'],
                     },
                 },
-            }).then(response => response?.text);
+            })).then(response => response?.text);
 
         let timeoutId;
         const timeoutPromise = new Promise((_, reject) => {

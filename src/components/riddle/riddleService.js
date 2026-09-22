@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { RiddleSchema, LocalizedRiddleSchema, RiddleVerificationSchema } from '../llm/schemaUtils.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
@@ -149,14 +150,14 @@ Return JSON matching the schema.${languageDirective}`;
     try {
         logger.debug({ topic: actualTopic, language }, `[RiddleService] Generating riddle via Structured Output.`);
 
-        const { parsed: args, searchUsed: groundingSearchUsed } = await generateStructuredJson({
+        const { parsed: args, searchUsed: groundingSearchUsed } = await withLlmCaller('riddle', () => generateStructuredJson({
             prompt,
             schema: activeSchema,
             schemaName: 'riddle',
             temperature: 0.75,
             tools: [{ googleSearch: {} }],
             returnMeta: true
-        });
+        }));
 
         if (!args) {
             return null;
@@ -240,12 +241,12 @@ REJECT if the guess is:
 Return STRICT JSON.`;
 
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('riddle', () => generateStructuredJson({
             prompt,
             schema: RiddleVerificationSchema,
             schemaName: 'riddle_verification',
             temperature: 0.0
-        });
+        }));
 
         if (parsed) {
             logger.info({ userAnswer, is_correct: parsed.is_correct, reasoning: parsed.reasoning }, '[RiddleService] Verified answer via Structured Output.');

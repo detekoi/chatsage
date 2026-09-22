@@ -4,6 +4,7 @@ import config from '../config/index.js';
 import { enqueueMessage } from '../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../lib/translationUtils.js';
 import { handleStandardLlmQuery, resolveSharedSessionId } from '../components/llm/llmUtils.js';
+import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/botConstants.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
@@ -277,13 +278,13 @@ export async function handleBotMention({
         }, `[SharedChat:${sessionId}] Bot interaction detected in shared session with: ${channelLogins.join(', ')}`);
 
         // Use session ID for context instead of single channel
-        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, sessionId, emoteImageParts, queryOptions)
+        withLlmCaller('mention-chat', () => handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, sessionId, emoteImageParts, queryOptions))
             .catch(err => logger.error({ err, sessionId }, 'Error in async shared chat interaction handler call'));
     } else {
         // Normal single-channel interaction
         logger.info({ channel: cleanChannel, user: lowerUsername, trigger: triggerType }, 'Bot interaction detected, triggering standard LLM query...');
 
-        handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, null, emoteImageParts, queryOptions)
+        withLlmCaller('mention-chat', () => handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessageContent, triggerType, replyToId, null, emoteImageParts, queryOptions))
             .catch(err => logger.error({ err }, 'Error in async interaction handler call'));
     }
 }

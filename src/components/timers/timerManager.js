@@ -12,6 +12,7 @@ import { getMessageCount, getLastMessageAt } from '../context/channelActivity.js
 import { isStreamLive } from '../context/liveStatus.js';
 import { parseVariables, formatDuration } from '../customCommands/variableParser.js';
 import { resolvePrompt } from '../customCommands/promptResolver.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { timerSource } from '../llm/inferenceHistoryStorage.js';
 import {
     loadAllTimers,
@@ -133,12 +134,12 @@ async function generatePromptTimerOutput(channelName, timer, resolvedText) {
     const llmContext = contextManager.getContextForLLM(channelName, 'system', 'timer');
     const streamContextString = buildTimerStreamContext(llmContext);
 
-    return await resolvePrompt(resolvedText, botLanguage || null, streamContextString, false, {
+    return await withLlmCaller('timer', () => resolvePrompt(resolvedText, botLanguage || null, streamContextString, false, {
         channel: channelName,
         source: timerSource(timer.name),
         chatContext: llmContext?.recentChatHistory || null,
         serviceTier: 'flex',
-    });
+    }));
 }
 
 async function fireTimer(channelName, timer) {

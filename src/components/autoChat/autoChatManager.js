@@ -4,6 +4,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/llmClient.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
 import { analyzeImage } from '../llm/geminiImageClient.js';
 import {
@@ -335,7 +336,7 @@ async function maybeSendFarewell(channelName) {
 
 export async function notifyStreamOffline(channelName) {
     try {
-        return await maybeSendFarewell(channelName);
+        return await withLlmCaller('autochat.farewell', () => maybeSendFarewell(channelName));
     } catch (e) {
         logger.warn({ err: e, channelName }, '[AutoChatManager] Error sending farewell');
         return null;
@@ -452,25 +453,25 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
 
 export async function notifyFollow(channelName) {
     try {
-        await maybeSendFollowCelebration(channelName);
+        await withLlmCaller('autochat.follow', () => maybeSendFollowCelebration(channelName));
     } catch (e) { /* ignore */ }
 }
 
 export async function notifySubscription(channelName) {
     try {
-        await maybeSendSubscriptionCelebration(channelName);
+        await withLlmCaller('autochat.sub', () => maybeSendSubscriptionCelebration(channelName));
     } catch (e) { /* ignore */ }
 }
 
 export async function notifyGiftSubs(channelName, total, gifterName, cumulativeTotal) {
     try {
-        await maybeSendGiftSubCelebration(channelName, total, gifterName, cumulativeTotal);
+        await withLlmCaller('autochat.giftsub', () => maybeSendGiftSubCelebration(channelName, total, gifterName, cumulativeTotal));
     } catch (e) { /* ignore */ }
 }
 
 export async function notifyRaid(channelName, raiderUserName, viewerCount, raiderUserId) {
     try {
-        await maybeSendRaidCelebration(channelName, raiderUserName, viewerCount, raiderUserId);
+        await withLlmCaller('autochat.raid', () => maybeSendRaidCelebration(channelName, raiderUserName, viewerCount, raiderUserId));
     } catch (e) { /* ignore */ }
 }
 
@@ -505,18 +506,18 @@ export async function startAutoChatManager() {
                 const currentGame = state.streamContext?.game || null;
                 const prevGame = getState(channelName).lastGame;
                 if (currentGame && prevGame && currentGame !== prevGame) {
-                    await maybeHandleGameChange(channelName, prevGame, currentGame);
+                    await withLlmCaller('autochat.game-change', () => maybeHandleGameChange(channelName, prevGame, currentGame));
                 }
                 getState(channelName).lastGame = currentGame;
 
                 // Greet on start (first tick while live)
-                await maybeSendGreeting(channelName);
+                await withLlmCaller('autochat.greeting', () => maybeSendGreeting(channelName));
 
                 // Topic shift detection
-                await maybeHandleTopicShift(channelName);
+                await withLlmCaller('autochat.topic-shift', () => maybeHandleTopicShift(channelName));
 
                 // Lull detection
-                await maybeHandleLull(channelName);
+                await withLlmCaller('autochat.lull', () => maybeHandleLull(channelName));
             }
         } catch (err) {
             logger.error({ err }, '[AutoChatManager] Error during tick');
@@ -558,8 +559,9 @@ export async function generateAdNotification(channelName, type, seconds) {
             ? `An ad is scheduled to start in about ${secs} seconds while they are playing ${gameName}. Write ONE friendly, concise pre-alert to chat. ≤22 words. No spam.`
             : `An ad break of ${secs} seconds is starting while they are playing ${gameName}. Write ONE short, funny and friendly heads-up to chat. ≤28 words. No commands or emojis spam.`;
 
-        const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
-            || await generateSearchResponse(contextPrompt, prompt, { channelName });
+        const text = await withLlmCaller('ad-notification', async () =>
+            await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
+            || await generateSearchResponse(contextPrompt, prompt, { channelName }));
         return text ? removeMarkdownAsterisks(text) : null;
     } catch (error) {
         logger.error({ err: error, channelName, type }, '[AutoChatManager] Error generating ad notification');

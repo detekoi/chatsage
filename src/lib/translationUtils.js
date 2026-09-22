@@ -1,5 +1,6 @@
 import logger from './logger.js';
 import { generateLiteContent } from '../components/llm/llmClient.js';
+import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { TranslateCommandSchema, TranslationResponseSchema } from '../components/llm/schemaUtils.js';
 
 // Translation cache with LRU-style eviction and time-based expiration
@@ -131,10 +132,10 @@ Rules:
 Return JSON only.`;
 
     try {
-        const responseText = await generateLiteContent(prompt, {
+        const responseText = await withLlmCaller('translate-command', () => generateLiteContent(prompt, {
             temperature: 0,
             responseSchema: TranslateCommandSchema
-        });
+        }));
 
         if (responseText) {
             const parsed = JSON.parse(responseText);
@@ -199,11 +200,11 @@ Rules:
 Text:
 ${textToTranslate}`;
 
-        const responseText = await generateLiteContent(translationPrompt, {
+        const responseText = await withLlmCaller('translate', () => generateLiteContent(translationPrompt, {
             temperature: 0.3,
             maxOutputTokens: 2048,
             responseSchema: TranslationResponseSchema
-        });
+        }));
 
         if (responseText) {
             try {
@@ -226,10 +227,10 @@ ${textToTranslate}`;
     if (!translatedText) {
         try {
             const simplePrompt = `Translate to ${targetLanguage} (replace any slurs or hate speech with neutral descriptive terms like "[slur]" instead of translating them literally): ${textToTranslate}`;
-            const text2 = await generateLiteContent(simplePrompt, {
+            const text2 = await withLlmCaller('translate', () => generateLiteContent(simplePrompt, {
                 temperature: 0.2,
                 maxOutputTokens: 1536
-            });
+            }));
             if (text2) {
                 logger.debug({
                     phase: 'attempt2',

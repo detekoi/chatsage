@@ -1,4 +1,5 @@
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 import logger from '../../lib/logger.js';
 import { GeoClueSchema, GeoRevealSchema } from '../llm/schemaUtils.js';
 
@@ -15,12 +16,12 @@ Difficulty: ${difficulty}
 - Return a single engaging sentence in JSON.${languageDirective}`;
 
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
             schema: GeoClueSchema,
             schemaName: 'geo_initial_clue',
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
-        });
+        }));
 
         return parsed?.clue_text || null;
     } catch (error) {
@@ -51,12 +52,12 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
 - Return a single engaging sentence in JSON.${languageDirective}`;
 
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
             schema: GeoClueSchema,
             schemaName: 'geo_followup_clue',
             tools: (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? [{ googleSearch: {} }] : undefined
-        });
+        }));
 
         return parsed?.clue_text || null;
     } catch (error) {
@@ -88,12 +89,12 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
 - Return a short paragraph (2-4 sentences) in JSON.${languageDirective}`;
 
     try {
-        const parsed = await generateStructuredJson({
+        const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
             schema: GeoRevealSchema,
             schemaName: 'geo_final_reveal',
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
-        });
+        }));
 
         return parsed?.reveal_text || null;
     } catch (error) {

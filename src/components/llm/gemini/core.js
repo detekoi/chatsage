@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { retryWithBackoff, executeWithFlexFallback } from './utils.js';
+import { instrumentGenAiClient } from '../llmRequestLog.js';
 
 let genAI = null;
 let generativeModel = null; // Wrapper that mirrors old API (generateContent/startChat)
@@ -24,7 +25,7 @@ export function initializeGeminiClient(geminiConfig) {
         logger.info(`Initializing Google GenAI with model: ${geminiConfig.modelId} (Lite: ${geminiConfig.liteModelId})`);
         configuredModelId = geminiConfig.modelId;
         configuredLiteModelId = geminiConfig.liteModelId || 'gemini-flash-lite-latest';
-        genAI = new GoogleGenAI({ apiKey: geminiConfig.apiKey });
+        genAI = instrumentGenAiClient(new GoogleGenAI({ apiKey: geminiConfig.apiKey }));
 
         // Wrapper provides an object-compatible API with previous code:
         // - generateContent(params) → ai.models.generateContent({ model, contents, config })

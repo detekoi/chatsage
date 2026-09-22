@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import logger from '../../../lib/logger.js';
 import { executeWithFlexFallback } from '../retryUtils.js';
+import { instrumentOpenAiClient } from '../llmRequestLog.js';
 import { toOpenAiStrictSchema } from '../schemaUtils.js';
 import { extractRefusal } from './utils.js';
 
@@ -31,7 +32,7 @@ export function initializeOpenAiClient(openaiConfig) {
 
         logger.info(`Initializing OpenAI client with model: ${configuredModelId} (Lite: ${configuredLiteModelId})`);
 
-        openaiClient = new OpenAI({ apiKey: openaiConfig.apiKey });
+        openaiClient = instrumentOpenAiClient(new OpenAI({ apiKey: openaiConfig.apiKey }));
         logger.info('OpenAI client initialized successfully.');
     } catch (error) {
         logger.fatal({ err: { message: error.message, stack: error.stack } }, 'Failed to initialize OpenAI client.');

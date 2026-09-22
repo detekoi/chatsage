@@ -1,5 +1,6 @@
 import logger from '../../lib/logger.js';
 import { summarizeText } from '../llm/llmClient.js'; // Use the specialized summarizeText function
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 
 /**
  * Formats chat history into a plain text block suitable for a summarization prompt.
@@ -27,7 +28,11 @@ function formatHistoryForSummarization(chatHistory) {
  * @param {string|null} [previousSummary] - The existing rolling summary to fold into.
  * @returns {Promise<string | null>} A promise resolving to the generated summary text, or null if summarization fails or isn't needed.
  */
-async function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment, previousSummary) {
+function triggerSummarizationIfNeeded(channelName, fullChatHistorySegment, previousSummary) {
+    return withLlmCaller('chat-summary', () => _triggerSummarizationIfNeeded(channelName, fullChatHistorySegment, previousSummary));
+}
+
+async function _triggerSummarizationIfNeeded(channelName, fullChatHistorySegment, previousSummary) {
     // Basic check: Don't summarize very short histories.
     if (!fullChatHistorySegment || fullChatHistorySegment.length < 10) {
         logger.debug(`[${channelName}] History segment too short, skipping summarization.`);
