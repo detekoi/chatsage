@@ -1,5 +1,10 @@
 // src/lib/baseGameStorage.js
+//
+// Per-channel game configs are keyed by broadcaster ID, not login (see
+// channelKey.js). Player stats and history are keyed and filtered by name;
+// that is a separate identity problem not addressed here.
 import { getFirestore, FieldValue } from './firestore.js';
+import { channelDocKey, normalizeChannelName } from './channelKey.js';
 import logger from './logger.js';
 
 export class StorageError extends Error {
@@ -41,10 +46,13 @@ export class BaseGameStorage {
 
     // ── Channel Configuration ──────────────────────────────────────────
 
+    _configDocRef(channelName) {
+        return this._getDb().collection(this.configCollection).doc(channelDocKey(channelName));
+    }
+
     async loadChannelConfig(channelName) {
-        const docRef = this._getDb().collection(this.configCollection).doc(channelName.toLowerCase());
         try {
-            const docSnap = await docRef.get();
+            const docSnap = await this._configDocRef(channelName).get();
             if (docSnap.exists) {
                 logger.debug(`${this._tag()} Loaded config for channel ${channelName}`);
                 return docSnap.data();
@@ -58,9 +66,11 @@ export class BaseGameStorage {
     }
 
     async saveChannelConfig(channelName, config) {
-        const docRef = this._getDb().collection(this.configCollection).doc(channelName.toLowerCase());
         try {
-            await docRef.set(config, { merge: true });
+            await this._configDocRef(channelName).set(
+                { channelName: normalizeChannelName(channelName), ...config },
+                { merge: true }
+            );
             logger.debug(`${this._tag()} Saved config for channel ${channelName}`);
         } catch (error) {
             logger.error({ err: error, channel: channelName }, `${this._tag()} Error saving config`);

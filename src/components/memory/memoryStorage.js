@@ -2,13 +2,18 @@
 //
 // Long-term channel memory: lore, in-jokes and light facts about regulars.
 //
-//   channelMemories/{channel}              -> { optedOut: string[], updatedAt }
-//   channelMemories/{channel}/items/{id}   -> one memory (see addMemory)
-//   channelMemoryPending/{channel}         -> raw chat lines stashed at shutdown, waiting for extraction
+//   channelMemories/{broadcasterId}              -> { channelName, optedOut: string[], enabled, updatedAt }
+//   channelMemories/{broadcasterId}/items/{id}   -> one memory (see addMemory)
+//   channelMemoryPending/{broadcasterId}         -> raw chat lines stashed at shutdown, waiting for extraction
+//
+// Documents are keyed by broadcaster ID (see lib/channelKey.js), never by login: memory text is
+// composed into prompts, so a renamed channel must keep it and the next owner of the freed name
+// must not inherit it. `channelName` is stored for readability only.
 //
 // No TTL on any of these: memories are meant to outlive streams, and the pending doc is deleted
 // by the next process that picks it up.
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
+import { channelDocKey, normalizeChannelName } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 const MEMORY_COLLECTION = 'channelMemories';
@@ -39,7 +44,11 @@ function _getDb() {
 }
 
 function _channelRef(channelName) {
-    return _getDb().collection(MEMORY_COLLECTION).doc(channelName.toLowerCase());
+    return _getDb().collection(MEMORY_COLLECTION).doc(channelDocKey(channelName));
+}
+
+function _pendingRef(channelName) {
+    return _getDb().collection(PENDING_COLLECTION).doc(channelDocKey(channelName));
 }
 
 function _itemsRef(channelName) {
@@ -141,7 +150,7 @@ export async function deleteMemories(channelName, memoryIds) {
 export async function addOptOut(channelName, login) {
     try {
         await _channelRef(channelName).set({
-            channelName: channelName.toLowerCase(),
+            channelName: normalizeChannelName(channelName),
             optedOut: FieldValue.arrayUnion(login.toLowerCase()),
             updatedAt: new Date(),
         }, { merge: true });
@@ -160,7 +169,7 @@ export async function addOptOut(channelName, login) {
 export async function setChannelMemoryEnabled(channelName, enabled) {
     try {
         await _channelRef(channelName).set({
-            channelName: channelName.toLowerCase(),
+            channelName: normalizeChannelName(channelName),
             enabled: !!enabled,
             updatedAt: new Date(),
         }, { merge: true });
@@ -177,7 +186,13 @@ export async function setChannelMemoryEnabled(channelName, enabled) {
  * @param {string[]} memoryIds
  */
 export function bumpUsage(channelName, memoryIds) {
-    const items = _itemsRef(channelName);
+    let items;
+    try {
+        items = _itemsRef(channelName);
+    } catch (err) {
+        logger.debug({ err, channel: channelName }, '[MemoryStorage] Usage bump skipped');
+        return;
+    }
     for (const id of memoryIds) {
         items.doc(id).set({
             useCount: FieldValue.increment(1),
@@ -196,8 +211,8 @@ export function bumpUsage(channelName, memoryIds) {
  */
 export async function savePendingMessages(channelName, messages) {
     try {
-        await _getDb().collection(PENDING_COLLECTION).doc(channelName.toLowerCase()).set({
-            channelName: channelName.toLowerCase(),
+        await _pendingRef(channelName).set({
+            channelName: normalizeChannelName(channelName),
             messages,
             updatedAt: new Date(),
         });
@@ -213,8 +228,8 @@ export async function savePendingMessages(channelName, messages) {
  * @returns {Promise<{username: string, message: string, ts: number}[]>}
  */
 export async function takePendingMessages(channelName) {
-    const docRef = _getDb().collection(PENDING_COLLECTION).doc(channelName.toLowerCase());
     try {
+        const docRef = _pendingRef(channelName);
         const snap = await docRef.get();
         if (!snap.exists) return [];
         const messages = snap.data().messages || [];

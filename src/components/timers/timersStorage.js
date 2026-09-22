@@ -5,11 +5,14 @@
 //   chatsage-web-ui/functions/src/api/timers.router.ts
 // Keep field names, defaults, and validation limits in sync between the two.
 //
-// Layout: channelTimers/{channelLogin}/timers/{timerName}
-// The top-level collection is named 'channelTimers' (not 'timers') so the
-// collectionGroup('timers') listener below only matches the subcollections.
+// Layout: channelTimers/{broadcasterId}/timers/{timerName}
+// Keyed by broadcaster ID, not login (see lib/channelKey.js); the parent doc
+// carries `channelName` for readability. The top-level collection is named
+// 'channelTimers' (not 'timers') so the collectionGroup('timers') listener
+// below only matches the subcollections.
 
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
+import { channelDocKey, channelNameForDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 const CHANNEL_TIMERS_COLLECTION = 'channelTimers';
@@ -91,11 +94,16 @@ export function _getDb() {
     return getFirestore();
 }
 
+function _channelDocRef(db, channelName) {
+    return db.collection(CHANNEL_TIMERS_COLLECTION).doc(channelDocKey(channelName));
+}
+
+function _timersColRef(db, channelName) {
+    return _channelDocRef(db, channelName).collection(TIMERS_SUBCOLLECTION);
+}
+
 function _timerDocRef(db, channelName, timerName) {
-    return db.collection(CHANNEL_TIMERS_COLLECTION)
-        .doc(channelName.toLowerCase())
-        .collection(TIMERS_SUBCOLLECTION)
-        .doc(timerName.toLowerCase());
+    return _timersColRef(db, channelName).doc(timerName.toLowerCase());
 }
 
 /**
@@ -126,12 +134,9 @@ export async function getTimer(channelName, timerName) {
  */
 export async function getTimersForChannel(channelName) {
     const db = _getDb();
-    const colRef = db.collection(CHANNEL_TIMERS_COLLECTION)
-        .doc(channelName.toLowerCase())
-        .collection(TIMERS_SUBCOLLECTION);
 
     try {
-        const snapshot = await colRef.get();
+        const snapshot = await _timersColRef(db, channelName).get();
         const timers = [];
         snapshot.forEach(doc => {
             timers.push({ name: doc.id, ...doc.data() });
@@ -160,19 +165,16 @@ export async function addTimer(channelName, timerName, response, createdBy, type
     const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerTimer = timerName.toLowerCase();
-    const docRef = _timerDocRef(db, lowerChannel, lowerTimer);
 
     try {
+        const docRef = _timerDocRef(db, lowerChannel, lowerTimer);
         const result = await db.runTransaction(async (t) => {
             const existing = await t.get(docRef);
             if (existing.exists) {
                 return false;
             }
 
-            const colRef = db.collection(CHANNEL_TIMERS_COLLECTION)
-                .doc(lowerChannel)
-                .collection(TIMERS_SUBCOLLECTION);
-            const allTimers = await t.get(colRef);
+            const allTimers = await t.get(_timersColRef(db, lowerChannel));
             
             if (allTimers.size >= MAX_TIMERS_PER_CHANNEL) {
                 throw new TimersStorageError(`Channel ${lowerChannel} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`);
@@ -196,7 +198,7 @@ export async function addTimer(channelName, timerName, response, createdBy, type
 
             // Also set the parent doc to ensure it exists for queries
             t.set(
-                db.collection(CHANNEL_TIMERS_COLLECTION).doc(lowerChannel),
+                _channelDocRef(db, lowerChannel),
                 { channelName: lowerChannel, updatedAt: FieldValue.serverTimestamp() },
                 { merge: true }
             );
@@ -227,9 +229,9 @@ export async function addTimer(channelName, timerName, response, createdBy, type
  */
 export async function updateTimerResponse(channelName, timerName, response) {
     const db = _getDb();
-    const docRef = _timerDocRef(db, channelName, timerName);
 
     try {
+        const docRef = _timerDocRef(db, channelName, timerName);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -262,9 +264,9 @@ export async function updateTimerResponse(channelName, timerName, response) {
  */
 export async function updateTimerOptions(channelName, timerName, options) {
     const db = _getDb();
-    const docRef = _timerDocRef(db, channelName, timerName);
 
     try {
+        const docRef = _timerDocRef(db, channelName, timerName);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -303,9 +305,9 @@ export async function updateTimerOptions(channelName, timerName, options) {
  */
 export async function removeTimer(channelName, timerName) {
     const db = _getDb();
-    const docRef = _timerDocRef(db, channelName, timerName);
 
     try {
+        const docRef = _timerDocRef(db, channelName, timerName);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -341,6 +343,20 @@ export async function recordTimerRun(channelName, timerName) {
 }
 
 /**
+ * Resolves a timer document's parent (a broadcaster ID) to a channel login.
+ * Documents whose parent is not a known channel — a legacy login-keyed doc
+ * left behind by migration, or a channel since removed from managedChannels —
+ * are reported as null and skipped by the callers.
+ * @param {import('@google-cloud/firestore').DocumentSnapshot} doc
+ * @returns {string|null}
+ */
+function _channelNameForTimerDoc(doc) {
+    const parentId = doc.ref.parent.parent?.id;
+    if (!parentId) return null;
+    return channelNameForDocKey(parentId);
+}
+
+/**
  * Loads all timers for all channels. Used for in-memory cache initialization.
  * @returns {Promise<Map<string, Map<string, object>>>} Map of channelName -> Map of timerName -> timer data.
  */
@@ -352,8 +368,11 @@ export async function loadAllTimers() {
         const allTimers = new Map();
 
         snapshot.forEach(doc => {
-            const channelName = doc.ref.parent.parent?.id;
-            if (!channelName) return;
+            const channelName = _channelNameForTimerDoc(doc);
+            if (!channelName) {
+                logger.debug({ path: doc.ref.path }, '[TimersStorage] Skipping timer under an unknown channel');
+                return;
+            }
             if (!allTimers.has(channelName)) {
                 allTimers.set(channelName, new Map());
             }
@@ -383,10 +402,10 @@ export function listenForTimerChanges(onChangeCallback) {
     const unsubscribe = db.collectionGroup(TIMERS_SUBCOLLECTION)
         .onSnapshot(snapshot => {
             snapshot.docChanges().forEach(change => {
-                const channelName = change.doc.ref.parent.parent?.id;
+                const channelName = _channelNameForTimerDoc(change.doc);
                 if (!channelName) {
-                    logger.warn({ docId: change.doc.id },
-                        '[TimersStorage] Listener detected timer doc without a parent channel. Skipping.');
+                    logger.debug({ path: change.doc.ref.path },
+                        '[TimersStorage] Listener saw a timer under an unknown channel. Skipping.');
                     return;
                 }
                 onChangeCallback({

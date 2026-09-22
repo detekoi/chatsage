@@ -10,6 +10,15 @@ const mockItemDelete = jest.fn().mockResolvedValue();
 const mockItemAdd = jest.fn(async () => ({ id: 'generated-id' }));
 const mockPendingSet = jest.fn().mockResolvedValue();
 const mockPendingDelete = jest.fn().mockResolvedValue();
+const mockChannelDocFn = jest.fn();
+const mockPendingDocFn = jest.fn();
+
+// Channel documents are keyed by broadcaster ID, resolved through the allow-list.
+const BROADCASTER_ID = '4242';
+jest.mock('../../../../src/lib/allowList.js', () => ({
+    getBroadcasterIdForChannel: jest.fn((name) => (String(name).toLowerCase() === 'chan' ? '4242' : null)),
+    getChannelNameForBroadcasterId: jest.fn((id) => (id === '4242' ? 'chan' : null)),
+}));
 
 jest.mock('../../../../src/lib/firestore.js', () => {
     const items = {
@@ -17,17 +26,17 @@ jest.mock('../../../../src/lib/firestore.js', () => {
         add: (...args) => mockItemAdd(...args),
         doc: jest.fn(() => ({ set: mockItemSet, delete: mockItemDelete })),
     };
+    mockPendingDocFn.mockImplementation(() => ({ get: jest.fn(async () => mockPendingDoc), set: mockPendingSet, delete: mockPendingDelete }));
+    mockChannelDocFn.mockImplementation(() => ({
+        get: jest.fn(async () => mockParentDoc),
+        set: mockParentSet,
+        collection: jest.fn(() => items),
+    }));
     const collection = jest.fn((name) => {
         if (name === 'channelMemoryPending') {
-            return { doc: jest.fn(() => ({ get: jest.fn(async () => mockPendingDoc), set: mockPendingSet, delete: mockPendingDelete })) };
+            return { doc: mockPendingDocFn };
         }
-        return {
-            doc: jest.fn(() => ({
-                get: jest.fn(async () => mockParentDoc),
-                set: mockParentSet,
-                collection: jest.fn(() => items),
-            })),
-        };
+        return { doc: mockChannelDocFn };
     });
     return {
         getFirestore: jest.fn(() => ({ collection })),
@@ -72,6 +81,17 @@ describe('loadChannelMemories', () => {
         });
     });
 
+    it('keys the channel document by broadcaster ID, not login', async () => {
+        await loadChannelMemories('#Chan');
+        expect(mockChannelDocFn).toHaveBeenCalledWith(BROADCASTER_ID);
+        expect(mockChannelDocFn).not.toHaveBeenCalledWith('chan');
+    });
+
+    it('refuses a channel with no known broadcaster ID rather than keying by name', async () => {
+        await expect(loadChannelMemories('unknown')).rejects.toBeInstanceOf(MemoryStorageError);
+        expect(mockChannelDocFn).not.toHaveBeenCalled();
+    });
+
     it('reads the channel opt-out and user opt-outs', async () => {
         mockParentDoc = { exists: true, data: () => ({ enabled: false, optedOut: ['bob'] }) };
         const result = await loadChannelMemories('chan');
@@ -96,7 +116,8 @@ describe('writes', () => {
 
     it('addOptOut and setChannelMemoryEnabled merge into the channel doc', async () => {
         await addOptOut('chan', 'Bob');
-        expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ optedOut: { __arrayUnion: ['bob'] } }), { merge: true });
+        expect(mockChannelDocFn).toHaveBeenCalledWith(BROADCASTER_ID);
+        expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ channelName: 'chan', optedOut: { __arrayUnion: ['bob'] } }), { merge: true });
         await setChannelMemoryEnabled('chan', false);
         expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }), { merge: true });
     });
@@ -107,13 +128,19 @@ describe('writes', () => {
         expect(mockItemSet).toHaveBeenCalledTimes(2);
         expect(mockItemSet).toHaveBeenCalledWith(expect.objectContaining({ useCount: { __increment: 1 } }), { merge: true });
     });
+
+    it('bumpUsage is a no-op for a channel with no known broadcaster ID', () => {
+        expect(() => bumpUsage('unknown', ['m1'])).not.toThrow();
+        expect(mockItemSet).not.toHaveBeenCalled();
+    });
 });
 
 describe('pending messages', () => {
     it('round-trips stashed lines and deletes the doc once taken', async () => {
         const lines = [{ username: 'alice', message: 'hi', ts: 1 }];
         await savePendingMessages('chan', lines);
-        expect(mockPendingSet).toHaveBeenCalledWith(expect.objectContaining({ messages: lines }));
+        expect(mockPendingDocFn).toHaveBeenCalledWith(BROADCASTER_ID);
+        expect(mockPendingSet).toHaveBeenCalledWith(expect.objectContaining({ channelName: 'chan', messages: lines }));
 
         mockPendingDoc = { exists: true, data: () => ({ messages: lines }) };
         expect(await takePendingMessages('chan')).toEqual(lines);

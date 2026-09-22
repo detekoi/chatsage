@@ -1,5 +1,10 @@
 // src/components/context/channelCommandsStorage.js
+//
+// Layout: channelCommands/{broadcasterId} -> { channelName, disabledCommands: string[] }
+// Keyed by broadcaster ID, not login (see lib/channelKey.js). The web UI writes
+// the same documents (chatsage-web-ui/functions/src/api/commands.router.ts).
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
+import { channelDocKey, channelNameForDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 // Collection name for storing per-channel command settings
@@ -28,17 +33,18 @@ function _getDb() {
     return getFirestore();
 }
 
+function _channelDocRef(channelName) {
+    return _getDb().collection(CHANNEL_COMMANDS_COLLECTION).doc(channelDocKey(channelName));
+}
+
 /**
  * Loads the disabled commands list for a specific channel from Firestore.
  * @param {string} channelName - The channel name (lowercase).
  * @returns {Promise<string[]>} Array of disabled command names, or empty array if not found.
  */
 export async function getDisabledCommands(channelName) {
-    const db = _getDb();
-    const docRef = db.collection(CHANNEL_COMMANDS_COLLECTION).doc(channelName.toLowerCase());
-    
     try {
-        const docSnap = await docRef.get();
+        const docSnap = await _channelDocRef(channelName).get();
         if (docSnap.exists) {
             const data = docSnap.data();
             const disabledCommands = data.disabledCommands || [];
@@ -61,9 +67,6 @@ export async function getDisabledCommands(channelName) {
  * @returns {Promise<boolean>} True if command was newly disabled, false if already disabled.
  */
 export async function disableCommand(channelName, commandName) {
-    const db = _getDb();
-    const docRef = db.collection(CHANNEL_COMMANDS_COLLECTION).doc(channelName.toLowerCase());
-    
     try {
         // First check if it's already disabled
         const currentDisabled = await getDisabledCommands(channelName);
@@ -73,7 +76,7 @@ export async function disableCommand(channelName, commandName) {
         }
         
         // Add to disabled list using atomic array union
-        await docRef.set({
+        await _channelDocRef(channelName).set({
             channelName: channelName.toLowerCase(),
             disabledCommands: FieldValue.arrayUnion(commandName),
             updatedAt: new Date()
@@ -95,9 +98,6 @@ export async function disableCommand(channelName, commandName) {
  * @returns {Promise<boolean>} True if command was newly enabled, false if already enabled.
  */
 export async function enableCommand(channelName, commandName) {
-    const db = _getDb();
-    const docRef = db.collection(CHANNEL_COMMANDS_COLLECTION).doc(channelName.toLowerCase());
-    
     try {
         // First check if it's currently disabled
         const currentDisabled = await getDisabledCommands(channelName);
@@ -107,7 +107,7 @@ export async function enableCommand(channelName, commandName) {
         }
         
         // Remove from disabled list using atomic array remove
-        await docRef.set({
+        await _channelDocRef(channelName).set({
             channelName: channelName.toLowerCase(),
             disabledCommands: FieldValue.arrayRemove(commandName),
             updatedAt: new Date()
@@ -136,7 +136,11 @@ export async function loadAllChannelCommandSettings() {
         
         snapshot.forEach(doc => {
             const data = doc.data();
-            const channelName = data.channelName;
+            const channelName = channelNameForDocKey(doc.id, data);
+            if (!channelName) {
+                logger.debug({ docId: doc.id }, '[ChannelCommandsStorage] Skipping command settings for an unknown channel');
+                return;
+            }
             const disabledCommands = new Set(data.disabledCommands || []);
             channelSettings.set(channelName, disabledCommands);
         });
@@ -164,15 +168,15 @@ export function listenForCommandSettingsChanges(onChangeCallback) {
         .onSnapshot(snapshot => {
             snapshot.docChanges().forEach(change => {
                 const channelData = change.doc.data();
-                if (channelData && typeof channelData.channelName === 'string') {
-                    const channelName = channelData.channelName;
-                    const disabledCommands = new Set(channelData.disabledCommands || []);
+                const channelName = channelNameForDocKey(change.doc.id, channelData);
+                if (channelName) {
+                    const disabledCommands = new Set(channelData?.disabledCommands || []);
                     
                     logger.debug(`[ChannelCommandsStorage] Command settings changed for channel ${channelName}, disabled commands: [${Array.from(disabledCommands).join(', ')}]`);
                     onChangeCallback(channelName, disabledCommands);
                 } else {
-                    logger.warn({ docId: change.doc.id }, 
-                        `[ChannelCommandsStorage] Firestore listener detected change in document missing valid 'channelName'. Skipping.`);
+                    logger.debug({ docId: change.doc.id },
+                        '[ChannelCommandsStorage] Firestore listener saw a change for an unknown channel. Skipping.');
                 }
             });
         }, error => {

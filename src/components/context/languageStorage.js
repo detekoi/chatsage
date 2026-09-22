@@ -1,5 +1,10 @@
 // src/components/context/languageStorage.js
+//
+// Layout: channelLanguages/{broadcasterId} -> { channelName, language }
+// Keyed by broadcaster ID, not login (see lib/channelKey.js). The web UI writes
+// the same documents (chatsage-web-ui/functions/src/api/language.router.ts).
 import { getFirestore } from '../../lib/firestore.js';
+import { channelDocKey, channelNameForDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 // Collection name
@@ -28,16 +33,18 @@ function _getDb() {
     return getFirestore();
 }
 
+function _channelDocRef(channelName) {
+    return _getDb().collection(LANGUAGE_COLLECTION).doc(channelDocKey(channelName));
+}
+
 /**
  * Loads the language setting for a specific channel from Firestore.
  * @param {string} channelName
  * @returns {Promise<string|null>} The language setting or null if not found/default.
  */
 export async function getChannelLanguage(channelName) {
-    const db = _getDb();
-    const docRef = db.collection(LANGUAGE_COLLECTION).doc(channelName.toLowerCase());
     try {
-        const docSnap = await docRef.get();
+        const docSnap = await _channelDocRef(channelName).get();
         if (docSnap.exists) {
             const data = docSnap.data();
             logger.debug(`[LanguageStorage] Loaded language setting for channel ${channelName}: ${data.language || 'default'}`);
@@ -59,10 +66,8 @@ export async function getChannelLanguage(channelName) {
  * @returns {Promise<boolean>} True on success, false on failure.
  */
 export async function saveChannelLanguage(channelName, language) {
-    const db = _getDb();
-    const docRef = db.collection(LANGUAGE_COLLECTION).doc(channelName.toLowerCase());
     try {
-        await docRef.set({
+        await _channelDocRef(channelName).set({
             channelName: channelName.toLowerCase(),
             language: language,
             updatedAt: new Date()
@@ -88,7 +93,9 @@ export async function loadAllChannelLanguages() {
         
         snapshot.forEach(doc => {
             const data = doc.data();
-            channelLanguages.set(data.channelName, data.language);
+            const channelName = channelNameForDocKey(doc.id, data);
+            if (!channelName) return;
+            channelLanguages.set(channelName, data.language);
         });
         
         logger.info(`[LanguageStorage] Loaded language settings for ${channelLanguages.size} channels`);
@@ -115,7 +122,7 @@ export function onChannelLanguageChanges(callback) {
     return db.collection(LANGUAGE_COLLECTION).onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data() || {};
-            const channelName = (data.channelName || change.doc.id || '').toLowerCase();
+            const channelName = channelNameForDocKey(change.doc.id, data);
             if (!channelName) return;
 
             // `undefined` and `null` mean different things here, so a removed document has to

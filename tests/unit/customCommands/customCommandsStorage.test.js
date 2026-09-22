@@ -6,6 +6,7 @@ import {
     getAllCustomCommands,
     removeCustomCommand,
     incrementUseCount,
+    CustomCommandsStorageError,
 } from '../../../src/components/customCommands/customCommandsStorage.js';
 
 // Mock logger
@@ -106,6 +107,13 @@ const mockFirestore = {
     collection: jest.fn((colName) => mockCollectionRef(colName)),
 };
 
+// Channel documents are keyed by broadcaster ID, resolved through the allow-list.
+const BROADCASTER_ID = '4242';
+jest.mock('../../../src/lib/allowList.js', () => ({
+    getBroadcasterIdForChannel: jest.fn((name) => ({ testchannel: '4242', emptychannel: '5555' })[String(name).toLowerCase()] || null),
+    getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'testchannel', 5555: 'emptychannel' })[id] || null),
+}));
+
 jest.mock('../../../src/lib/firestore.js', () => ({
     getFirestore: jest.fn(() => mockFirestore),
     FieldValue: {
@@ -134,7 +142,7 @@ describe('customCommandsStorage', () => {
             const result = await addCustomCommand('TestChannel', 'hello', 'Hello $(user)!', 'ModUser');
             expect(result).toBe(true);
             // Verify stored data
-            const stored = mockStore['customCommands/testchannel/commands/hello'];
+            const stored = mockStore[`customCommands/${BROADCASTER_ID}/commands/hello`];
             expect(stored.exists).toBe(true);
             expect(stored.data.response).toBe('Hello $(user)!');
             expect(stored.data.permission).toBe('everyone');
@@ -145,7 +153,7 @@ describe('customCommandsStorage', () => {
 
         test('returns false if command already exists', async () => {
             // Pre-populate
-            mockStore['customCommands/testchannel/commands/hello'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/hello`] = {
                 exists: true,
                 data: { response: 'existing' },
             };
@@ -156,8 +164,20 @@ describe('customCommandsStorage', () => {
 
         test('normalizes channel and command names to lowercase', async () => {
             await addCustomCommand('TestChannel', 'MyCmd', 'response', 'SomeUser');
-            expect(mockStore['customCommands/testchannel/commands/mycmd']).toBeDefined();
-            expect(mockStore['customCommands/testchannel/commands/mycmd'].data.createdBy).toBe('someuser');
+            expect(mockStore[`customCommands/${BROADCASTER_ID}/commands/mycmd`]).toBeDefined();
+            expect(mockStore[`customCommands/${BROADCASTER_ID}/commands/mycmd`].data.createdBy).toBe('someuser');
+        });
+
+        test('keys the channel by broadcaster ID and records the login on the parent doc', async () => {
+            await addCustomCommand('TestChannel', 'hello', 'Hello!', 'mod');
+            expect(mockStore['customCommands/testchannel/commands/hello']).toBeUndefined();
+            expect(mockStore[`customCommands/${BROADCASTER_ID}`].data.channelName).toBe('testchannel');
+        });
+
+        test('refuses a channel with no known broadcaster ID rather than keying by name', async () => {
+            await expect(addCustomCommand('unknown', 'hello', 'Hello!', 'mod'))
+                .rejects.toBeInstanceOf(CustomCommandsStorageError);
+            expect(Object.keys(mockStore)).toEqual([]);
         });
     });
 
@@ -166,7 +186,7 @@ describe('customCommandsStorage', () => {
     // =========================================================================
     describe('getCustomCommand', () => {
         test('returns command data when found', async () => {
-            mockStore['customCommands/testchannel/commands/greet'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/greet`] = {
                 exists: true,
                 data: { response: 'Hi $(user)!', permission: 'everyone' },
             };
@@ -190,11 +210,11 @@ describe('customCommandsStorage', () => {
     // =========================================================================
     describe('getAllCustomCommands', () => {
         test('returns all commands for a channel', async () => {
-            mockStore['customCommands/testchannel/commands/cmd1'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/cmd1`] = {
                 exists: true,
                 data: { response: 'response1' },
             };
-            mockStore['customCommands/testchannel/commands/cmd2'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/cmd2`] = {
                 exists: true,
                 data: { response: 'response2' },
             };
@@ -215,14 +235,14 @@ describe('customCommandsStorage', () => {
     // =========================================================================
     describe('removeCustomCommand', () => {
         test('removes existing command and returns true', async () => {
-            mockStore['customCommands/testchannel/commands/bye'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/bye`] = {
                 exists: true,
                 data: { response: 'Goodbye!' },
             };
 
             const result = await removeCustomCommand('testchannel', 'bye');
             expect(result).toBe(true);
-            expect(mockStore['customCommands/testchannel/commands/bye']).toBeUndefined();
+            expect(mockStore[`customCommands/${BROADCASTER_ID}/commands/bye`]).toBeUndefined();
         });
 
         test('returns false when command does not exist', async () => {
@@ -236,7 +256,7 @@ describe('customCommandsStorage', () => {
     // =========================================================================
     describe('incrementUseCount', () => {
         test('increments use count and returns new value', async () => {
-            mockStore['customCommands/testchannel/commands/counter'] = {
+            mockStore[`customCommands/${BROADCASTER_ID}/commands/counter`] = {
                 exists: true,
                 data: { response: 'Used $(count) times', useCount: 5 },
             };

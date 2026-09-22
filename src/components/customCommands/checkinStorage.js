@@ -1,31 +1,24 @@
 // src/components/customCommands/checkinStorage.js
 import { FieldValue } from '@google-cloud/firestore';
 import logger from '../../lib/logger.js';
-import { _getDb } from './customCommandsStorage.js';
-
-// Collection name for storing per-channel custom commands
-const CUSTOM_COMMANDS_COLLECTION = 'customCommands';
+import { _channelDocRef } from './customCommandsStorage.js';
 
 /**
  * Gets the checkin config document reference for a channel.
- * Path: customCommands/{channelName}/checkinConfig/settings
+ * Path: customCommands/{broadcasterId}/checkinConfig/settings
  */
 function _getCheckinConfigRef(channelName) {
-    const db = _getDb();
-    return db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(channelName.toLowerCase())
+    return _channelDocRef(channelName)
         .collection('checkinConfig')
         .doc('settings');
 }
 
 /**
  * Gets the userCounters collection reference for a channel.
- * Path: customCommands/{channelName}/checkinCounters/{userId}
+ * Path: customCommands/{broadcasterId}/checkinCounters/{userId}
  */
 function _getUserCountersRef(channelName) {
-    const db = _getDb();
-    return db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(channelName.toLowerCase())
+    return _channelDocRef(channelName)
         .collection('checkinCounters');
 }
 

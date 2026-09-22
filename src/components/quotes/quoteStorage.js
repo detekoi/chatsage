@@ -1,5 +1,10 @@
 // src/components/quotes/quoteStorage.js
+//
+// Layout: channelQuotes/{broadcasterId}/items/{quoteId}
+// Keyed by broadcaster ID, not login (see lib/channelKey.js). The parent doc
+// carries `channelName` for readability and the `nextId` counter.
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
+import { channelDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 const CHANNEL_QUOTES_COLLECTION = 'channelQuotes';
@@ -46,8 +51,7 @@ function _normalizeSaidBy(saidBy) {
  */
 function _getChannelQuotesRef(channelName) {
     const database = _getDb();
-    const chan = _channelKey(channelName);
-    return database.collection(CHANNEL_QUOTES_COLLECTION).doc(chan);
+    return database.collection(CHANNEL_QUOTES_COLLECTION).doc(channelDocKey(channelName));
 }
 
 /**
@@ -91,7 +95,7 @@ export async function addQuote(channelName, text, saidBy, addedBy) {
         });
 
         // Update or create channel document with nextId
-        tx.set(channelRef, { nextId: newNext }, { merge: true });
+        tx.set(channelRef, { channelName: chan, nextId: newNext }, { merge: true });
 
         return { quoteId };
     });

@@ -1,5 +1,11 @@
 // src/components/customCommands/customCommandsStorage.js
+//
+// Layout: customCommands/{broadcasterId}/commands/{commandName}
+// Keyed by broadcaster ID, not login (see lib/channelKey.js); the parent doc
+// carries `channelName` for readability. The web UI writes the same documents
+// (chatsage-web-ui/functions/src/api/customCommands.router.ts).
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
+import { channelDocKey, channelNameForDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 // Collection name for storing per-channel custom commands
@@ -28,6 +34,19 @@ export function _getDb() {
     return getFirestore();
 }
 
+/** The channel's parent document. */
+export function _channelDocRef(channelName) {
+    return _getDb().collection(CUSTOM_COMMANDS_COLLECTION).doc(channelDocKey(channelName));
+}
+
+function _commandsColRef(channelName) {
+    return _channelDocRef(channelName).collection('commands');
+}
+
+function _commandDocRef(channelName, commandName) {
+    return _commandsColRef(channelName).doc(commandName.toLowerCase());
+}
+
 /**
  * Gets a single custom command for a channel.
  * @param {string} channelName - The channel name (lowercase).
@@ -35,14 +54,8 @@ export function _getDb() {
  * @returns {Promise<object|null>} Command data or null if not found.
  */
 export async function getCustomCommand(channelName, commandName) {
-    const db = _getDb();
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(channelName.toLowerCase())
-        .collection('commands')
-        .doc(commandName.toLowerCase());
-
     try {
-        const docSnap = await docRef.get();
+        const docSnap = await _commandDocRef(channelName, commandName).get();
         if (docSnap.exists) {
             return { name: commandName.toLowerCase(), ...docSnap.data() };
         }
@@ -60,13 +73,8 @@ export async function getCustomCommand(channelName, commandName) {
  * @returns {Promise<object[]>} Array of command objects.
  */
 export async function getAllCustomCommands(channelName) {
-    const db = _getDb();
-    const colRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(channelName.toLowerCase())
-        .collection('commands');
-
     try {
-        const snapshot = await colRef.get();
+        const snapshot = await _commandsColRef(channelName).get();
         const commands = [];
         snapshot.forEach(doc => {
             commands.push({ name: doc.id, ...doc.data() });
@@ -90,16 +98,12 @@ export async function getAllCustomCommands(channelName) {
  * @returns {Promise<boolean>} True if created, false if command already exists.
  */
 export async function addCustomCommand(channelName, commandName, response, createdBy, type = 'text') {
-    const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerCommand = commandName.toLowerCase();
 
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(lowerChannel)
-        .collection('commands')
-        .doc(lowerCommand);
-
     try {
+        const docRef = _commandDocRef(lowerChannel, lowerCommand);
+
         // Check if command already exists
         const existing = await docRef.get();
         if (existing.exists) {
@@ -119,8 +123,7 @@ export async function addCustomCommand(channelName, commandName, response, creat
         });
 
         // Also set the parent doc to ensure it exists for queries
-        await db.collection(CUSTOM_COMMANDS_COLLECTION)
-            .doc(lowerChannel)
+        await _channelDocRef(lowerChannel)
             .set({ channelName: lowerChannel, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
         logger.info(`[CustomCommandsStorage] Added custom command !${lowerCommand} for channel ${lowerChannel}`);
@@ -140,16 +143,11 @@ export async function addCustomCommand(channelName, commandName, response, creat
  * @returns {Promise<boolean>} True if updated, false if command doesn't exist.
  */
 export async function updateCustomCommand(channelName, commandName, response) {
-    const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerCommand = commandName.toLowerCase();
 
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(lowerChannel)
-        .collection('commands')
-        .doc(lowerCommand);
-
     try {
+        const docRef = _commandDocRef(lowerChannel, lowerCommand);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -180,16 +178,11 @@ export async function updateCustomCommand(channelName, commandName, response) {
  * @returns {Promise<boolean>} True if updated, false if command doesn't exist.
  */
 export async function updateCustomCommandOptions(channelName, commandName, options) {
-    const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerCommand = commandName.toLowerCase();
 
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(lowerChannel)
-        .collection('commands')
-        .doc(lowerCommand);
-
     try {
+        const docRef = _commandDocRef(lowerChannel, lowerCommand);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -224,16 +217,11 @@ export async function updateCustomCommandOptions(channelName, commandName, optio
  * @returns {Promise<boolean>} True if removed, false if command didn't exist.
  */
 export async function removeCustomCommand(channelName, commandName) {
-    const db = _getDb();
     const lowerChannel = channelName.toLowerCase();
     const lowerCommand = commandName.toLowerCase();
 
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(lowerChannel)
-        .collection('commands')
-        .doc(lowerCommand);
-
     try {
+        const docRef = _commandDocRef(lowerChannel, lowerCommand);
         const existing = await docRef.get();
         if (!existing.exists) {
             return false;
@@ -257,13 +245,8 @@ export async function removeCustomCommand(channelName, commandName) {
  * @returns {Promise<number>} The new use count.
  */
 export async function incrementUseCount(channelName, commandName) {
-    const db = _getDb();
-    const docRef = db.collection(CUSTOM_COMMANDS_COLLECTION)
-        .doc(channelName.toLowerCase())
-        .collection('commands')
-        .doc(commandName.toLowerCase());
-
     try {
+        const docRef = _commandDocRef(channelName, commandName);
         await docRef.update({
             useCount: FieldValue.increment(1),
         });
@@ -293,7 +276,11 @@ export async function loadAllCustomCommands() {
         const allCommands = new Map();
 
         for (const channelDoc of channelSnapshot.docs) {
-            const channelName = channelDoc.id;
+            const channelName = channelNameForDocKey(channelDoc.id, channelDoc.data());
+            if (!channelName) {
+                logger.debug({ docId: channelDoc.id }, '[CustomCommandsStorage] Skipping commands under an unknown channel');
+                continue;
+            }
             const commandsSnapshot = await channelDoc.ref.collection('commands').get();
             const channelCommands = new Map();
 

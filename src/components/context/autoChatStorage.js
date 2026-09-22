@@ -1,4 +1,8 @@
+// Layout: autoChatConfigs/{broadcasterId} -> { channelName, mode, categories }
+// Keyed by broadcaster ID, not login (see lib/channelKey.js). The web UI writes
+// the same documents (chatsage-web-ui/functions/src/api/autoChat.router.ts).
 import { getFirestore } from '../../lib/firestore.js';
+import { channelDocKey, channelNameForDocKey } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 // Firestore collection for per-channel auto-chat configs
@@ -30,11 +34,13 @@ export const DEFAULT_AUTO_CHAT_CONFIG = Object.freeze({
     },
 });
 
+function _channelDocRef(channelName) {
+    return _getDb().collection(AUTO_CHAT_COLLECTION).doc(channelDocKey(channelName));
+}
+
 export async function getChannelAutoChatConfig(channelName) {
-    const db = _getDb();
-    const docRef = db.collection(AUTO_CHAT_COLLECTION).doc(channelName.toLowerCase());
     try {
-        const snap = await docRef.get();
+        const snap = await _channelDocRef(channelName).get();
         if (!snap.exists) return { ...DEFAULT_AUTO_CHAT_CONFIG };
         const data = snap.data() || {};
         return normalizeConfig(data);
@@ -45,10 +51,9 @@ export async function getChannelAutoChatConfig(channelName) {
 }
 
 export async function saveChannelAutoChatConfig(channelName, config) {
-    const db = _getDb();
     const clean = normalizeConfig(config);
     try {
-        await db.collection(AUTO_CHAT_COLLECTION).doc(channelName.toLowerCase()).set({
+        await _channelDocRef(channelName).set({
             channelName: channelName.toLowerCase(),
             ...clean,
             updatedAt: new Date(),
@@ -69,7 +74,7 @@ export async function loadAllAutoChatConfigs() {
         snapshot.forEach(doc => {
             const data = doc.data() || {};
             const cfg = normalizeConfig(data);
-            const name = (data.channelName || doc.id || '').toLowerCase();
+            const name = channelNameForDocKey(doc.id, data);
             if (name) map.set(name, cfg);
         });
         logger.info(`[AutoChatStorage] Loaded ${map.size} auto-chat configs`);
@@ -108,7 +113,7 @@ export function onAutoChatConfigChanges(callback) {
         snapshot.docChanges().forEach((change) => {
             const raw = change.doc.data() || {};
             const cfg = normalizeConfig(raw);
-            const channelName = (raw.channelName || change.doc.id || '').toLowerCase();
+            const channelName = channelNameForDocKey(change.doc.id, raw);
             if (!channelName) return;
             try { callback({ type: change.type, channelName, config: cfg }); } catch (e) { /* ignore */ }
         });

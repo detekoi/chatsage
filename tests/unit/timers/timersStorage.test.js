@@ -21,6 +21,13 @@ jest.mock('../../../src/lib/firestore.js', () => ({
     },
 }));
 
+// Channel documents are keyed by broadcaster ID, resolved through the allow-list.
+const BROADCASTER_IDS = { testchannel: '4242', chan: '4343' };
+jest.mock('../../../src/lib/allowList.js', () => ({
+    getBroadcasterIdForChannel: jest.fn((name) => ({ testchannel: '4242', chan: '4343' })[String(name).toLowerCase()] || null),
+    getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'testchannel', 4343: 'chan' })[id] || null),
+}));
+
 describe('findUnsupportedTimerVariables', () => {
     test('returns empty for plain text', () => {
         expect(findUnsupportedTimerVariables('Join the Discord!')).toEqual([]);
@@ -76,6 +83,7 @@ describe('sanitizeTimerName', () => {
 describe('addTimer', () => {
     let mockDocRef;
     let mockParentDocRef;
+    let mockChannelDocFn;
     let mockTransaction;
     let timerCount;
 
@@ -102,10 +110,22 @@ describe('addTimer', () => {
             create: jest.fn(async () => {}),
             set: jest.fn(async () => {}),
         };
+        mockChannelDocFn = jest.fn(() => mockParentDocRef);
         getFirestore.mockReturnValue({
-            collection: jest.fn(() => ({ doc: jest.fn(() => mockParentDocRef) })),
+            collection: jest.fn(() => ({ doc: mockChannelDocFn })),
             runTransaction: jest.fn(async (cb) => cb(mockTransaction)),
         });
+    });
+
+    test('keys the channel document by broadcaster ID, not login', async () => {
+        await addTimer('TestChannel', 'promo', 'Hello!', 'mod');
+        expect(mockChannelDocFn).toHaveBeenCalledWith(BROADCASTER_IDS.testchannel);
+        expect(mockChannelDocFn).not.toHaveBeenCalledWith('testchannel');
+    });
+
+    test('refuses a channel with no known broadcaster ID rather than keying by name', async () => {
+        await expect(addTimer('unknown', 'promo', 'Hello!', 'mod')).rejects.toThrow(TimersStorageError);
+        expect(mockTransaction.create).not.toHaveBeenCalled();
     });
 
     test('creates a timer with full document shape', async () => {
