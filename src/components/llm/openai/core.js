@@ -28,7 +28,7 @@ export function initializeOpenAiClient(openaiConfig) {
         configuredModelId = openaiConfig.modelId || 'gpt-6-luna';
         configuredLiteModelId = openaiConfig.liteModelId || 'gpt-6-luna';
         configuredReasoningEffort = openaiConfig.reasoningEffort || 'low';
-        configuredLiteReasoningEffort = openaiConfig.liteReasoningEffort || 'minimal';
+        configuredLiteReasoningEffort = openaiConfig.liteReasoningEffort || 'none';
 
         logger.info(`Initializing OpenAI client with model: ${configuredModelId} (Lite: ${configuredLiteModelId})`);
 

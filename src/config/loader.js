@@ -51,7 +51,7 @@ function loadConfig() {
             modelId: process.env.OPENAI_MODEL_ID || 'gpt-6-luna',
             liteModelId: process.env.OPENAI_LITE_MODEL_ID || 'gpt-6-luna',
             reasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'low',
-            liteReasoningEffort: process.env.OPENAI_LITE_REASONING_EFFORT || 'minimal',
+            liteReasoningEffort: process.env.OPENAI_LITE_REASONING_EFFORT || 'none',
         },
 
         // Twitch Bot Account
