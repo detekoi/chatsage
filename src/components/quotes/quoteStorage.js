@@ -75,19 +75,19 @@ export async function addQuote(channelName, text, saidBy, addedBy) {
 
         const itemsRef = _getItemsRef(chan);
 
-        let nextId = 1;
-        if (channelSnap.exists && Number.isFinite(channelSnap.data().nextId)) {
-            nextId = channelSnap.data().nextId;
-        } else {
-            // No counter on the parent (a parent that only exists because of its
-            // subcollection): continue from the highest quote rather than from 1,
-            // which would land on top of an existing quote.
-            const latest = await tx.get(itemsRef.orderBy('quoteId', 'desc').limit(1));
-            if (!latest.empty) {
-                const highest = latest.docs[0].data().quoteId;
-                if (Number.isFinite(highest)) nextId = highest + 1;
-            }
-        }
+        // The counter is reconciled against the highest stored quote on every
+        // add, not only when it is missing: a counter that lags (a migration or
+        // an import wrote items past it) would otherwise make create() below
+        // fail on the same ID forever, since the failed transaction never
+        // advances it.
+        const storedNext = channelSnap.exists && Number.isFinite(channelSnap.data().nextId)
+            ? channelSnap.data().nextId
+            : 1;
+        const latest = await tx.get(itemsRef.orderBy('quoteId', 'desc').limit(1));
+        const highest = !latest.empty && Number.isFinite(latest.docs[0].data().quoteId)
+            ? latest.docs[0].data().quoteId
+            : 0;
+        const nextId = Math.max(storedNext, highest + 1);
 
         const quoteId = nextId;
         const newNext = quoteId + 1;

@@ -177,7 +177,11 @@ export function listenForCommandSettingsChanges(onChangeCallback) {
                         : new Set(channelData?.disabledCommands || []);
                     
                     logger.debug(`[ChannelCommandsStorage] Command settings changed for channel ${channelName}, disabled commands: [${Array.from(disabledCommands).join(', ')}]`);
-                    onChangeCallback(channelName, disabledCommands);
+                    try {
+                        onChangeCallback(channelName, disabledCommands);
+                    } catch (err) {
+                        logger.error({ err, channelName }, '[ChannelCommandsStorage] Command settings change callback failed');
+                    }
                 } else {
                     logger.debug({ docId: change.doc.id },
                         '[ChannelCommandsStorage] Firestore listener saw a change for an unknown channel. Skipping.');

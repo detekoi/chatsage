@@ -163,7 +163,11 @@ async function migrateDocument(db, writer, spec, sourceRef, targetId, login, sta
         // and leaving the target's lower value would let the next quote land on
         // top of one of the copied items.
         if (spec.name === 'channelQuotes') {
-            const highest = Math.max(Number(sourceData.nextId) || 0, Number(targetData.nextId) || 0);
+            const highest = Math.max(
+                Number(sourceData.nextId) || 0,
+                Number(targetData.nextId) || 0,
+                await _nextQuoteIdFromItems(sourceRef),
+            );
             if (highest > 0 && targetData.nextId !== highest) toWrite.nextId = highest;
         }
         if (Object.keys(toWrite).length > 0) {
@@ -193,6 +197,17 @@ async function migrateDocument(db, writer, spec, sourceRef, targetId, login, sta
             stats.itemsCopied++;
         }
     }
+}
+
+/**
+ * The counter the copied quotes imply: one past the highest quoteId, or 0 if
+ * there are none. Covers a legacy parent that never carried `nextId`.
+ */
+async function _nextQuoteIdFromItems(sourceRef) {
+    const latest = await sourceRef.collection('items').orderBy('quoteId', 'desc').limit(1).get();
+    if (latest.empty) return 0;
+    const highest = Number(latest.docs[0].data().quoteId);
+    return Number.isFinite(highest) ? highest + 1 : 0;
 }
 
 async function deleteDocument(db, writer, spec, sourceRef, stats) {
@@ -229,7 +244,7 @@ async function migrateCollection(db, writer, spec, byLogin, args) {
             stats.alreadyKeyedById++;
             continue;
         }
-        const login = ref.id.toLowerCase();
+        const login = normalizeChannelName(ref.id);
         const targetId = byLogin.get(login);
         if (!targetId) {
             stats.unresolved.push(login);

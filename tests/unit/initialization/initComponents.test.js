@@ -67,7 +67,7 @@ describe('Component Initialization', () => {
         process.exit = jest.fn();
 
         // Setup default config mock
-        config.app = { nodeEnv: 'development' };
+        config.app = { nodeEnv: 'development', isCloudRun: false };
         config.twitch = { channels: [] };
 
         // Setup default mocks to succeed
@@ -115,10 +115,8 @@ describe('Component Initialization', () => {
 
     describe('initializeChannels', () => {
         test('should load channels from .env in development environment', async () => {
-            process.env.K_SERVICE = undefined;
-            process.env.K_REVISION = undefined;
-            process.env.K_CONFIGURATION = undefined;
-            process.env.TWITCH_CHANNELS = 'devchannel1,devchannel2,devchannel3';
+            config.app.isCloudRun = false;
+            config.twitch.channels = ['DevChannel1', 'devchannel2', 'devchannel3'];
             config.app.nodeEnv = 'development';
 
             await initializeChannels();
@@ -130,9 +128,27 @@ describe('Component Initialization', () => {
             );
         });
 
+        test('should still seed the allow-list from Firestore in development and pre-seed known broadcaster IDs', async () => {
+            config.app.isCloudRun = false;
+            config.twitch.channels = ['channel1', 'devonly'];
+            config.app.nodeEnv = 'development';
+            getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }, { name: 'channel2', twitchUserId: '222' }]);
+
+            await initializeChannels();
+
+            // The channel-scoped Firestore keys resolve through the allow-list, so it
+            // has to be populated even when the channel list itself comes from .env.
+            expect(getActiveManagedChannels).toHaveBeenCalledTimes(1);
+            expect(config.twitch.channels).toEqual(['channel1', 'devonly']);
+            expect(config.twitch.channelsWithIds).toEqual([
+                { name: 'channel1', twitchUserId: '111' },
+                { name: 'devonly', twitchUserId: null },
+            ]);
+        });
+
         test('should exit when TWITCH_CHANNELS is empty in development', async () => {
-            process.env.K_SERVICE = undefined;
-            process.env.TWITCH_CHANNELS = '';
+            config.app.isCloudRun = false;
+            config.twitch.channels = [];
             config.app.nodeEnv = 'development';
 
             await initializeChannels();
@@ -144,7 +160,7 @@ describe('Component Initialization', () => {
         });
 
         test('should load channels from Firestore in Cloud Run environment', async () => {
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
             config.app.nodeEnv = 'production';
             getActiveManagedChannels.mockResolvedValue([{ name: 'cloudchannel1', twitchUserId: '111' }, { name: 'cloudchannel2', twitchUserId: '222' }]);
 
@@ -161,7 +177,7 @@ describe('Component Initialization', () => {
         // Exiting here used to be unrecoverable: the Firestore listener that would
         // notice a channel coming back is started later in the boot sequence.
         test('should stand by, not exit, when no channels are active in Firestore', async () => {
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
             getActiveManagedChannels.mockResolvedValue([]);
 
             await initializeChannels();
@@ -174,7 +190,7 @@ describe('Component Initialization', () => {
         });
 
         test('should stand by when the Firestore fetch yields nothing at all', async () => {
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
             getActiveManagedChannels.mockResolvedValue(null);
 
             await initializeChannels();
@@ -185,7 +201,7 @@ describe('Component Initialization', () => {
         });
 
         test('should convert channel names to lowercase from Firestore', async () => {
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
             getActiveManagedChannels.mockResolvedValue([{ name: 'Channel1', twitchUserId: '111' }, { name: 'CHANNEL2', twitchUserId: '222' }, { name: 'channel3', twitchUserId: '333' }]);
 
             await initializeChannels();
@@ -193,23 +209,16 @@ describe('Component Initialization', () => {
             expect(config.twitch.channels).toEqual(['channel1', 'channel2', 'channel3']);
         });
 
-        test('should detect Cloud Run via K_REVISION', async () => {
-            process.env.K_REVISION = 'test-revision';
+        test('should load channels from Firestore on Cloud Run even in development mode', async () => {
+            config.app.isCloudRun = true;
+            config.app.nodeEnv = 'development';
+            config.twitch.channels = ['devchannel1'];
             getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
 
             await initializeChannels();
 
             expect(getActiveManagedChannels).toHaveBeenCalled();
-            expect(process.env.K_SERVICE).toBeUndefined();
-        });
-
-        test('should detect Cloud Run via K_CONFIGURATION', async () => {
-            process.env.K_CONFIGURATION = 'test-config';
-            getActiveManagedChannels.mockResolvedValue([{ name: 'channel1', twitchUserId: '111' }]);
-
-            await initializeChannels();
-
-            expect(getActiveManagedChannels).toHaveBeenCalled();
+            expect(config.twitch.channels).toEqual(['channel1']);
         });
     });
 
@@ -352,7 +361,7 @@ describe('Component Initialization', () => {
 
         test('should call all initialization functions in correct order', async () => {
             // Setup all mocks to succeed
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
 
             await initializeAllComponents();
 
@@ -370,7 +379,7 @@ describe('Component Initialization', () => {
         test('should propagate errors from any initialization phase', async () => {
             const error = new Error('Init failed');
             initializeFirestore.mockRejectedValue(error);
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
 
             await expect(initializeAllComponents()).rejects.toThrow('Init failed');
         });
@@ -390,7 +399,7 @@ describe('Component Initialization', () => {
         test('should finish initialization with no active channels to load', async () => {
             // Reset all mocks
             getActiveManagedChannels.mockResolvedValue([]);
-            process.env.K_SERVICE = 'test-service';
+            config.app.isCloudRun = true;
 
             await initializeAllComponents();
 

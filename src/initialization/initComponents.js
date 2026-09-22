@@ -48,22 +48,24 @@ export async function initializeChannels() {
 
     // Load Twitch Channels
     // Use env-based channels locally (development) and Firestore when deployed on Cloud Run.
-    const isCloudRun = !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
-    if (!isCloudRun && config.app.nodeEnv === 'development') {
+    if (!config.app.isCloudRun && config.app.nodeEnv === 'development') {
         logger.info('Local development detected. Using TWITCH_CHANNELS from .env');
         // The channel list comes from .env here, but the allow-list still has to be
         // seeded from managedChannels: it holds the login → broadcaster ID mapping
         // that every channel-scoped Firestore key resolves through (lib/channelKey.js).
-        await getActiveManagedChannels();
-        const envChannels = (process.env.TWITCH_CHANNELS || '')
-            .split(',')
-            .map(ch => ch.trim().toLowerCase())
+        const managedChannels = await getActiveManagedChannels();
+        const envChannels = (config.twitch.channels || [])
+            .map(ch => String(ch).trim().toLowerCase())
             .filter(Boolean);
         if (envChannels.length === 0) {
             logger.fatal('TWITCH_CHANNELS is empty or not set in .env for development. Please set it.');
             process.exit(1);
         }
         config.twitch.channels = envChannels;
+        // Same shape as the Firestore branch, so the context manager can pre-seed
+        // broadcaster IDs instead of looking each channel up on Helix.
+        const idByName = new Map((managedChannels || []).map(ch => [ch.name.toLowerCase(), ch.twitchUserId || null]));
+        config.twitch.channelsWithIds = envChannels.map(name => ({ name, twitchUserId: idByName.get(name) || null }));
         logger.info(`Loaded ${config.twitch.channels.length} channels from .env: [${config.twitch.channels.join(', ')}]`);
     } else {
         logger.info('Cloud environment detected or not development. Loading channels from Firestore.');

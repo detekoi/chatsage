@@ -79,6 +79,8 @@ function loadConfig() {
             logLevel: process.env.LOG_LEVEL || 'info',
             prettyLog: process.env.PINO_PRETTY_LOGGING === 'true',
             nodeEnv: process.env.NODE_ENV || 'development',
+            // Cloud Run sets these on every revision; nothing else does.
+            isCloudRun: !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION),
         },
 
 
