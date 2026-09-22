@@ -16,7 +16,9 @@ jest.mock('../../../../src/lib/pronounService.js', () => ({
 import {
     removeMarkdownAsterisks,
     handleStandardLlmQuery,
-    recordBotExchange
+    recordBotExchange,
+    resolveSharedSessionId,
+    resolveChatSessionKey
 } from '../../../../src/components/llm/llmUtils.js';
 import logger from '../../../../src/lib/logger.js';
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
@@ -408,6 +410,24 @@ describe('llmUtils', () => {
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'hello', 'mention', 'msg-4', null, [], { replyParent: null });
 
             expect(sendMessageText(sendMessage)).toBe('USER: TestUser says: hello');
+        });
+    });
+
+    describe('resolveSharedSessionId / resolveChatSessionKey', () => {
+        it('returns the shared session id and uses it as the session key', async () => {
+            sharedChatManager.getSessionForChannel.mockReturnValue('shared-1');
+            await expect(resolveSharedSessionId('testchannel')).resolves.toBe('shared-1');
+            await expect(resolveChatSessionKey('testchannel')).resolves.toBe('shared-1');
+            expect(sharedChatManager.getSessionForChannel).toHaveBeenCalledWith('broadcaster-1');
+        });
+
+        it('falls back to the channel name when not in a shared session or on lookup failure', async () => {
+            await expect(resolveSharedSessionId('testchannel')).resolves.toBeNull();
+            await expect(resolveChatSessionKey('testchannel')).resolves.toBe('testchannel');
+
+            getContextManager.mockReturnValue({ getBroadcasterId: jest.fn().mockRejectedValue(new Error('boom')) });
+            await expect(resolveSharedSessionId('testchannel')).resolves.toBeNull();
+            await expect(resolveChatSessionKey('testchannel')).resolves.toBe('testchannel');
         });
     });
 

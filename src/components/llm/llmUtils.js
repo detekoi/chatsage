@@ -150,21 +150,30 @@ export function smartTruncate(text, maxLength) {
 const MAX_REPLY_PARENT_CHARS = 500;
 
 /**
+ * Looks up the Twitch shared-chat session a channel is currently part of, if any.
+ * Never throws: a failed lookup is treated as "not in a shared session".
+ * @param {string} cleanChannel - Channel name without '#'.
+ * @returns {Promise<string|null>} The shared session ID, or null.
+ */
+export async function resolveSharedSessionId(cleanChannel) {
+    try {
+        const broadcasterId = await getContextManager().getBroadcasterId(cleanChannel);
+        return (broadcasterId && sharedChatManager.getSessionForChannel(broadcasterId)) || null;
+    } catch (err) {
+        logger.debug({ err, channel: cleanChannel }, '[ChatSession] Could not resolve shared session, treating as single channel');
+        return null;
+    }
+}
+
+/**
  * Resolves the chat-session key for a channel: the shared-chat session ID when the
- * channel is in one, otherwise the channel name. Mirrors handleBotMention's lookup so
- * recorded exchanges land in the same session that later mentions and replies use.
+ * channel is in one, otherwise the channel name. Both mention handling and exchange
+ * recording go through this, so they always land in the same session.
  * @param {string} cleanChannel - Channel name without '#'.
  * @returns {Promise<string>}
  */
-async function resolveChatSessionKey(cleanChannel) {
-    try {
-        const broadcasterId = await getContextManager().getBroadcasterId(cleanChannel);
-        const sessionId = broadcasterId ? sharedChatManager.getSessionForChannel(broadcasterId) : null;
-        return sessionId || cleanChannel;
-    } catch (err) {
-        logger.debug({ err, channel: cleanChannel }, '[ChatSession] Could not resolve shared session, using channel key');
-        return cleanChannel;
-    }
+export async function resolveChatSessionKey(cleanChannel) {
+    return (await resolveSharedSessionId(cleanChannel)) || cleanChannel;
 }
 
 /**

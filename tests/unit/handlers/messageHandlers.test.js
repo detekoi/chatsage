@@ -31,7 +31,7 @@ import {
 import { isPrivilegedUser } from '../../../src/lib/permissions.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../../../src/lib/translationUtils.js';
-import { handleStandardLlmQuery } from '../../../src/components/llm/llmUtils.js';
+import { handleStandardLlmQuery, resolveSharedSessionId } from '../../../src/components/llm/llmUtils.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../../../src/constants/botConstants.js';
 import { getContextManager } from '../../../src/components/context/contextManager.js';
 import * as sharedChatManager from '../../../src/components/twitch/sharedChatManager.js';
@@ -91,6 +91,7 @@ describe('Message Handlers', () => {
 
         // Setup shared chat manager mock
         sharedChatManager.getSessionForChannel.mockReturnValue(null);
+        resolveSharedSessionId.mockResolvedValue(null);
         sharedChatManager.getSessionChannelLogins.mockReturnValue([]);
     });
 
@@ -678,6 +679,7 @@ describe('Message Handlers', () => {
         test('should handle shared chat session', async () => {
             mockContextManager.getBroadcasterId.mockResolvedValue('broadcaster-123');
             sharedChatManager.getSessionForChannel.mockReturnValue('session-456');
+            resolveSharedSessionId.mockResolvedValue('session-456');
             sharedChatManager.getSessionChannelLogins.mockReturnValue(['channel1', 'channel2']);
 
             await handleBotMention(createBaseParams());

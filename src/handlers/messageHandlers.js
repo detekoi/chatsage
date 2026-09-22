@@ -3,9 +3,8 @@ import { logInteraction } from '../lib/activityLogger.js';
 import config from '../config/index.js';
 import { enqueueMessage } from '../lib/ircSender.js';
 import { translateText, SAME_LANGUAGE } from '../lib/translationUtils.js';
-import { handleStandardLlmQuery } from '../components/llm/llmUtils.js';
+import { handleStandardLlmQuery, resolveSharedSessionId } from '../components/llm/llmUtils.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/botConstants.js';
-import { getContextManager } from '../components/context/contextManager.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
 import { sendLocalized } from '../lib/localizedMessage.js';
@@ -263,9 +262,7 @@ export async function handleBotMention({
     const queryOptions = { replyParent };
 
     // Check if channel is in a shared chat session
-    const contextManager = getContextManager();
-    const broadcasterId = await contextManager.getBroadcasterId(cleanChannel);
-    const sessionId = broadcasterId ? sharedChatManager.getSessionForChannel(broadcasterId) : null;
+    const sessionId = await resolveSharedSessionId(cleanChannel);
 
     if (sessionId) {
         // Channel is in a shared chat session

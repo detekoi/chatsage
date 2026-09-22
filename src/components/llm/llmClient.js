@@ -65,6 +65,11 @@ export function getOrCreateChatSession(sessionKey, initialContext = null, chatHi
     return openAiChat.getOrCreateChatSession(sessionKey, initialContext, chatHistory, botLanguage, personaScope);
 }
 
+/**
+ * Returns the cached chat session for a key without creating one.
+ * @param {string} sessionKey - A channel name, or a Twitch shared-chat sessionId.
+ * @returns {import('./openai/chat.js').OpenAiChatSession|null}
+ */
 export function getChatSession(sessionKey) {
     return openAiChat.getChatSession(sessionKey);
 }
