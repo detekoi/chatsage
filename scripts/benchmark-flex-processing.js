@@ -8,7 +8,7 @@
  * Default Models Tested:
  *   - Gemini Flash Lite  (gemini-flash-lite-latest) - Used by bot for chat summaries & lite tasks
  *   - Gemini 3 Flash     (gemini-3-flash-preview)
- *   - GPT 5.6 Luna       (gpt-5.6-luna)              - OpenAI primary model
+ *   - GPT 6 Luna       (gpt-6-luna)              - OpenAI primary model
  *
  * Workload Categories (Non-synchronous / background / pre-cached):
  *   - Ad Notifications (cached 60s before ad run)
@@ -27,7 +27,7 @@
  *   --provider <both|gemini|openai> Select LLM provider (default: 'both')
  *   --gemini-lite-model <id>    Override Gemini Flash Lite model ID (default: gemini-flash-lite-latest)
  *   --gemini3-model <id>        Override Gemini 3 Flash model ID (default: gemini-3-flash-preview)
- *   --openai-model <id>         Override OpenAI model ID (default: gpt-5.6-luna)
+ *   --openai-model <id>         Override OpenAI model ID (default: gpt-6-luna)
  *   --timeout <ms>              Max request timeout in ms (default: 900000 / 15m)
  *   --fallback-on-unavailable   Test fallback to standard processing on 429 / 503
  *   --output <path>             Save detailed JSON results to file path
@@ -59,7 +59,7 @@ const USE_CASE_FILTER = getArg('--use-case', 'all').toLowerCase();
 const PROVIDER_FILTER = getArg('--provider', 'both').toLowerCase();
 
 const GEMINI_LITE_MODEL = getArg('--gemini-lite-model', process.env.GEMINI_LITE_MODEL_ID || 'gemini-flash-lite-latest');
-const OPENAI_MODEL = getArg('--openai-model', process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna');
+const OPENAI_MODEL = getArg('--openai-model', process.env.OPENAI_MODEL_ID || 'gpt-6-luna');
 
 const TIMEOUT_MS = parseInt(getArg('--timeout', '900000'), 10); // 15 mins
 const FALLBACK_ON_UNAVAILABLE = hasFlag('--fallback-on-unavailable');
@@ -365,7 +365,7 @@ async function runBenchmark() {
             modelsToTest.push({ label: `Gemini Lite (${GEMINI_LITE_MODEL})`, provider: 'gemini', modelId: GEMINI_LITE_MODEL });
         }
         if (testOpenAi) {
-            modelsToTest.push({ label: `GPT 5.6 Luna (${OPENAI_MODEL})`, provider: 'openai', modelId: OPENAI_MODEL });
+            modelsToTest.push({ label: `GPT 6 Luna (${OPENAI_MODEL})`, provider: 'openai', modelId: OPENAI_MODEL });
         }
 
         const caseResult = {

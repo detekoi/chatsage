@@ -13,9 +13,9 @@ describe('OpenAI Core Module', () => {
         });
 
         test('should initialize successfully with apiKey', () => {
-            initializeOpenAiClient({ apiKey: 'test-key', modelId: 'gpt-5.6-luna' });
+            initializeOpenAiClient({ apiKey: 'test-key', modelId: 'gpt-6-luna' });
             expect(getOpenAiInstance()).toBeDefined();
-            expect(getConfiguredModelId()).toBe('gpt-5.6-luna');
+            expect(getConfiguredModelId()).toBe('gpt-6-luna');
         });
     });
 

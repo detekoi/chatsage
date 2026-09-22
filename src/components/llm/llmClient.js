@@ -33,7 +33,7 @@ export function initializeLlmClient(appConfig = config) {
         throw new Error('GEMINI_API_KEY is required for 2-model routing (Speed tier). Set it in environment variables.');
     }
 
-    logger.info('Initializing OpenAI client (Primary tier: gpt-5.6-luna)');
+    logger.info('Initializing OpenAI client (Primary tier: gpt-6-luna)');
     openAiCore.initializeOpenAiClient(openaiConfig);
 
     logger.info('Initializing Gemini client (Speed tier: gemini-flash-lite-latest)');

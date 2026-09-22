@@ -25,8 +25,8 @@ export function initializeOpenAiClient(openaiConfig) {
     }
 
     try {
-        configuredModelId = openaiConfig.modelId || 'gpt-5.6-luna';
-        configuredLiteModelId = openaiConfig.liteModelId || 'gpt-5.6-luna';
+        configuredModelId = openaiConfig.modelId || 'gpt-6-luna';
+        configuredLiteModelId = openaiConfig.liteModelId || 'gpt-6-luna';
         configuredReasoningEffort = openaiConfig.reasoningEffort || 'low';
         configuredLiteReasoningEffort = openaiConfig.liteReasoningEffort || 'minimal';
 
@@ -146,7 +146,7 @@ export async function generateLiteContentWithResponse(prompt, options = {}) {
 
     // Reasoning effort override if specified.
     // Note: options.temperature is intentionally NOT forwarded — reasoning models
-    // (gpt-5.x) reject the temperature parameter; sampling is controlled via effort.
+    // (gpt-5.x, gpt-6) reject the temperature parameter; sampling is controlled via effort.
     if (options.reasoningEffort || configuredLiteReasoningEffort) {
         requestPayload.reasoning = {
             effort: options.reasoningEffort || configuredLiteReasoningEffort

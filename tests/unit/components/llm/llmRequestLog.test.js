@@ -43,7 +43,7 @@ describe('llmRequestLog', () => {
             const client = instrumentOpenAiClient({ responses: { create } });
 
             const payload = {
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
                 input: 'hello',
                 service_tier: 'flex',
                 tools: [{ type: 'web_search' }],
@@ -59,7 +59,7 @@ describe('llmRequestLog', () => {
             expect(message).toBe('[LLM] Request completed');
             expect(fields).toMatchObject({
                 provider: 'openai',
-                model: 'gpt-5.6-luna',
+                model: 'gpt-6-luna',
                 caller: 'checkin',
                 op: 'checkin',
                 serviceTier: 'flex',
@@ -79,12 +79,12 @@ describe('llmRequestLog', () => {
             const create = jest.fn().mockRejectedValue(error);
             const client = instrumentOpenAiClient({ responses: { create } });
 
-            await expect(client.responses.create({ model: 'gpt-5.6-luna' })).rejects.toBe(error);
+            await expect(client.responses.create({ model: 'gpt-6-luna' })).rejects.toBe(error);
             expect(logger.info).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledTimes(1);
             const [fields, message] = logger.warn.mock.calls[0];
             expect(message).toBe('[LLM] Request failed');
-            expect(fields).toMatchObject({ provider: 'openai', model: 'gpt-5.6-luna', status: 429, caller: null });
+            expect(fields).toMatchObject({ provider: 'openai', model: 'gpt-6-luna', status: 429, caller: null });
         });
 
         test('leaves a client without responses.create untouched', () => {

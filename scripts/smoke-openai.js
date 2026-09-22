@@ -10,7 +10,7 @@ function getArgValue(flag, defaultValue) {
     return defaultValue;
 }
 
-const model = getArgValue('--model', process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna');
+const model = getArgValue('--model', process.env.OPENAI_MODEL_ID || 'gpt-6-luna');
 const apiKey = process.env.OPENAI_API_KEY;
 
 if (!apiKey) {

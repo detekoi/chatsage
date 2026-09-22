@@ -33,7 +33,7 @@ WildcatSage is an AI-powered chatbot for Twitch chat. WildcatSage generates cont
 - Receive chat messages through Twitch EventSub webhooks.
 - Send chat replies through the Twitch Helix API.
 - Fetch real-time stream metadata (game, title, tags, thumbnail images) through the Twitch Helix API.
-- Generate main responses with OpenAI GPT 5.6 Luna for reasoning, queries, games, check-ins, and commands.
+- Generate main responses with OpenAI GPT 6 Luna for reasoning, queries, games, check-ins, and commands.
 - Process speed-critical tasks (`!lurk`, `!translate`, summarization, emote descriptions) with Google Gemini 3.5 Flash Lite.
 - Maintain conversation history and summaries for each channel.
 - Execute custom chat commands with permission checks.
@@ -139,7 +139,7 @@ Configure WildcatSage through environment variables. The `.env.example` file lis
 
 - `TWITCH_BOT_USERNAME`: Username for the Twitch bot account.
 - `TWITCH_CHANNELS`: Comma-separated list of channels to join in local development. In production the bot loads its channel list from Firestore.
-- `OPENAI_API_KEY`: API key for OpenAI services (GPT 5.6 Luna model).
+- `OPENAI_API_KEY`: API key for OpenAI services (GPT 6 Luna model).
 - `GEMINI_API_KEY`: API key for Google Gemini services (Gemini 3.5 Flash Lite model).
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application.
 - `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.

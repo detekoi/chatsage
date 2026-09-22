@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { performance } from 'perf_hooks';
 
 const apiKey = process.env.OPENAI_API_KEY;
-const modelId = process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna';
+const modelId = process.env.OPENAI_MODEL_ID || 'gpt-6-luna';
 
 if (!apiKey) {
     console.error('❌ OPENAI_API_KEY is required in environment.');
@@ -61,7 +61,7 @@ const testCases = [
 const effortLevels = ['low', 'medium', 'high'];
 
 async function runBenchmark() {
-    console.log(`\n🎮 Benchmarking GPT-5.6 Luna Thinking Levels for !game queries`);
+    console.log(`\n🎮 Benchmarking GPT-6 Luna Thinking Levels for !game queries`);
     console.log(`Model: ${modelId}`);
     console.log(`Effort levels: ${effortLevels.join(', ')}\n`);
 

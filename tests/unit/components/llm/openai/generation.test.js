@@ -7,7 +7,7 @@ import {
 
 describe('OpenAI Generation Module', () => {
     beforeAll(() => {
-        initializeOpenAiClient({ apiKey: 'test-key', modelId: 'gpt-5.6-luna' });
+        initializeOpenAiClient({ apiKey: 'test-key', modelId: 'gpt-6-luna' });
     });
 
     beforeEach(() => {

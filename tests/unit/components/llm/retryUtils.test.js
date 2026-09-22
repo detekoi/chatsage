@@ -19,7 +19,7 @@ describe('LLM Retry Utilities', () => {
         test('should return undefined when options object is empty or missing tier', () => {
             expect(resolveServiceTier({})).toBeUndefined();
             expect(resolveServiceTier(null)).toBeUndefined();
-            expect(resolveServiceTier({ model: 'gpt-5.6-luna' })).toBeUndefined();
+            expect(resolveServiceTier({ model: 'gpt-6-luna' })).toBeUndefined();
         });
     });
 
@@ -83,7 +83,7 @@ describe('LLM Retry Utilities', () => {
     describe('executeWithFlexFallback', () => {
         test('should execute apiCallFn directly when serviceTier is undefined', async () => {
             const apiCallFn = jest.fn().mockResolvedValue('normal result');
-            const basePayload = { model: 'gpt-5.6-luna', input: 'hello' };
+            const basePayload = { model: 'gpt-6-luna', input: 'hello' };
 
             const result = await executeWithFlexFallback(apiCallFn, basePayload, {}, 'TestExecute');
             expect(result).toBe('normal result');
@@ -100,7 +100,7 @@ describe('LLM Retry Utilities', () => {
                 return Promise.resolve('fallback result');
             });
 
-            const basePayload = { model: 'gpt-5.6-luna', input: 'hello' };
+            const basePayload = { model: 'gpt-6-luna', input: 'hello' };
             const result = await executeWithFlexFallback(apiCallFn, basePayload, { serviceTier: 'flex' }, 'TestExecuteFlex');
 
             expect(result).toBe('fallback result');

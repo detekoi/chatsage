@@ -6,7 +6,7 @@
  * Evaluates vision models:
  *   - Gemini Flash Lite (gemini-flash-lite-latest) [Production Speed Tier]
  *   - Gemini 3 Flash (gemini-3-flash-preview) [Google Multimodal]
- *   - GPT 5.6 Luna (gpt-5.6-luna) [OpenAI Multimodal]
+ *   - GPT 6 Luna (gpt-6-luna) [OpenAI Multimodal]
  *
  * Measures:
  *   - Asset Fetch & Frame Extraction Latency (ms)
@@ -256,7 +256,7 @@ async function testGeminiVision(modelId, item, asset) {
     }
 }
 
-// 2. OpenAI GPT 5.6 Luna Vision
+// 2. OpenAI GPT 6 Luna Vision
 async function testOpenAiVision(item, asset) {
     if (!openaiClient) return null;
 
@@ -270,7 +270,7 @@ async function testOpenAiVision(item, asset) {
 
     try {
         const stream = await openaiClient.chat.completions.create({
-            model: process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna',
+            model: process.env.OPENAI_MODEL_ID || 'gpt-6-luna',
             messages: [
                 { role: 'system', content: SYSTEM_INSTRUCTION },
                 {
@@ -301,7 +301,7 @@ async function testOpenAiVision(item, asset) {
         const tokenEstimate = Math.ceil(text.length / 4);
 
         return {
-            model: process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna',
+            model: process.env.OPENAI_MODEL_ID || 'gpt-6-luna',
             ttftMs: Math.round(ttftMs),
             totalMs: Math.round(totalInferenceMs),
             e2ePipelineMs: Math.round(asset.fetchMs + asset.extractMs + totalInferenceMs),
@@ -309,7 +309,7 @@ async function testOpenAiVision(item, asset) {
             tokensPerSec: totalInferenceMs > 0 ? +(tokenEstimate / (totalInferenceMs / 1000)).toFixed(1) : 0
         };
     } catch (err) {
-        return { model: process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna', error: err.message };
+        return { model: process.env.OPENAI_MODEL_ID || 'gpt-6-luna', error: err.message };
     }
 }
 
@@ -329,7 +329,7 @@ async function main() {
     console.log(`Models Evaluated:`);
     console.log(`  1. ⚡ Gemini Flash Lite   (gemini-flash-lite-latest) [Production Speed Tier]`);
     console.log(`  2. ✨ Gemini 3 Flash     (gemini-3-flash-preview)`);
-    console.log(`  3. 🌙 GPT 5.6 Luna       (${process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna'})`);
+    console.log(`  3. 🌙 GPT 6 Luna       (${process.env.OPENAI_MODEL_ID || 'gpt-6-luna'})`);
     console.log(`Iterations per item: ${ITERATIONS}`);
     console.log(`Dataset size: ${EMOTE_DATASET.length} emotes (5 Static, 5 Animated)\n`);
 
@@ -370,7 +370,7 @@ async function main() {
             modelsToTest.push({ key: 'gemini3', id: 'gemini-3-flash-preview', runner: (it, a) => testGeminiVision('gemini-3-flash-preview', it, a) });
         }
         if (openaiClient) {
-            modelsToTest.push({ key: 'openaiLuna', id: process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna', runner: (it, a) => testOpenAiVision(it, a) });
+            modelsToTest.push({ key: 'openaiLuna', id: process.env.OPENAI_MODEL_ID || 'gpt-6-luna', runner: (it, a) => testOpenAiVision(it, a) });
         }
 
         for (const m of modelsToTest) {

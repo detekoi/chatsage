@@ -5,7 +5,7 @@
  * Comprehensive, high-precision latency benchmarking script comparing:
  *   - Gemini 3 Flash (gemini-3-flash-preview)
  *   - Gemini Flash Lite (gemini-flash-lite-latest)
- *   - GPT 5.6 Luna (gpt-5.6-luna)
+ *   - GPT 6 Luna (gpt-6-luna)
  *
  * Measures Time-To-First-Token (TTFT), End-to-End Latency, Throughput (tokens/sec),
  * and cold-start vs warm performance across Daily Check-In, Translation, and General use cases.
@@ -20,7 +20,7 @@
  *   --use-case <category>  Filter test cases: 'checkin', 'translation', 'general', or 'all' (default: 'all')
  *   --gemini3-model <id>   Override Gemini 3 model ID (default: gemini-3-flash-preview)
  *   --gemini-lite-model <id> Override Gemini Flash Lite model ID (default: gemini-flash-lite-latest)
- *   --openai-model <id>    Override OpenAI model ID (default: gpt-5.6-luna)
+ *   --openai-model <id>    Override OpenAI model ID (default: gpt-6-luna)
  *   --output <path>        Save detailed JSON results to file path
  *   --json                 Output final raw JSON to stdout instead of formatted table
  *   --verbose              Print full model outputs for each run
@@ -50,7 +50,7 @@ const USE_CASE_FILTER = getArg('--use-case', 'all').toLowerCase();
 
 const GEMINI_3_MODEL = getArg('--gemini3-model', process.env.GEMINI_MODEL_ID || 'gemini-3-flash-preview');
 const GEMINI_LITE_MODEL = getArg('--gemini-lite-model', process.env.GEMINI_LITE_MODEL_ID || 'gemini-flash-lite-latest');
-const OPENAI_MODEL = getArg('--openai-model', process.env.OPENAI_MODEL_ID || 'gpt-5.6-luna');
+const OPENAI_MODEL = getArg('--openai-model', process.env.OPENAI_MODEL_ID || 'gpt-6-luna');
 
 const OUTPUT_FILE = getArg('--output', null);
 const JSON_ONLY = hasFlag('--json');
@@ -358,7 +358,7 @@ function calculateStats(values) {
 // ── Main Execution Workflow ──────────────────────────────────────────────────
 async function main() {
     if (!JSON_ONLY) {
-        console.log(`\n🚀 3-Model Latency Benchmark Suite: Gemini 3 Flash vs Gemini Flash Lite vs GPT 5.6 Luna`);
+        console.log(`\n🚀 3-Model Latency Benchmark Suite: Gemini 3 Flash vs Gemini Flash Lite vs GPT 6 Luna`);
         console.log(`   Gemini 3 Flash:  ${GEMINI_KEY ? GEMINI_3_MODEL : '❌ (Missing API Key)'}`);
         console.log(`   Gemini Lite:     ${GEMINI_KEY ? GEMINI_LITE_MODEL : '❌ (Missing API Key)'}`);
         console.log(`   OpenAI Luna:     ${OPENAI_KEY ? OPENAI_MODEL : '❌ (Missing API Key)'}`);
@@ -487,7 +487,7 @@ async function main() {
             const ttftList = [
                 { name: 'Gemini 3 Flash', ttft: g3Ttft.p50 },
                 { name: 'Gemini Flash Lite', ttft: gLiteTtft.p50 },
-                { name: 'GPT 5.6 Luna', ttft: oTtft.p50 }
+                { name: 'GPT 6 Luna', ttft: oTtft.p50 }
             ].filter(m => m.ttft > 0).sort((a, b) => a.ttft - b.ttft);
 
             if (ttftList.length > 1) {
@@ -554,7 +554,7 @@ async function main() {
         console.log(`   ⚡ Gemini Flash Lite (${GEMINI_LITE_MODEL}):`);
         console.log(`     • TTFT p50:          ${overall.geminiLite.ttft.p50} ms`);
         console.log(`     • End-to-End p50:    ${overall.geminiLite.totalLatency.p50} ms`);
-        console.log(`   🌙 GPT 5.6 Luna (${OPENAI_MODEL}):`);
+        console.log(`   🌙 GPT 6 Luna (${OPENAI_MODEL}):`);
         console.log(`     • TTFT p50:          ${overall.openai.ttft.p50} ms`);
         console.log(`     • End-to-End p50:    ${overall.openai.totalLatency.p50} ms`);
         console.log(`══════════════════════════════════════════════════════════════════════════\n`);
