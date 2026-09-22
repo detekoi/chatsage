@@ -51,6 +51,10 @@ export async function initializeChannels() {
     const isCloudRun = !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION);
     if (!isCloudRun && config.app.nodeEnv === 'development') {
         logger.info('Local development detected. Using TWITCH_CHANNELS from .env');
+        // The channel list comes from .env here, but the allow-list still has to be
+        // seeded from managedChannels: it holds the login → broadcaster ID mapping
+        // that every channel-scoped Firestore key resolves through (lib/channelKey.js).
+        await getActiveManagedChannels();
         const envChannels = (process.env.TWITCH_CHANNELS || '')
             .split(',')
             .map(ch => ch.trim().toLowerCase())

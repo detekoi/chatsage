@@ -4,7 +4,7 @@
 // Keyed by broadcaster ID, not login (see lib/channelKey.js). The parent doc
 // carries `channelName` for readability and the `nextId` counter.
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
-import { channelDocKey } from '../../lib/channelKey.js';
+import { channelDocKey, normalizeChannelName } from '../../lib/channelKey.js';
 import logger from '../../lib/logger.js';
 
 const CHANNEL_QUOTES_COLLECTION = 'channelQuotes';
@@ -31,7 +31,7 @@ function _getDb() {
 }
 
 function _channelKey(channelName) {
-    return String(channelName || '').toLowerCase();
+    return normalizeChannelName(channelName);
 }
 
 /**
@@ -73,18 +73,29 @@ export async function addQuote(channelName, text, saidBy, addedBy) {
         const channelRef = _getChannelQuotesRef(chan);
         const channelSnap = await tx.get(channelRef);
 
+        const itemsRef = _getItemsRef(chan);
+
         let nextId = 1;
         if (channelSnap.exists && Number.isFinite(channelSnap.data().nextId)) {
             nextId = channelSnap.data().nextId;
+        } else {
+            // No counter on the parent (a parent that only exists because of its
+            // subcollection): continue from the highest quote rather than from 1,
+            // which would land on top of an existing quote.
+            const latest = await tx.get(itemsRef.orderBy('quoteId', 'desc').limit(1));
+            if (!latest.empty) {
+                const highest = latest.docs[0].data().quoteId;
+                if (Number.isFinite(highest)) nextId = highest + 1;
+            }
         }
 
         const quoteId = nextId;
         const newNext = quoteId + 1;
-
-        const itemsRef = _getItemsRef(chan);
         const quoteRef = itemsRef.doc(String(quoteId));
-        
-        tx.set(quoteRef, {
+
+        // create() rather than set(): a counter that is somehow behind must fail
+        // the transaction, not silently replace a quote.
+        tx.create(quoteRef, {
             quoteId,
             text: String(text).trim(),
             saidBy: normalizedSaidBy,

@@ -105,19 +105,4 @@ export function normalizeConfig(input) {
     return { mode, categories };
 }
 
-// Listener for real-time config changes (used to react to ads toggle)
-export function onAutoChatConfigChanges(callback) {
-    const db = _getDb();
-    const col = db.collection(AUTO_CHAT_COLLECTION);
-    return col.onSnapshot((snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            const raw = change.doc.data() || {};
-            const cfg = normalizeConfig(raw);
-            const channelName = channelNameForDocKey(change.doc.id, raw);
-            if (!channelName) return;
-            try { callback({ type: change.type, channelName, config: cfg }); } catch (e) { /* ignore */ }
-        });
-    });
-}
-
 

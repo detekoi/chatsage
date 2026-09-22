@@ -71,11 +71,17 @@ export function channelDocKey(channelName) {
  * managedChannels) still falls back to that field, so the caller can decide
  * what to do with it rather than losing it.
  *
+ * A legacy login-keyed document is never resolved, even though it carries a
+ * `channelName`: until the migration deletes it, it sits beside the ID-keyed
+ * copy, and Firestore lists it after (logins sort after digits), so it would
+ * otherwise overwrite the migrated data in every loader's map.
+ *
  * @param {string} docId - The document ID (a broadcaster ID).
  * @param {{channelName?: string}|null|undefined} [data] - The document's data, if loaded.
  * @returns {string|null} Lowercase login, or null if nothing identifies the channel.
  */
 export function channelNameForDocKey(docId, data) {
+    if (!isBroadcasterIdKey(docId)) return null;
     const mapped = getChannelNameForBroadcasterId(docId);
     if (mapped) return mapped;
     const stored = data && typeof data.channelName === 'string' ? normalizeChannelName(data.channelName) : '';

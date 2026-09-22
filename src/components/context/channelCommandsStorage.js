@@ -170,7 +170,11 @@ export function listenForCommandSettingsChanges(onChangeCallback) {
                 const channelData = change.doc.data();
                 const channelName = channelNameForDocKey(change.doc.id, channelData);
                 if (channelName) {
-                    const disabledCommands = new Set(channelData?.disabledCommands || []);
+                    // A removed document still reports its last data; the dashboard
+                    // deleting the settings means "everything enabled", not "as before".
+                    const disabledCommands = change.type === 'removed'
+                        ? new Set()
+                        : new Set(channelData?.disabledCommands || []);
                     
                     logger.debug(`[ChannelCommandsStorage] Command settings changed for channel ${channelName}, disabled commands: [${Array.from(disabledCommands).join(', ')}]`);
                     onChangeCallback(channelName, disabledCommands);

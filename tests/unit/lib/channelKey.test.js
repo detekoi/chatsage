@@ -5,13 +5,13 @@ jest.mock('../../../src/lib/allowList.js', () => ({
     getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'streamer' })[id] || null),
 }));
 
-const {
+import {
     channelDocKey,
     channelNameForDocKey,
     isBroadcasterIdKey,
     normalizeChannelName,
     UnresolvedChannelError,
-} = require('../../../src/lib/channelKey.js');
+} from '../../../src/lib/channelKey.js';
 
 describe('channelDocKey', () => {
     it('resolves a login to its broadcaster ID, ignoring case and a leading #', () => {
@@ -37,6 +37,10 @@ describe('channelNameForDocKey', () => {
     it('returns null when nothing identifies the channel', () => {
         expect(channelNameForDocKey('9999')).toBeNull();
         expect(channelNameForDocKey('9999', {})).toBeNull();
+    });
+
+    it('never resolves a legacy login-keyed document, even one carrying channelName', () => {
+        expect(channelNameForDocKey('streamer', { channelName: 'streamer' })).toBeNull();
     });
 });
 

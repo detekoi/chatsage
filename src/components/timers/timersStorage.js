@@ -90,7 +90,7 @@ export function findUnsupportedTimerVariables(template) {
 }
 
 /** @returns {import('@google-cloud/firestore').Firestore} */
-export function _getDb() {
+function _getDb() {
     return getFirestore();
 }
 

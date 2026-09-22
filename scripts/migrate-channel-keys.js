@@ -36,6 +36,7 @@
  */
 
 import { Firestore } from '@google-cloud/firestore';
+import { isBroadcasterIdKey, normalizeChannelName } from '../src/lib/channelKey.js';
 
 const COLLECTIONS = [
     { name: 'channelMemories', subcollections: ['items'] },
@@ -77,10 +78,6 @@ function parseArgs(argv) {
     return args;
 }
 
-function isBroadcasterIdKey(docId) {
-    return /^\d+$/.test(docId);
-}
-
 /**
  * login (lowercase) → broadcaster ID, from managedChannels. Documents without a
  * twitchUserId are reported so the operator can repair them first.
@@ -91,7 +88,7 @@ async function loadChannelMap(db) {
     const missingId = [];
     snapshot.forEach(doc => {
         const data = doc.data() || {};
-        const login = typeof data.channelName === 'string' ? data.channelName.trim().toLowerCase() : null;
+        const login = typeof data.channelName === 'string' ? normalizeChannelName(data.channelName) : null;
         const id = data.twitchUserId ? String(data.twitchUserId) : (isBroadcasterIdKey(doc.id) ? doc.id : null);
         if (!login) return;
         if (!id) {
@@ -161,6 +158,14 @@ async function migrateDocument(db, writer, spec, sourceRef, targetId, login, sta
             if (!(key in targetData)) toWrite[key] = value;
         }
         if (!('channelName' in targetData)) toWrite.channelName = login;
+        // The quote counter is the one field where "target wins" is wrong: quotes
+        // added under the login key after a first pass raise the source counter,
+        // and leaving the target's lower value would let the next quote land on
+        // top of one of the copied items.
+        if (spec.name === 'channelQuotes') {
+            const highest = Math.max(Number(sourceData.nextId) || 0, Number(targetData.nextId) || 0);
+            if (highest > 0 && targetData.nextId !== highest) toWrite.nextId = highest;
+        }
         if (Object.keys(toWrite).length > 0) {
             await writer.set(targetRef, toWrite, { merge: true });
             stats.parentWrites++;

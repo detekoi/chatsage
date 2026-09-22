@@ -6,6 +6,7 @@ import config from '../../config/index.js';
 import { getSecretValue } from '../../lib/secretManager.js';
 import { isCloudTasksEnabled, scheduleTask, cancelTask, buildTaskId } from '../../lib/cloudTasks.js';
 import { isStreamLive } from '../context/liveStatus.js';
+import { getBroadcasterIdForChannel } from '../../lib/allowList.js';
 
 // How far ahead of the ad break the warning is sent.
 const PRE_ROLL_MS = 60_000;
@@ -225,7 +226,7 @@ async function ensureAdBreakSubscription(channelName) {
         const axios = (await import('axios')).default;
         await axios.post(
             `${config.webui.baseUrl}/internal/eventsub/adbreak/ensure`,
-            { channelLogin: channelName, adsEnabled: true },
+            { channelLogin: channelName, twitchUserId: getBroadcasterIdForChannel(channelName), adsEnabled: true },
             { headers: { 'Authorization': `Bearer ${internalToken}` }, timeout: 15000 }
         );
 
