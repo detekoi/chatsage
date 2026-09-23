@@ -175,7 +175,7 @@ export async function handleStopTranslation({
  */
 export function stripEmotesFromMessage(message, fragments) {
     if (!Array.isArray(fragments) || fragments.length === 0) {
-        return message;
+        return typeof message === 'string' ? message.trim() : '';
     }
     return fragments
         .filter(frag => frag.type !== 'emote')
@@ -216,7 +216,8 @@ export async function handleAutoTranslation({
         if (translatedText && translatedText !== SAME_LANGUAGE) {
             const reply = `🌐💬 ${translatedText}`;
             const replyToId = tags?.id || tags?.['message-id'] || null;
-            await enqueueMessage(channel, reply, { replyToId });
+            // Already in the user's requested language; don't re-translate into the channel's bot language
+            await enqueueMessage(channel, reply, { replyToId, skipTranslation: true });
             return true;
         } else if (translatedText === SAME_LANGUAGE) {
             logger.debug(`[${cleanChannel}] Message from ${lowerUsername} already in ${userState.targetLanguage}, skipping translation`);

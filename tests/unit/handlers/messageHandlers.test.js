@@ -26,7 +26,8 @@ import {
     handleStopTranslation,
     handleAutoTranslation,
     handleBotMention,
-    processGameGuesses
+    processGameGuesses,
+    stripEmotesFromMessage
 } from '../../../src/handlers/messageHandlers.js';
 import { isPrivilegedUser } from '../../../src/lib/permissions.js';
 import { enqueueMessage } from '../../../src/lib/ircSender.js';
@@ -434,6 +435,44 @@ describe('Message Handlers', () => {
         });
     });
 
+    describe('stripEmotesFromMessage', () => {
+        const emote = (text) => ({ type: 'emote', text, emote: { id: text } });
+
+        test('should remove leading, trailing and repeated emotes', () => {
+            const fragments = [
+                emote('Kappa'),
+                { type: 'text', text: ' hello ' },
+                emote('LUL'),
+                { type: 'text', text: '  there ' },
+                emote('LUL'),
+            ];
+
+            expect(stripEmotesFromMessage('Kappa hello LUL  there LUL', fragments)).toBe('hello there');
+        });
+
+        test('should keep non-emote fragments such as mentions', () => {
+            const fragments = [
+                { type: 'mention', text: '@someone' },
+                { type: 'text', text: ' hola ' },
+                emote('Kappa'),
+            ];
+
+            expect(stripEmotesFromMessage('@someone hola Kappa', fragments)).toBe('@someone hola');
+        });
+
+        test('should return an empty string for emote-only messages', () => {
+            const fragments = [emote('Kappa'), { type: 'text', text: ' ' }, emote('Kappa')];
+
+            expect(stripEmotesFromMessage('Kappa Kappa', fragments)).toBe('');
+        });
+
+        test('should fall back to the trimmed raw message without fragments', () => {
+            expect(stripEmotesFromMessage('  hola  ', null)).toBe('hola');
+            expect(stripEmotesFromMessage('  hola  ', [])).toBe('hola');
+            expect(stripEmotesFromMessage(undefined, null)).toBe('');
+        });
+    });
+
     describe('handleAutoTranslation', () => {
         const createBaseParams = () => ({
             message: 'Hello world',
@@ -455,7 +494,7 @@ describe('Message Handlers', () => {
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 '🌐💬 Hola mundo',
-                { replyToId: 'msg-123' }
+                { replyToId: 'msg-123', skipTranslation: true }
             );
         });
 
@@ -563,7 +602,7 @@ describe('Message Handlers', () => {
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 expect.any(String),
-                { replyToId: 'fallback-id' }
+                { replyToId: 'fallback-id', skipTranslation: true }
             );
         });
     });
