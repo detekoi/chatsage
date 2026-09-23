@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/test-prompt-personality-openai.js
 // Personality/quality harness for the OpenAI provider, routed through the
-// PRODUCTION facade (generateStandardResponse / decideSearch / generateSearchResponse)
+// PRODUCTION facade (generateStandardResponse, with web search for !ask)
 // so it exercises exactly what ships — including the production system instruction.
 // For system-prompt *variant* A/B experiments, use scripts/test-prompt-personality.js.
 //
@@ -37,8 +37,6 @@ const { default: config } = await import('../src/config/loader.js');
 const {
     initializeLlmClient,
     generateStandardResponse,
-    generateSearchResponse,
-    decideSearchWithStructuredOutput,
     buildContextPrompt,
 } = await import('../src/components/llm/llmClient.js');
 
@@ -167,28 +165,19 @@ async function runSingle(testMsg, botLanguage = null) {
     const options = botLanguage ? { botLanguage } : {};
     try {
         let text = null;
-        let searchDecided = false;
-        let route = 'standard';
 
         if (testMsg.type === 'command') {
-            // Production !ask flow: decide, then search or standard.
-            const decision = await decideSearchWithStructuredOutput(STREAM_CONTEXT, testMsg.message);
-            searchDecided = !!decision?.searchNeeded;
-            if (searchDecided) {
-                route = 'search';
-                text = await generateSearchResponse(STREAM_CONTEXT, `${testMsg.user}: ${testMsg.message}`, options);
-            } else {
-                text = await generateStandardResponse(STREAM_CONTEXT, `${testMsg.user}: ${testMsg.message}`, options);
-            }
+            // Production !ask flow: one call, the model decides whether to search.
+            text = await generateStandardResponse(STREAM_CONTEXT, `${testMsg.user}: ${testMsg.message}`, { ...options, webSearch: true });
         } else {
             text = await generateStandardResponse(STREAM_CONTEXT, `${testMsg.user} says: ${testMsg.message}`, options);
         }
 
         const ms = Date.now() - start;
-        if (!text) return { ok: false, text: '(null response — refusal or extraction failure)', ms, len: 0, route, searchDecided };
-        return { ok: true, text, ms, len: text.length, route, searchDecided };
+        if (!text) return { ok: false, text: '(null response — refusal or extraction failure)', ms, len: 0 };
+        return { ok: true, text, ms, len: text.length };
     } catch (e) {
-        return { ok: false, text: `ERROR: ${e.message}`, ms: Date.now() - start, len: 0, route: 'error', searchDecided: false };
+        return { ok: false, text: `ERROR: ${e.message}`, ms: Date.now() - start, len: 0 };
     }
 }
 
@@ -222,8 +211,7 @@ async function main() {
         r.type = testMsg.type;
         console.log(`\n${'─'.repeat(70)}`);
         console.log(`💬 [${testMsg.label}] ${testMsg.user}: "${testMsg.message}"`);
-        const searchNote = testMsg.type === 'command' ? ` | route: ${r.route}` : '';
-        console.log(`  📋 (${r.ms}ms, ${r.len}ch${searchNote})`);
+        console.log(`  📋 (${r.ms}ms, ${r.len}ch)`);
         console.log(`     "${r.text}"`);
         if (issues.length) console.log(`     ⚠️ ${issues.join(', ')}`);
     }
@@ -260,11 +248,9 @@ async function main() {
     const avgMs = (arr) => arr.length ? Math.round(arr.reduce((s, r) => s + r.ms, 0) / arr.length) : 0;
     const flagged = results.filter(r => r.issues.length > 0).length;
     const nulls = results.filter(r => !r.ok).length;
-    const searched = cmdResults.filter(r => r.route === 'search').length;
 
     console.log(`  Chat avg length: ${avgLen(chatResults)} ch | Command avg length: ${avgLen(cmdResults)} ch`);
     console.log(`  Chat avg latency: ${avgMs(chatResults)} ms | Command avg latency: ${avgMs(cmdResults)} ms`);
-    console.log(`  Search route chosen: ${searched}/${cmdResults.length} commands`);
     console.log(`  Flagged: ${flagged}/${results.length} | Null/error responses: ${nulls}`);
 
     const allText = results.filter(r => r.ok).map(r => r.text).join(' ');

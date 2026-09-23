@@ -18,7 +18,7 @@ const runsFlag = argv.indexOf('--runs');
 const RUNS = runsFlag !== -1 ? parseInt(argv[runsFlag + 1], 10) : 3;
 
 const { default: config } = await import('../src/config/loader.js');
-const { initializeLlmClient, decideSearchWithStructuredOutput, fetchIanaTimezoneForLocation } = await import('../src/components/llm/llmClient.js');
+const { initializeLlmClient, fetchIanaTimezoneForLocation } = await import('../src/components/llm/llmClient.js');
 const { generateQuestion, verifyAnswer, generateExplanation } = await import('../src/components/trivia/triviaQuestionService.js');
 const { generateRiddle, verifyRiddleAnswer } = await import('../src/components/riddle/riddleService.js');
 const { generateInitialClue, generateFollowUpClue } = await import('../src/components/geo/geoClueService.js');
@@ -110,14 +110,9 @@ console.log('\n--- 3. Geo Services ---');
     check('Geo validate wrong guess', wrong?.is_correct === false, `reasoning="${wrong?.reasoning}"`);
 }
 
-// ── 4. Decision + timezone (shared structured-output plumbing) ──
-console.log('\n--- 4. Search Decision & Timezone ---');
+// ── 4. Timezone (shared structured-output plumbing) ──
+console.log('\n--- 4. Timezone ---');
 {
-    const needs = await decideSearchWithStructuredOutput('', 'what is the weather in tokyo right now');
-    check('Decision: weather → search needed', needs?.searchNeeded === true, needs?.reasoning);
-    const noNeed = await decideSearchWithStructuredOutput('', 'tell me a joke about cats');
-    check('Decision: joke → no search', noNeed?.searchNeeded === false, noNeed?.reasoning);
-
     const tz = await fetchIanaTimezoneForLocation('San Diego');
     check('Timezone lookup', tz === 'America/Los_Angeles', `got "${tz}"`);
 }

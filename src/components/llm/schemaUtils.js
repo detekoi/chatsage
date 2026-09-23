@@ -213,15 +213,6 @@ export const TimezoneSchema = {
     required: ['iana_timezone']
 };
 
-export const SearchDecisionSchema = {
-    type: 'object',
-    properties: {
-        searchNeeded: { type: 'boolean' },
-        reasoning: { type: 'string' }
-    },
-    required: ['searchNeeded', 'reasoning']
-};
-
 export const SummarySchema = {
     type: 'object',
     properties: {

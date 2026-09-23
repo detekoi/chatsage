@@ -11,9 +11,7 @@ import askHandler from '../../../../../src/components/commands/handlers/ask.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import {
     buildContextPrompt,
-    generateSearchResponse,
-    generateStandardResponse,
-    decideSearchWithStructuredOutput
+    generateStandardResponse
 } from '../../../../../src/components/llm/llmClient.js';
 import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
@@ -34,9 +32,7 @@ describe('Ask Command Handler', () => {
         // Clear mocks (except logger which is mocked at module level)
         getContextManager.mockClear();
         buildContextPrompt.mockClear();
-        generateSearchResponse.mockClear();
         generateStandardResponse.mockClear();
-        decideSearchWithStructuredOutput.mockClear();
         removeMarkdownAsterisks.mockClear();
         getUserFriendlyErrorMessage.mockClear();
         enqueueMessage.mockClear();
@@ -49,9 +45,7 @@ describe('Ask Command Handler', () => {
         // Mock the imported functions
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
-        generateSearchResponse.mockResolvedValue('mock search response');
         generateStandardResponse.mockResolvedValue('mock standard response');
-        decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         getUserFriendlyErrorMessage.mockReturnValue('Sorry, an error occurred while processing your question.');
         enqueueMessage.mockResolvedValue();
@@ -76,7 +70,6 @@ describe('Ask Command Handler', () => {
     describe('Markdown Removal', () => {
         test('should remove asterisk markdown from standard responses', async () => {
             generateStandardResponse.mockResolvedValue('The movie **Ladyhawke** is a classic');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['what', 'is', 'ladyhawke']);
             await askHandler.execute(context);
@@ -90,8 +83,7 @@ describe('Ask Command Handler', () => {
         });
 
         test('should remove asterisk markdown from search responses', async () => {
-            generateSearchResponse.mockResolvedValue('Check out *The Matrix* and **Inception**');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: true });
+            generateStandardResponse.mockResolvedValue('Check out *The Matrix* and **Inception**');
 
             const context = createMockContext(['what', 'movies', 'to', 'watch']);
             await askHandler.execute(context);
@@ -106,7 +98,6 @@ describe('Ask Command Handler', () => {
 
         test('should handle responses without markdown', async () => {
             generateStandardResponse.mockResolvedValue('This is plain text');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test', 'question']);
             await askHandler.execute(context);
@@ -121,7 +112,6 @@ describe('Ask Command Handler', () => {
 
         test('should remove markdown from responses with multiple titles', async () => {
             generateStandardResponse.mockResolvedValue('Try **Dark Souls** or *Elden Ring* for **RPGs**');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['game', 'recommendations']);
             await askHandler.execute(context);
@@ -160,7 +150,6 @@ describe('Ask Command Handler', () => {
                 { replyToId: '123' }
             );
             expect(generateStandardResponse).not.toHaveBeenCalled();
-            expect(generateSearchResponse).not.toHaveBeenCalled();
         });
 
         test('should handle various greeting types', async () => {
@@ -177,39 +166,19 @@ describe('Ask Command Handler', () => {
         });
     });
 
-    describe('Search Decision', () => {
-        test('should use search when search is needed', async () => {
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: true });
-            generateSearchResponse.mockResolvedValue('Search result');
+    describe('Web Search', () => {
+        test('should let the model decide on search in a single call', async () => {
+            generateStandardResponse.mockResolvedValue('Search result');
 
             const context = createMockContext(['current', 'weather', 'in', 'tokyo']);
             await askHandler.execute(context);
 
-            expect(generateSearchResponse).toHaveBeenCalled();
-            expect(generateStandardResponse).not.toHaveBeenCalled();
-        });
-
-        test('should use standard response when search not needed', async () => {
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
-            generateStandardResponse.mockResolvedValue('Standard answer');
-
-            const context = createMockContext(['what', 'is', '2+2']);
-            await askHandler.execute(context);
-
-            expect(generateStandardResponse).toHaveBeenCalled();
-            expect(generateSearchResponse).not.toHaveBeenCalled();
-        });
-
-        test('should fallback to standard if search fails', async () => {
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: true });
-            generateSearchResponse.mockResolvedValue(null);
-            generateStandardResponse.mockResolvedValue('Fallback answer');
-
-            const context = createMockContext(['test', 'query']);
-            await askHandler.execute(context);
-
-            expect(generateSearchResponse).toHaveBeenCalled();
-            expect(generateStandardResponse).toHaveBeenCalled();
+            expect(generateStandardResponse).toHaveBeenCalledTimes(1);
+            expect(generateStandardResponse).toHaveBeenCalledWith(
+                'mock context prompt',
+                expect.stringContaining('current weather in tokyo'),
+                expect.objectContaining({ webSearch: true })
+            );
         });
     });
 
@@ -229,7 +198,6 @@ describe('Ask Command Handler', () => {
 
         test('should handle LLM errors gracefully', async () => {
             generateStandardResponse.mockRejectedValue(new Error('LLM error'));
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test', 'question']);
             await askHandler.execute(context);
@@ -243,7 +211,6 @@ describe('Ask Command Handler', () => {
 
         test('should handle empty LLM response', async () => {
             generateStandardResponse.mockResolvedValue('');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test', 'question']);
             await askHandler.execute(context);
@@ -259,7 +226,6 @@ describe('Ask Command Handler', () => {
     describe('User Prefix Stripping', () => {
         test('should strip username prefix from response', async () => {
             generateStandardResponse.mockResolvedValue('@testuser The answer is 42');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
             removeMarkdownAsterisks.mockImplementation((text) => text);
 
             const context = createMockContext(['what', 'is', 'the', 'answer']);
@@ -276,7 +242,6 @@ describe('Ask Command Handler', () => {
     describe('Reply ID Handling', () => {
         test('should use user.id for replyToId', async () => {
             generateStandardResponse.mockResolvedValue('Response');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test'], '#testchannel', { 
                 username: 'testuser', 
@@ -294,7 +259,6 @@ describe('Ask Command Handler', () => {
 
         test('should fallback to message-id if user.id not available', async () => {
             generateStandardResponse.mockResolvedValue('Response');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test'], '#testchannel', { 
                 username: 'testuser',
@@ -312,7 +276,6 @@ describe('Ask Command Handler', () => {
 
         test('should use null if no replyToId available', async () => {
             generateStandardResponse.mockResolvedValue('Response');
-            decideSearchWithStructuredOutput.mockResolvedValue({ searchNeeded: false });
 
             const context = createMockContext(['test'], '#testchannel', { 
                 username: 'testuser',

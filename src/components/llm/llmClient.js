@@ -8,7 +8,6 @@ import * as geminiUtils from './gemini/utils.js';
 import * as openAiCore from './openai/core.js';
 import * as openAiChat from './openai/chat.js';
 import * as openAiGen from './openai/generation.js';
-import * as openAiDec from './openai/decision.js';
 
 import { toGeminiSchema } from './schemaUtils.js';
 
@@ -100,10 +99,6 @@ export function summarizeText(textToSummarize, targetCharLength = 400, options =
 
 export function fetchIanaTimezoneForLocation(locationName) {
     return openAiGen.fetchIanaTimezoneForLocation(locationName);
-}
-
-export function decideSearchWithStructuredOutput(contextPrompt, userQuery) {
-    return openAiDec.decideSearchWithStructuredOutput(contextPrompt, userQuery);
 }
 
 // --- Provider-Agnostic Facade Helpers ---

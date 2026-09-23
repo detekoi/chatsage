@@ -100,7 +100,6 @@ describe('llmClient utility functions', () => {
             expect(typeof llmClient.generateStandardResponse).toBe('function');
             expect(typeof llmClient.generateSearchResponse).toBe('function');
             expect(typeof llmClient.generateUnifiedResponse).toBe('function');
-            expect(typeof llmClient.decideSearchWithStructuredOutput).toBe('function');
             expect(typeof llmClient.summarizeText).toBe('function');
         });
 

@@ -4,9 +4,7 @@ import { getContextManager } from '../../context/contextManager.js';
 // Import the relevant functions from llmClient
 import {
     buildContextPrompt,
-    generateSearchResponse,
     generateStandardResponse,
-    decideSearchWithStructuredOutput,
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
 } from '../../llm/llmClient.js';
@@ -185,22 +183,9 @@ const askHandler = {
                 return; // Time query handled (or attempt failed)
             }
 
-            // --- Not a regex-matched time query. Decide if search is needed, then route. ---
+            // --- Not a regex-matched time query. The model decides whether to search. ---
             const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-            const decision = await decideSearchWithStructuredOutput(contextPrompt, userQueryWithContext);
-            logger.info({ searchNeeded: decision?.searchNeeded, reason: decision?.reasoning, emoteImages: emoteImageParts.length > 0 }, `[${channelName}] Search decision for !ask`);
-
-            let responseText = null;
-            if (decision?.searchNeeded) {
-                // Do not require strict grounding signals; accept valid search answers even if metadata arrays are empty
-                responseText = await generateSearchResponse(contextPrompt, userQueryWithContext, { requireGrounding: false, emoteImageParts });
-                if (!responseText) {
-                    // Fallback to standard if grounded response failed (e.g., safety block)
-                    responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts });
-                }
-            } else {
-                responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts });
-            }
+            const responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts, webSearch: true });
 
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 

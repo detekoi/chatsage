@@ -95,13 +95,20 @@ async function handleFunctionCall(functionCall) {
 }
 
 // --- Standard Response ---
+const MAX_TOOL_ROUNDS = 3;
+
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const openai = getOpenAiInstance();
     const model = getConfiguredModelId();
     const reasoningEffort = resolveReasoningEffort(options);
     const botLanguage = options.botLanguage || null;
+    // webSearch lets the model decide per query whether to search, in the same call
+    const tools = options.webSearch ? [...standardAnswerTools, ...searchTool] : standardAnswerTools;
 
     let standardSystemInstruction = `${buildSystemInstruction(options.channelName)}\n\nTOOL USE GUIDELINES:\n- You have access to a 'getCurrentTime' tool. Use it ONLY if the user explicitly asks for the current time or date.\n- Do NOT use 'getCurrentTime' for general facts.`;
+    if (options.webSearch) {
+        standardSystemInstruction += `\n- You have access to web search. Use it for news, weather, live scores, prices, release dates, current events, and specific people/streamers/songs where info might change. Answer general knowledge, history, definitions, creative writing, jokes, and math from memory.`;
+    }
     if (botLanguage) {
         standardSystemInstruction += `\n\nCRITICAL LANGUAGE REQUIREMENT: You MUST write every response entirely in ${botLanguage}, even though the stream context and chat history are in another language.`;
     }
@@ -120,44 +127,48 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                 model,
                 input: inputPayload,
                 instructions: standardSystemInstruction,
-                tools: standardAnswerTools,
+                tools,
                 reasoning: { effort: reasoningEffort }
             },
             options,
             'generateStandardResponse'
         );
 
-        // Check for function call in response.output
-        const toolCalls = initialResponse.output?.filter(item => item.type === 'function_call') || [];
-        if (toolCalls.length > 0) {
-            const call = toolCalls[0];
-            const functionResult = await handleFunctionCall(call);
-
-            if (functionResult) {
-                const followupResponse = await executeWithFlexFallback(
-                    (payload, reqOpts) => openai.responses.create(payload, reqOpts),
-                    {
-                        model,
-                        previous_response_id: initialResponse.id,
-                        instructions: standardSystemInstruction,
-                        tools: standardAnswerTools,
-                        input: [{
-                            type: 'function_call_output',
-                            call_id: call.call_id,
-                            output: JSON.stringify(functionResult)
-                        }],
-                        reasoning: { effort: reasoningEffort }
-                    },
-                    options,
-                    'generateStandardResponse.followup'
-                );
-
-                const followupText = safeExtractText(followupResponse, 'standard-followup');
-                return followupText?.trim() || null;
-            }
+        if (options.webSearch) {
+            const usedWebSearch = initialResponse.output?.some(item => item.type === 'web_search_call') || false;
+            logger.info({ usedWebSearch }, '[StandardResponse] Model search decision.');
         }
 
-        const responseText = safeExtractText(initialResponse, 'standard');
+        // Tools chain (timezone lookup, then getCurrentTime), so keep answering
+        // function calls until the model replies with text or we hit the cap.
+        let response = initialResponse;
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+            const toolCalls = response.output?.filter(item => item.type === 'function_call') || [];
+            if (toolCalls.length === 0) break;
+
+            // The API rejects a continuation that leaves any call in the turn unanswered
+            const toolOutputs = await Promise.all(toolCalls.map(async (call) => ({
+                type: 'function_call_output',
+                call_id: call.call_id,
+                output: JSON.stringify(await handleFunctionCall(call) || { error: `Unknown function ${call.name}.` })
+            })));
+
+            response = await executeWithFlexFallback(
+                (payload, reqOpts) => openai.responses.create(payload, reqOpts),
+                {
+                    model,
+                    previous_response_id: response.id,
+                    instructions: standardSystemInstruction,
+                    tools,
+                    input: toolOutputs,
+                    reasoning: { effort: reasoningEffort }
+                },
+                options,
+                'generateStandardResponse.followup'
+            );
+        }
+
+        const responseText = safeExtractText(response, response === initialResponse ? 'standard' : 'standard-followup');
         return responseText?.trim() || null;
     } catch (error) {
         logger.error({ err: error }, 'Error during standard generateContent call');
