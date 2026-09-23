@@ -111,7 +111,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
 }
 
 /**
- * Handler for the !ask command using function calling to decide on search.
+ * Handler for the !ask command. The model decides whether to use web search in the same call.
  */
 const askHandler = {
     name: 'ask',
@@ -177,7 +177,7 @@ const askHandler = {
                     // Failed to get IANA from LLM, even though regex matched a location.
                     logger.warn(`[${channelName}] Regex extracted location "${locationForTime}", but LLM failed to find IANA. Using unified generation.`);
                     const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-                    const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext);
+                    const responseText = await generateUnifiedResponse(contextPrompt, userQueryWithContext, { channelName });
                     await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
                 }
                 return; // Time query handled (or attempt failed)
@@ -185,7 +185,7 @@ const askHandler = {
 
             // --- Not a regex-matched time query. The model decides whether to search. ---
             const userQueryWithContext = `The user is ${userName}. Their message is: ${userQuery}`;
-            const responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts, webSearch: true });
+            const responseText = await generateStandardResponse(contextPrompt, userQueryWithContext, { emoteImageParts, webSearch: true, channelName });
 
             await handleAskResponseFormatting(channel, userName, responseText, userQuery, user?.id || user?.['message-id'] || null);
 

@@ -97,6 +97,8 @@ async function handleFunctionCall(functionCall) {
 // --- Standard Response ---
 const MAX_TOOL_ROUNDS = 3;
 
+const hasWebSearchCall = (response) => response.output?.some(item => item.type === 'web_search_call') || false;
+
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const openai = getOpenAiInstance();
     const model = getConfiguredModelId();
@@ -134,14 +136,10 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
             'generateStandardResponse'
         );
 
-        if (options.webSearch) {
-            const usedWebSearch = initialResponse.output?.some(item => item.type === 'web_search_call') || false;
-            logger.info({ usedWebSearch }, '[StandardResponse] Model search decision.');
-        }
-
         // Tools chain (timezone lookup, then getCurrentTime), so keep answering
         // function calls until the model replies with text or we hit the cap.
         let response = initialResponse;
+        let usedWebSearch = hasWebSearchCall(response);
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
             const toolCalls = response.output?.filter(item => item.type === 'function_call') || [];
             if (toolCalls.length === 0) break;
@@ -166,6 +164,11 @@ export async function generateStandardResponse(contextPrompt, userQuery, options
                 options,
                 'generateStandardResponse.followup'
             );
+            usedWebSearch ||= hasWebSearchCall(response);
+        }
+
+        if (options.webSearch) {
+            logger.info({ usedWebSearch }, '[StandardResponse] Model search decision.');
         }
 
         const responseText = safeExtractText(response, response === initialResponse ? 'standard' : 'standard-followup');

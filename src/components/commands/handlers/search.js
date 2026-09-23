@@ -54,7 +54,7 @@ const searchHandler = {
 
             // 2. Use one-shot generateSearchResponse with Google Search grounding
             const searchQuery = `${userName} is asking: "${userQuery}"`;
-            const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery, { emoteImageParts });
+            const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery, { emoteImageParts, channelName });
 
             if (!initialResponseText || initialResponseText.trim().length === 0) {
                 logger.warn(`LLM returned no result for search query: "${userQuery}"`);

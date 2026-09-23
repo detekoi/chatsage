@@ -75,7 +75,7 @@ describe('Search Command Handler', () => {
             expect(generateSearchResponse).toHaveBeenCalledWith(
                 'mock context prompt',
                 expect.stringContaining('switch 2 specs'),
-                { emoteImageParts: expect.any(Array) }
+                { emoteImageParts: expect.any(Array), channelName: 'testchannel' }
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -91,7 +91,7 @@ describe('Search Command Handler', () => {
             expect(generateSearchResponse).toHaveBeenCalledWith(
                 'mock context prompt',
                 expect.stringContaining('TestUser'),
-                { emoteImageParts: expect.any(Array) }
+                { emoteImageParts: expect.any(Array), channelName: 'testchannel' }
             );
         });
     });

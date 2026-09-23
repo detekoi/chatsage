@@ -177,7 +177,7 @@ describe('Ask Command Handler', () => {
             expect(generateStandardResponse).toHaveBeenCalledWith(
                 'mock context prompt',
                 expect.stringContaining('current weather in tokyo'),
-                expect.objectContaining({ webSearch: true })
+                expect.objectContaining({ webSearch: true, channelName: 'testchannel' })
             );
         });
     });
