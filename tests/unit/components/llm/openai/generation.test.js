@@ -1,3 +1,4 @@
+import logger from '../../../../../src/lib/logger.js';
 import { initializeOpenAiClient, getOpenAiInstance } from '../../../../../src/components/llm/openai/core.js';
 import {
     generateStandardResponse,
@@ -97,7 +98,7 @@ describe('OpenAI Generation Module', () => {
         const instance = getOpenAiInstance();
         const spy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
             output_text: 'Grounded answer.',
-            output: [{ type: 'web_search_call', query: 'weather today' }]
+            output: [{ type: 'web_search_call', action: { type: 'search', query: 'weather today' } }]
         });
 
         const res = await generateStandardResponse('Context', 'weather today', { webSearch: true });
@@ -121,7 +122,7 @@ describe('OpenAI Generation Module', () => {
         const instance = getOpenAiInstance();
         const spy = jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
             output_text: 'Grounded search response.',
-            output: [{ type: 'web_search_call', query: 'weather today' }]
+            output: [{ type: 'web_search_call', action: { type: 'search', query: 'weather today' } }]
         });
 
         const res = await generateSearchResponse('Context', 'weather today');
@@ -129,6 +130,22 @@ describe('OpenAI Generation Module', () => {
         expect(spy).toHaveBeenCalledWith(expect.objectContaining({
             tools: [{ type: 'web_search' }]
         }));
+    });
+
+    test('generateSearchResponse logs the queries from web_search_call actions', async () => {
+        const instance = getOpenAiInstance();
+        jest.spyOn(instance.responses, 'create').mockResolvedValueOnce({
+            output_text: 'Grounded search response.',
+            output: [{ type: 'web_search_call', action: { type: 'search', query: 'weather today' } }]
+        });
+        const infoSpy = jest.spyOn(logger, 'info');
+
+        await generateSearchResponse('Context', 'weather today');
+        expect(infoSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ usedGoogleSearch: true, webSearchQueries: ['weather today'] }),
+            '[SearchResponse] Search grounded.'
+        );
+        infoSpy.mockRestore();
     });
 
     test('fetchIanaTimezoneForLocation returns timezone string', async () => {

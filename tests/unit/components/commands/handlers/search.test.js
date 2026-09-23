@@ -67,7 +67,7 @@ describe('Search Command Handler', () => {
         });
     });
 
-    describe('Uses generateSearchResponse (one-shot with Google Search grounding)', () => {
+    describe('Uses generateSearchResponse (one-shot with web search)', () => {
         test('should call generateSearchResponse with context and query', async () => {
             const context = createMockContext(['switch', '2', 'specs']);
             await searchHandler.execute(context);

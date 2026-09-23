@@ -16,7 +16,7 @@ const SUMMARY_TARGET_LENGTH = 400;
 
 /**
  * Handler for the !search command.
- * Uses a one-shot generateSearchResponse call with Google Search grounding
+ * Uses a one-shot generateSearchResponse call with the web search tool
  * to always fetch real-time web results.
  */
 const searchHandler = {
@@ -52,7 +52,7 @@ const searchHandler = {
             // Fetch emote images for direct multimodal LLM input
             const emoteImageParts = await getEmoteImageParts(user);
 
-            // 2. Use one-shot generateSearchResponse with Google Search grounding
+            // 2. Use one-shot generateSearchResponse with web search
             const searchQuery = `${userName} is asking: "${userQuery}"`;
             const initialResponseText = await generateSearchResponse(contextPrompt, searchQuery, { emoteImageParts, channelName });
 

@@ -97,7 +97,7 @@ async function handleFunctionCall(functionCall) {
 // --- Standard Response ---
 const MAX_TOOL_ROUNDS = 3;
 
-const hasWebSearchCall = (response) => response.output?.some(item => item.type === 'web_search_call') || false;
+const hasWebSearchCall = (response) => response?.output?.some(item => item.type === 'web_search_call') || false;
 
 export async function generateStandardResponse(contextPrompt, userQuery, options = {}) {
     const openai = getOpenAiInstance();
@@ -234,7 +234,7 @@ export async function generateSearchResponse(contextPrompt, userQuery, options =
         }
 
         if (usedSearch) {
-            logger.info({ usedGoogleSearch: true, webSearchQueries: webSearchCalls.map(c => c.query || ''), sources: sources.slice(0, 3) }, '[SearchResponse] Search grounded.');
+            logger.info({ usedGoogleSearch: true, webSearchQueries: webSearchCalls.map(c => c.action?.query || ''), sources: sources.slice(0, 3) }, '[SearchResponse] Search grounded.');
         } else {
             logger.info({ usedGoogleSearch: false }, '[SearchResponse] No search grounding metadata present.');
         }
