@@ -459,6 +459,43 @@ describe('Message Handlers', () => {
             );
         });
 
+        test('should strip emotes before translating', async () => {
+            translateText.mockResolvedValue('omg this song');
+            const frog = { type: 'emote', text: 'pedrom90BounceFrog', emote: { id: 'e1' } };
+
+            const result = await handleAutoTranslation({
+                ...createBaseParams(),
+                message: 'omg esta canción pedrom90BounceFrog pedrom90BounceFrog',
+                tags: {
+                    id: 'msg-123',
+                    fragments: [
+                        { type: 'text', text: 'omg esta canción ' },
+                        frog,
+                        { type: 'text', text: ' ' },
+                        frog,
+                    ],
+                },
+            });
+
+            expect(result).toBe(true);
+            expect(translateText).toHaveBeenCalledWith('omg esta canción', 'es');
+        });
+
+        test('should skip translation for emote-only messages', async () => {
+            const result = await handleAutoTranslation({
+                ...createBaseParams(),
+                message: 'pedrom90BounceFrog',
+                tags: {
+                    id: 'msg-123',
+                    fragments: [{ type: 'emote', text: 'pedrom90BounceFrog', emote: { id: 'e1' } }],
+                },
+            });
+
+            expect(result).toBe(false);
+            expect(translateText).not.toHaveBeenCalled();
+            expect(enqueueMessage).not.toHaveBeenCalled();
+        });
+
         test('should return false when translation disabled', async () => {
             const result = await handleAutoTranslation({
                 ...createBaseParams(),

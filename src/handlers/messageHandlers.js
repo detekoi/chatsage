@@ -166,6 +166,26 @@ export async function handleStopTranslation({
 }
 
 /**
+ * Removes Twitch emotes from a message using its EventSub fragments, so the
+ * translator doesn't echo emote codes back as text. Falls back to the raw
+ * message when no fragments are available.
+ * @param {string} message - Raw chat message
+ * @param {Array|null} fragments - EventSub message fragments
+ * @returns {string} Message text without emotes
+ */
+export function stripEmotesFromMessage(message, fragments) {
+    if (!Array.isArray(fragments) || fragments.length === 0) {
+        return message;
+    }
+    return fragments
+        .filter(frag => frag.type !== 'emote')
+        .map(frag => frag.text || '')
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
  * Handles automatic translation for messages
  * @param {Object} params - Parameters object
  * @returns {Promise<boolean>} True if translation was performed, false otherwise
@@ -184,9 +204,15 @@ export async function handleAutoTranslation({
         return false;
     }
 
+    const textToTranslate = stripEmotesFromMessage(message, tags?.fragments);
+    if (!textToTranslate) {
+        logger.debug(`[${cleanChannel}] Message from ${lowerUsername} is only emotes, skipping translation`);
+        return false;
+    }
+
     logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
     try {
-        const translatedText = await translateText(message, userState.targetLanguage);
+        const translatedText = await translateText(textToTranslate, userState.targetLanguage);
         if (translatedText && translatedText !== SAME_LANGUAGE) {
             const reply = `🌐💬 ${translatedText}`;
             const replyToId = tags?.id || tags?.['message-id'] || null;
