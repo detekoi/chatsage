@@ -16,6 +16,7 @@ import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { pronounService } from '../../../lib/pronounService.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { getCachedPersona } from '../../context/personaStorage.js';
 
 // Note: IRC message length limits are handled by ircSender.js
 // This handler focuses on response generation, not formatting
@@ -130,9 +131,10 @@ const askHandler = {
             return;
         }
 
-        // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage
+        // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage.
+        // Skipped when the channel has a custom persona, so the greeting comes back in its voice.
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
-        if (greetingRegex.test(userQuery) && userQuery.length <= 20) {
+        if (greetingRegex.test(userQuery) && userQuery.length <= 20 && !getCachedPersona(channelName)) {
             await sendLocalized(channel, 'cmd.ask.HeyThereWhatS', {}, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });
             return;
         }
