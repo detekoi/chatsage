@@ -1,4 +1,4 @@
-// tests/unit/components/twitch/chatClientAnnouncement.test.js
+// tests/unit/components/twitch/chatClient.test.js
 
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/config/index.js', () => ({
@@ -8,9 +8,7 @@ jest.mock('../../../../src/config/index.js', () => ({
 jest.mock('../../../../src/components/twitch/helixClient.js', () => ({
     getUsersByLogin: jest.fn(),
     sendAnnouncement: jest.fn(),
-}));
-jest.mock('../../../../src/components/twitch/auth.js', () => ({
-    getAppAccessToken: jest.fn(),
+    sendChatMessage: jest.fn(),
 }));
 jest.mock('../../../../src/components/twitch/broadcasterTokenHelper.js', () => ({
     getBroadcasterAccessToken: jest.fn(),
@@ -23,8 +21,8 @@ jest.mock('../../../../src/components/twitch/botTokenHelper.js', () => ({
     _resetBotTokenState: jest.fn(),
 }));
 
-import { sendAnnouncement, _resetCache } from '../../../../src/components/twitch/chatClient.js';
-import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement } from '../../../../src/components/twitch/helixClient.js';
+import { sendMessage, sendAnnouncement, _resetCache } from '../../../../src/components/twitch/chatClient.js';
+import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendChatMessage as helixSendChatMessage } from '../../../../src/components/twitch/helixClient.js';
 import { getBroadcasterAccessToken, clearCachedBroadcasterToken } from '../../../../src/components/twitch/broadcasterTokenHelper.js';
 import { getBotAccessToken, clearCachedBotToken } from '../../../../src/components/twitch/botTokenHelper.js';
 
@@ -92,5 +90,56 @@ describe('chatClient.sendAnnouncement', () => {
 
         await expect(sendAnnouncement('#zeebthewerebear', 'hi')).resolves.toBe(false);
         expect(helixSendAnnouncement).not.toHaveBeenCalled();
+    });
+});
+
+describe('chatClient.sendMessage', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        _resetCache();
+        getUsersByLogin.mockImplementation(async ([login]) => [
+            { id: login === 'wildcatsage' ? BOT_ID : BROADCASTER_ID },
+        ]);
+        helixSendChatMessage.mockResolvedValue({ message_id: 'm1', is_sent: true });
+    });
+
+    test('sends through helixClient as the bot, with the reply ID', async () => {
+        await expect(sendMessage('#zeebthewerebear', 'hi', { replyToId: 'parent1' })).resolves.toBe(true);
+
+        expect(helixSendChatMessage).toHaveBeenCalledWith(BROADCASTER_ID, BOT_ID, 'hi', 'parent1');
+    });
+
+    test('caches the broadcaster ID across messages', async () => {
+        await sendMessage('#zeebthewerebear', 'one');
+        await sendMessage('#zeebthewerebear', 'two');
+
+        const broadcasterLookups = getUsersByLogin.mock.calls.filter(([logins]) => logins[0] === 'zeebthewerebear');
+        expect(broadcasterLookups).toHaveLength(1);
+        expect(helixSendChatMessage).toHaveBeenCalledTimes(2);
+    });
+
+    test('returns false when Twitch drops the message', async () => {
+        helixSendChatMessage.mockResolvedValue({ is_sent: false, drop_reason: { code: 'msg_duplicate' } });
+
+        await expect(sendMessage('#zeebthewerebear', 'hi')).resolves.toBe(false);
+    });
+
+    test.each([undefined, {}])('returns false when Twitch does not confirm the send (%p)', async (response) => {
+        helixSendChatMessage.mockResolvedValue(response);
+
+        await expect(sendMessage('#zeebthewerebear', 'hi')).resolves.toBe(false);
+    });
+
+    test('returns false when the channel cannot be resolved', async () => {
+        getUsersByLogin.mockResolvedValue([]);
+
+        await expect(sendMessage('#nobody', 'hi')).resolves.toBe(false);
+        expect(helixSendChatMessage).not.toHaveBeenCalled();
+    });
+
+    test('returns false when the Helix call throws', async () => {
+        helixSendChatMessage.mockRejectedValue(new Error('boom'));
+
+        await expect(sendMessage('#zeebthewerebear', 'hi')).resolves.toBe(false);
     });
 });

@@ -89,14 +89,15 @@ const server = http.createServer(async (req, res) => {
 
     try {
         // Exchange code for tokens
-        const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', null, {
-            params: {
-                client_id: CLIENT_ID,
-                client_secret: CLIENT_SECRET,
-                code,
-                grant_type: 'authorization_code',
-                redirect_uri: REDIRECT_URI,
-            },
+        // Credentials go in the form body, not the URL, so they stay out of request logs
+        const tokenBody = new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            code,
+            grant_type: 'authorization_code',
+            redirect_uri: REDIRECT_URI,
+        });
+        const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', tokenBody.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         });
 

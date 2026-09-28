@@ -484,6 +484,37 @@ async function sendAnnouncement(broadcasterId, moderatorId, message, accessToken
 }
 
 /**
+ * Sends a chat message as the bot via the Helix API, using the shared client's
+ * app access token. Requires user:bot on the bot and either mod status or
+ * channel:bot from the broadcaster.
+ *
+ * Not retried: a timeout does not tell us whether Twitch posted the message,
+ * and a retry could post it twice.
+ *
+ * @param {string} broadcasterId - The channel's broadcaster user ID.
+ * @param {string} senderId - The bot's user ID.
+ * @param {string} message - The message text (max 500 characters).
+ * @param {string|null} [replyToId=null] - ID of the message to reply to.
+ * @returns {Promise<{is_sent: boolean, drop_reason?: object}|undefined>}
+ *   Twitch's result for the message. Throws on HTTP errors (already logged by the interceptor).
+ */
+async function sendChatMessage(broadcasterId, senderId, message, replyToId = null) {
+    const client = getHelixClient();
+    const body = {
+        broadcaster_id: broadcasterId,
+        sender_id: senderId,
+        message,
+    };
+    if (replyToId) {
+        body.reply_parent_message_id = replyToId;
+    }
+
+    // Docs: https://dev.twitch.tv/docs/api/reference/#send-chat-message
+    const response = await client.post('/chat/messages', body, { timeout: 10000 });
+    return response.data?.data?.[0];
+}
+
+/**
  * Fetches all moderators for a broadcaster's channel.
  * Uses the broadcaster's user access token (requires moderation:read or channel:manage:moderators scope).
  * Paginates to collect all moderators.
@@ -539,6 +570,7 @@ export {
     getLiveStreams,
     getSharedChatSession,
     sendAnnouncement,
+    sendChatMessage,
     getModerators,
 };
 

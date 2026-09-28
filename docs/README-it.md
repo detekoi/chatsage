@@ -125,7 +125,7 @@ ChatSage è configurato principalmente tramite variabili d'ambiente. Le variabil
 * `TWITCH_CHANNELS`: Elenco di canali separati da virgola a cui unirsi in sviluppo locale. In produzione il bot carica il proprio elenco di canali da Firestore.
 * `GEMINI_API_KEY`: La tua chiave API per il servizio Google Gemini.
 * `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credenziali per la tua applicazione Twitch registrata (utilizzate per le chiamate API Helix).
-* `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Nome della risorsa per il token di aggiornamento in Google Secret Manager.
+* `TWITCH_BOT_REFRESH_TOKEN`: Token di aggiornamento dell'account del bot. Il bot lo usa per inviare annunci in chat a proprio nome. In produzione, Cloud Run lo carica dal secret `TWITCH_BOT_REFRESH_TOKEN` in Google Secret Manager.
 * `STREAM_INFO_FETCH_INTERVAL_SECONDS`: Frequenza di aggiornamento dei dati di contesto dello streaming.
 * `LOG_LEVEL`: Controlla la verbosità dei log.
 
@@ -137,46 +137,30 @@ ChatSage utilizza un meccanismo sicuro di aggiornamento dei token per mantenere 
 
 ### Autenticazione del Bot
 
-1.  **Prerequisiti per la Generazione dei Token**:
-    *   **Applicazione Twitch**: Assicurati di aver registrato un'applicazione sulla [Console Sviluppatori Twitch](https://dev.twitch.tv/console/). Annota il tuo **ID Client** e genera un **Segreto Client**.
-    *   **URI di Reindirizzamento OAuth**: Nelle impostazioni della tua Applicazione Twitch, aggiungi `http://localhost:3000` come URL di Reindirizzamento OAuth. La CLI di Twitch utilizza specificamente questo come primo URL di reindirizzamento per impostazione predefinita.
-    *   **CLI di Twitch**: Installa la [CLI di Twitch](https://dev.twitch.tv/docs/cli/install) sulla tua macchina locale.
+ChatSage usa due tipi di token Twitch:
 
-2.  **Configura la CLI di Twitch**:
-    *   Apri il tuo terminale o prompt dei comandi.
-    *   Esegui `twitch configure`.
-    *   Quando richiesto, inserisci l'**ID Client** e il **Segreto Client** dalla tua Applicazione Twitch.
+*   Un **token di accesso dell'app** per la maggior parte delle chiamate Helix, incluso l'invio dei messaggi in chat. ChatSage lo ottiene da `TWITCH_CLIENT_ID` e `TWITCH_CLIENT_SECRET`. Non devi configurarlo.
+*   Un **token di accesso utente per l'account del bot** per gli annunci in chat. Twitch rifiuta i token di accesso dell'app sull'endpoint degli annunci.
 
-3.  **Genera Token di Accesso Utente e Token di Aggiornamento usando la CLI di Twitch**:
-    *   Esegui il seguente comando nel tuo terminale. Sostituisci `<i_tuoi_scope>` con un elenco di scope richiesti per il tuo bot, separati da spazi. Per ChatSage, hai bisogno almeno di `user:read:chat` e `user:write:chat`.
-        ```bash
-        twitch token -u -s 'user:read:chat user:write:chat'
-        ```
-        *(Puoi aggiungere altri scope se i comandi personalizzati del tuo bot ne hanno bisogno, ad es., `channel:manage:polls channel:read:subscriptions`)*
-    *   La CLI restituirà un URL. Copia questo URL e incollalo nel tuo browser web.
-    *   Accedi a Twitch usando l'**account Twitch che vuoi che il bot utilizzi**.
-    *   Autorizza la tua applicazione per gli scope richiesti.
-    *   Dopo l'autorizzazione, Twitch reindirizzerà il tuo browser a `http://localhost:3000`. La CLI, che esegue temporaneamente un server locale, catturerà il codice di autorizzazione e lo scambierà con i token.
-    *   La CLI stamperà quindi il `Token di Accesso Utente`, il `Token di Aggiornamento`, `Scade Alle` (per il token di accesso) e gli `Scope` concessi.
+Per configurare il token utente del bot:
 
-4.  **Conserva il Token di Aggiornamento in Modo Sicuro**:
-    *   Dall'output della CLI di Twitch, copia il **Token di Aggiornamento**. Questo è il token cruciale di cui il tuo bot ha bisogno per l'autenticazione a lungo termine.
-    *   Conserva questo Token di Aggiornamento in modo sicuro in Google Secret Manager.
+1.  **Prerequisiti**:
+    *   Registra un'applicazione sulla [Console Sviluppatori Twitch](https://dev.twitch.tv/console/). Annota il tuo **ID Client** e il tuo **Segreto Client**.
+    *   Nelle impostazioni della tua applicazione Twitch, aggiungi `http://localhost:3456/callback` come URL di reindirizzamento OAuth.
+    *   Imposta `TWITCH_CLIENT_ID` e `TWITCH_CLIENT_SECRET` nel tuo file `.env`.
 
-5.  **Configurazione di Google Secret Manager**:
-    *   Crea un Progetto Google Cloud se non ne hai uno.
-    *   Abilita l'API Secret Manager nel tuo progetto.
-    *   Crea un nuovo segreto in Secret Manager per conservare il Token di Aggiornamento Twitch che hai appena ottenuto.
-    *   Annota il **Nome Risorsa** di questo segreto. Sarà simile a `projects/IL_TUO_ID_PROGETTO/secrets/IL_TUO_NOME_SEGRETO/versions/latest`.
-    *   Imposta questo nome risorsa completo come valore per la variabile d'ambiente `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` nella configurazione del tuo bot (ad es., nel tuo file `.env` o nelle variabili d'ambiente di Cloud Run).
-    *   Assicurati che l'account di servizio che esegue la tua applicazione ChatSage (sia localmente tramite ADC o in Cloud Run) abbia il ruolo IAM "Accessor segreti di Secret Manager" per questo segreto.
+2.  **Genera il token di aggiornamento**:
+    *   Esegui `node scripts/get-user-token.js`.
+    *   Accedi a Twitch con l'account del bot e autorizza gli scope richiesti. Gli scope includono `moderator:manage:announcements`.
+    *   Lo script stampa il token di accesso e il token di aggiornamento.
 
-6.  **Flusso di Autenticazione in ChatSage**:
-    *   All'avvio, ChatSage (specificamente `auth.js`) utilizzerà `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` per recuperare il token di aggiornamento memorizzato da Google Secret Manager.
-    *   Utilizzerà quindi questo token di aggiornamento, insieme all'`TWITCH_CLIENT_ID` e al `TWITCH_CLIENT_SECRET` della tua applicazione, per ottenere un nuovo Token di Accesso OAuth di breve durata da Twitch.
-    *   Questo token di accesso viene utilizzato per autenticarsi con l'API Twitch Helix per l'invio di messaggi e la sottoscrizione ai webhook EventSub.
-    *   Se il token di accesso scade o diventa non valido, il bot utilizzerà il token di aggiornamento per ottenerne automaticamente uno nuovo.
-    *   Se il token di aggiornamento stesso diventa non valido (ad es., revocato da Twitch, modifica della password dell'utente), l'applicazione registrerà un errore critico e dovrai ripetere il processo di generazione del token (Passaggi 3-4) per ottenere un nuovo token di aggiornamento.
+3.  **Salva il token di aggiornamento**:
+    *   Per lo sviluppo locale, imposta `TWITCH_BOT_REFRESH_TOKEN` nel tuo file `.env`.
+    *   Per la produzione, aggiungi il token di aggiornamento come nuova versione del secret `TWITCH_BOT_REFRESH_TOKEN` in Google Secret Manager. Il workflow di deploy monta quel secret come variabile d'ambiente `TWITCH_BOT_REFRESH_TOKEN`. Assegna il ruolo IAM `Secret Manager Secret Accessor` all'account di servizio che esegue ChatSage.
+
+4.  **Rendi il bot moderatore** in ogni canale in cui deve inviare annunci. In un canale in cui il bot non è moderatore, ChatSage invia gli annunci con il token del broadcaster, quindi appaiono come inviati dal broadcaster.
+
+Quando il token di accesso del bot scade, ChatSage ne richiede uno nuovo con il token di aggiornamento. Se il token di aggiornamento non è più valido, esegui di nuovo `scripts/get-user-token.js` e aggiungi una nuova versione del secret.
 
 ### UI Web per la Gestione dei Canali
 

@@ -125,7 +125,7 @@ ChatSage est configuré principalement via des variables d'environnement. Les va
 * `TWITCH_CHANNELS`: Liste des chaînes à rejoindre, séparées par des virgules, en développement local. En production, le bot charge sa liste de chaînes depuis Firestore.
 * `GEMINI_API_KEY`: Votre clé API pour le service Google Gemini.
 * `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Identifiants pour votre application Twitch enregistrée (utilisés pour les appels à l'API Helix).
-* `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Nom de la ressource pour le jeton de rafraîchissement dans Google Secret Manager.
+* `TWITCH_BOT_REFRESH_TOKEN`: Jeton de rafraîchissement du compte du bot. Le bot l'utilise pour envoyer des annonces de chat en son propre nom. En production, Cloud Run le charge depuis le secret `TWITCH_BOT_REFRESH_TOKEN` dans Google Secret Manager.
 * `STREAM_INFO_FETCH_INTERVAL_SECONDS`: Fréquence de rafraîchissement des données de contexte du stream.
 * `LOG_LEVEL`: Contrôle la verbosité des journaux.
 
@@ -137,46 +137,30 @@ ChatSage utilise un mécanisme sécurisé de renouvellement de jeton pour mainte
 
 ### Authentification du Bot
 
-1.  **Prérequis pour la Génération de Jeton** :
-    *   **Application Twitch** : Assurez-vous d'avoir enregistré une application sur la [Console Développeur Twitch](https://dev.twitch.tv/console/). Notez votre **ID Client** et générez un **Secret Client**.
-    *   **URI de Redirection OAuth** : Dans les paramètres de votre application Twitch, ajoutez `http://localhost:3000` comme URL de redirection OAuth. La CLI Twitch l'utilise spécifiquement comme première URL de redirection par défaut.
-    *   **CLI Twitch** : Installez la [CLI Twitch](https://dev.twitch.tv/docs/cli/install) sur votre machine locale.
+ChatSage utilise deux types de jeton Twitch :
 
-2.  **Configurer la CLI Twitch** :
-    *   Ouvrez votre terminal ou invite de commandes.
-    *   Exécutez `twitch configure`.
-    *   Lorsque vous y êtes invité, entrez l'**ID Client** et le **Secret Client** de votre application Twitch.
+*   Un **jeton d'accès d'application** pour la plupart des appels Helix, y compris l'envoi de messages de chat. ChatSage l'obtient à partir de `TWITCH_CLIENT_ID` et `TWITCH_CLIENT_SECRET`. Vous n'avez rien à configurer.
+*   Un **jeton d'accès utilisateur pour le compte du bot** pour les annonces de chat. Twitch refuse les jetons d'accès d'application sur l'endpoint des annonces.
 
-3.  **Générer un Jeton d'Accès Utilisateur et un Jeton de Rafraîchissement à l'aide de la CLI Twitch** :
-    *   Exécutez la commande suivante dans votre terminal. Remplacez `<vos_scopes>` par une liste d'autorisations requises pour votre bot, séparées par des espaces. Pour ChatSage, vous avez besoin au minimum de `user:read:chat` et `user:write:chat`.
-        ```bash
-        twitch token -u -s 'user:read:chat user:write:chat'
-        ```
-        *(Vous pouvez ajouter d'autres autorisations si les commandes personnalisées de votre bot en ont besoin, par exemple, `channel:manage:polls channel:read:subscriptions`)*
-    *   La CLI affichera une URL. Copiez cette URL et collez-la dans votre navigateur web.
-    *   Connectez-vous à Twitch en utilisant le **compte Twitch que vous souhaitez que le bot utilise**.
-    *   Autorisez votre application pour les autorisations demandées.
-    *   Après autorisation, Twitch redirigera votre navigateur vers `http://localhost:3000`. La CLI, qui exécute temporairement un serveur local, capturera le code d'autorisation et l'échangera contre des jetons.
-    *   La CLI affichera alors le `Jeton d'Accès Utilisateur`, le `Jeton de Rafraîchissement`, la `Date d'Expiration` (pour le jeton d'accès) et les `Autorisations` accordées.
+Pour configurer le jeton utilisateur du bot :
 
-4.  **Stocker le Jeton de Rafraîchissement en Toute Sécurité** :
-    *   Depuis la sortie de la CLI Twitch, copiez le **Jeton de Rafraîchissement**. C'est le jeton crucial dont votre bot a besoin pour une authentification à long terme.
-    *   Stockez ce Jeton de Rafraîchissement en toute sécurité dans Google Secret Manager.
+1.  **Prérequis** :
+    *   Enregistrez une application sur la [Console Développeur Twitch](https://dev.twitch.tv/console/). Notez votre **ID Client** et votre **Secret Client**.
+    *   Dans les paramètres de votre application Twitch, ajoutez `http://localhost:3456/callback` comme URL de redirection OAuth.
+    *   Définissez `TWITCH_CLIENT_ID` et `TWITCH_CLIENT_SECRET` dans votre fichier `.env`.
 
-5.  **Configuration de Google Secret Manager** :
-    *   Créez un projet Google Cloud si vous n'en avez pas.
-    *   Activez l'API Secret Manager dans votre projet.
-    *   Créez un nouveau secret dans Secret Manager pour stocker le Jeton de Rafraîchissement Twitch que vous venez d'obtenir.
-    *   Notez le **Nom de Ressource** de ce secret. Il ressemblera à `projects/VOTRE_ID_PROJET/secrets/VOTRE_NOM_SECRET/versions/latest`.
-    *   Définissez ce nom de ressource complet comme valeur pour la variable d'environnement `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` dans la configuration de votre bot (par exemple, dans votre fichier `.env` ou les variables d'environnement de Cloud Run).
-    *   Assurez-vous que le compte de service exécutant votre application ChatSage (que ce soit localement via ADC ou dans Cloud Run) dispose du rôle IAM "Accesseur de secrets du Secret Manager" pour ce secret.
+2.  **Générer le jeton de rafraîchissement** :
+    *   Exécutez `node scripts/get-user-token.js`.
+    *   Connectez-vous à Twitch avec le compte du bot et autorisez les scopes demandés. Les scopes incluent `moderator:manage:announcements`.
+    *   Le script affiche le jeton d'accès et le jeton de rafraîchissement.
 
-6.  **Flux d'Authentification dans ChatSage** :
-    *   Au démarrage, ChatSage (plus précisément `auth.js`) utilisera `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` pour récupérer le jeton de rafraîchissement stocké depuis Google Secret Manager.
-    *   Il utilisera ensuite ce jeton de rafraîchissement, ainsi que l'`TWITCH_CLIENT_ID` et le `TWITCH_CLIENT_SECRET` de votre application, pour obtenir un nouveau Jeton d'Accès OAuth de courte durée auprès de Twitch.
-    *   Ce jeton d'accès est utilisé pour s'authentifier auprès de l'API Twitch Helix pour l'envoi de messages et l'abonnement aux webhooks EventSub.
-    *   Si le jeton d'accès expire ou devient invalide, le bot utilisera le jeton de rafraîchissement pour en obtenir automatiquement un nouveau.
-    *   Si le jeton de rafraîchissement lui-même devient invalide (par exemple, révoqué par Twitch, changement de mot de passe utilisateur), l'application enregistrera une erreur critique, et vous devrez répéter le processus de génération de jeton (Étapes 3-4) pour obtenir un nouveau jeton de rafraîchissement.
+3.  **Stocker le jeton de rafraîchissement** :
+    *   Pour le développement local, définissez `TWITCH_BOT_REFRESH_TOKEN` dans votre fichier `.env`.
+    *   Pour la production, ajoutez le jeton de rafraîchissement comme nouvelle version du secret `TWITCH_BOT_REFRESH_TOKEN` dans Google Secret Manager. Le workflow de déploiement monte ce secret comme variable d'environnement `TWITCH_BOT_REFRESH_TOKEN`. Accordez le rôle IAM `Secret Manager Secret Accessor` au compte de service qui exécute ChatSage.
+
+4.  **Faites du bot un modérateur** dans chaque chaîne où il doit envoyer des annonces. Dans une chaîne où le bot n'est pas modérateur, ChatSage envoie les annonces avec le jeton du diffuseur ; elles apparaissent alors comme venant du diffuseur.
+
+Quand le jeton d'accès du bot expire, ChatSage en demande un nouveau avec le jeton de rafraîchissement. Si le jeton de rafraîchissement devient invalide, exécutez à nouveau `scripts/get-user-token.js` et ajoutez une nouvelle version du secret.
 
 ### Interface Utilisateur Web de Gestion des Chaînes
 

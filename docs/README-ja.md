@@ -124,7 +124,7 @@ ChatSageは主に環境変数を通じて設定されます。必須およびオ
 *   `TWITCH_CHANNELS`: ローカル開発で参加するチャンネルのコンマ区切りリスト。本番環境では、ボットはチャンネルリストをFirestoreから読み込みます。
 *   `GEMINI_API_KEY`: Google GeminiサービスのAPIキー。
 *   `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: 登録済みのTwitchアプリケーションの認証情報（Helix API呼び出しに使用）。
-*   `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Google Secret Manager内のリフレッシュトークンのリソース名。
+*   `TWITCH_BOT_REFRESH_TOKEN`: ボットアカウントのリフレッシュトークン。ボットはこれを使って、自分の名前でチャットのアナウンスを送信します。本番環境では、Cloud RunがGoogle Secret Managerの`TWITCH_BOT_REFRESH_TOKEN`シークレットから読み込みます。
 *   `STREAM_INFO_FETCH_INTERVAL_SECONDS`: 配信コンテキストデータを更新する頻度（秒単位）。
 *   `LOG_LEVEL`: ログの詳細度を制御します。
 
@@ -136,46 +136,30 @@ ChatSageは、Twitchとの認証を維持するために安全なトークン更
 
 ### ボット認証 {#bot-authentication}
 
-1.  **トークン生成の前提条件**：
-    *   **Twitchアプリケーション**：[Twitch開発者コンソール](https://dev.twitch.tv/console/)でアプリケーションを登録していることを確認してください。**クライアントID**をメモし、**クライアントシークレット**を生成します。
-    *   **OAuthリダイレクトURI**：Twitchアプリケーション設定で、OAuthリダイレクトURLとして`http://localhost:3000`を追加します。Twitch CLIは、デフォルトでこれを最初のリダイレクトURLとして具体的に使用します。
-    *   **Twitch CLI**：ローカルマシンに[Twitch CLI](https://dev.twitch.tv/docs/cli/install)をインストールします。
+ChatSageは2種類のTwitchトークンを使用します：
 
-2.  **Twitch CLIの設定**：
-    *   ターミナルまたはコマンドプロンプトを開きます。
-    *   `twitch configure`を実行します。
-    *   プロンプトが表示されたら、Twitchアプリケーションの**クライアントID**と**クライアントシークレット**を入力します。
+*   **アプリアクセストークン**：チャットメッセージの送信を含む、ほとんどのHelix呼び出しに使用します。ChatSageは`TWITCH_CLIENT_ID`と`TWITCH_CLIENT_SECRET`からこれを取得します。設定は不要です。
+*   **ボットアカウントのユーザーアクセストークン**：チャットのアナウンスに使用します。Twitchはアナウンスのエンドポイントでアプリアクセストークンを受け付けません。
 
-3.  **Twitch CLIを使用したユーザーアクセストークンと更新トークンの生成**：
-    *   ターミナルで次のコマンドを実行します。`<your_scopes>`を、ボットに必要なスコープのスペース区切りリストに置き換えます。ChatSageの場合、少なくとも`user:read:chat`と`user:write:chat`が必要です。
-        ```bash
-        twitch token -u -s 'user:read:chat user:write:chat'
-        ```
-        *（ボットのカスタムコマンドで他のスコープが必要な場合は追加できます。例：`channel:manage:polls channel:read:subscriptions`）*
-    *   CLIはURLを出力します。このURLをコピーしてウェブブラウザに貼り付けます。
-    *   **ボットが使用するTwitchアカウント**でTwitchにログインします。
-    *   要求されたスコープに対してアプリケーションを承認します。
-    *   承認後、Twitchはブラウザを`http://localhost:3000`にリダイレクトします。一時的にローカルサーバーを実行するCLIが認証コードをキャプチャし、トークンと交換します。
-    *   その後、CLIは`ユーザーアクセストークン`、`更新トークン`、`有効期限`（アクセストークン用）、および付与された`スコープ`を出力します。
+ボットのユーザートークンを設定するには：
 
-4.  **更新トークンの安全な保存**：
-    *   Twitch CLIの出力から**更新トークン**をコピーします。これは、ボットが長期的な認証に必要とする重要なトークンです。
-    *   この更新トークンをGoogle Secret Managerに安全に保存します。
+1.  **前提条件**：
+    *   [Twitch開発者コンソール](https://dev.twitch.tv/console/)でアプリケーションを登録します。**クライアントID**と**クライアントシークレット**をメモします。
+    *   Twitchアプリケーション設定で、OAuthリダイレクトURLとして`http://localhost:3456/callback`を追加します。
+    *   `.env`ファイルに`TWITCH_CLIENT_ID`と`TWITCH_CLIENT_SECRET`を設定します。
 
-5.  **Google Secret Managerの設定**：
-    *   Google Cloudプロジェクトがない場合は作成します。
-    *   プロジェクトでSecret Manager APIを有効にします。
-    *   取得したTwitch更新トークンを保存するために、Secret Managerで新しいシークレットを作成します。
-    *   このシークレットの**リソース名**をメモします。`projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`のようになります。
-    *   ボットの設定（`.env`ファイルやCloud Runの環境変数など）で、この完全なリソース名を`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`環境変数の値として設定します。
-    *   ChatSageアプリケーションを実行しているサービスアカウント（ローカルのADC経由またはCloud Run内）が、このシークレットに対する「Secret Managerのシークレットアクセサー」IAMロールを持っていることを確認します。
+2.  **リフレッシュトークンの生成**：
+    *   `node scripts/get-user-token.js`を実行します。
+    *   ボットアカウントでTwitchにログインし、要求されたスコープを承認します。スコープには`moderator:manage:announcements`が含まれます。
+    *   スクリプトがアクセストークンとリフレッシュトークンを表示します。
 
-6.  **ChatSageでの認証フロー**：
-    *   起動時、ChatSage（具体的には`auth.js`）は`TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`を使用して、Google Secret Managerから保存されている更新トークンを取得します。
-    *   次に、この更新トークンをアプリケーションの`TWITCH_CLIENT_ID`および`TWITCH_CLIENT_SECRET`とともに使用して、Twitchから新しい短命のOAuthアクセストークンを取得します。
-    *   このアクセストークンは、メッセージの送信とEventSubウェブフックの購読のためにTwitch Helix APIへの認証に使用されます。
-    *   アクセストークンが期限切れになったり無効になったりした場合、ボットは更新トークンを使用して自動的に新しいトークンを取得します。
-    *   更新トークン自体が無効になった場合（例：Twitchによる取り消し、ユーザーパスワードの変更）、アプリケーションは重大なエラーをログに記録し、新しい更新トークンを取得するためにトークン生成プロセス（手順3〜4）を繰り返す必要があります。
+3.  **リフレッシュトークンの保存**：
+    *   ローカル開発では、`.env`ファイルに`TWITCH_BOT_REFRESH_TOKEN`を設定します。
+    *   本番環境では、Google Secret Managerの`TWITCH_BOT_REFRESH_TOKEN`シークレットに、リフレッシュトークンを新しいバージョンとして追加します。デプロイワークフローは、このシークレットを環境変数`TWITCH_BOT_REFRESH_TOKEN`としてマウントします。ChatSageを実行するサービスアカウントに、IAMロール`Secret Manager Secret Accessor`を付与します。
+
+4.  **ボットをモデレーターにします**：アナウンスを送信させたい各チャンネルで設定します。ボットがモデレーターでないチャンネルでは、ChatSageは配信者のトークンでアナウンスを送信するため、配信者からのアナウンスとして表示されます。
+
+ボットのアクセストークンが期限切れになると、ChatSageはリフレッシュトークンを使って新しいトークンを取得します。リフレッシュトークンが無効になった場合は、`scripts/get-user-token.js`を再度実行し、シークレットに新しいバージョンを追加してください。
 
 ### チャンネル管理ウェブUI {#channel-management-web-ui}
 

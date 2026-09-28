@@ -2,11 +2,9 @@
 // Handles sending chat messages via Twitch Helix API
 // Replaces the outbound functionality of the old IRC client
 
-import axios from 'axios';
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement } from './helixClient.js';
-import { getAppAccessToken } from './auth.js';
+import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendChatMessage as helixSendChatMessage } from './helixClient.js';
 import { getBroadcasterAccessToken, clearCachedBroadcasterToken, clearAllCachedBroadcasterTokens } from './broadcasterTokenHelper.js';
 import { getBotAccessToken, clearCachedBotToken, _resetBotTokenState } from './botTokenHelper.js';
 
@@ -62,63 +60,32 @@ export async function sendMessage(channelName, message, options = {}) {
     const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
 
     try {
-        // Get App Access Token
-        const appAccessToken = await getAppAccessToken();
-        if (!appAccessToken) {
-            logger.error('App access token not available - cannot send chat messages');
-            return false;
-        }
-
-        // Get the broadcaster ID for the target channel
-        const users = await getUsersByLogin([cleanChannelName]);
-        if (!users || users.length === 0) {
+        const [broadcasterId, botId] = await Promise.all([
+            _getBroadcasterId(cleanChannelName),
+            getBotUserId(),
+        ]);
+        if (!broadcasterId) {
             logger.error({ channelName: cleanChannelName }, 'Could not find broadcaster ID for channel');
             return false;
         }
-        const broadcasterId = users[0].id;
-
-        // Get the bot's user ID (sender)
-        const botId = await getBotUserId();
         if (!botId) {
             logger.error('Could not determine Bot User ID');
             return false;
         }
 
-        // Build request body
-        const requestBody = {
-            broadcaster_id: broadcasterId,
-            sender_id: botId,
-            message: message
-        };
+        const result = await helixSendChatMessage(broadcasterId, botId, message, options.replyToId);
 
-        // Add reply_parent_message_id if provided
-        if (options.replyToId) {
-            requestBody.reply_parent_message_id = options.replyToId;
-        }
-
-        // Send the message using App Access Token
-        // Docs: https://dev.twitch.tv/docs/api/reference/#send-chat-message
-        const response = await axios.post(
-            'https://api.twitch.tv/helix/chat/messages',
-            requestBody,
-            {
-                headers: {
-                    'Authorization': `Bearer ${appAccessToken}`,
-                    'Client-Id': config.twitch.clientId,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 10000
-            }
-        );
-
-        const { is_sent, drop_reason } = response.data?.data?.[0] || {};
-
-        if (is_sent === false) {
+        if (result?.is_sent === false) {
             logger.warn({
                 channel: cleanChannelName,
                 message,
-                dropReason: drop_reason
+                dropReason: result.drop_reason
             }, 'Message was not sent (dropped by Twitch)');
+            return false;
+        }
+        if (result?.is_sent !== true) {
+            logger.warn({ channel: cleanChannelName, response: result ?? null },
+                'Twitch did not confirm the message was sent');
             return false;
         }
 
@@ -136,7 +103,7 @@ export async function sendMessage(channelName, message, options = {}) {
 
 /**
  * Resolves a channel name to a broadcaster ID, with caching.
- * Used by the bot-token path in sendAnnouncement.
+ * Used by sendMessage and the bot-token path in sendAnnouncement.
  * @param {string} cleanChannelName - Lowercase channel name without '#'
  * @returns {Promise<string|null>} The broadcaster ID, or null if not found
  */

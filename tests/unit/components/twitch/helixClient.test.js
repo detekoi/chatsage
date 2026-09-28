@@ -8,7 +8,8 @@ import {
     initializeHelixClient,
     getHelixClient,
     getChannelInformation,
-    getUsersByLogin
+    getUsersByLogin,
+    sendChatMessage
 } from '../../../../src/components/twitch/helixClient.js';
 import axios from 'axios';
 import { getAppAccessToken } from '../../../../src/components/twitch/auth.js';
@@ -138,5 +139,33 @@ describe('Helix Client Unit Tests', () => {
         expect(client.get).toHaveBeenCalledTimes(1);
         const actualParams = client.get.mock.calls[0][1].params;
         expect(actualParams.getAll('broadcaster_id').length).toBe(100);
+    });
+
+    test('sendChatMessage posts to /chat/messages and returns the send result', async () => {
+        await initializeHelixClient();
+        const client = getHelixClient();
+        client.post.mockResolvedValue({ data: { data: [{ message_id: 'm1', is_sent: true }] } });
+
+        const result = await sendChatMessage('b1', 'bot1', 'hello', 'parent1');
+
+        expect(client.post).toHaveBeenCalledWith('/chat/messages', {
+            broadcaster_id: 'b1',
+            sender_id: 'bot1',
+            message: 'hello',
+            reply_parent_message_id: 'parent1',
+        }, { timeout: 10000 });
+        expect(result).toEqual({ message_id: 'm1', is_sent: true });
+    });
+
+    test('sendChatMessage omits the reply field and does not retry on failure', async () => {
+        await initializeHelixClient();
+        const client = getHelixClient();
+        const timeout = Object.assign(new Error('timeout of 10000ms exceeded'), { code: 'ECONNABORTED' });
+        client.post.mockRejectedValue(timeout);
+
+        await expect(sendChatMessage('b1', 'bot1', 'hello')).rejects.toBe(timeout);
+
+        expect(client.post).toHaveBeenCalledTimes(1);
+        expect(client.post.mock.calls[0][1]).not.toHaveProperty('reply_parent_message_id');
     });
 });
