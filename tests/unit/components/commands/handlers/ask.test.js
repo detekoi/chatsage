@@ -6,6 +6,7 @@ jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/lib/timeUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/lib/ircSender.js');
+jest.mock('../../../../../src/components/context/personaStorage.js');
 
 import askHandler from '../../../../../src/components/commands/handlers/ask.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
@@ -15,6 +16,7 @@ import {
 } from '../../../../../src/components/llm/llmClient.js';
 import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
+import { getCachedPersona } from '../../../../../src/components/context/personaStorage.js';
 
 describe('Ask Command Handler', () => {
     let mockContextManager;
@@ -49,6 +51,7 @@ describe('Ask Command Handler', () => {
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         getUserFriendlyErrorMessage.mockReturnValue('Sorry, an error occurred while processing your question.');
         enqueueMessage.mockResolvedValue();
+        getCachedPersona.mockReturnValue(null);
 
         // Setup context manager default return
         mockContextManager.getContextForLLM.mockReturnValue({
@@ -163,6 +166,25 @@ describe('Ask Command Handler', () => {
                 expect(enqueueMessage).toHaveBeenCalled();
                 expect(generateStandardResponse).not.toHaveBeenCalled();
             }
+        });
+
+        test('should send greetings to the LLM when the channel has a custom persona', async () => {
+            getCachedPersona.mockReturnValue('respond in all lowercase');
+
+            const context = createMockContext(['hi']);
+            await askHandler.execute(context);
+
+            expect(getCachedPersona).toHaveBeenCalledWith('testchannel');
+            expect(generateStandardResponse).toHaveBeenCalledWith(
+                'mock context prompt',
+                expect.stringContaining('hi'),
+                expect.objectContaining({ channelName: 'testchannel' })
+            );
+            expect(enqueueMessage).not.toHaveBeenCalledWith(
+                '#testchannel',
+                "Hey there! What's on your mind?",
+                expect.anything()
+            );
         });
     });
 
