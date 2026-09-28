@@ -132,7 +132,7 @@ const askHandler = {
         }
 
         // Fast-path for simple greetings to avoid unnecessary LLM calls and token usage.
-        // Skipped for channels with a custom persona: the canned reply is in the default voice.
+        // Skipped for channels with a custom persona, so the greeting comes back in its voice instead of the canned reply.
         const greetingRegex = /^(hi|hello|hey|sup|yo|hola|bonjour|ciao|hallo|privet|konnichiwa|konbanwa|ohayo)\b[!.,\s]*$/i;
         if (greetingRegex.test(userQuery) && userQuery.length <= 20 && !getCachedPersona(channelName)) {
             await sendLocalized(channel, 'cmd.ask.HeyThereWhatS', {}, `Hey there! What's on your mind?`, { replyToId: user?.id || user?.['message-id'] || null });

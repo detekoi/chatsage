@@ -51,6 +51,7 @@ describe('Ask Command Handler', () => {
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         getUserFriendlyErrorMessage.mockReturnValue('Sorry, an error occurred while processing your question.');
         enqueueMessage.mockResolvedValue();
+        getCachedPersona.mockReset();
         getCachedPersona.mockReturnValue(null);
 
         // Setup context manager default return
@@ -169,16 +170,23 @@ describe('Ask Command Handler', () => {
         });
 
         test('should send greetings to the LLM when the channel has a custom persona', async () => {
-            getCachedPersona.mockReturnValue('respond in all lowercase');
+            getCachedPersona.mockReturnValue('You are a grumpy pirate.');
+            generateStandardResponse.mockResolvedValue('Arr, what be ye wantin?');
 
             const context = createMockContext(['hi']);
             await askHandler.execute(context);
 
             expect(getCachedPersona).toHaveBeenCalledWith('testchannel');
+            expect(generateStandardResponse).toHaveBeenCalledTimes(1);
             expect(generateStandardResponse).toHaveBeenCalledWith(
                 'mock context prompt',
                 expect.stringContaining('hi'),
                 expect.objectContaining({ channelName: 'testchannel' })
+            );
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Arr, what be ye wantin?',
+                { replyToId: '123' }
             );
             expect(enqueueMessage).not.toHaveBeenCalledWith(
                 '#testchannel',
