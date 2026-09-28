@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 - Run: `npm start` or `npm run dev` (watch mode)
 - Lint: `npm run lint`
-- Test: `node tests/unit/components/twitch/helixClient.test.js`
+- Test: `npm test` (all) or `npx jest tests/unit/components/twitch/helixClient.test.js` (one file)
 
 ## Code Style
 - **Language**: ES Modules with explicit `.js` extensions in imports

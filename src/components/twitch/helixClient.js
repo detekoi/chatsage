@@ -410,10 +410,9 @@ async function getUsersById(userIds, context = null) {
  * Sends an announcement to a broadcaster's chat room via the Helix API.
  * Announcements appear with a colored highlight bar in chat.
  *
- * NOTE: This endpoint requires a **user access token** with the
- * moderator:manage:announcements scope, OR an **app access token** where
- * the moderator has granted moderator:manage:announcements + user:bot
- * and the broadcaster has granted channel:bot.
+ * NOTE: This endpoint requires a **user access token** for the moderator
+ * with the moderator:manage:announcements scope. App access tokens are
+ * rejected with 401.
  *
  * This function bypasses the shared helixClient Axios instance and makes
  * a direct axios call, matching the pattern used by getChannelFollower
@@ -422,7 +421,7 @@ async function getUsersById(userIds, context = null) {
  * @param {string} broadcasterId - The broadcaster's user ID.
  * @param {string} moderatorId - The ID of the user whose token is provided (must be a mod or the broadcaster).
  * @param {string} message - The announcement text (max 500 characters).
- * @param {string} accessToken - A user or app access token with moderator:manage:announcements scope.
+ * @param {string} accessToken - The moderator's user access token with moderator:manage:announcements scope.
  * @param {string} [color='primary'] - Highlight color: 'blue', 'green', 'orange', 'purple', or 'primary'.
  * @returns {Promise<{success: boolean, status?: number}>}
  *   success=true on 204, or success=false with the HTTP status on failure.

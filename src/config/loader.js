@@ -63,6 +63,8 @@ function loadConfig() {
                 : [],
             clientId: process.env.TWITCH_CLIENT_ID,
             clientSecret: process.env.TWITCH_CLIENT_SECRET,
+            // Bot account's user refresh token (announcements need a user token)
+            botRefreshToken: process.env.TWITCH_BOT_REFRESH_TOKEN || null,
             publicUrl: process.env.PUBLIC_URL,
         },
 

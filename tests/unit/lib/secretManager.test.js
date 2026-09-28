@@ -10,7 +10,6 @@ import logger from '../../../src/lib/logger.js';
 const {
     initializeSecretManager,
     getSecretValue,
-    setSecretValue,
     resetSecretManagerClient
 } = secretManager;
 
@@ -255,72 +254,4 @@ describe('secretManager', () => {
         });
     });
 
-    describe('setSecretValue', () => {
-        beforeEach(() => {
-            // Reset and initialize client for each test
-            resetSecretManagerClient();
-            initializeSecretManager();
-        });
-
-        it('should return false for empty secret name', async () => {
-            const result = await setSecretValue('', 'value');
-
-            expect(result).toBe(false);
-            expect(logger.error).toHaveBeenCalledWith('setSecretValue called with empty secretResourceName or secretValue.');
-        });
-
-        it('should return false for empty secret value', async () => {
-            const result = await setSecretValue('projects/test/secrets/test-secret', '');
-
-            expect(result).toBe(false);
-            expect(logger.error).toHaveBeenCalledWith('setSecretValue called with empty secretResourceName or secretValue.');
-        });
-
-        it('should add secret version successfully', async () => {
-            const mockVersion = {
-                name: 'projects/test/secrets/test-secret/versions/2'
-            };
-
-            mockClient.addSecretVersion.mockResolvedValue([mockVersion]);
-
-            const result = await setSecretValue('projects/test/secrets/test-secret', 'new-secret-value');
-
-            expect(result).toBe(true);
-            expect(mockClient.addSecretVersion).toHaveBeenCalledWith({
-                parent: 'projects/test/secrets/test-secret',
-                payload: {
-                    data: Buffer.from('new-secret-value', 'utf8')
-                }
-            });
-            expect(logger.info).toHaveBeenCalledWith('Successfully added new secret version.');
-        });
-
-        it('should handle errors when adding secret version', async () => {
-            const error = new Error('Secret not found');
-            error.code = 5; // NOT_FOUND
-
-            mockClient.addSecretVersion.mockRejectedValue(error);
-
-            const result = await setSecretValue('projects/test/secrets/test-secret', 'new-secret-value');
-
-            expect(result).toBe(false);
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    err: { code: error.code }
-                }),
-                expect.stringContaining('Failed to add secret version')
-            );
-        });
-
-        it('should log specific error messages for common error codes', async () => {
-            const notFoundError = new Error('Secret not found');
-            notFoundError.code = 5; // NOT_FOUND
-
-            mockClient.addSecretVersion.mockRejectedValue(notFoundError);
-
-            await setSecretValue('projects/test/secrets/test-secret', 'new-secret-value');
-
-            expect(logger.error).toHaveBeenCalledWith('Secret not found.');
-        });
-    });
 });

@@ -8,6 +8,7 @@ import logger from '../../lib/logger.js';
 import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement } from './helixClient.js';
 import { getAppAccessToken } from './auth.js';
 import { getBroadcasterAccessToken, clearCachedBroadcasterToken, clearAllCachedBroadcasterTokens } from './broadcasterTokenHelper.js';
+import { getBotAccessToken, clearCachedBotToken, _resetBotTokenState } from './botTokenHelper.js';
 
 // Cache for the bot's user ID
 let cachedBotUserId = null;
@@ -19,6 +20,7 @@ export function _resetCache() {
     cachedBotUserId = null;
     broadcasterIdCache.clear();
     clearAllCachedBroadcasterTokens();
+    _resetBotTokenState();
 }
 
 /**
@@ -134,7 +136,7 @@ export async function sendMessage(channelName, message, options = {}) {
 
 /**
  * Resolves a channel name to a broadcaster ID, with caching.
- * Used by the app-token fallback path in sendAnnouncement.
+ * Used by the bot-token path in sendAnnouncement.
  * @param {string} cleanChannelName - Lowercase channel name without '#'
  * @returns {Promise<string|null>} The broadcaster ID, or null if not found
  */
@@ -152,20 +154,21 @@ async function _getBroadcasterId(cleanChannelName) {
 
 /**
  * Sends an announcement to a specific channel using the Helix API.
- * Announcements appear with a colored highlight bar in chat.
+ * Announcements appear with a colored highlight bar in chat, attributed to
+ * whichever user is passed as moderator_id. The endpoint requires a user
+ * access token; app access tokens are rejected with 401.
  *
- * Two authorization paths (per Twitch API docs):
+ * Two authorization paths:
  *
- * 1. **Primary — Broadcaster token**: Uses the broadcaster's own user access
- *    token (with moderator:manage:announcements from the web UI OAuth).
- *    The broadcaster is always a moderator of their own channel, so
- *    moderator_id = broadcaster_id.
+ * 1. **Primary — Bot token**: The bot's own user access token (from the
+ *    TWITCH_BOT_REFRESH_TOKEN secret) with the bot as moderator_id, so the
+ *    announcement shows as coming from the bot. Requires the bot to be a
+ *    moderator in the channel.
  *
- * 2. **Fallback — App token + bot-as-moderator**: Uses the app access token
- *    with the bot (WildcatSage) as moderator_id. Requires the bot to have
- *    moderator:manage:announcements + user:bot scopes (from get-user-token.js)
- *    and mod status in the channel (or broadcaster granted channel:bot).
- *    Covers channels where the broadcaster hasn't completed OAuth.
+ * 2. **Fallback — Broadcaster token**: The broadcaster's user access token
+ *    (moderator:manage:announcements from the web UI OAuth) with
+ *    moderator_id = broadcaster_id. The announcement shows as coming from
+ *    the broadcaster. Covers channels where the bot is not a moderator.
  *
  * @param {string} channelName - The name of the channel to send to
  * @param {string} message - The announcement text (max 500 characters)
@@ -181,53 +184,52 @@ export async function sendAnnouncement(channelName, message, color = 'primary') 
     const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
 
     try {
-        // Primary path: broadcaster's own user access token
-        const broadcasterAuth = await getBroadcasterAccessToken(cleanChannelName);
-        if (broadcasterAuth) {
-            const { accessToken, twitchUserId: broadcasterId } = broadcasterAuth;
-            const result = await helixSendAnnouncement(broadcasterId, broadcasterId, message, accessToken, color);
-            if (result.success) {
-                logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) },
-                    'Sent announcement via broadcaster token');
-                return true;
-            }
-            // On auth failure (401/403), the token is likely expired or revoked —
-            // evict the cache so the next call re-fetches from Firestore/Twitch
-            if (result.status === 401 || result.status === 403) {
-                clearCachedBroadcasterToken(cleanChannelName);
+        // Primary path: bot's own user access token, bot as moderator
+        const botAccessToken = await getBotAccessToken();
+        if (botAccessToken) {
+            const [broadcasterId, botId] = await Promise.all([
+                _getBroadcasterId(cleanChannelName),
+                getBotUserId(),
+            ]);
+            if (broadcasterId && botId) {
+                const result = await helixSendAnnouncement(broadcasterId, botId, message, botAccessToken, color);
+                if (result.success) {
+                    logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) },
+                        'Sent announcement via bot token');
+                    return true;
+                }
+                // 401 means the token expired or was revoked; 403 usually means
+                // the bot is not a moderator in this channel
+                if (result.status === 401) {
+                    clearCachedBotToken();
+                }
                 logger.warn({ channel: cleanChannelName, status: result.status },
-                    'Broadcaster token auth failed, evicted cache. Trying app token fallback.');
-            } else {
-                logger.warn({ channel: cleanChannelName, status: result.status },
-                    'Broadcaster token announcement failed, trying app token fallback');
+                    'Bot token announcement failed, trying broadcaster token');
             }
         }
 
-        // Fallback path: app access token + bot as moderator
-        // Works if bot has moderator:manage:announcements + user:bot scopes
-        // and has mod status in the channel (or broadcaster granted channel:bot)
-        const [broadcasterId, botId, appAccessToken] = await Promise.all([
-            _getBroadcasterId(cleanChannelName),
-            getBotUserId(),
-            getAppAccessToken(),
-        ]);
-
-        if (!broadcasterId || !botId || !appAccessToken) {
-            logger.error({
-                channel: cleanChannelName,
-                hasBroadcasterId: !!broadcasterId,
-                hasBotId: !!botId,
-                hasAppToken: !!appAccessToken,
-            }, 'Missing required IDs for app-token announcement fallback');
+        // Fallback path: broadcaster's own user access token
+        const broadcasterAuth = await getBroadcasterAccessToken(cleanChannelName);
+        if (!broadcasterAuth) {
+            logger.warn({ channel: cleanChannelName }, 'No token available to send announcement');
             return false;
         }
 
-        const fallbackResult = await helixSendAnnouncement(broadcasterId, botId, message, appAccessToken, color);
-        if (fallbackResult.success) {
+        const { accessToken, twitchUserId: broadcasterId } = broadcasterAuth;
+        const result = await helixSendAnnouncement(broadcasterId, broadcasterId, message, accessToken, color);
+        if (result.success) {
             logger.info({ channel: cleanChannelName, color, message: message.substring(0, 50) },
-                'Sent announcement via app token fallback');
+                'Sent announcement via broadcaster token');
+            return true;
         }
-        return fallbackResult.success;
+        // On auth failure (401/403), the token is likely expired or revoked —
+        // evict the cache so the next call re-fetches from Firestore/Twitch
+        if (result.status === 401 || result.status === 403) {
+            clearCachedBroadcasterToken(cleanChannelName);
+            logger.warn({ channel: cleanChannelName, status: result.status },
+                'Broadcaster token auth failed, evicted cache.');
+        }
+        return false;
     } catch (error) {
         logger.error({
             err: error.response ? error.response.data : error.message,

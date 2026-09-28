@@ -166,66 +166,12 @@ async function getSecretValue(secretResourceName) {
     return null;
 }
 
-/**
- * Adds a new version to an existing secret in Google Secret Manager.
- * @param {string} secretResourceName - The full resource name of the secret
- * (e.g., projects/PROJECT_ID/secrets/SECRET_NAME).
- * @param {string} secretValue - The value to store in the secret.
- * @returns {Promise<boolean>} True if successful, false otherwise.
- */
-async function setSecretValue(secretResourceName, secretValue) {
-    if (!secretResourceName || !secretValue) {
-        logger.error('setSecretValue called with empty secretResourceName or secretValue.');
-        return false;
-    }
-    const smClient = getSecretManagerClient();
-    try {
-
-        // Add a new version to the existing secret
-        await smClient.addSecretVersion({
-            parent: secretResourceName,
-            payload: {
-                data: Buffer.from(secretValue, 'utf8'),
-            },
-        });
-
-        logger.info('Successfully added new secret version.');
-
-        // Update cache with the new value
-        // Construct the 'latest' version path for this secret
-        const latestVersionPath = `${secretResourceName}/versions/latest`;
-        secretCache.set(latestVersionPath, secretValue);
-
-        return true;
-    } catch (error) {
-        logger.error(
-            { err: { code: error.code } },
-            'Failed to add secret version. Check permissions and secret existence.'
-        );
-        if (error.code === 5) {
-            logger.error('Secret not found.');
-        } else if (error.code === 7) {
-            logger.error('Permission denied adding secret version. Check IAM roles.');
-        }
-        return false;
-    }
-}
-
 // Test helper function to reset client state (only available in test environment)
 function resetSecretManagerClient() {
     if (process.env.NODE_ENV === 'test') {
         client = null;
         secretCache.clear();
     }
-}
-
-/**
- * Clears the secret cache.
- * Useful for testing or forcing a refresh.
- */
-function clearSecretCache() {
-    secretCache.clear();
-    logger.info('Secret cache cleared.');
 }
 
 /**
@@ -273,9 +219,7 @@ function getSecretManagerStatus() {
 export {
     initializeSecretManager,
     getSecretValue,
-    setSecretValue,
     resetSecretManagerClient,
     validateSecretManager,
-    getSecretManagerStatus,
-    clearSecretCache
+    getSecretManagerStatus
 };

@@ -9,6 +9,7 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import http from 'http';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import escapeHtml from 'escape-html';
@@ -21,6 +22,8 @@ const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 const PORT = 3456;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
+// Ties the callback to the authorize URL this run printed (OAuth CSRF protection)
+const OAUTH_STATE = crypto.randomBytes(16).toString('hex');
 
 // Scopes the bot needs for EventSub chat + Helix API
 const SCOPES = [
@@ -57,6 +60,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname !== '/callback') {
         res.writeHead(404);
         res.end('Not found');
+        return;
+    }
+
+    // Ignore callbacks that did not come from this run's authorize URL,
+    // and keep waiting for the real one
+    if (url.searchParams.get('state') !== OAUTH_STATE) {
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end('<h1>Invalid state parameter</h1>');
         return;
     }
 
@@ -104,7 +115,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`
             <h1>✅ Success!</h1>
-            <p>Authorized as: <strong>${user.display_name}</strong> (${user.login})</p>
+            <p>Authorized as: <strong>${escapeHtml(user.display_name)}</strong> (${escapeHtml(user.login)})</p>
             <p>You can close this tab now.</p>
         `);
 
@@ -127,7 +138,7 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
         console.error('Token exchange failed:', err.response?.data || err.message);
         res.writeHead(500, { 'Content-Type': 'text/html' });
-        res.end(`<h1>Token exchange failed</h1><pre>${JSON.stringify(err.response?.data, null, 2)}</pre>`);
+        res.end(`<h1>Token exchange failed</h1><pre>${escapeHtml(JSON.stringify(err.response?.data, null, 2))}</pre>`);
     }
 
     server.close();
@@ -140,6 +151,7 @@ server.listen(PORT, () => {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', SCOPES);
     authUrl.searchParams.set('force_verify', 'true');
+    authUrl.searchParams.set('state', OAUTH_STATE);
 
     console.log('🌐 Copy and paste this URL into a browser where you are logged in as the BOT account (WildcatSage):\n');
     console.log(authUrl.toString());

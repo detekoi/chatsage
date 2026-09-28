@@ -38,7 +38,6 @@
         "axios": "^1.18.1",
         "dotenv": "^16.4.5",
         "escape-html": "^1.0.3",
-        "express": "^5.2.1",
         "firebase-admin": "^13.3.0",
         "google-auth-library": "^9.15.1",
         "open": "^10.1.2",

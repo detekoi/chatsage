@@ -53,7 +53,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             // We must use await and expect(...).rejects for async imports
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_BOT_USERNAME/);
@@ -64,7 +63,6 @@ describe('Config Loader', () => {
             process.env.TWITCH_BOT_USERNAME = 'testbot';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*GEMINI_API_KEY/);
         });
@@ -74,7 +72,6 @@ describe('Config Loader', () => {
             process.env.TWITCH_BOT_USERNAME = 'testbot';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*OPENAI_API_KEY/);
         });
@@ -84,7 +81,6 @@ describe('Config Loader', () => {
             process.env.GEMINI_API_KEY = 'test-key';
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_CLIENT_ID/);
         });
@@ -94,7 +90,6 @@ describe('Config Loader', () => {
             process.env.GEMINI_API_KEY = 'test-key';
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
 
             await expect(loadConfig()).rejects.toThrow(/Missing required environment variables.*TWITCH_CLIENT_SECRET/);
         });
@@ -108,7 +103,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should use default GEMINI_MODEL_ID when not provided', async () => {
@@ -152,7 +146,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should use default interval when not provided', async () => {
@@ -188,7 +181,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should parse TWITCH_CHANNELS comma-separated list', async () => {
@@ -222,7 +214,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should read secret from file when path exists', async () => {
@@ -321,7 +312,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should have correct twitch configuration structure', async () => {
@@ -374,7 +364,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should load .env file when it exists', async () => {
@@ -425,7 +414,6 @@ describe('Config Loader', () => {
             process.env.OPENAI_API_KEY = 'test-openai-key';
             process.env.TWITCH_CLIENT_ID = 'test-client-id';
             process.env.TWITCH_CLIENT_SECRET = 'test-secret';
-            process.env.TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME = 'test-secret-name';
         });
 
         test('should set prettyLog to false when PINO_PRETTY_LOGGING is not "true"', async () => {

@@ -142,7 +142,7 @@ Configure WildcatSage through environment variables. The `.env.example` file lis
 - `OPENAI_API_KEY`: API key for OpenAI services (GPT 6 Luna model).
 - `GEMINI_API_KEY`: API key for Google Gemini services (Gemini 3.5 Flash Lite model).
 - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`: Credentials for your registered Twitch application.
-- `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME`: Resource name for the refresh token in Google Secret Manager.
+- `TWITCH_BOT_REFRESH_TOKEN`: Refresh token for the bot account. The bot uses it to send chat announcements as itself. In production, Cloud Run loads it from the `TWITCH_BOT_REFRESH_TOKEN` secret in Google Secret Manager.
 - `STREAM_INFO_FETCH_INTERVAL_SECONDS`: Interval in seconds between stream metadata updates.
 - `LOG_LEVEL`: Log verbosity level.
 
@@ -152,42 +152,30 @@ Make sure that you set all required variables in your environment or `.env` file
 
 ### Bot Authentication Setup
 
-1. **Prerequisites for Token Generation:**
+WildcatSage uses two kinds of Twitch token:
+
+- An **app access token** for most Helix calls, including sending chat messages. WildcatSage gets it from `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. You do not need to set it up.
+- A **user access token for the bot account** for chat announcements. Twitch rejects app access tokens on the announcements endpoint.
+
+To set up the bot's user token:
+
+1. **Prerequisites:**
    - Register an application in the [Twitch Developer Console](https://dev.twitch.tv/console/). Note your **Client ID** and **Client Secret**.
-   - In your Twitch Application settings, add `http://localhost:3000` as an OAuth Redirect URL.
-   - Install the [Twitch CLI](https://dev.twitch.tv/docs/cli/install).
+   - In your Twitch application settings, add `http://localhost:3456/callback` as an OAuth Redirect URL.
+   - Set `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` in your `.env` file.
 
-2. **Configure Twitch CLI:**
-   - Open a terminal.
-   - Run `twitch configure`.
-   - Enter your **Client ID** and **Client Secret** when prompted.
+2. **Generate the refresh token:**
+   - Run `node scripts/get-user-token.js`.
+   - Sign in to Twitch with the bot account and authorize the requested scopes. The scopes include `moderator:manage:announcements`.
+   - The script prints the access token and the refresh token.
 
-3. **Generate User Access Token and Refresh Token:**
-   - Run this command in your terminal:
+3. **Store the refresh token:**
+   - For local development, set `TWITCH_BOT_REFRESH_TOKEN` in your `.env` file.
+   - For production, add the refresh token as a new version of the `TWITCH_BOT_REFRESH_TOKEN` secret in Google Secret Manager. The deploy workflow mounts that secret as the `TWITCH_BOT_REFRESH_TOKEN` environment variable. Grant the `Secret Manager Secret Accessor` IAM role to the service account that runs WildcatSage.
 
-     ```bash
-     twitch token -u -s 'user:read:chat user:write:chat'
-     ```
+4. **Make the bot a moderator** in each channel where it should send announcements. In a channel where the bot is not a moderator, WildcatSage sends announcements with the broadcaster's token, so they show as coming from the broadcaster.
 
-   - Copy the generated URL from the terminal output and paste it into your browser.
-   - Sign in to Twitch with the account that the bot uses.
-   - Authorize the application for the requested scopes.
-   - Twitch redirects your browser to `http://localhost:3000`. The Twitch CLI captures the authorization code and exchanges it for tokens.
-   - The CLI prints the access token and refresh token in your terminal.
-
-4. **Store the Refresh Token in Secret Manager:**
-   - Copy the refresh token from the Twitch CLI output.
-   - Create a secret in Google Secret Manager and paste the refresh token.
-   - Copy the resource name of the secret (for example, `projects/YOUR_PROJECT_ID/secrets/YOUR_SECRET_NAME/versions/latest`).
-   - Set the resource name as the value for `TWITCH_BOT_REFRESH_TOKEN_SECRET_NAME` in your `.env` file or Cloud Run settings.
-   - Grant the `Secret Manager Secret Accessor` IAM role to the service account that runs WildcatSage.
-
-5. **Authentication Flow in WildcatSage:**
-   - When WildcatSage starts, `auth.js` reads the refresh token from Google Secret Manager.
-   - WildcatSage uses the refresh token, `TWITCH_CLIENT_ID`, and `TWITCH_CLIENT_SECRET` to request an access token from Twitch.
-   - WildcatSage uses the access token to authenticate API calls and EventSub webhooks.
-   - When the access token expires, WildcatSage automatically requests a new access token with the refresh token.
-   - If the refresh token becomes invalid, generate a new refresh token with the Twitch CLI and update Secret Manager.
+When the bot's access token expires, WildcatSage requests a new one with the refresh token. If the refresh token becomes invalid, run `scripts/get-user-token.js` again and add a new secret version.
 
 ### Channel Management Web Interface
 
