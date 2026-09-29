@@ -133,7 +133,7 @@ const server = http.createServer(async (req, res) => {
         console.log('\n📋 Update your .env with:');
         console.log(`   TWITCH_BOT_REFRESH_TOKEN=${refresh_token}`);
         console.log('\n📋 Update Secret Manager with:');
-        console.log(`   gcloud secrets versions add TWITCH_BOT_REFRESH_TOKEN --data-file=- --project=streamsage-bot <<< "${refresh_token}"`);
+        console.log(`   printf '%s' '${refresh_token}' | gcloud secrets versions add TWITCH_BOT_REFRESH_TOKEN --data-file=- --project=streamsage-bot`);
         console.log('');
 
     } catch (err) {

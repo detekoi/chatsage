@@ -305,6 +305,32 @@ describe('Config Loader', () => {
         });
     });
 
+    describe('Bot Refresh Token', () => {
+        test('should trim a trailing newline from TWITCH_BOT_REFRESH_TOKEN', async () => {
+            process.env.GEMINI_API_KEY = 'test-key';
+            process.env.OPENAI_API_KEY = 'test-openai-key';
+            process.env.TWITCH_BOT_USERNAME = 'testbot';
+            process.env.TWITCH_CLIENT_ID = 'test-client-id';
+            process.env.TWITCH_CLIENT_SECRET = 'test-secret';
+            process.env.TWITCH_BOT_REFRESH_TOKEN = 'bot-refresh-token\n';
+
+            const config = await loadConfig();
+            expect(config.twitch.botRefreshToken).toBe('bot-refresh-token');
+        });
+
+        test('should treat a whitespace-only TWITCH_BOT_REFRESH_TOKEN as unset', async () => {
+            process.env.GEMINI_API_KEY = 'test-key';
+            process.env.OPENAI_API_KEY = 'test-openai-key';
+            process.env.TWITCH_BOT_USERNAME = 'testbot';
+            process.env.TWITCH_CLIENT_ID = 'test-client-id';
+            process.env.TWITCH_CLIENT_SECRET = 'test-secret';
+            process.env.TWITCH_BOT_REFRESH_TOKEN = '   \n  ';
+
+            const config = await loadConfig();
+            expect(config.twitch.botRefreshToken).toBeNull();
+        });
+    });
+
     describe('Configuration Structure', () => {
         beforeEach(() => {
             process.env.TWITCH_BOT_USERNAME = 'testbot';
