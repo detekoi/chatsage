@@ -240,7 +240,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         roundEndMessage = "An error occurred, and the round's location couldn't be revealed.";
     } else {
         try {
-            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason, gameState.botLanguage || null);
+            revealText = await generateFinalReveal(gameState.targetLocation.name, gameState.mode, gameState.gameTitleScope, reason, gameState.botLanguage || null, gameState.channelName);
             let baseMessageContent = "";
             const lang = gameState.botLanguage || null;
             const roundPrefix = isMultiRound
@@ -471,7 +471,8 @@ async function _prefetchNextLocation(gameState) {
                 gameState.config.difficulty,
                 mode,
                 clueScope,
-                gameState.botLanguage || null
+                gameState.botLanguage || null,
+                channelName
             );
 
             if (!firstClue) {
@@ -560,7 +561,7 @@ async function _startNextRound(gameState) {
         }
 
         const clueScope = gameState.mode === 'game' ? gameState.gameTitleScope : null;
-        firstClue = await generateInitialClue(selectedLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null);
+        firstClue = await generateInitialClue(selectedLocation.name, gameState.config.difficulty, gameState.mode, clueScope, gameState.botLanguage || null, gameState.channelName);
         if (!firstClue) {
             logger.error(`[GeoGame][${gameState.channelName}] CRITICAL: Failed to generate initial clue for round ${gameState.currentRound}. Ending game prematurely.`);
             enqueueMessage(`#${gameState.channelName}`, (t('geo.NoClueEndingGame', { currentRound: gameState.currentRound }, gameState.botLanguage || null) ?? `⚠️ Error: Could not generate a clue for round ${gameState.currentRound}. Ending the game.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
@@ -670,7 +671,8 @@ async function _scheduleNextClue(gameState) {
                 gameState.gameTitleScope,
                 gameState.currentClueIndex + 2, // Clue number within the round
                 gameState.incorrectGuessReasons, // Reasons from the *current round*
-                gameState.botLanguage || null // Native language generation
+                gameState.botLanguage || null, // Native language generation
+                gameState.channelName // Persona the clue is voiced in
             );
             if (nextClue) {
                 // Check state again *after* await
@@ -809,7 +811,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
         // 2. Generate Initial Clue (Round 1)
         // Pass game title only if game mode
         const clueScope = mode === 'game' ? gameState.gameTitleScope : null;
-        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, clueScope, gameState.botLanguage || null);
+        const firstClue = await generateInitialClue(gameState.targetLocation.name, gameState.config.difficulty, mode, clueScope, gameState.botLanguage || null, channelName);
         if (!firstClue) {
             throw new Error("Failed to generate the initial clue for Round 1.");
         }

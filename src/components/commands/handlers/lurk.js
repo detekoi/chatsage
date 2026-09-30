@@ -2,6 +2,7 @@
 import logger from '../../../lib/logger.js';
 import { sendBotResponse } from '../../llm/botResponseHandler.js';
 import { buildContextPrompt, generateLiteContent } from '../../llm/llmClient.js';
+import { buildSystemInstruction } from '../../llm/gemini/prompts.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
@@ -57,12 +58,13 @@ const lurkHandler = {
             // Use generateLiteContent for a single-turn, low-latency response
             const fullPrompt = `${chatContext}\nTASK: ${prompt}${emoteHint}\nCONSTRAINTS: One fresh, natural line. Wordplay welcome. No tired clichés. No usernames or @handles. ≤20 words.`;
 
+            // The system instruction carries the channel's custom persona, so the
+            // send-off comes back in the same voice as the bot's other replies.
             let llmResponse = await generateLiteContent(fullPrompt, {
+                systemInstruction: buildSystemInstruction(channelName),
                 multimodalParts: emoteImageParts,
                 model: 'main'
             }) || '';
-
-
 
             let response;
             if (llmResponse && llmResponse.trim()) {

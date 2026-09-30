@@ -1,12 +1,14 @@
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import logger from '../../lib/logger.js';
 import { GeoClueSchema, GeoRevealSchema } from '../llm/schemaUtils.js';
 
 /**
  * Generates the initial clue for a location using Structured Output.
+ * @param {string|null} [channelName=null] - Selects the persona the clue is voiced in.
  */
-export async function generateInitialClue(locationName, difficulty = 'normal', mode = 'real', gameTitle = null, language = null) {
+export async function generateInitialClue(locationName, difficulty = 'normal', mode = 'real', gameTitle = null, language = null, channelName = null) {
     const languageDirective = language ? `\nIMPORTANT: Generate the clue entirely in ${language}. Do NOT use English.` : '';
     const prompt = `You are the Geo-Game Clue Generator. Generate the FIRST clue for the location "${locationName}" for a geography guessing game.${mode === 'game' && gameTitle ? ` The location is from the video game "${gameTitle}".` : ''}
 Difficulty: ${difficulty}
@@ -18,6 +20,7 @@ Difficulty: ${difficulty}
     try {
         const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
+            systemInstruction: buildGameSystemInstruction(channelName),
             schema: GeoClueSchema,
             schemaName: 'geo_initial_clue',
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
@@ -32,8 +35,9 @@ Difficulty: ${difficulty}
 
 /**
  * Generates a follow-up clue for a location using Structured Output.
+ * @param {string|null} [channelName=null] - Selects the persona the clue is voiced in.
  */
-export async function generateFollowUpClue(locationName, previousClues = [], mode = 'real', gameTitle = null, clueNumber = 2, incorrectGuessReasons = [], language = null) {
+export async function generateFollowUpClue(locationName, previousClues = [], mode = 'real', gameTitle = null, clueNumber = 2, incorrectGuessReasons = [], language = null, channelName = null) {
     let reasonGuidance = '';
     if (incorrectGuessReasons && incorrectGuessReasons.length > 0) {
         const uniqueReasons = [...new Set(incorrectGuessReasons)].filter(r => r.trim() !== '');
@@ -54,6 +58,7 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
     try {
         const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
+            systemInstruction: buildGameSystemInstruction(channelName),
             schema: GeoClueSchema,
             schemaName: 'geo_followup_clue',
             tools: (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? [{ googleSearch: {} }] : undefined
@@ -68,8 +73,9 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
 
 /**
  * Generates a final reveal for the location using Structured Output.
+ * @param {string|null} [channelName=null] - Selects the persona the reveal is voiced in.
  */
-export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown", language = null) {
+export async function generateFinalReveal(locationName, mode = 'real', gameTitle = null, reason = "unknown", language = null, channelName = null) {
     let outcomeInstruction;
     if (reason === "guessed") {
         outcomeInstruction = `The win has been announced. detailed summary ONLY.`;
@@ -91,6 +97,7 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
     try {
         const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
+            systemInstruction: buildGameSystemInstruction(channelName),
             schema: GeoRevealSchema,
             schemaName: 'geo_final_reveal',
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
