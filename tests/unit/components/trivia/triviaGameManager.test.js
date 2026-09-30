@@ -186,6 +186,19 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         expect(logger.warn).toHaveBeenCalled();
     });
 
+    test('announces the overall leaderboard at game end even when there are no stats yet', async () => {
+        verifyAnswer.mockResolvedValue({ is_correct: true });
+
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user1', 'User1', 'Paris');
+        for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+
+        expect(enqueueMessage).toHaveBeenCalledWith(
+            '#testtriviachannel',
+            'No Trivia stats found for this channel (testtriviachannel) yet!',
+            { skipTranslation: false }
+        );
+    });
+
     test('Throttling: duplicate answers are throttled, different answers process immediately', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
         const userAnswer1 = "First Answer";

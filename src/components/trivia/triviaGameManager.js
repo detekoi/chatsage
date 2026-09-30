@@ -505,12 +505,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         if (gameState.config.scoreTracking) {
             try {
                 const leaderboardData = await getLeaderboard(gameState.channelName, 5);
-                if (leaderboardData && leaderboardData.length > 0) {
-                    const lang = gameState.botLanguage || null;
-                    enqueueMessage(`#${gameState.channelName}`,
-                        formatLeaderboardMessage(leaderboardData, gameState.channelName, lang),
-                        { skipTranslation: isCatalogued(lang) });
-                }
+                // Announced even when empty, like the geo and riddle games, so all three end alike.
+                const lang = gameState.botLanguage || null;
+                enqueueMessage(`#${gameState.channelName}`,
+                    formatLeaderboardMessage(leaderboardData, gameState.channelName, lang),
+                    { skipTranslation: isCatalogued(lang) });
             } catch (error) {
                 logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching leaderboard.`);
             }

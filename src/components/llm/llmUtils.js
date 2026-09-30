@@ -15,6 +15,7 @@ export const GENERIC_ERROR_KEY = 'llm.error.Generic';
 /**
  * Classifies an error into a catalog key plus its English text. The text is the fallback handed to
  * sendLocalized, so an uncatalogued bot language still reaches the runtime translator.
+ * @param {Error & { status?: number }} [error] The failure to classify; matched on its message and HTTP status.
  * @returns {{ key: string, fallback: string }}
  */
 export function getUserFriendlyError(error) {
