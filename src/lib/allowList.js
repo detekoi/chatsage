@@ -217,6 +217,20 @@ export function getBroadcasterIdForChannel(channelName) {
 }
 
 /**
+ * Every channel the bot is switched on for that has a known broadcaster ID.
+ * Legacy name-only documents are left out: channel-scoped state is keyed by ID.
+ * @returns {Array<{broadcasterId: string, channelName: string}>}
+ */
+export function getActiveChannels() {
+    const channels = [];
+    for (const id of activeBroadcasterIds) {
+        const channelName = channelIdToNameMap.get(id);
+        if (channelName) channels.push({ broadcasterId: id, channelName });
+    }
+    return channels;
+}
+
+/**
  * Reverse of getBroadcasterIdForChannel.
  * @param {string} twitchUserId
  * @returns {string|null} Lowercase channel login name, or null if unknown.

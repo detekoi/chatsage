@@ -117,11 +117,12 @@ async function getSecretValue(secretResourceName) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        let timeoutId;
         try {
 
             // Create a timeout promise that rejects after TIMEOUT_MS
             const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => {
+                timeoutId = setTimeout(() => {
                     reject(new Error(`Secret Manager timeout after ${TIMEOUT_MS}ms`));
                 }, TIMEOUT_MS);
             });
@@ -132,6 +133,7 @@ async function getSecretValue(secretResourceName) {
             });
 
             const [version] = await Promise.race([accessPromise, timeoutPromise]);
+            clearTimeout(timeoutId);
             const secretValue = decodeSecretPayload(version);
 
             if (!secretValue) {
@@ -144,6 +146,7 @@ async function getSecretValue(secretResourceName) {
 
             return secretValue;
         } catch (error) {
+            clearTimeout(timeoutId);
             lastError = error;
             const isTimeout = error.message?.includes('timeout');
             logger.error(

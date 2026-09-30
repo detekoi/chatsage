@@ -14,6 +14,7 @@ import {
 import { pronounService } from '../../lib/pronounService.js';
 import { recordChatMessage, getLastMessageAt, seedLastMessageAt } from '../context/channelActivity.js';
 import { isStreamLive } from '../context/liveStatus.js';
+import { isOwnershipEnabled, ownsChannel } from '../../lib/channelOwnership.js';
 
 /**
  * Strip characters commonly used for prompt injection from user-supplied strings
@@ -141,6 +142,18 @@ async function maybeSendGreeting(channelName) {
     if (context.streamStartedAt) {
         const streamAgeMs = Date.now() - new Date(context.streamStartedAt).getTime();
         if (streamAgeMs > GREETING_WINDOW_MS) {
+            state.greetedOnStart = true;
+            return;
+        }
+    }
+
+    // greetedOnStart is per process. When a channel changes hands inside the
+    // greeting window the new owner starts with it unset, so the greeting is
+    // also claimed once per stream in Firestore.
+    if (isOwnershipEnabled()) {
+        const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+        const streamKey = context.streamStartedAt || 'unknown-start';
+        if (await isDuplicateEvent(`greeting:${channelName}:${streamKey}`, null, 2 * GREETING_WINDOW_MS, true)) {
             state.greetedOnStart = true;
             return;
         }
@@ -498,6 +511,8 @@ export async function startAutoChatManager() {
     intervalId = setInterval(async () => {
         try {
             for (const [channelName, state] of contextManager.getAllChannelStates()) {
+                // Another instance auto-chats in channels it owns.
+                if (!ownsChannel(channelName)) continue;
                 const cfg = await getChannelAutoChatConfig(channelName);
                 if ((cfg.mode || 'off') === 'off') continue;
 

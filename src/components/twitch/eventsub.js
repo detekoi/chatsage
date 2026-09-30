@@ -12,6 +12,16 @@ import LifecycleManager from '../../services/LifecycleManager.js';
 import { convertEventSubToTags } from './eventSubToTags.js';
 import { handleChatMessage } from '../../handlers/chatMessageHandler.js';
 import { handleCheckinRedemption } from '../../handlers/checkinHandler.js';
+import { getChannelNameForBroadcasterId } from '../../lib/allowList.js';
+import {
+    isOwnershipEnabled,
+    ownsBroadcaster,
+    claimChannel,
+    getKnownPeerOwner,
+    touchBroadcaster,
+    whenOwnershipReady,
+} from '../../lib/channelOwnership.js';
+import { forwardToInbox } from '../../lib/channelInbox.js';
 
 // --- Initialization Gate ---
 // During cold start, EventSub webhooks can arrive before components are initialized.
@@ -110,6 +120,104 @@ async function shouldProcessEvent(req, isChat) {
     }
 }
 
+/**
+ * A channel's login from an EventSub payload. Never the display name: a
+ * localized display name (Japanese, Korean, Cyrillic...) is not the login, and
+ * every downstream lookup (allow-list, channel doc keys, context, Helix) is by login.
+ * @param {object} event
+ * @param {string} [prefix='broadcaster'] - Field prefix, e.g. 'to_broadcaster' for raids.
+ * @returns {string|null} Lowercase login, or null when neither the login nor a known ID is present.
+ */
+function eventLogin(event, prefix = 'broadcaster') {
+    const login = event?.[`${prefix}_user_login`];
+    if (login) return String(login).toLowerCase();
+    const id = event?.[`${prefix}_user_id`];
+    return id ? getChannelNameForBroadcasterId(id) : null;
+}
+
+/**
+ * The channel a notification acts on. Raids act on the raided channel; every
+ * other subscription type is scoped to broadcaster_user_id.
+ * @param {object} notification
+ * @returns {{broadcasterId: string, channelName: string}|null}
+ */
+function resolveEventChannel(notification) {
+    const event = notification?.event || {};
+    const isRaid = notification?.subscription?.type === 'channel.raid';
+    const broadcasterId = isRaid ? event.to_broadcaster_user_id : event.broadcaster_user_id;
+    if (!broadcasterId) return null;
+    const login = isRaid ? event.to_broadcaster_user_login : event.broadcaster_user_login;
+    const channelName = String(login || getChannelNameForBroadcasterId(broadcasterId) || '').toLowerCase();
+    return { broadcasterId: String(broadcasterId), channelName };
+}
+
+/**
+ * Hands the notification to the channel's owning instance when that is not
+ * this one. Claims the channel first if nobody holds it, so the instance that
+ * receives a channel's first webhook becomes its owner.
+ *
+ * Fails open: if Firestore cannot be reached the event is handled here, which
+ * is how the bot behaved before ownership existed.
+ * @returns {Promise<boolean>} True when forwarded and nothing is left to do here.
+ */
+async function forwardIfNotOwner(target, messageId, rawBody, isChat) {
+    if (!isOwnershipEnabled()) return false;
+    // Only channels the bot serves are worth a lease. processNotification drops the rest.
+    if (!target.channelName || !(await isChannelActive(target.broadcasterId))) return false;
+
+    const { broadcasterId, channelName } = target;
+    try {
+        await whenOwnershipReady();
+        if (ownsBroadcaster(broadcasterId)) {
+            touchBroadcaster(broadcasterId);
+            return false;
+        }
+        // A peer seen holding the channel moments ago is trusted briefly, so
+        // busy chat on a non-owner costs one claim transaction every few
+        // seconds rather than one per message.
+        let ownerId = getKnownPeerOwner(broadcasterId);
+        if (!ownerId) {
+            const claim = await claimChannel(broadcasterId, channelName);
+            if (claim.owned) {
+                touchBroadcaster(broadcasterId);
+                return false;
+            }
+            ownerId = claim.ownerId;
+        }
+        await forwardToInbox(broadcasterId, {
+            messageId,
+            payload: rawBody.toString('utf8'),
+            isChat,
+            targetOwner: ownerId,
+        });
+        logger.debug({ channelName, messageId, ownerId }, '[EventSub] Forwarded to channel owner');
+        return true;
+    } catch (err) {
+        logger.warn({ err, channelName, messageId }, '[EventSub] Channel routing failed, handling locally');
+        return false;
+    }
+}
+
+/**
+ * Inbox handler for notifications another instance forwarded here. Chat is
+ * de-duplicated in memory on the direct path, so a forwarded copy is checked
+ * against the same window in case Twitch also retried it straight to us.
+ * @param {object} notification
+ * @param {string} messageId
+ */
+export async function handleForwardedNotification(notification, messageId) {
+    if (notification?.subscription?.type === 'channel.chat.message') {
+        if (processedEventIds.has(messageId)) {
+            logger.warn({ messageId }, 'Dropping duplicate forwarded chat message (in-memory dedup)');
+            return;
+        }
+        const nowTs = Date.now();
+        processedEventIds.set(messageId, nowTs);
+        if (processedEventIds.size > 1000) pruneOldProcessedIds(nowTs);
+    }
+    await processNotification(notification);
+}
+
 
 
 /**
@@ -135,8 +243,7 @@ export async function clearPhantomEventSubEntries(streamNames = []) {
 
 function verifySignature(req, rawBody) {
     // Allow bypassing signature verification for local development
-    const bypass = process.env.EVENTSUB_BYPASS === '1' || process.env.EVENTSUB_BYPASS === 'true';
-    if (bypass) {
+    if (config.twitch.eventSubBypass) {
         logger.warn('[DEV] EVENTSUB_BYPASS enabled - skipping signature verification');
         return true;
     }
@@ -208,320 +315,349 @@ export async function eventSubHandler(req, res, rawBody) {
             return;
         }
 
-        const { subscription, event } = notification;
-        const lifecycle = LifecycleManager.get();
-
-        if (subscription.type === 'stream.online') {
-            try {
-                const { broadcaster_user_name } = event;
-                const login = String(broadcaster_user_name).toLowerCase();
-                logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
-
-                // Enforce allow-list (prefer broadcaster ID for immutability)
-                const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isEventAllowed(broadcasterId, login);
-                if (!allowed) {
-                    logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
-                    return;
-                }
-
-                // Notify Lifecycle Manager for stream tracking and autochat
-                await lifecycle.onStreamStatusChange(login, true);
-
-                // Inform AutoChatManager so it can greet once
-                try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
-            } catch (error) {
-                logger.error({ err: error, event }, '[EventSub] Error handling stream.online');
-            }
+        const target = resolveEventChannel(notification);
+        if (target && await forwardIfNotOwner(target, req.headers['twitch-eventsub-message-id'], rawBody, isChat)) {
+            return;
         }
 
-        if (subscription.type === 'stream.offline') {
-            try {
-                const { broadcaster_user_name } = event;
-                const login = String(broadcaster_user_name).toLowerCase();
-                logger.info(`🔌 ${login} went offline.`);
+        await processNotification(notification);
+    }
+}
 
-                // Notify Lifecycle Manager for stream tracking
-                await lifecycle.onStreamStatusChange(login, false);
+/**
+ * Acts on a verified, de-duplicated EventSub notification. Called for webhooks
+ * this instance handles directly and for ones forwarded through the channel
+ * inbox by an instance that does not own the channel.
+ * @param {object} notification - Parsed EventSub notification body.
+ */
+export async function processNotification(notification) {
+    const { subscription, event } = notification;
+    const lifecycle = LifecycleManager.get();
 
-                // Quiet channels may never fill the chat buffer, so end of stream is their
-                // chance to have the session's chat looked at for long-term memory.
-                captureMemories(login, getContextManager().getAllChannelStates().get(login)?.chatHistory);
-
-                // Clear the stream context
-                getContextManager().clearStreamContext(login);
-
-                try {
-                    // Guard against duplicate stream.offline events (different message IDs
-                    // from multiple active subscriptions) sending the farewell twice.
-                    const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
-                    if (await isDuplicateEvent(`farewell:${login}`, null, 30000, false)) {
-                        logger.warn({ login }, '[EventSub] Skipping duplicate farewell — sent too recently');
-                    } else {
-                        await notifyStreamOffline(login);
-                    }
-                } catch (e) {
-                    logger.debug({ err: e }, 'Farewell send skipped or failed');
-                }
-            } catch (error) {
-                logger.error({ err: error, event }, '[EventSub] Error handling stream.offline');
+    if (subscription.type === 'stream.online') {
+        try {
+            const login = eventLogin(event);
+            if (!login) {
+                logger.warn({ event }, '[EventSub] stream.online missing broadcaster login');
+                return;
             }
-        }
+            logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
 
-        // --- Chat Message Handler (EventSub replacing IRC) ---
-        if (subscription.type === 'channel.chat.message') {
-            try {
-                const channelLogin = event?.broadcaster_user_login?.toLowerCase();
-                if (!channelLogin) {
-                    logger.warn({ event }, '[EventSub] channel.chat.message missing broadcaster_user_login');
-                    return;
-                }
-
-                // Enforce allow-list
-                const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isEventAllowed(broadcasterId, channelLogin);
-                if (!allowed) {
-                    logger.debug({ channelLogin }, '[EventSub] Chat message from non-allowed channel, ignoring');
-                    return;
-                }
-
-                // Extract message text from EventSub format
-                // EventSub message.text contains the full message text
-                const messageText = event?.message?.text || '';
-
-                // Convert EventSub event to IRC-style tags
-                const tags = convertEventSubToTags(event);
-
-                // Format channel with # prefix as expected by the handler
-                const channel = `#${channelLogin}`;
-
-                logger.debug({
-                    channel: channelLogin,
-                    user: tags.username,
-                    message: messageText.substring(0, 50)
-                }, '[EventSub] Processing channel.chat.message');
-
-                // Dispatch to the shared chat message handler
-                await handleChatMessage(channel, tags, messageText);
-            } catch (error) {
-                logger.error({ err: error, event }, '[EventSub] Error handling channel.chat.message');
+            // Enforce allow-list (prefer broadcaster ID for immutability)
+            const broadcasterId = event?.broadcaster_user_id;
+            const allowed = await isEventAllowed(broadcasterId, login);
+            if (!allowed) {
+                logger.warn(`[EventSub] ${login} is not on the allow-list or not active. Ignoring stream.online event.`);
+                return;
             }
+
+            // Notify Lifecycle Manager for stream tracking and autochat
+            await lifecycle.onStreamStatusChange(login, true);
+
+            // Inform AutoChatManager so it can greet once
+            try { notifyStreamOnline(login); } catch (e) { /* ignore */ }
+        } catch (error) {
+            logger.error({ err: error, event }, '[EventSub] Error handling stream.online');
         }
+    }
 
-        // --- Channel Points Redemption Handler (Daily Check-In) ---
-        if (subscription.type === 'channel.channel_points_custom_reward_redemption.add') {
-            try {
-                const channelLogin = event?.broadcaster_user_login?.toLowerCase();
-                const broadcasterId = event?.broadcaster_user_id;
-                if (!channelLogin || !broadcasterId) {
-                    logger.warn({ event }, '[EventSub] channel_points redemption missing required fields');
-                    return;
-                }
-
-                const allowed = await isEventAllowed(broadcasterId, channelLogin);
-                if (!allowed) {
-                    logger.debug({ channelLogin }, '[EventSub] Channel Points event for non-allowed channel');
-                    return;
-                }
-
-                handleCheckinRedemption(event).catch(error => {
-                    logger.error({ err: error, event }, '[EventSub] Error handling Channel Points redemption');
-                });
-            } catch (error) {
-                logger.error({ err: error, event }, '[EventSub] Error setting up Channel Points redemption handler');
+    if (subscription.type === 'stream.offline') {
+        try {
+            const login = eventLogin(event);
+            if (!login) {
+                logger.warn({ event }, '[EventSub] stream.offline missing broadcaster login');
+                return;
             }
-        }
-
-        // --- Celebrations: follows (no username), subscriptions (no username), raids (raider username allowed) ---
-        if (subscription.type === 'channel.follow') {
-            try {
-                const channelName = event?.broadcaster_user_name || null;
-                if (!channelName) {
-                    logger.warn({ event }, '[EventSub] channel.follow missing broadcaster name');
-                    return;
-                }
-                const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
-                if (!allowed) return;
-                await notifyFollow(channelName.toLowerCase());
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.follow');
+            // Same gate as every other handler: a deactivated channel's stale
+            // subscription must not touch state or post a farewell.
+            const allowed = await isEventAllowed(event?.broadcaster_user_id, login);
+            if (!allowed) {
+                logger.warn(`[EventSub] ${login} is not on the allow-list or not active. Ignoring stream.offline event.`);
+                return;
             }
-        }
+            logger.info(`🔌 ${login} went offline.`);
 
-        if (subscription.type === 'channel.subscribe') {
+            // Notify Lifecycle Manager for stream tracking
+            await lifecycle.onStreamStatusChange(login, false);
+
+            // Quiet channels may never fill the chat buffer, so end of stream is their
+            // chance to have the session's chat looked at for long-term memory.
+            captureMemories(login, getContextManager().getAllChannelStates().get(login)?.chatHistory);
+
+            // Clear the stream context
+            getContextManager().clearStreamContext(login);
+
             try {
-                const channelName = event?.broadcaster_user_name || null;
-                if (!channelName) {
-                    logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster name');
-                    return;
-                }
-                // Skip gift subs — they are handled in bulk by channel.subscription.gift
-                if (event?.is_gift === true) {
-                    logger.debug({ channelName }, '[EventSub] Skipping gift sub (handled by channel.subscription.gift)');
+                // Guard against duplicate stream.offline events (different message IDs
+                // from multiple active subscriptions) sending the farewell twice.
+                const { isDuplicateEvent } = await import('../../lib/distributedCache.js');
+                if (await isDuplicateEvent(`farewell:${login}`, null, 30000, false)) {
+                    logger.warn({ login }, '[EventSub] Skipping duplicate farewell — sent too recently');
                 } else {
-                    const broadcasterId = event?.broadcaster_user_id;
-                    const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
-                    if (!allowed) return;
-                    await notifySubscription(channelName.toLowerCase());
+                    await notifyStreamOffline(login);
                 }
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.subscribe');
+            } catch (e) {
+                logger.debug({ err: e }, 'Farewell send skipped or failed');
             }
+        } catch (error) {
+            logger.error({ err: error, event }, '[EventSub] Error handling stream.offline');
         }
+    }
 
-        if (subscription.type === 'channel.subscription.gift') {
-            try {
-                const channelName = event?.broadcaster_user_name || null;
-                if (!channelName) {
-                    logger.warn({ event }, '[EventSub] channel.subscription.gift missing broadcaster name');
-                    return;
-                }
+    // --- Chat Message Handler (EventSub replacing IRC) ---
+    if (subscription.type === 'channel.chat.message') {
+        try {
+            const channelLogin = event?.broadcaster_user_login?.toLowerCase();
+            if (!channelLogin) {
+                logger.warn({ event }, '[EventSub] channel.chat.message missing broadcaster_user_login');
+                return;
+            }
+
+            // Enforce allow-list
+            const broadcasterId = event?.broadcaster_user_id;
+            const allowed = await isEventAllowed(broadcasterId, channelLogin);
+            if (!allowed) {
+                logger.debug({ channelLogin }, '[EventSub] Chat message from non-allowed channel, ignoring');
+                return;
+            }
+
+            // Extract message text from EventSub format
+            // EventSub message.text contains the full message text
+            const messageText = event?.message?.text || '';
+
+            // Convert EventSub event to IRC-style tags
+            const tags = convertEventSubToTags(event);
+
+            // Format channel with # prefix as expected by the handler
+            const channel = `#${channelLogin}`;
+
+            logger.debug({
+                channel: channelLogin,
+                user: tags.username,
+                message: messageText.substring(0, 50)
+            }, '[EventSub] Processing channel.chat.message');
+
+            // Dispatch to the shared chat message handler
+            await handleChatMessage(channel, tags, messageText);
+        } catch (error) {
+            logger.error({ err: error, event }, '[EventSub] Error handling channel.chat.message');
+        }
+    }
+
+    // --- Channel Points Redemption Handler (Daily Check-In) ---
+    if (subscription.type === 'channel.channel_points_custom_reward_redemption.add') {
+        try {
+            const channelLogin = event?.broadcaster_user_login?.toLowerCase();
+            const broadcasterId = event?.broadcaster_user_id;
+            if (!channelLogin || !broadcasterId) {
+                logger.warn({ event }, '[EventSub] channel_points redemption missing required fields');
+                return;
+            }
+
+            const allowed = await isEventAllowed(broadcasterId, channelLogin);
+            if (!allowed) {
+                logger.debug({ channelLogin }, '[EventSub] Channel Points event for non-allowed channel');
+                return;
+            }
+
+            handleCheckinRedemption(event).catch(error => {
+                logger.error({ err: error, event }, '[EventSub] Error handling Channel Points redemption');
+            });
+        } catch (error) {
+            logger.error({ err: error, event }, '[EventSub] Error setting up Channel Points redemption handler');
+        }
+    }
+
+    // --- Celebrations: follows (no username), subscriptions (no username), raids (raider username allowed) ---
+    if (subscription.type === 'channel.follow') {
+        try {
+            const channelName = eventLogin(event);
+            if (!channelName) {
+                logger.warn({ event }, '[EventSub] channel.follow missing broadcaster login');
+                return;
+            }
+            const broadcasterId = event?.broadcaster_user_id;
+            const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
+            if (!allowed) return;
+            await notifyFollow(channelName.toLowerCase());
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.follow');
+        }
+    }
+
+    if (subscription.type === 'channel.subscribe') {
+        try {
+            const channelName = eventLogin(event);
+            if (!channelName) {
+                logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster login');
+                return;
+            }
+            // Skip gift subs — they are handled in bulk by channel.subscription.gift
+            if (event?.is_gift === true) {
+                logger.debug({ channelName }, '[EventSub] Skipping gift sub (handled by channel.subscription.gift)');
+            } else {
                 const broadcasterId = event?.broadcaster_user_id;
                 const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
                 if (!allowed) return;
-                const total = event?.total ?? 1;
-                const isAnonymous = event?.is_anonymous === true;
-                const gifterName = isAnonymous ? null : (event?.user_name || null);
-                const cumulativeTotal = event?.cumulative_total ?? null;
-                logger.info({
-                    channelName: channelName.toLowerCase(),
-                    total,
-                    gifterName: gifterName || 'Anonymous',
-                    cumulativeTotal
-                }, '[EventSub] Gift sub bomb received');
-                await notifyGiftSubs(channelName.toLowerCase(), total, gifterName, cumulativeTotal);
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.subscription.gift');
+                await notifySubscription(channelName.toLowerCase());
             }
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.subscribe');
         }
+    }
 
-        if (subscription.type === 'channel.raid') {
-            try {
-                const toName = event?.to_broadcaster_user_name || null;
-                const fromName = event?.from_broadcaster_user_name || 'a streamer';
-                const fromId = event?.from_broadcaster_user_id || null;
-                const viewers = event?.viewers || 0;
-                if (!toName) {
-                    logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_name');
-                    return;
-                }
-                const toBroadcasterId = event?.to_broadcaster_user_id;
-                const allowed = await isEventAllowed(toBroadcasterId, toName?.toLowerCase());
-                if (!allowed) return;
-                await notifyRaid(toName.toLowerCase(), fromName, viewers, fromId);
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.raid');
+    if (subscription.type === 'channel.subscription.gift') {
+        try {
+            const channelName = eventLogin(event);
+            if (!channelName) {
+                logger.warn({ event }, '[EventSub] channel.subscription.gift missing broadcaster login');
+                return;
             }
+            const broadcasterId = event?.broadcaster_user_id;
+            const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
+            if (!allowed) return;
+            const total = event?.total ?? 1;
+            const isAnonymous = event?.is_anonymous === true;
+            const gifterName = isAnonymous ? null : (event?.user_name || null);
+            const cumulativeTotal = event?.cumulative_total ?? null;
+            logger.info({
+                channelName: channelName.toLowerCase(),
+                total,
+                gifterName: gifterName || 'Anonymous',
+                cumulativeTotal
+            }, '[EventSub] Gift sub bomb received');
+            await notifyGiftSubs(channelName.toLowerCase(), total, gifterName, cumulativeTotal);
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.subscription.gift');
         }
+    }
 
-        if (subscription.type === 'channel.ad_break.begin') {
-            try {
-                const channelName = event?.broadcaster_user_name || event?.broadcaster_user_login || null;
-                if (!channelName) {
-                    logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster name');
-                    return;
-                }
-                const broadcasterId = event?.broadcaster_user_id;
-                const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
-                if (!allowed) return;
-
-                // Twitch types both of these as strings in the ad_break.begin v1
-                // payload, so `=== true` never matched and every scheduled ad was
-                // treated as manual.
-                const isAutomatic = String(event?.is_automatic) === 'true';
-                const duration = Number(event?.duration_seconds ?? event?.duration) || 60;
-
-                logger.info({
-                    channelName: channelName.toLowerCase(),
-                    duration,
-                    isAutomatic,
-                    requester: event?.requester_user_login
-                }, '[EventSub] Ad break started');
-
-                // Only send notification for MANUAL ads (early/unscheduled)
-                // Scheduled/automatic ads already get 60s pre-warning from poller
-                if (!isAutomatic) {
-                    logger.info({ channelName: channelName.toLowerCase() }, '[EventSub] Manual ad detected - sending immediate notification');
-                    await notifyAdBreak(channelName.toLowerCase(), event);
-                } else {
-                    logger.debug({ channelName: channelName.toLowerCase() }, '[EventSub] Automatic ad - notification already sent by poller');
-                }
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
+    if (subscription.type === 'channel.raid') {
+        try {
+            const toLogin = eventLogin(event, 'to_broadcaster');
+            // The raider's display name is only shown in the chat message, so it stays.
+            const fromName = event?.from_broadcaster_user_name || 'a streamer';
+            const fromId = event?.from_broadcaster_user_id || null;
+            const viewers = event?.viewers || 0;
+            if (!toLogin) {
+                logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_login');
+                return;
             }
+            const toBroadcasterId = event?.to_broadcaster_user_id;
+            const allowed = await isEventAllowed(toBroadcasterId, toLogin);
+            if (!allowed) return;
+            await notifyRaid(toLogin, fromName, viewers, fromId);
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.raid');
         }
+    }
 
-        // Handle shared chat session begin
-        if (subscription.type === 'channel.shared_chat.begin') {
-            try {
-                const sessionId = event?.session_id;
-                const hostBroadcasterId = event?.host_broadcaster_user_id;
-                const participants = event?.participants || [];
-
-                if (!sessionId || !hostBroadcasterId) {
-                    logger.warn({ event }, '[EventSub] channel.shared_chat.begin missing required fields');
-                    return;
-                }
-
-                const channelLogins = participants.map(p => p.broadcaster_user_login);
-                logger.info({
-                    sessionId,
-                    hostBroadcasterId,
-                    participantCount: participants.length,
-                    channels: channelLogins
-                }, `[EventSub] Shared chat session started: ${channelLogins.join(', ')}`);
-
-                sharedChatManager.addSession(sessionId, hostBroadcasterId, participants);
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.begin');
+    if (subscription.type === 'channel.ad_break.begin') {
+        try {
+            const channelName = eventLogin(event);
+            if (!channelName) {
+                logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster login');
+                return;
             }
+            const broadcasterId = event?.broadcaster_user_id;
+            const allowed = await isEventAllowed(broadcasterId, channelName?.toLowerCase());
+            if (!allowed) return;
+
+            // Twitch types both of these as strings in the ad_break.begin v1
+            // payload, so `=== true` never matched and every scheduled ad was
+            // treated as manual.
+            const isAutomatic = String(event?.is_automatic) === 'true';
+            const duration = Number(event?.duration_seconds ?? event?.duration) || 60;
+
+            logger.info({
+                channelName: channelName.toLowerCase(),
+                duration,
+                isAutomatic,
+                requester: event?.requester_user_login
+            }, '[EventSub] Ad break started');
+
+            // Only send notification for MANUAL ads (early/unscheduled)
+            // Scheduled/automatic ads already get 60s pre-warning from poller
+            if (!isAutomatic) {
+                logger.info({ channelName: channelName.toLowerCase() }, '[EventSub] Manual ad detected - sending immediate notification');
+                await notifyAdBreak(channelName.toLowerCase(), event);
+            } else {
+                logger.debug({ channelName: channelName.toLowerCase() }, '[EventSub] Automatic ad - notification already sent by poller');
+            }
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.ad_break.begin');
         }
+    }
 
-        // Handle shared chat session update
-        if (subscription.type === 'channel.shared_chat.update') {
-            try {
-                const sessionId = event?.session_id;
-                const participants = event?.participants || [];
+    // Handle shared chat session begin
+    if (subscription.type === 'channel.shared_chat.begin') {
+        try {
+            const sessionId = event?.session_id;
+            const hostBroadcasterId = event?.host_broadcaster_user_id;
+            const participants = event?.participants || [];
 
-                if (!sessionId) {
-                    logger.warn({ event }, '[EventSub] channel.shared_chat.update missing session_id');
-                    return;
-                }
-
-                const channelLogins = participants.map(p => p.broadcaster_user_login);
-                logger.info({
-                    sessionId,
-                    participantCount: participants.length,
-                    channels: channelLogins
-                }, `[EventSub] Shared chat session updated: ${channelLogins.join(', ')}`);
-
-                sharedChatManager.updateSession(sessionId, participants);
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.update');
+            if (!sessionId || !hostBroadcasterId) {
+                logger.warn({ event }, '[EventSub] channel.shared_chat.begin missing required fields');
+                return;
             }
+
+            const channelLogins = participants.map(p => p.broadcaster_user_login);
+            logger.info({
+                sessionId,
+                hostBroadcasterId,
+                participantCount: participants.length,
+                channels: channelLogins
+            }, `[EventSub] Shared chat session started: ${channelLogins.join(', ')}`);
+
+            sharedChatManager.addSession(sessionId, hostBroadcasterId, participants);
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.begin');
         }
+    }
 
-        // Handle shared chat session end
-        if (subscription.type === 'channel.shared_chat.end') {
-            try {
-                const sessionId = event?.session_id;
+    // Handle shared chat session update
+    if (subscription.type === 'channel.shared_chat.update') {
+        try {
+            const sessionId = event?.session_id;
+            const participants = event?.participants || [];
 
-                if (!sessionId) {
-                    logger.warn({ event }, '[EventSub] channel.shared_chat.end missing session_id');
-                    return;
-                }
-
-                logger.info({ sessionId }, '[EventSub] Shared chat session ended');
-
-                // Clean up the LLM chat session for this shared session
-                const { clearChatSession } = await import('../llm/llmClient.js');
-                clearChatSession(sessionId);
-
-                sharedChatManager.removeSession(sessionId);
-            } catch (error) {
-                logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.end');
+            if (!sessionId) {
+                logger.warn({ event }, '[EventSub] channel.shared_chat.update missing session_id');
+                return;
             }
+
+            const channelLogins = participants.map(p => p.broadcaster_user_login);
+            logger.info({
+                sessionId,
+                participantCount: participants.length,
+                channels: channelLogins
+            }, `[EventSub] Shared chat session updated: ${channelLogins.join(', ')}`);
+
+            sharedChatManager.updateSession(sessionId, participants);
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.update');
+        }
+    }
+
+    // Handle shared chat session end
+    if (subscription.type === 'channel.shared_chat.end') {
+        try {
+            const sessionId = event?.session_id;
+
+            if (!sessionId) {
+                logger.warn({ event }, '[EventSub] channel.shared_chat.end missing session_id');
+                return;
+            }
+
+            logger.info({ sessionId }, '[EventSub] Shared chat session ended');
+
+            // Clean up the LLM chat session for this shared session
+            const { clearChatSession } = await import('../llm/llmClient.js');
+            clearChatSession(sessionId);
+
+            sharedChatManager.removeSession(sessionId);
+        } catch (error) {
+            logger.error({ err: error }, '[EventSub] Error handling channel.shared_chat.end');
         }
     }
 }

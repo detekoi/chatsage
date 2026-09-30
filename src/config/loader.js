@@ -62,6 +62,8 @@ function loadConfig() {
                 ? process.env.TWITCH_CHANNELS.split(',').map(ch => ch.trim()).filter(ch => ch)
                 : [],
             clientId: process.env.TWITCH_CLIENT_ID,
+            // Local development only: skip EventSub signature verification.
+            eventSubBypass: process.env.EVENTSUB_BYPASS === '1' || process.env.EVENTSUB_BYPASS === 'true',
             clientSecret: process.env.TWITCH_CLIENT_SECRET,
             // Bot account's user refresh token (announcements need a user token)
             // Trimmed: secrets added with a shell here-string (<<<) end in a newline
@@ -84,6 +86,18 @@ function loadConfig() {
             nodeEnv: process.env.NODE_ENV || 'development',
             // Cloud Run sets these on every revision; nothing else does.
             isCloudRun: !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION),
+            revision: process.env.K_REVISION || null,
+        },
+
+        // Multi-instance coordination. Each channel is leased to one instance,
+        // which runs its timers, auto-chat, games and chat context; webhooks
+        // landing elsewhere are forwarded through a Firestore inbox. On by
+        // default on Cloud Run, off locally so a dev process sharing the
+        // production Firestore never takes channels away from production.
+        cluster: {
+            channelOwnershipEnabled: process.env.CHANNEL_OWNERSHIP_ENABLED
+                ? process.env.CHANNEL_OWNERSHIP_ENABLED === 'true'
+                : !!(process.env.K_SERVICE || process.env.K_REVISION || process.env.K_CONFIGURATION),
         },
 
 

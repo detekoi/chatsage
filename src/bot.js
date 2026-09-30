@@ -4,16 +4,18 @@ import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
 import { clearMessageQueue } from './lib/ircSender.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
-import { stopTimerManager } from './components/timers/timerManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
 import { getContextManager } from './components/context/contextManager.js';
 import { stashUnextractedMessages } from './components/memory/memoryExtractor.js';
 import { hasDevChannels } from './lib/devChannels.js';
+import { stopChannelOwnership } from './lib/channelOwnership.js';
 
 // Extracted modules
 import { createHealthServer, closeHealthServer } from './server/healthServer.js';
 import { initializeAllComponents } from './initialization/initComponents.js';
 import { SECRET_MANAGER_STATUS_LOG_INTERVAL_MS, SHUTDOWN_FORCE_EXIT_TIMEOUT_MS } from './constants/botConstants.js';
+
+const LEASE_RELEASE_TIMEOUT_MS = 3000;
 
 // Add periodic Secret Manager status logging
 setInterval(() => {
@@ -32,6 +34,17 @@ async function gracefulShutdown(signal) {
         shutdownTasks.push(closeHealthServer(global.healthServer));
     }
 
+    // Hand channel leases back first, while the inboxes are still listening:
+    // peers forward to this instance until they see the lease gone, and each
+    // channel's inbox is closed only once its lease is deleted. Bounded so an
+    // unreachable Firestore cannot eat Cloud Run's shutdown grace period.
+    let releaseTimeoutId;
+    await Promise.race([
+        stopChannelOwnership(),
+        new Promise(resolve => { releaseTimeoutId = setTimeout(resolve, LEASE_RELEASE_TIMEOUT_MS); }),
+    ]).catch(err => logger.error({ err }, 'Error releasing channel leases during shutdown.'));
+    clearTimeout(releaseTimeoutId);
+
     // Stop lifecycle manager (listeners, pollers, managers)
     try {
         logger.info('Stopping lifecycle manager...');
@@ -46,13 +59,6 @@ async function gracefulShutdown(signal) {
         shutdownCommandStateManager();
     } catch (error) {
         logger.error({ err: error }, 'Error shutting down command state manager during shutdown.');
-    }
-
-    // Stop timer manager
-    try {
-        stopTimerManager();
-    } catch (error) {
-        logger.error({ err: error }, 'Error stopping timer manager during shutdown.');
     }
 
     // No time for an LLM call here, so chat that has not been through memory extraction is
