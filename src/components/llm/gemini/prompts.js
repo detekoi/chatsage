@@ -135,13 +135,6 @@ ${personaText}
 }
 
 /**
- * Builds the full system instruction for a single channel.
- *
- * @param {string|null} [channelName] - Channel name (without '#'). When omitted,
- *   or when the channel has no approved custom persona, the default is used.
- * @returns {string} Core instruction followed by the fenced persona block.
- */
-/**
  * Resolves the persona text for a single channel: its approved custom persona
  * with fence tokens neutralized, or the default.
  * @param {string|null} channelName - Channel name, with or without '#'.
@@ -152,6 +145,13 @@ function resolveChannelPersona(channelName) {
     return custom ? stripFenceTokens(custom) : DEFAULT_BOT_PERSONA;
 }
 
+/**
+ * Builds the full system instruction for a single channel.
+ *
+ * @param {string|null} [channelName] - Channel name (without '#'). When omitted,
+ *   or when the channel has no approved custom persona, the default is used.
+ * @returns {string} Core instruction followed by the fenced persona block.
+ */
 export function buildSystemInstruction(channelName = null) {
     return `${BOT_CORE_INSTRUCTION}
 
