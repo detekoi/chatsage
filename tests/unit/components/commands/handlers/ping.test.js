@@ -2,10 +2,12 @@
 
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/lib/ircSender.js');
+jest.mock('../../../../../src/components/context/contextManager.js');
 
 import pingHandler from '../../../../../src/components/commands/handlers/ping.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import logger from '../../../../../src/lib/logger.js';
+import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 
 describe('Ping Command Handler', () => {
     const createMockContext = (channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
@@ -20,6 +22,7 @@ describe('Ping Command Handler', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         enqueueMessage.mockResolvedValue();
+        getContextManager.mockReturnValue({ getBotLanguage: () => null });
     });
 
     describe('Command Info', () => {
@@ -32,6 +35,17 @@ describe('Ping Command Handler', () => {
     });
 
     describe('Command Execution', () => {
+        test('should answer from the catalog in a catalogued bot language', async () => {
+            getContextManager.mockReturnValue({ getBotLanguage: () => 'spanish' });
+            await pingHandler.execute(createMockContext());
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                '¡Pong!',
+                { replyToId: '123', skipTranslation: true }
+            );
+        });
+
         test('should send "Pong!" response', async () => {
             const context = createMockContext();
             await pingHandler.execute(context);

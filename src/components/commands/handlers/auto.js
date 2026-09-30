@@ -1,4 +1,5 @@
 import { getChannelAutoChatConfig, saveChannelAutoChatConfig, normalizeConfig } from '../../context/autoChatStorage.js';
+import { sendLocalized, localize } from '../../../lib/localizedMessage.js';
 
 const helpText = 'Usage: !auto [off|low|medium|high] or !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>';
 
@@ -14,14 +15,17 @@ async function execute({ channel, _user, args, logger: log }) {
         log.info({ channelName, cfg }, '[!auto] Current auto-chat config');
         const cats = cfg.categories;
         const parts = [`mode=${cfg.mode}`, `cats=${ALL_CATEGORIES.filter(k => cats[k]).join('+') || 'none'}`];
-        return this.reply(channel, `Auto-chat: ${parts.join(', ')}. ${helpText}`);
+        const settings = parts.join(', ');
+        // The usage line is itself catalogued, so localize it before embedding it in the status line.
+        const usage = localize(channel, 'usage.auto.Help', {}, helpText).text;
+        return sendLocalized(channel, 'cmd.auto.Status', { settings, usage }, `Auto-chat: ${settings}. ${helpText}`);
     }
 
     if (['off','low','medium','high'].includes(sub)) {
         const cfg = await getChannelAutoChatConfig(channelName);
         cfg.mode = sub;
         await saveChannelAutoChatConfig(channelName, cfg);
-        return this.reply(channel, `Auto-chat mode set to ${sub}.`);
+        return sendLocalized(channel, 'cmd.auto.ModeSet', { mode: sub }, `Auto-chat mode set to ${sub}.`);
     }
 
     if (sub === 'config' || sub === 'auto-config') {
@@ -39,20 +43,15 @@ async function execute({ channel, _user, args, logger: log }) {
         const clean = normalizeConfig(cfg);
         await saveChannelAutoChatConfig(channelName, clean);
         const cats = clean.categories;
-        return this.reply(channel, `Updated auto-chat: mode=${clean.mode}, cats=${ALL_CATEGORIES.filter(k => cats[k]).join('+') || 'none'}`);
+        const settings = `mode=${clean.mode}, cats=${ALL_CATEGORIES.filter(k => cats[k]).join('+') || 'none'}`;
+        return sendLocalized(channel, 'cmd.auto.Updated', { settings }, `Updated auto-chat: ${settings}`);
     }
 
-    return this.reply(channel, helpText);
-}
-
-async function reply(channel, message) {
-    const { enqueueMessage } = await import('../../../lib/ircSender.js');
-    await enqueueMessage(channel, message);
+    return sendLocalized(channel, 'usage.auto.Help', {}, helpText);
 }
 
 export default {
     execute,
-    reply,
     permission: 'moderator',
     description: 'Configure auto-chat mode and options.'
 };

@@ -14,7 +14,7 @@ import {
     buildContextPrompt,
     generateStandardResponse
 } from '../../../../../src/components/llm/llmClient.js';
-import { removeMarkdownAsterisks, getUserFriendlyErrorMessage } from '../../../../../src/components/llm/llmUtils.js';
+import { removeMarkdownAsterisks, getUserFriendlyError } from '../../../../../src/components/llm/llmUtils.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { getCachedPersona } from '../../../../../src/components/context/personaStorage.js';
 
@@ -36,7 +36,7 @@ describe('Ask Command Handler', () => {
         buildContextPrompt.mockClear();
         generateStandardResponse.mockClear();
         removeMarkdownAsterisks.mockClear();
-        getUserFriendlyErrorMessage.mockClear();
+        getUserFriendlyError.mockClear();
         enqueueMessage.mockClear();
 
         // Setup mocks
@@ -49,7 +49,7 @@ describe('Ask Command Handler', () => {
         buildContextPrompt.mockReturnValue('mock context prompt');
         generateStandardResponse.mockResolvedValue('mock standard response');
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
-        getUserFriendlyErrorMessage.mockReturnValue('Sorry, an error occurred while processing your question.');
+        getUserFriendlyError.mockReturnValue({ key: 'llm.error.Generic', fallback: 'Sorry, an error occurred while processing that.' });
         enqueueMessage.mockResolvedValue();
         getCachedPersona.mockReset();
         getCachedPersona.mockReturnValue(null);
@@ -235,6 +235,20 @@ describe('Ask Command Handler', () => {
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Sorry, an error occurred while processing your question.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('should pass a specific LLM error through unchanged', async () => {
+            generateStandardResponse.mockRejectedValue(new Error('quota'));
+            getUserFriendlyError.mockReturnValue({ key: 'llm.error.RateLimited', fallback: "I'm getting too many requests right now. Please wait a moment and try again." });
+
+            const context = createMockContext(['test', 'question']);
+            await askHandler.execute(context);
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                "I'm getting too many requests right now. Please wait a moment and try again.",
                 { replyToId: '123' }
             );
         });

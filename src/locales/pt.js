@@ -98,7 +98,13 @@ export default {
             "SorryICouldnT": "Desculpe, não consegui encontrar ou gerar uma resposta para isso agora.",
             "PleaseAskQuestionAfter": "Por favor, faça uma pergunta após o comando. Uso: !ask <sua pergunta>",
             "HeyThereWhatS": "Olá! O que você gostaria de saber?",
-            "SorryICouldnT2": "Desculpe, não consegui recuperar o contexto atual."
+            "SorryICouldnT2": "Desculpe, não consegui recuperar o contexto atual.",
+            "ErrorProcessingQuestion": "Desculpe, ocorreu um erro ao processar sua pergunta."
+        },
+        "auto": {
+            "Status": "Auto-chat: {settings}. {usage}",
+            "ModeSet": "Modo de auto-chat definido como {mode}.",
+            "Updated": "Auto-chat atualizado: {settings}"
         },
         "botlang": {
             "BotCurrentlySetSpeak2": "O bot está configurado para falar inglês (padrão). Use \"!botlang <idioma>\" para alterar.",
@@ -196,6 +202,26 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [região] [rodadas] (iniciar real), !geo game [Título] [rodadas] (iniciar jogo), !geo stop (mods/iniciador), !geo config <opções...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <motivo...>, !geo help",
             "UnknownCommandFormatOr": "Formato de comando desconhecido ou argumentos extras fornecidos. Use !geo help."
         },
+        "memory": {
+            "UsageRemember": "Uso: !remember <fato>. Exemplo: !remember gary = o pato de borracha na mesa",
+            "Remembered": "Beleza, vou me lembrar disso.",
+            "UpdatedMemory": "Beleza, atualizei o que eu sabia sobre isso.",
+            "MemoryFull": "Minha memória para este canal está cheia. Use !forget <frase> para liberar espaço.",
+            "CouldNotRemember": "Não consegui entender onde arquivar isso. Tente: !remember <frase> = <o que significa>",
+            "MemoryIsOff": "A memória está desativada neste canal. Um mod pode ativá-la com !memory on.",
+            "UsageForget": "Uso: !forget <frase>",
+            "ForgotCount": "Esqueci {count} memórias correspondentes a \"{phrase}\".",
+            "NothingToForget": "Não tenho nada guardado sobre \"{phrase}\".",
+            "ForgotUser": "Pronto. Esqueci o que sabia sobre você aqui e não vou mais me lembrar daqui para frente.",
+            "TurnedOn": "A memória está ativada. Vou me lembrar das piadas internas e da lore do canal. Desative com !memory off.",
+            "TurnedOff": "A memória está desativada. Não vou registrar nem usar memórias do canal. Ative novamente com !memory on.",
+            "StatusOn": "A memória está ativada com {count} memórias salvas. Mods: !memory off | !remember <fato> | !forget <frase>. Qualquer um: !forgetme",
+            "StatusOff": "A memória está desativada com {count} memórias salvas. Mods podem ativá-la com !memory on.",
+            "SorrySomethingWentWrong": "Desculpe, algo deu errado com a minha memória. Tente novamente mais tarde."
+        },
+        "ping": {
+            "Pong": "Pong!"
+        },
         "quote": {
             "NoQuotesYetAdd": "Nenhuma citação ainda. Adicione uma com \"!quote add <texto [- autor]>\"",
             "QuoteNotFound": "Citação #{id} não encontrada.",
@@ -286,22 +312,8 @@ export default {
             "StoppedTranslationFor": "Tradução parada para {user}.",
             "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
         },
-        "memory": {
-            "UsageRemember": "Uso: !remember <fato>. Exemplo: !remember gary = o pato de borracha na mesa",
-            "Remembered": "Beleza, vou me lembrar disso.",
-            "UpdatedMemory": "Beleza, atualizei o que eu sabia sobre isso.",
-            "MemoryFull": "Minha memória para este canal está cheia. Use !forget <frase> para liberar espaço.",
-            "CouldNotRemember": "Não consegui entender onde arquivar isso. Tente: !remember <frase> = <o que significa>",
-            "MemoryIsOff": "A memória está desativada neste canal. Um mod pode ativá-la com !memory on.",
-            "UsageForget": "Uso: !forget <frase>",
-            "ForgotCount": "Esqueci {count} memórias correspondentes a \"{phrase}\".",
-            "NothingToForget": "Não tenho nada guardado sobre \"{phrase}\".",
-            "ForgotUser": "Pronto. Esqueci o que sabia sobre você aqui e não vou mais me lembrar daqui para frente.",
-            "TurnedOn": "A memória está ativada. Vou me lembrar das piadas internas e da lore do canal. Desative com !memory off.",
-            "TurnedOff": "A memória está desativada. Não vou registrar nem usar memórias do canal. Ative novamente com !memory on.",
-            "StatusOn": "A memória está ativada com {count} memórias salvas. Mods: !memory off | !remember <fato> | !forget <frase>. Qualquer um: !forgetme",
-            "StatusOff": "A memória está desativada com {count} memórias salvas. Mods podem ativá-la com !memory on.",
-            "SorrySomethingWentWrong": "Desculpe, algo deu errado com a minha memória. Tente novamente mais tarde."
+        "help": {
+            "CommandList": "Você pode encontrar minha lista de comandos aqui: {url}"
         }
     },
     "result": {
@@ -358,10 +370,6 @@ export default {
             "SettingsChangedMemoryBut": "Configurações alteradas na memória, mas falharam ao salvar.",
             "RiddleGameConfigurationReset": "Configuração do jogo de enigmas redefinida para os padrões.",
             "ConfigResetMemoryBut": "Configuração redefinida na memória, mas falhou ao salvar.",
-            "ICouldnTFind": "Não encontrei nenhum enigma jogado recentemente neste canal para denunciar.",
-            "LastRiddleFoundSeems": "O último enigma encontrado parece incompleto e não pode ser denunciado.",
-            "ThanksFeedbackRiddleStarting": "Obrigado pelo feedback! O enigma que começa com \"{p1}...\" foi denunciado.",
-            "SorryErrorOccurredWhile": "Desculpe, ocorreu um erro ao tentar denunciar o enigma.",
             "ICouldnTFind2": "Não encontrei nenhum enigma recente neste canal para denunciar.",
             "CouldNotIdentifySpecific": "Não foi possível identificar um enigma específico para denunciar.",
             "ThanksFeedbackRiddleHas": "Obrigado pelo feedback! O enigma (\"{p1}...\") foi denunciado.",
@@ -439,7 +447,20 @@ export default {
             "None": "Nenhum"
         }
     },
+    "llm": {
+        "Stumped": "Essa me deixou meio confuso! Tente perguntar de outro jeito?",
+        "error": {
+            "Network": "Desculpe, estou com problemas para me conectar agora. Tente novamente em instantes.",
+            "Timeout": "Desculpe, o processamento demorou demais. Tente novamente.",
+            "RateLimited": "Estou recebendo solicitações demais agora. Aguarde um momento e tente novamente.",
+            "Unavailable": "Meu serviço de IA está temporariamente indisponível. Tente novamente em instantes.",
+            "Generic": "Desculpe, ocorreu um erro ao processar isso."
+        }
+    },
     "usage": {
+        "auto": {
+            "Help": "Uso: !auto [off|low|medium|high] ou !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>"
+        },
         "riddle": {
             "Config": "Uso: !riddle config difficulty <fácil|normal|difícil> | questiontime <seg> | pointsbase <núm> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <núm> | keywordslimit <núm> | rounddelay <ms>"
         },

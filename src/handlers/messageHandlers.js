@@ -8,7 +8,7 @@ import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/botConstants.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
-import { sendLocalized } from '../lib/localizedMessage.js';
+import { sendLocalized, sendLocalizedResult } from '../lib/localizedMessage.js';
 
 
 
@@ -38,7 +38,7 @@ export async function handlePendingReport({
     // Try Riddle first
     let reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        await enqueueMessage(channel, reportFinalizationResult.message);
+        await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Riddle finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
@@ -49,7 +49,7 @@ export async function handlePendingReport({
     // Try Trivia next
     reportFinalizationResult = await triviaManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        await enqueueMessage(channel, reportFinalizationResult.message);
+        await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Trivia finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');
@@ -60,7 +60,7 @@ export async function handlePendingReport({
     // Try Geo last
     reportFinalizationResult = await geoManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
     if (reportFinalizationResult.message !== null) {
-        await enqueueMessage(channel, reportFinalizationResult.message);
+        await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Geo finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
         contextManager.addMessage(cleanChannel, lowerUsername, message, tags).catch(err => {
             logger.error({ err, channel: cleanChannel, user: lowerUsername }, 'Error adding numeric report response to context');

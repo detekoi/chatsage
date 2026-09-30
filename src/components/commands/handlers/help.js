@@ -1,5 +1,5 @@
 import logger from '../../../lib/logger.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 const HELP_URL = 'https://docs.wildcat.chat/botcommands.html';
 
@@ -18,7 +18,7 @@ const helpHandler = {
         try {
             const response = `You can find my command list here: ${HELP_URL}`;
             const replyToId = user?.id || user?.['message-id'] || null;
-            await enqueueMessage(channel, response, { replyToId });
+            await sendLocalized(channel, 'cmd.help.CommandList', { url: HELP_URL }, response, { replyToId });
             logger.info(`Executed !help command in ${channel} for ${user.username}`);
         } catch (error) {
             logger.error({ err: error, channel: channel, user: user.username }, `Failed to enqueue help response.`);

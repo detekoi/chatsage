@@ -98,7 +98,13 @@ export default {
             "SorryICouldnT": "Sorry, I couldn't find or generate an answer for that right now.",
             "PleaseAskQuestionAfter": "Please ask a question after the command. Usage: !ask <your question>",
             "HeyThereWhatS": "Hey there! What's on your mind?",
-            "SorryICouldnT2": "Sorry, I couldn't retrieve the current context."
+            "SorryICouldnT2": "Sorry, I couldn't retrieve the current context.",
+            "ErrorProcessingQuestion": "Sorry, an error occurred while processing your question."
+        },
+        "auto": {
+            "Status": "Auto-chat: {settings}. {usage}",
+            "ModeSet": "Auto-chat mode set to {mode}.",
+            "Updated": "Updated auto-chat: {settings}"
         },
         "botlang": {
             "BotCurrentlySetSpeak2": "Bot is currently set to speak English (default). Use \"!botlang <language>\" to change.",
@@ -196,6 +202,9 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help",
             "UnknownCommandFormatOr": "Unknown command format or extra arguments provided. Use !geo help."
         },
+        "help": {
+            "CommandList": "You can find my command list here: {url}"
+        },
         "memory": {
             "UsageRemember": "Usage: !remember <fact>. Example: !remember gary = the rubber duck on the desk",
             "Remembered": "Got it, I'll remember that.",
@@ -212,6 +221,9 @@ export default {
             "StatusOn": "Memory is on with {count} memories stored. Mods: !memory off | !remember <fact> | !forget <phrase>. Anyone: !forgetme",
             "StatusOff": "Memory is off with {count} memories stored. Mods can turn it on with !memory on.",
             "SorrySomethingWentWrong": "Sorry, something went wrong with my memory. Please try again later."
+        },
+        "ping": {
+            "Pong": "Pong!"
         },
         "quote": {
             "NoQuotesYetAdd": "No quotes yet. Add one with \"!quote add <text [- author]>\"",
@@ -358,10 +370,6 @@ export default {
             "SettingsChangedMemoryBut": "Settings changed in memory but failed to save.",
             "RiddleGameConfigurationReset": "Riddle game configuration reset to defaults.",
             "ConfigResetMemoryBut": "Config reset in memory but failed to save.",
-            "ICouldnTFind": "I couldn't find a recently played riddle in this channel to report.",
-            "LastRiddleFoundSeems": "The last riddle found seems incomplete and cannot be reported.",
-            "ThanksFeedbackRiddleStarting": "Thanks for the feedback! The riddle starting with \"{p1}...\" has been reported.",
-            "SorryErrorOccurredWhile": "Sorry, an error occurred while trying to report the riddle.",
             "ICouldnTFind2": "I couldn't find any recent riddles in this channel to report.",
             "CouldNotIdentifySpecific": "Could not identify a specific riddle to report.",
             "ThanksFeedbackRiddleHas": "Thanks for the feedback! The riddle (\"{p1}...\") has been reported.",
@@ -439,7 +447,20 @@ export default {
             "None": "None"
         }
     },
+    "llm": {
+        "Stumped": "I'm a bit stumped on that one! Try asking another way?",
+        "error": {
+            "Network": "Sorry, I'm having trouble connecting right now. Please try again in a moment.",
+            "Timeout": "Sorry, that took too long to process. Please try again.",
+            "RateLimited": "I'm getting too many requests right now. Please wait a moment and try again.",
+            "Unavailable": "My AI service is temporarily unavailable. Please try again in a moment.",
+            "Generic": "Sorry, an error occurred while processing that."
+        }
+    },
     "usage": {
+        "auto": {
+            "Help": "Usage: !auto [off|low|medium|high] or !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>"
+        },
         "riddle": {
             "Config": "Usage: !riddle config difficulty <easy|normal|hard> | questiontime <sec> | pointsbase <num> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <num> | keywordslimit <num> | rounddelay <ms>"
         },

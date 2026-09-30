@@ -2,10 +2,12 @@
 
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/lib/ircSender.js');
+jest.mock('../../../../../src/components/context/contextManager.js');
 
 import helpHandler from '../../../../../src/components/commands/handlers/help.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import logger from '../../../../../src/lib/logger.js';
+import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 
 describe('Help Command Handler', () => {
     const createMockContext = (channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123' }) => ({
@@ -20,6 +22,7 @@ describe('Help Command Handler', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         enqueueMessage.mockResolvedValue();
+        getContextManager.mockReturnValue({ getBotLanguage: () => null });
     });
 
     describe('Command Info', () => {
@@ -40,6 +43,17 @@ describe('Help Command Handler', () => {
                 '#testchannel',
                 'You can find my command list here: https://docs.wildcat.chat/botcommands.html',
                 { replyToId: '123' }
+            );
+        });
+
+        test('should answer from the catalog in a catalogued bot language', async () => {
+            getContextManager.mockReturnValue({ getBotLanguage: () => 'spanish' });
+            await helpHandler.execute(createMockContext());
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'Puedes encontrar mi lista de comandos aquí: https://docs.wildcat.chat/botcommands.html',
+                { replyToId: '123', skipTranslation: true }
             );
         });
 
