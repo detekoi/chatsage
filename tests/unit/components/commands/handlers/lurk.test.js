@@ -2,6 +2,7 @@
 // Mock dependencies before imports to avoid hoisting issues
 jest.mock('../../../../../src/components/context/contextManager.js');
 jest.mock('../../../../../src/components/llm/llmClient.js');
+jest.mock('../../../../../src/components/llm/gemini/prompts.js');
 jest.mock('../../../../../src/components/llm/llmUtils.js');
 jest.mock('../../../../../src/lib/logger.js');
 jest.mock('../../../../../src/components/llm/botResponseHandler.js');
@@ -12,6 +13,7 @@ import {
     buildContextPrompt,
     generateLiteContent
 } from '../../../../../src/components/llm/llmClient.js';
+import { buildSystemInstruction } from '../../../../../src/components/llm/gemini/prompts.js';
 import { removeMarkdownAsterisks } from '../../../../../src/components/llm/llmUtils.js';
 import { sendBotResponse } from '../../../../../src/components/llm/botResponseHandler.js';
 
@@ -32,6 +34,7 @@ describe('Lurk Command Handler', () => {
         getContextManager.mockClear();
         buildContextPrompt.mockClear();
         generateLiteContent.mockClear();
+        buildSystemInstruction.mockClear();
         removeMarkdownAsterisks.mockClear();
         sendBotResponse.mockClear();
 
@@ -44,6 +47,7 @@ describe('Lurk Command Handler', () => {
         getContextManager.mockReturnValue(mockContextManager);
         buildContextPrompt.mockReturnValue('mock context prompt');
         generateLiteContent.mockResolvedValue('Mocked response');
+        buildSystemInstruction.mockImplementation((channelName) => `system instruction for ${channelName}`);
         removeMarkdownAsterisks.mockImplementation((text) => text?.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1') || '');
         sendBotResponse.mockResolvedValue();
 
@@ -118,6 +122,22 @@ describe('Lurk Command Handler', () => {
                 '#testchannel',
                 'off to the kitchen for some chaos',
                 { replyToId: '123' }
+            );
+        });
+    });
+
+    describe('Channel Persona', () => {
+        test('should prompt with the channel system instruction', async () => {
+            const context = createMockContext(['brb'], '#personachannel');
+            await lurkHandler.execute(context);
+
+            expect(buildSystemInstruction).toHaveBeenCalledWith('personachannel');
+            expect(generateLiteContent).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    systemInstruction: 'system instruction for personachannel',
+                    model: 'main'
+                })
             );
         });
     });
