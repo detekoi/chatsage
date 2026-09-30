@@ -121,6 +121,21 @@ async function shouldProcessEvent(req, isChat) {
 }
 
 /**
+ * A channel's login from an EventSub payload. Never the display name: a
+ * localized display name (Japanese, Korean, Cyrillic...) is not the login, and
+ * every downstream lookup (allow-list, channel doc keys, context, Helix) is by login.
+ * @param {object} event
+ * @param {string} [prefix='broadcaster'] - Field prefix, e.g. 'to_broadcaster' for raids.
+ * @returns {string|null} Lowercase login, or null when neither the login nor a known ID is present.
+ */
+function eventLogin(event, prefix = 'broadcaster') {
+    const login = event?.[`${prefix}_user_login`];
+    if (login) return String(login).toLowerCase();
+    const id = event?.[`${prefix}_user_id`];
+    return id ? getChannelNameForBroadcasterId(id) : null;
+}
+
+/**
  * The channel a notification acts on. Raids act on the raided channel; every
  * other subscription type is scoped to broadcaster_user_id.
  * @param {object} notification
@@ -321,15 +336,18 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'stream.online') {
         try {
-            const { broadcaster_user_name } = event;
-            const login = String(broadcaster_user_name).toLowerCase();
+            const login = eventLogin(event);
+            if (!login) {
+                logger.warn({ event }, '[EventSub] stream.online missing broadcaster login');
+                return;
+            }
             logger.info(`📡 ${login} just went live — notifying LifecycleManager...`);
 
             // Enforce allow-list (prefer broadcaster ID for immutability)
             const broadcasterId = event?.broadcaster_user_id;
             const allowed = await isEventAllowed(broadcasterId, login);
             if (!allowed) {
-                logger.warn(`[EventSub] ${broadcaster_user_name} is not on the allow-list or not active. Ignoring stream.online event.`);
+                logger.warn(`[EventSub] ${login} is not on the allow-list or not active. Ignoring stream.online event.`);
                 return;
             }
 
@@ -345,8 +363,18 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'stream.offline') {
         try {
-            const { broadcaster_user_name } = event;
-            const login = String(broadcaster_user_name).toLowerCase();
+            const login = eventLogin(event);
+            if (!login) {
+                logger.warn({ event }, '[EventSub] stream.offline missing broadcaster login');
+                return;
+            }
+            // Same gate as every other handler: a deactivated channel's stale
+            // subscription must not touch state or post a farewell.
+            const allowed = await isEventAllowed(event?.broadcaster_user_id, login);
+            if (!allowed) {
+                logger.warn(`[EventSub] ${login} is not on the allow-list or not active. Ignoring stream.offline event.`);
+                return;
+            }
             logger.info(`🔌 ${login} went offline.`);
 
             // Notify Lifecycle Manager for stream tracking
@@ -443,9 +471,9 @@ export async function processNotification(notification) {
     // --- Celebrations: follows (no username), subscriptions (no username), raids (raider username allowed) ---
     if (subscription.type === 'channel.follow') {
         try {
-            const channelName = event?.broadcaster_user_name || null;
+            const channelName = eventLogin(event);
             if (!channelName) {
-                logger.warn({ event }, '[EventSub] channel.follow missing broadcaster name');
+                logger.warn({ event }, '[EventSub] channel.follow missing broadcaster login');
                 return;
             }
             const broadcasterId = event?.broadcaster_user_id;
@@ -459,9 +487,9 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'channel.subscribe') {
         try {
-            const channelName = event?.broadcaster_user_name || null;
+            const channelName = eventLogin(event);
             if (!channelName) {
-                logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster name');
+                logger.warn({ event }, '[EventSub] channel.subscribe missing broadcaster login');
                 return;
             }
             // Skip gift subs — they are handled in bulk by channel.subscription.gift
@@ -480,9 +508,9 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'channel.subscription.gift') {
         try {
-            const channelName = event?.broadcaster_user_name || null;
+            const channelName = eventLogin(event);
             if (!channelName) {
-                logger.warn({ event }, '[EventSub] channel.subscription.gift missing broadcaster name');
+                logger.warn({ event }, '[EventSub] channel.subscription.gift missing broadcaster login');
                 return;
             }
             const broadcasterId = event?.broadcaster_user_id;
@@ -506,18 +534,19 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'channel.raid') {
         try {
-            const toName = event?.to_broadcaster_user_name || null;
+            const toLogin = eventLogin(event, 'to_broadcaster');
+            // The raider's display name is only shown in the chat message, so it stays.
             const fromName = event?.from_broadcaster_user_name || 'a streamer';
             const fromId = event?.from_broadcaster_user_id || null;
             const viewers = event?.viewers || 0;
-            if (!toName) {
-                logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_name');
+            if (!toLogin) {
+                logger.warn({ event }, '[EventSub] channel.raid missing to_broadcaster_user_login');
                 return;
             }
             const toBroadcasterId = event?.to_broadcaster_user_id;
-            const allowed = await isEventAllowed(toBroadcasterId, toName?.toLowerCase());
+            const allowed = await isEventAllowed(toBroadcasterId, toLogin);
             if (!allowed) return;
-            await notifyRaid(toName.toLowerCase(), fromName, viewers, fromId);
+            await notifyRaid(toLogin, fromName, viewers, fromId);
         } catch (error) {
             logger.error({ err: error }, '[EventSub] Error handling channel.raid');
         }
@@ -525,9 +554,9 @@ export async function processNotification(notification) {
 
     if (subscription.type === 'channel.ad_break.begin') {
         try {
-            const channelName = event?.broadcaster_user_name || event?.broadcaster_user_login || null;
+            const channelName = eventLogin(event);
             if (!channelName) {
-                logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster name');
+                logger.warn({ event }, '[EventSub] channel.ad_break.begin missing broadcaster login');
                 return;
             }
             const broadcasterId = event?.broadcaster_user_id;

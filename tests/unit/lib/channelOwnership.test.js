@@ -282,6 +282,42 @@ describe('channelOwnership', () => {
         expect((await b.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName)).owned).toBe(true);
     });
 
+    test('no claim succeeds once shutdown has begun', async () => {
+        await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        const stopping = a.stopChannelOwnership();
+        // A webhook still being processed tries to claim a channel mid-shutdown.
+        const late = await a.claimChannel(OTHER.broadcasterId, OTHER.channelName);
+        await stopping;
+
+        expect(late).toEqual({ owned: false, ownerId: null });
+        expect(mockDb.current._read('channelLeases/111')).toBeUndefined();
+        expect(mockDb.current._read('channelLeases/222')).toBeUndefined();
+    });
+
+    test('shutdown waits for a claim already in flight, then releases what it claimed', async () => {
+        await a.startChannelOwnership({ getCandidates: () => [], isChannelLive: () => true });
+        // Hold the next transaction so the sweep is mid-claim when shutdown starts.
+        const realTransaction = mockDb.current.runTransaction;
+        let releaseHeld;
+        const held = new Promise(resolve => { releaseHeld = resolve; });
+        let first = true;
+        mockDb.current.runTransaction = jest.fn(async (fn) => {
+            if (first) { first = false; await held; }
+            return realTransaction(fn);
+        });
+
+        const sweeping = a._sweep();
+        await new Promise(resolve => setImmediate(resolve));
+        // A claim for this channel is in flight when shutdown starts.
+        const inFlightClaim = a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        const stopping = a.stopChannelOwnership();
+        releaseHeld();
+        await Promise.all([sweeping, inFlightClaim, stopping]);
+
+        expect(mockDb.current._read('channelLeases/111')).toBeUndefined();
+        expect(a.getOwnedChannelNames()).toEqual([]);
+    });
+
     test('release never deletes a lease another instance now holds', async () => {
         await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
         mockDb.current._seed('channelLeases/111', {

@@ -58,6 +58,10 @@ const changeListeners = new Set();
 
 let intervalId = null;
 let sweepInProgress = false;
+let currentSweep = null;
+// Set once shutdown begins: no new claims, so nothing can re-acquire a lease
+// after stopChannelOwnership() has released it and the process exits holding it.
+let stopping = false;
 let options = { getCandidates: () => [], isChannelLive: () => false };
 let readyResolve;
 let readyPromise = new Promise(resolve => { readyResolve = resolve; });
@@ -239,6 +243,7 @@ export function getKnownPeerOwner(broadcasterId) {
 export async function claimChannel(broadcasterId, channelName) {
     const id = String(broadcasterId);
     if (!isOwnershipEnabled()) return { owned: true, ownerId: instanceId };
+    if (stopping) return { owned: false, ownerId: null };
     if (inFlight.has(id)) return inFlight.get(id);
     const promise = runAcquire(id, channelName).finally(() => inFlight.delete(id));
     inFlight.set(id, promise);
@@ -323,8 +328,13 @@ async function countLiveInstances() {
  * live channels that nobody holds (their owner died), up to a fair share so
  * that simultaneous instances spread the channels between them.
  */
-async function sweep() {
-    if (sweepInProgress) return;
+function sweep() {
+    if (sweepInProgress || stopping) return currentSweep || Promise.resolve();
+    currentSweep = runSweep().finally(() => { currentSweep = null; });
+    return currentSweep;
+}
+
+async function runSweep() {
     sweepInProgress = true;
     try {
         try {
@@ -439,6 +449,10 @@ export async function stopChannelOwnership() {
         intervalId = null;
     }
     if (!isOwnershipEnabled()) return;
+    stopping = true;
+    // A sweep or a webhook's claim already under way could commit a lease after
+    // the release below. Let them finish first; claims started from now on are refused.
+    await Promise.allSettled([currentSweep, ...inFlight.values()].filter(Boolean));
     await Promise.allSettled([...owned.keys()].map(id => releaseChannel(id, 'shutdown')));
     try {
         await getFirestore().collection(INSTANCES_COLLECTION).doc(instanceId).delete();
@@ -473,6 +487,8 @@ export function _reset() {
     peerLeases.clear();
     changeListeners.clear();
     sweepInProgress = false;
+    currentSweep = null;
+    stopping = false;
     options = { getCandidates: () => [], isChannelLive: () => false };
     isReady = false;
     readyPromise = new Promise(resolve => { readyResolve = resolve; });

@@ -3,7 +3,15 @@ import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from 
 import config from '../../../../src/config/index.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 import { isChannelActive } from '../../../../src/components/twitch/channelManager.js';
-import { notifySubscription, notifyGiftSubs, notifyAdBreak } from '../../../../src/components/autoChat/autoChatManager.js';
+import {
+    notifySubscription,
+    notifyGiftSubs,
+    notifyAdBreak,
+    notifyFollow,
+    notifyRaid,
+    notifyStreamOnline,
+    notifyStreamOffline,
+} from '../../../../src/components/autoChat/autoChatManager.js';
 
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -177,7 +185,8 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
                 type: 'channel.subscribe'
             },
             event: {
-                broadcaster_user_name: 'testchannel',
+                broadcaster_user_name: 'TestChannel',
+                broadcaster_user_login: 'testchannel',
                 broadcaster_user_id: '12345',
                 is_gift: false
             }
@@ -204,7 +213,8 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
                 type: 'channel.subscribe'
             },
             event: {
-                broadcaster_user_name: 'testchannel',
+                broadcaster_user_name: 'TestChannel',
+                broadcaster_user_login: 'testchannel',
                 broadcaster_user_id: '12345',
                 is_gift: true
             }
@@ -231,7 +241,8 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
                 type: 'channel.subscription.gift'
             },
             event: {
-                broadcaster_user_name: 'testchannel',
+                broadcaster_user_name: 'TestChannel',
+                broadcaster_user_login: 'testchannel',
                 broadcaster_user_id: '12345',
                 total: 5,
                 is_anonymous: false,
@@ -260,7 +271,8 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
                 type: 'channel.subscription.gift'
             },
             event: {
-                broadcaster_user_name: 'testchannel',
+                broadcaster_user_name: 'TestChannel',
+                broadcaster_user_login: 'testchannel',
                 broadcaster_user_id: '12345',
                 total: 3,
                 is_anonymous: true,
@@ -272,5 +284,81 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
 
         expect(mockRes.writeHead).toHaveBeenCalledWith(200);
         expect(notifyGiftSubs).toHaveBeenCalledWith('testchannel', 3, null, null);
+    });
+});
+
+describe('EventSub channel identity and gating', () => {
+    // A broadcaster whose display name is localized: the login is what every
+    // lookup keys on, the display name matches nothing.
+    const LOGIN = 'sakuranight';
+    const DISPLAY = 'さくらナイト';
+    let mockRes;
+    let mockLifecycle;
+    let oldBypass;
+    let counter = 0;
+
+    const send = (type, event) => eventSubHandler({
+        headers: {
+            'twitch-eventsub-message-type': 'notification',
+            'twitch-eventsub-message-id': `identity-${++counter}`,
+            'twitch-eventsub-message-timestamp': new Date().toISOString(),
+        },
+    }, mockRes, Buffer.from(JSON.stringify({ subscription: { type }, event })));
+
+    const broadcaster = { broadcaster_user_id: '777', broadcaster_user_login: LOGIN, broadcaster_user_name: DISPLAY };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        oldBypass = config.twitch.eventSubBypass;
+        config.twitch.eventSubBypass = true;
+        markEventSubReady();
+        mockRes = { writeHead: jest.fn().mockReturnThis(), end: jest.fn().mockReturnThis() };
+        mockLifecycle = { onStreamStatusChange: jest.fn() };
+        LifecycleManager.get.mockReturnValue(mockLifecycle);
+        isChannelActive.mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+        config.twitch.eventSubBypass = oldBypass;
+    });
+
+    test.each([
+        ['channel.follow', broadcaster, () => expect(notifyFollow).toHaveBeenCalledWith(LOGIN)],
+        ['channel.subscribe', { ...broadcaster, is_gift: false }, () => expect(notifySubscription).toHaveBeenCalledWith(LOGIN)],
+        ['channel.subscription.gift', { ...broadcaster, total: 2, is_anonymous: true },
+            () => expect(notifyGiftSubs).toHaveBeenCalledWith(LOGIN, 2, null, null)],
+        ['channel.ad_break.begin', { ...broadcaster, is_automatic: false, duration_seconds: 30 },
+            () => expect(notifyAdBreak).toHaveBeenCalledWith(LOGIN, expect.any(Object))],
+        ['stream.online', broadcaster, () => {
+            expect(mockLifecycle.onStreamStatusChange).toHaveBeenCalledWith(LOGIN, true);
+            expect(notifyStreamOnline).toHaveBeenCalledWith(LOGIN);
+        }],
+    ])('%s uses the login, not a localized display name', async (type, event, check) => {
+        await send(type, event);
+        check();
+        expect(isChannelActive).toHaveBeenCalledWith('777');
+    });
+
+    test('channel.raid uses the raided channel\'s login', async () => {
+        await send('channel.raid', {
+            from_broadcaster_user_id: '555',
+            from_broadcaster_user_login: 'raider',
+            from_broadcaster_user_name: 'Raider',
+            to_broadcaster_user_id: '777',
+            to_broadcaster_user_login: LOGIN,
+            to_broadcaster_user_name: DISPLAY,
+            viewers: 40,
+        });
+
+        expect(notifyRaid).toHaveBeenCalledWith(LOGIN, 'Raider', 40, '555');
+    });
+
+    test('stream.offline for a channel the bot is off for changes nothing and says nothing', async () => {
+        isChannelActive.mockResolvedValue(false);
+
+        await send('stream.offline', broadcaster);
+
+        expect(mockLifecycle.onStreamStatusChange).not.toHaveBeenCalled();
+        expect(notifyStreamOffline).not.toHaveBeenCalled();
     });
 });
