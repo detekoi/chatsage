@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { RiddleSchema, LocalizedRiddleSchema, RiddleVerificationSchema } from '../llm/schemaUtils.js';
 
@@ -152,6 +153,7 @@ Return JSON matching the schema.${languageDirective}`;
 
         const { parsed: args, searchUsed: groundingSearchUsed } = await withLlmCaller('riddle', () => generateStructuredJson({
             prompt,
+            systemInstruction: buildGameSystemInstruction(channelName),
             schema: activeSchema,
             schemaName: 'riddle',
             temperature: 0.75,

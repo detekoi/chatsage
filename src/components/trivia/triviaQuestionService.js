@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { getContextManager } from '../context/contextManager.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
+import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerificationSchema } from '../llm/schemaUtils.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
@@ -28,7 +29,7 @@ function getGameFromContext(channelName) {
  * @param {string} topic
  * @param {string} difficulty
  * @param {string[]} excludedQuestions - Array of question texts to avoid regenerating.
- * @param {string|null} channelName
+ * @param {string|null} channelName - Also selects the persona the question is voiced in.
  * @param {string[]} excludedAnswers - Array of answer strings to avoid regenerating.
  * @param {string|null} [language=null] - Optional target language for native generation.
  * @returns {Promise<object|null>}
@@ -85,6 +86,7 @@ Only use web search if the question requires very recent or obscure facts that m
 
         const { parsed, searchUsed: groundingSearchUsed } = await withLlmCaller('trivia', () => generateStructuredJson({
             prompt,
+            systemInstruction: buildGameSystemInstruction(channelName),
             schema: activeSchema,
             schemaName: 'trivia_question',
             temperature: 0.7,
