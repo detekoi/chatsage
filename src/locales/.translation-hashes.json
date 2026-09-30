@@ -376,7 +376,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "fr": {
     "common.timeString": "af55bd7822fd103b",
@@ -755,7 +762,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "de": {
     "common.timeString": "af55bd7822fd103b",
@@ -1134,7 +1148,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "it": {
     "common.timeString": "af55bd7822fd103b",
@@ -1513,7 +1534,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "pt": {
     "common.timeString": "af55bd7822fd103b",
@@ -1892,7 +1920,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "ja": {
     "common.timeString": "af55bd7822fd103b",
@@ -2271,7 +2306,14 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   },
   "ru": {
     "common.timeString": "af55bd7822fd103b",
@@ -2650,6 +2692,13 @@
     "llm.error.Unavailable": "397190189c2669de",
     "llm.error.Generic": "989bac335ce50edb",
     "usage.auto.Help": "73d4d4f0a463370f",
-    "cmd.help.CommandList": "f94d8d93227d3d35"
+    "cmd.help.CommandList": "f94d8d93227d3d35",
+    "trivia.noLeaderboard": "5743ff0aa88ccf9f",
+    "trivia.leaderboard": "4afd19bcdcce5b95",
+    "trivia.leaderboardEntry": "d33b299089ce1090",
+    "geo.noLeaderboard": "6a2812373507d242",
+    "geo.leaderboard": "55d4939eefa3ae4d",
+    "geo.leaderboardEntry": "73234cface126a1b",
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
   }
 }

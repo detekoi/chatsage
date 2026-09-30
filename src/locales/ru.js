@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 Итоговый счет: {list}",
         "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
         "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру.",
-        "answerWas": "{roundPrefix}Правильный ответ: {answer}"
+        "answerWas": "{roundPrefix}Правильный ответ: {answer}",
+        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по викторине!",
+        "leaderboard": "🏆 Чемпионы викторины в #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {correct} верно)"
     },
     "riddle": {
         "start": "🤔 Начинаем {roundText} загадок! {topicText} У вас есть {questionTimeSeconds} сек., чтобы ответить. Пишите варианты в чат!",
@@ -91,7 +94,10 @@ export default {
         "NoScoresSession": "🏁 Игра окончена. В этой сессии никто не набрал очков.",
         "LeaderboardFetchFailed": "Не удалось загрузить общую таблицу лидеров канала.",
         "NoLocationEndingGame": "⚠️ Ошибка: не удалось найти подходящую новую локацию для раунда {currentRound}. Завершаем игру.",
-        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру."
+        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру.",
+        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по Geo-Game!",
+        "leaderboard": "🏆 Лучшие игроки Geo-Game в #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {wins} побед)"
     },
     "cmd": {
         "ask": {
@@ -202,6 +208,9 @@ export default {
             "GeoGameGeoRegion": "Гео-игра: !geo [регион] [раунды] (реальный мир), !geo game [название] [раунды] (игра), !geo stop (модеры/создатель), !geo config <параметры...> (модеры), !geo resetconfig (модеры), !geo leaderboard, !geo clearleaderboard (модеры), !geo report <причина...>, !geo help",
             "UnknownCommandFormatOr": "Неизвестный формат команды или лишние аргументы. Используйте !geo help."
         },
+        "help": {
+            "CommandList": "Список моих команд можно найти здесь: {url}"
+        },
         "memory": {
             "UsageRemember": "Использование: !remember <факт>. Пример: !remember gary = резиновая уточка на столе",
             "Remembered": "Понял, запомню.",
@@ -290,7 +299,8 @@ export default {
             "TimerDisabled": "Таймер \"{timerName}\" выключен.",
             "LinesCleared": "Таймер \"{timerName}\" больше не требует активности в чате для срабатывания.",
             "LinesSet": "Таймер \"{timerName}\" теперь требует {minChatLines} строк чата между срабатываниями.",
-            "ErrorAddingTimer": "Ошибка при добавлении таймера. Попробуйте позже."
+            "ErrorAddingTimer": "Ошибка при добавлении таймера. Попробуйте позже.",
+            "MaxTimersReached": "В канале {channelName} уже максимальное количество таймеров: {max}"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Использование: !translate <язык> [пользователь] | !translate stop [пользователь|all]",
@@ -311,9 +321,6 @@ export default {
             "TranslationAlreadyOff": "Перевод уже был выключен.",
             "StoppedTranslationFor": "Перевод для {user} остановлен.",
             "TranslationAlreadyOffFor": "Перевод для {user} уже был выключен."
-        },
-        "help": {
-            "CommandList": "Список моих команд можно найти здесь: {url}"
         }
     },
     "result": {

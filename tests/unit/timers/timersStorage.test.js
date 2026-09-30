@@ -161,4 +161,10 @@ describe('addTimer', () => {
             .rejects.toThrow(TimersStorageError);
         expect(mockDocRef.set).not.toHaveBeenCalled();
     });
+
+    test('tags the timer-limit error with a code so the handler can localize it', async () => {
+        timerCount = MAX_TIMERS_PER_CHANNEL;
+        await expect(addTimer('chan', 'promo', 'Hello!', 'mod'))
+            .rejects.toMatchObject({ code: 'MAX_TIMERS', cause: undefined });
+    });
 });

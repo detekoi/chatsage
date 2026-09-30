@@ -152,3 +152,30 @@ export function formatGameSessionScoresMessage(gameSessionScores, lang = null) {
     return t('geo.sessionScores', { list: listItems.join(', ') }, lang)
         ?? `Top Players: ${listItems.join(', ')}`;
 }
+
+/**
+ * Formats the channel's overall leaderboard, used by `!geo leaderboard` and the end-of-game recap.
+ * @param {Array<{id: string, data?: object}>} leaderboardData
+ * @param {string} channelName
+ * @param {string|null} [lang=null]
+ * @returns {string}
+ */
+export function formatLeaderboardMessage(leaderboardData, channelName, lang = null) {
+    if (!leaderboardData || leaderboardData.length === 0) {
+        return t('geo.noLeaderboard', { channelName }, lang)
+            ?? `No Geo-Game stats found for this channel (${channelName}) yet!`;
+    }
+    const topPlayers = [...leaderboardData]
+        .sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0))
+        .slice(0, 5);
+    const listItems = topPlayers.map((player, index) => {
+        const rank = index + 1;
+        const name = player.data?.displayName || player.id;
+        const points = player.data?.channelPoints || 0;
+        const wins = player.data?.channelSuccesses || 0;
+        return t('geo.leaderboardEntry', { rank, name, points, wins }, lang)
+            ?? `${rank}. ${name} (${points} pts, ${wins} wins)`;
+    });
+    return t('geo.leaderboard', { channelName, list: listItems.join(', ') }, lang)
+        ?? `🏆 Geo-Game Top Players in #${channelName}: ${listItems.join(', ')}`;
+}

@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 Endstand: {list}",
         "NoQuestionEndingGame": "⚠️ Fehler: Frage für Runde {currentRound} konnte nicht generiert werden. Spiel wird beendet.",
         "InvalidQuestionEndingGame": "⚠️ Fehler: Generierte Frage war ungültig. Spiel wird beendet.",
-        "answerWas": "{roundPrefix}Die Antwort war: {answer}"
+        "answerWas": "{roundPrefix}Die Antwort war: {answer}",
+        "noLeaderboard": "Für diesen Kanal ({channelName}) gibt es noch keine Trivia-Statistiken!",
+        "leaderboard": "🏆 Trivia-Champions in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {correct} richtig)"
     },
     "riddle": {
         "start": "🤔 Starte {roundText} Rätsel! {topicText} Ihr habt {questionTimeSeconds} Sekunden zum Antworten. Schreibt eure Tipps in den Chat!",
@@ -91,7 +94,10 @@ export default {
         "NoScoresSession": "🏁 Spiel beendet. In dieser Session wurden keine Punkte erzielt.",
         "LeaderboardFetchFailed": "Die Gesamt-Rangliste des Kanals konnte nicht abgerufen werden.",
         "NoLocationEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein passender neuer Ort gefunden werden. Spiel wird beendet.",
-        "NoClueEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein Hinweis generiert werden. Spiel wird beendet."
+        "NoClueEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein Hinweis generiert werden. Spiel wird beendet.",
+        "noLeaderboard": "Für diesen Kanal ({channelName}) gibt es noch keine Geo-Game-Statistiken!",
+        "leaderboard": "🏆 Geo-Game-Topspieler in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {wins} Siege)"
     },
     "cmd": {
         "ask": {
@@ -202,6 +208,9 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [Region] [Runden] (Realwelt starten), !geo game [Titel] [Runden] (Spiel starten), !geo stop (Mods/Starter), !geo config <Optionen...> (Mods), !geo resetconfig (Mods), !geo leaderboard, !geo clearleaderboard (Mods), !geo report <Grund...>, !geo help",
             "UnknownCommandFormatOr": "Unbekanntes Befehlsformat oder zusätzliche Argumente angegeben. Nutze !geo help."
         },
+        "help": {
+            "CommandList": "Hier findest du meine Befehlsliste: {url}"
+        },
         "memory": {
             "UsageRemember": "Verwendung: !remember <Fakt>. Beispiel: !remember Gary = die Quietscheente auf dem Schreibtisch",
             "Remembered": "Alles klar, ich merke mir das.",
@@ -290,7 +299,8 @@ export default {
             "TimerDisabled": "Timer „{timerName}“ wurde deaktiviert.",
             "LinesCleared": "Timer „{timerName}“ benötigt keine Chat-Aktivität mehr, um auszulösen.",
             "LinesSet": "Timer „{timerName}“ benötigt nun {minChatLines} Chat-Zeilen zwischen den Auslösungen.",
-            "ErrorAddingTimer": "Fehler beim Hinzufügen des Timers. Bitte versuche es später erneut."
+            "ErrorAddingTimer": "Fehler beim Hinzufügen des Timers. Bitte versuche es später erneut.",
+            "MaxTimersReached": "Der Kanal {channelName} hat bereits das Maximum von {max} Timern erreicht"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Verwendung: !translate <sprache> [user] | !translate stop [user|all]",
@@ -311,9 +321,6 @@ export default {
             "TranslationAlreadyOff": "Übersetzung war bereits ausgeschaltet.",
             "StoppedTranslationFor": "Übersetzung für {user} gestoppt.",
             "TranslationAlreadyOffFor": "Übersetzung für {user} war bereits ausgeschaltet."
-        },
-        "help": {
-            "CommandList": "Hier findest du meine Befehlsliste: {url}"
         }
     },
     "result": {

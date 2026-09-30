@@ -10,13 +10,13 @@ import {
     TimersStorageError,
     sanitizeTimerName,
     RESERVED_TIMER_NAMES,
+    MAX_TIMERS_PER_CHANNEL,
     MIN_INTERVAL_MINUTES,
     MAX_INTERVAL_MINUTES,
     MAX_MIN_CHAT_LINES,
     MAX_RESPONSE_LENGTH,
     DEFAULT_MIN_CHAT_LINES,
 } from '../../timers/timersStorage.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
@@ -146,9 +146,9 @@ async function _handleAdd(channel, channelName, timerName, responseArgs, usernam
     } catch (error) {
         logger.error({ err: error, channel: channelName, timer: timerName },
             '[TimerHandler] Error adding timer');
-        // A storage error carries its own message; otherwise use the catalogued generic one.
-        if (error instanceof TimersStorageError && !error.cause) {
-            await enqueueMessage(channel, error.message);
+        if (error instanceof TimersStorageError && error.code === 'MAX_TIMERS') {
+            await sendLocalized(channel, 'cmd.timer.MaxTimersReached', { channelName, max: MAX_TIMERS_PER_CHANNEL },
+                `Channel ${channelName} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`);
         } else {
             await sendLocalized(channel, 'cmd.timer.ErrorAddingTimer', {},
                 'Error adding timer. Please try again later.');

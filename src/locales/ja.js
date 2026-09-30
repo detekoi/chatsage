@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 最終スコア: {list}",
         "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
         "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。",
-        "answerWas": "{roundPrefix}正解は: {answer}"
+        "answerWas": "{roundPrefix}正解は: {answer}",
+        "noLeaderboard": "このチャンネル ({channelName}) のトリビア記録はまだありません！",
+        "leaderboard": "🏆 #{channelName} のトリビアチャンピオン: {list}",
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 正解数:{correct})"
     },
     "riddle": {
         "start": "🤔 なぞなぞ{roundText}をスタート！ {topicText} 制限時間は{questionTimeSeconds}秒。チャットで回答してね！",
@@ -91,7 +94,10 @@ export default {
         "NoScoresSession": "🏁 ゲーム終了。このセッションではスコアが記録されませんでした。",
         "LeaderboardFetchFailed": "チャンネル全体のリーダーボードを取得できませんでした。",
         "NoLocationEndingGame": "⚠️ エラー: ラウンド{currentRound}に適した新しい場所が見つかりませんでした。ゲームを終了します。",
-        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。"
+        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。",
+        "noLeaderboard": "このチャンネル ({channelName}) のGeo-Game記録はまだありません！",
+        "leaderboard": "🏆 #{channelName} のGeo-Gameトッププレイヤー: {list}",
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 勝利数:{wins})"
     },
     "cmd": {
         "ask": {
@@ -202,6 +208,9 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [地域] [ラウンド数] (現実版開始), !geo game [タイトル] [ラウンド数] (ゲーム版開始), !geo stop (モデレーター/開始者), !geo config <設定...> (モデレーター), !geo resetconfig (モデレーター), !geo leaderboard, !geo clearleaderboard (モデレーター), !geo report <理由...>, !geo help",
             "UnknownCommandFormatOr": "コマンドの形式が無効か、余分な引数があります。!geo help を使用してください。"
         },
+        "help": {
+            "CommandList": "コマンド一覧はこちらでご覧いただけます: {url}"
+        },
         "memory": {
             "UsageRemember": "使い方: !remember <覚える内容>。例: !remember ゲイリー = デスクの上のラバーダック",
             "Remembered": "了解、覚えておくね。",
@@ -290,7 +299,8 @@ export default {
             "TimerDisabled": "タイマー「{timerName}」を無効にしました。",
             "LinesCleared": "タイマー \"{timerName}\" の実行にチャットアクティビティが不要になりました。",
             "LinesSet": "タイマー \"{timerName}\" の実行には {minChatLines} 行のチャットが必要になりました。",
-            "ErrorAddingTimer": "タイマーの追加に失敗しました。後でもう一度お試しください。"
+            "ErrorAddingTimer": "タイマーの追加に失敗しました。後でもう一度お試しください。",
+            "MaxTimersReached": "チャンネル {channelName} のタイマーはすでに上限の {max} 個に達しています"
         },
         "translate": {
             "UsageTranslateLanguageUser": "使用法: !translate <言語> [ユーザー] | !translate stop [ユーザー|all]",
@@ -311,9 +321,6 @@ export default {
             "TranslationAlreadyOff": "翻訳はすでにオフになっています。",
             "StoppedTranslationFor": "{user} の翻訳を停止しました。",
             "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
-        },
-        "help": {
-            "CommandList": "コマンド一覧はこちらでご覧いただけます: {url}"
         }
     },
     "result": {

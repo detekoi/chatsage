@@ -9,6 +9,33 @@ import { t } from '../../lib/i18n.js';
 // their .length before summarizing (see triviaGameManager._endRound).
 
 /**
+ * Formats the channel's overall leaderboard, used by `!trivia leaderboard` and the end-of-game recap.
+ * @param {Array<{id: string, data?: object}>} leaderboardData
+ * @param {string} channelName
+ * @param {string|null} [lang=null]
+ * @returns {string}
+ */
+export function formatLeaderboardMessage(leaderboardData, channelName, lang = null) {
+    if (!leaderboardData || leaderboardData.length === 0) {
+        return t('trivia.noLeaderboard', { channelName }, lang)
+            ?? `No Trivia stats found for this channel (${channelName}) yet!`;
+    }
+    const topPlayers = [...leaderboardData]
+        .sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0))
+        .slice(0, 5);
+    const listItems = topPlayers.map((player, index) => {
+        const rank = index + 1;
+        const name = player.data?.displayName || player.id;
+        const points = player.data?.channelPoints || 0;
+        const correct = player.data?.channelSuccesses || 0;
+        return t('trivia.leaderboardEntry', { rank, name, points, correct }, lang)
+            ?? `${rank}. ${name} (${points} pts, ${correct} correct)`;
+    });
+    return t('trivia.leaderboard', { channelName, list: listItems.join(', ') }, lang)
+        ?? `🏆 Trivia Champions in #${channelName}: ${listItems.join(', ')}`;
+}
+
+/**
  * Formats the "a round" / "N rounds" fragment. Kept as its own key so the surrounding sentence
  * is not left with an English fragment spliced into it.
  * @param {number} totalRounds

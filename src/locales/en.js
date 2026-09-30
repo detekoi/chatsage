@@ -31,6 +31,9 @@ export default {
         },
         "gameStoppedScores": "🏁 Game stopped. Final Scores: {list}",
         "finalScores": "🏁 Final Scores: {list}",
+        "noLeaderboard": "No Trivia stats found for this channel ({channelName}) yet!",
+        "leaderboard": "🏆 Trivia Champions in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {correct} correct)",
         "NoQuestionEndingGame": "⚠️ Error: Could not generate a question for round {currentRound}. Ending the game.",
         "InvalidQuestionEndingGame": "⚠️ Error: Generated question was invalid. Ending the game.",
         "answerWas": "{roundPrefix}The answer was: {answer}"
@@ -88,6 +91,9 @@ export default {
         },
         "roundError": "An error occurred revealing the answer for round {currentRound}.",
         "roundEnded": "The round has ended.",
+        "noLeaderboard": "No Geo-Game stats found for this channel ({channelName}) yet!",
+        "leaderboard": "🏆 Geo-Game Top Players in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {wins} wins)",
         "NoScoresSession": "🏁 Game finished. No scores recorded in this session.",
         "LeaderboardFetchFailed": "Could not fetch the overall channel leaderboard.",
         "NoLocationEndingGame": "⚠️ Error: Could not find a suitable new location for round {currentRound}. Ending the game.",
@@ -293,7 +299,8 @@ export default {
             "TimerDisabled": "Timer \"{timerName}\" has been disabled.",
             "LinesCleared": "Timer \"{timerName}\" no longer requires chat activity to fire.",
             "LinesSet": "Timer \"{timerName}\" now requires {minChatLines} chat lines between fires.",
-            "ErrorAddingTimer": "Error adding timer. Please try again later."
+            "ErrorAddingTimer": "Error adding timer. Please try again later.",
+            "MaxTimersReached": "Channel {channelName} already has the maximum of {max} timers"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Usage: !translate <language> [user] | !translate stop [user|all]",

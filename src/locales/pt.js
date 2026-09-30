@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 Pontuação final: {list}",
         "NoQuestionEndingGame": "⚠️ Erro: Não foi possível gerar uma pergunta para a rodada {currentRound}. Encerrando o jogo.",
         "InvalidQuestionEndingGame": "⚠️ Erro: A pergunta gerada era inválida. Encerrando o jogo.",
-        "answerWas": "{roundPrefix}A resposta era: {answer}"
+        "answerWas": "{roundPrefix}A resposta era: {answer}",
+        "noLeaderboard": "Nenhuma estatística de Trivia encontrada para este canal ({channelName}) ainda!",
+        "leaderboard": "🏆 Campeões de Trivia em #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {correct} corretas)"
     },
     "riddle": {
         "start": "🤔 Iniciando {roundText} de Charadas! {topicText} Você tem {questionTimeSeconds} segundos para responder. Digite seus palpites no chat!",
@@ -91,7 +94,10 @@ export default {
         "NoScoresSession": "🏁 Fim de jogo. Nenhuma pontuação registrada nesta sessão.",
         "LeaderboardFetchFailed": "Não foi possível obter o placar geral do canal.",
         "NoLocationEndingGame": "⚠️ Erro: Não foi possível encontrar um novo local adequado para a rodada {currentRound}. Encerrando o jogo.",
-        "NoClueEndingGame": "⚠️ Erro: Não foi possível gerar uma dica para a rodada {currentRound}. Encerrando o jogo."
+        "NoClueEndingGame": "⚠️ Erro: Não foi possível gerar uma dica para a rodada {currentRound}. Encerrando o jogo.",
+        "noLeaderboard": "Nenhuma estatística de Geo-Game encontrada para este canal ({channelName}) ainda!",
+        "leaderboard": "🏆 Melhores jogadores de Geo-Game em #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {wins} vitórias)"
     },
     "cmd": {
         "ask": {
@@ -202,6 +208,9 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [região] [rodadas] (iniciar real), !geo game [Título] [rodadas] (iniciar jogo), !geo stop (mods/iniciador), !geo config <opções...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <motivo...>, !geo help",
             "UnknownCommandFormatOr": "Formato de comando desconhecido ou argumentos extras fornecidos. Use !geo help."
         },
+        "help": {
+            "CommandList": "Você pode encontrar minha lista de comandos aqui: {url}"
+        },
         "memory": {
             "UsageRemember": "Uso: !remember <fato>. Exemplo: !remember gary = o pato de borracha na mesa",
             "Remembered": "Beleza, vou me lembrar disso.",
@@ -290,7 +299,8 @@ export default {
             "TimerDisabled": "O timer \"{timerName}\" foi desativado.",
             "LinesCleared": "O timer \"{timerName}\" não precisa mais de atividade no chat para disparar.",
             "LinesSet": "O timer \"{timerName}\" agora requer {minChatLines} linhas de chat entre disparos.",
-            "ErrorAddingTimer": "Erro ao adicionar o timer. Tente novamente mais tarde."
+            "ErrorAddingTimer": "Erro ao adicionar o timer. Tente novamente mais tarde.",
+            "MaxTimersReached": "O canal {channelName} já tem o máximo de {max} timers"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Uso: !translate <idioma> [usuário] | !translate stop [usuário|all]",
@@ -311,9 +321,6 @@ export default {
             "TranslationAlreadyOff": "A tradução já estava desativada.",
             "StoppedTranslationFor": "Tradução parada para {user}.",
             "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
-        },
-        "help": {
-            "CommandList": "Você pode encontrar minha lista de comandos aqui: {url}"
         }
     },
     "result": {
