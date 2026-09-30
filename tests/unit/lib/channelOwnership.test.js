@@ -185,6 +185,67 @@ describe('channelOwnership', () => {
         expect(renewed.acquiredAt?.getTime()).toBe(acquiredAt.getTime());
     });
 
+    test('a failed claim remembers the peer owner briefly', async () => {
+        jest.useFakeTimers({ now: Date.now() });
+        await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        expect(b.getKnownPeerOwner('111')).toBeNull();
+
+        await b.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        expect(b.getKnownPeerOwner('111')).toBe(a.getInstanceId());
+
+        // Trusted for a few seconds only, so a peer that released on shutdown
+        // stops being forwarded to soon after.
+        jest.setSystemTime(Date.now() + b.PEER_CACHE_MS + 1);
+        expect(b.getKnownPeerOwner('111')).toBeNull();
+    });
+
+    test('taking a channel over forgets the cached peer', async () => {
+        await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        await b.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        await a.stopChannelOwnership();
+
+        await b.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+
+        expect(b.getKnownPeerOwner('111')).toBeNull();
+        expect(b.ownsChannel('parfaitfair')).toBe(true);
+    });
+
+    test('release deletes the lease before announcing the loss', async () => {
+        await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        let leaseAtLoss = 'not called';
+        a.onOwnershipChange(({ type }) => {
+            if (type === 'lost') leaseAtLoss = mockDb.current._read('channelLeases/111');
+        });
+
+        await a.stopChannelOwnership();
+
+        // Listeners (the inbox) close only once peers can no longer route here.
+        expect(leaseAtLoss).toBeUndefined();
+    });
+
+    test('renewals run concurrently so one slow channel cannot starve the rest', async () => {
+        await a.claimChannel(PARFAIT.broadcasterId, PARFAIT.channelName);
+        await a.claimChannel(OTHER.broadcasterId, OTHER.channelName);
+
+        const realTransaction = mockDb.current.runTransaction;
+        let releaseFirst;
+        const firstHeld = new Promise(resolve => { releaseFirst = resolve; });
+        let started = 0;
+        mockDb.current.runTransaction = jest.fn(async (fn) => {
+            started += 1;
+            if (started === 1) await firstHeld;
+            return realTransaction(fn);
+        });
+
+        const sweeping = a._sweep();
+        await new Promise(resolve => setImmediate(resolve));
+        expect(started).toBe(2);
+
+        releaseFirst();
+        await sweeping;
+        expect(a.getOwnedChannelNames().sort()).toEqual(['otherchan', 'parfaitfair']);
+    });
+
     test('an idle offline channel is released', async () => {
         jest.useFakeTimers({ now: Date.now() });
         let live = true;

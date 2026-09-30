@@ -62,6 +62,8 @@ function loadConfig() {
                 ? process.env.TWITCH_CHANNELS.split(',').map(ch => ch.trim()).filter(ch => ch)
                 : [],
             clientId: process.env.TWITCH_CLIENT_ID,
+            // Local development only: skip EventSub signature verification.
+            eventSubBypass: process.env.EVENTSUB_BYPASS === '1' || process.env.EVENTSUB_BYPASS === 'true',
             clientSecret: process.env.TWITCH_CLIENT_SECRET,
             // Bot account's user refresh token (announcements need a user token)
             // Trimmed: secrets added with a shell here-string (<<<) end in a newline

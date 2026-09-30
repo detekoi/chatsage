@@ -1,5 +1,6 @@
 // tests/unit/components/twitch/eventsub.test.js
 import { clearPhantomEventSubEntries, eventSubHandler, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
+import config from '../../../../src/config/index.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 import { isChannelActive } from '../../../../src/components/twitch/channelManager.js';
 import { notifySubscription, notifyGiftSubs, notifyAdBreak } from '../../../../src/components/autoChat/autoChatManager.js';
@@ -65,8 +66,8 @@ describe('EventSub Ad Break Routing', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        oldBypass = process.env.EVENTSUB_BYPASS;
-        process.env.EVENTSUB_BYPASS = 'true';
+        oldBypass = config.twitch.eventSubBypass;
+        config.twitch.eventSubBypass = true;
         markEventSubReady();
 
         mockRes = {
@@ -78,11 +79,7 @@ describe('EventSub Ad Break Routing', () => {
     });
 
     afterEach(() => {
-        if (oldBypass === undefined) {
-            delete process.env.EVENTSUB_BYPASS;
-        } else {
-            process.env.EVENTSUB_BYPASS = oldBypass;
-        }
+        config.twitch.eventSubBypass = oldBypass;
     });
 
     test.each([
@@ -132,13 +129,12 @@ describe('EventSub Revocation', () => {
             }
         });
 
-        const oldBypass = process.env.EVENTSUB_BYPASS;
-        process.env.EVENTSUB_BYPASS = 'true';
+        const oldBypass = config.twitch.eventSubBypass;
+        config.twitch.eventSubBypass = true;
         try {
             await eventSubHandler(req, mockRes, rawBody);
         } finally {
-            if (oldBypass === undefined) delete process.env.EVENTSUB_BYPASS;
-            else process.env.EVENTSUB_BYPASS = oldBypass;
+            config.twitch.eventSubBypass = oldBypass;
         }
 
         expect(mockRes.writeHead).toHaveBeenCalledWith(200);
@@ -151,8 +147,8 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
     let oldBypass;
 
     beforeEach(() => {
-        oldBypass = process.env.EVENTSUB_BYPASS;
-        process.env.EVENTSUB_BYPASS = 'true';
+        oldBypass = config.twitch.eventSubBypass;
+        config.twitch.eventSubBypass = true;
         markEventSubReady();
 
         mockRes = {
@@ -164,11 +160,7 @@ describe('EventSub Webhook Routing & Subscription Celebrations', () => {
     });
 
     afterEach(() => {
-        if (oldBypass === undefined) {
-            delete process.env.EVENTSUB_BYPASS;
-        } else {
-            process.env.EVENTSUB_BYPASS = oldBypass;
-        }
+        config.twitch.eventSubBypass = oldBypass;
     });
 
     test('should process standard sub event and trigger notifySubscription', async () => {

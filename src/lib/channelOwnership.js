@@ -40,6 +40,10 @@ export const RENEW_INTERVAL_MS = 10 * 1000;
 export const SAFETY_MARGIN_MS = 5 * 1000;
 export const IDLE_RELEASE_MS = 10 * 60 * 1000;
 const READY_TIMEOUT_MS = 15 * 1000;
+// How long a non-owner trusts what it last read about a peer's lease before
+// reading it again. Short, so that a peer that released on shutdown stops
+// receiving forwarded events within seconds rather than at lease expiry.
+export const PEER_CACHE_MS = 5 * 1000;
 
 const instanceId = `${config.app.revision || 'local'}-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -47,6 +51,9 @@ const instanceId = `${config.app.revision || 'local'}-${crypto.randomUUID().slic
 const owned = new Map();
 // broadcasterId -> Promise, so concurrent acquires of one channel share a transaction
 const inFlight = new Map();
+// broadcasterId -> { ownerId, trustUntilMs }: peer leases seen by a failed claim,
+// so a busy chat on a non-owner does not run a claim transaction per message.
+const peerLeases = new Map();
 const changeListeners = new Set();
 
 let intervalId = null;
@@ -155,7 +162,7 @@ async function runAcquire(broadcasterId, channelName) {
         const data = snap.exists ? snap.data() : null;
         const now = Date.now();
         if (data && data.ownerId !== instanceId && toMillis(data.expiresAt) > now) {
-            return { owned: false, ownerId: data.ownerId };
+            return { owned: false, ownerId: data.ownerId, expiresAtMs: toMillis(data.expiresAt) };
         }
         const lease = {
             ownerId: instanceId,
@@ -176,6 +183,15 @@ async function runAcquire(broadcasterId, channelName) {
         return { owned: true, ownerId: instanceId, previousOwnerId: data?.ownerId || null };
     });
 
+    if (result.owned) {
+        peerLeases.delete(broadcasterId);
+    } else {
+        peerLeases.set(broadcasterId, {
+            ownerId: result.ownerId,
+            trustUntilMs: Math.min(result.expiresAtMs - SAFETY_MARGIN_MS, Date.now() + PEER_CACHE_MS),
+        });
+    }
+
     const previous = owned.get(broadcasterId);
     if (result.owned) {
         owned.set(broadcasterId, {
@@ -194,7 +210,23 @@ async function runAcquire(broadcasterId, channelName) {
             '[ChannelOwnership] Lease taken by another instance, dropping channel');
         emit('lost', broadcasterId, channelName, 'taken');
     }
-    return result;
+    return { owned: result.owned, ownerId: result.ownerId };
+}
+
+/**
+ * The peer instance recently seen holding this channel, while that sighting
+ * is still trusted. Lets the webhook path forward without a claim transaction.
+ * @param {string} broadcasterId
+ * @returns {string|null} Owner instance ID, or null if unknown or stale.
+ */
+export function getKnownPeerOwner(broadcasterId) {
+    const peer = peerLeases.get(String(broadcasterId));
+    if (!peer) return null;
+    if (peer.trustUntilMs <= Date.now()) {
+        peerLeases.delete(String(broadcasterId));
+        return null;
+    }
+    return peer.ownerId;
 }
 
 /**
@@ -221,9 +253,9 @@ export async function claimChannel(broadcasterId, channelName) {
 async function releaseChannel(broadcasterId, reason) {
     const entry = owned.get(broadcasterId);
     if (!entry) return;
-    owned.delete(broadcasterId);
-    emit('lost', broadcasterId, entry.channelName, reason);
 
+    // Delete the lease before letting go locally. Until peers see it gone they
+    // keep forwarding here, and the inbox must still be listening to take those.
     try {
         const db = getFirestore();
         const ref = db.collection(LEASES_COLLECTION).doc(broadcasterId);
@@ -238,6 +270,11 @@ async function releaseChannel(broadcasterId, reason) {
         // The lease expires on its own; releasing early only speeds up handover.
         logger.warn({ err, broadcasterId, reason }, '[ChannelOwnership] Failed to release lease');
     }
+
+    // A concurrent release may have beaten us here.
+    if (owned.get(broadcasterId) !== entry) return;
+    owned.delete(broadcasterId);
+    emit('lost', broadcasterId, entry.channelName, reason);
 }
 
 function isLive(channelName) {
@@ -296,8 +333,11 @@ async function sweep() {
             logger.warn({ err }, '[ChannelOwnership] Heartbeat failed');
         }
 
+        // Leases are independent, so renew them concurrently: done one at a
+        // time, a slow transaction early in the list could push later channels
+        // past their deadline.
         const now = Date.now();
-        for (const [broadcasterId, entry] of [...owned]) {
+        await Promise.allSettled([...owned].map(async ([broadcasterId, entry]) => {
             // A lapsed lease may already belong to someone else. Treat it as
             // lost so any state rebuilt on re-acquire starts from Firestore.
             if (entry.deadlineMs <= now) {
@@ -305,18 +345,18 @@ async function sweep() {
                 logger.warn({ channelName: entry.channelName, broadcasterId },
                     '[ChannelOwnership] Lease lapsed before renewal');
                 emit('lost', broadcasterId, entry.channelName, 'lapsed');
-                continue;
+                return;
             }
             if (!isLive(entry.channelName) && now - entry.lastActivityMs > IDLE_RELEASE_MS) {
                 await releaseChannel(broadcasterId, 'idle');
-                continue;
+                return;
             }
             try {
                 await claimChannel(broadcasterId, entry.channelName);
             } catch (err) {
                 logger.warn({ err, broadcasterId }, '[ChannelOwnership] Lease renewal failed, will retry');
             }
-        }
+        }));
 
         const liveCandidates = options.getCandidates().filter(c => isLive(c.channelName));
         const notMine = liveCandidates.filter(c => !owned.has(c.broadcasterId));
@@ -430,6 +470,7 @@ export function _reset() {
     intervalId = null;
     owned.clear();
     inFlight.clear();
+    peerLeases.clear();
     changeListeners.clear();
     sweepInProgress = false;
     options = { getCandidates: () => [], isChannelLive: () => false };

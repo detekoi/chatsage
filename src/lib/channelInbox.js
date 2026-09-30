@@ -31,6 +31,8 @@ const LISTENER_RETRY_MS = 5 * 1000;
 
 // broadcasterId -> { unsubscribe, chain }
 const inboxes = new Map();
+// broadcasterId -> pending restart of a listener that died, cancelled by stopInbox
+const retryTimers = new Map();
 
 function eventsCollection(broadcasterId) {
     return getFirestore().collection(INBOX_COLLECTION).doc(String(broadcasterId)).collection(EVENTS_SUBCOLLECTION);
@@ -113,6 +115,11 @@ async function consume(broadcasterId, ref, handler) {
 export function startInbox(broadcasterId, handler) {
     const id = String(broadcasterId);
     if (inboxes.has(id)) return;
+    const retry = retryTimers.get(id);
+    if (retry) {
+        clearTimeout(retry);
+        retryTimers.delete(id);
+    }
 
     const entry = { chain: Promise.resolve(), unsubscribe: null };
     inboxes.set(id, entry);
@@ -134,9 +141,11 @@ export function startInbox(broadcasterId, handler) {
             if (inboxes.get(id) !== entry) return;
             inboxes.delete(id);
             const retry = setTimeout(() => {
+                retryTimers.delete(id);
                 if (ownsBroadcaster(id) && !inboxes.has(id)) startInbox(id, handler);
             }, LISTENER_RETRY_MS);
             retry.unref?.();
+            retryTimers.set(id, retry);
         });
     logger.debug({ broadcasterId: id }, '[ChannelInbox] Listening');
 }
@@ -146,6 +155,11 @@ export function startInbox(broadcasterId, handler) {
  */
 export function stopInbox(broadcasterId) {
     const id = String(broadcasterId);
+    const retry = retryTimers.get(id);
+    if (retry) {
+        clearTimeout(retry);
+        retryTimers.delete(id);
+    }
     const entry = inboxes.get(id);
     if (!entry) return;
     inboxes.delete(id);
@@ -157,7 +171,7 @@ export function stopInbox(broadcasterId) {
 }
 
 export function stopAllInboxes() {
-    for (const id of [...inboxes.keys()]) stopInbox(id);
+    for (const id of new Set([...inboxes.keys(), ...retryTimers.keys()])) stopInbox(id);
 }
 
 // Exported for testing only

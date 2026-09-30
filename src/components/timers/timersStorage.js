@@ -358,17 +358,21 @@ export async function claimTimerRun(channelName, timerName, intervalMs) {
 }
 
 /**
- * Counts a successful timer fire. lastRunAt was already written when the run
- * was claimed (claimTimerRun). Fire-and-forget — errors are logged, never thrown.
+ * Counts a successful timer fire. lastRunAt is normally written when the run
+ * is claimed (claimTimerRun); pass writeLastRunAt when that claim failed and
+ * the timer fired anyway, or the next owner would see it as overdue and post
+ * it again. Fire-and-forget — errors are logged, never thrown.
  * @param {string} channelName - The channel name.
  * @param {string} timerName - The timer name.
+ * @param {object} [options]
+ * @param {boolean} [options.writeLastRunAt=false]
  */
-export async function recordTimerRun(channelName, timerName) {
+export async function recordTimerRun(channelName, timerName, { writeLastRunAt = false } = {}) {
     const db = _getDb();
     try {
-        await _timerDocRef(db, channelName, timerName).update({
-            useCount: FieldValue.increment(1),
-        });
+        const update = { useCount: FieldValue.increment(1) };
+        if (writeLastRunAt) update.lastRunAt = FieldValue.serverTimestamp();
+        await _timerDocRef(db, channelName, timerName).update(update);
     } catch (error) {
         logger.warn({ err: error, channel: channelName, timer: timerName },
             '[TimersStorage] Error recording timer run');

@@ -186,6 +186,22 @@ describe('channelInbox', () => {
         }
     });
 
+    test('stopping during the restart delay cancels the restart', async () => {
+        jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+        try {
+            startInbox(CHANNEL_ID, jest.fn());
+            await flush();
+            mockDb.current._failListeners(new Error('UNAVAILABLE'));
+
+            stopAllInboxes();
+            await jest.advanceTimersByTimeAsync(5000);
+
+            expect(_getInboxes().has(CHANNEL_ID)).toBe(false);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test('stopInbox stops delivery', async () => {
         const handler = jest.fn(async () => {});
         startInbox(CHANNEL_ID, handler);

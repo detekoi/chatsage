@@ -2,6 +2,7 @@
 // A webhook for a channel this instance does not own is handed to the owner
 // through the channel inbox instead of being processed here.
 import { eventSubHandler, handleForwardedNotification, markEventSubReady } from '../../../../src/components/twitch/eventsub.js';
+import config from '../../../../src/config/index.js';
 import LifecycleManager from '../../../../src/services/LifecycleManager.js';
 import { isChannelActive } from '../../../../src/components/twitch/channelManager.js';
 import { notifyRaid } from '../../../../src/components/autoChat/autoChatManager.js';
@@ -10,6 +11,7 @@ import {
     isOwnershipEnabled,
     ownsBroadcaster,
     claimChannel,
+    getKnownPeerOwner,
     touchBroadcaster,
 } from '../../../../src/lib/channelOwnership.js';
 import { forwardToInbox } from '../../../../src/lib/channelInbox.js';
@@ -26,6 +28,7 @@ jest.mock('../../../../src/lib/channelOwnership.js', () => ({
     isOwnershipEnabled: jest.fn(() => true),
     ownsBroadcaster: jest.fn(() => false),
     claimChannel: jest.fn(),
+    getKnownPeerOwner: jest.fn(() => null),
     touchBroadcaster: jest.fn(),
     whenOwnershipReady: jest.fn(async () => true),
 }));
@@ -70,8 +73,8 @@ describe('EventSub channel routing', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        oldBypass = process.env.EVENTSUB_BYPASS;
-        process.env.EVENTSUB_BYPASS = 'true';
+        oldBypass = config.twitch.eventSubBypass;
+        config.twitch.eventSubBypass = true;
         markEventSubReady();
         res = { writeHead: jest.fn().mockReturnThis(), end: jest.fn().mockReturnThis() };
         LifecycleManager.get.mockReturnValue({ onStreamStatusChange: jest.fn() });
@@ -81,8 +84,7 @@ describe('EventSub channel routing', () => {
     });
 
     afterEach(() => {
-        if (oldBypass === undefined) delete process.env.EVENTSUB_BYPASS;
-        else process.env.EVENTSUB_BYPASS = oldBypass;
+        config.twitch.eventSubBypass = oldBypass;
     });
 
     test('forwards to the owner when another instance holds the channel', async () => {
@@ -99,6 +101,16 @@ describe('EventSub channel routing', () => {
             isChat: true,
             targetOwner: 'instance-a',
         });
+        expect(handleChatMessage).not.toHaveBeenCalled();
+    });
+
+    test('a peer owner seen moments ago is used without another claim transaction', async () => {
+        getKnownPeerOwner.mockReturnValueOnce('instance-a');
+
+        await eventSubHandler(request(), res, Buffer.from(chatBody()));
+
+        expect(claimChannel).not.toHaveBeenCalled();
+        expect(forwardToInbox).toHaveBeenCalledWith('111', expect.objectContaining({ targetOwner: 'instance-a' }));
         expect(handleChatMessage).not.toHaveBeenCalled();
     });
 

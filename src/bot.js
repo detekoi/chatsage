@@ -15,6 +15,8 @@ import { createHealthServer, closeHealthServer } from './server/healthServer.js'
 import { initializeAllComponents } from './initialization/initComponents.js';
 import { SECRET_MANAGER_STATUS_LOG_INTERVAL_MS, SHUTDOWN_FORCE_EXIT_TIMEOUT_MS } from './constants/botConstants.js';
 
+const LEASE_RELEASE_TIMEOUT_MS = 3000;
+
 // Add periodic Secret Manager status logging
 setInterval(() => {
     logger.debug('Secret Manager Status Check:', getSecretManagerStatus());
@@ -32,6 +34,17 @@ async function gracefulShutdown(signal) {
         shutdownTasks.push(closeHealthServer(global.healthServer));
     }
 
+    // Hand channel leases back first, while the inboxes are still listening:
+    // peers forward to this instance until they see the lease gone, and each
+    // channel's inbox is closed only once its lease is deleted. Bounded so an
+    // unreachable Firestore cannot eat Cloud Run's shutdown grace period.
+    let releaseTimeoutId;
+    await Promise.race([
+        stopChannelOwnership(),
+        new Promise(resolve => { releaseTimeoutId = setTimeout(resolve, LEASE_RELEASE_TIMEOUT_MS); }),
+    ]).catch(err => logger.error({ err }, 'Error releasing channel leases during shutdown.'));
+    clearTimeout(releaseTimeoutId);
+
     // Stop lifecycle manager (listeners, pollers, managers)
     try {
         logger.info('Stopping lifecycle manager...');
@@ -39,10 +52,6 @@ async function gracefulShutdown(signal) {
     } catch (error) {
         logger.error({ err: error }, 'Error stopping lifecycle manager during shutdown.');
     }
-
-    // Hand channel leases back so another instance takes over immediately
-    // instead of waiting for them to expire.
-    shutdownTasks.push(stopChannelOwnership());
 
     // Clean up command state manager
     try {

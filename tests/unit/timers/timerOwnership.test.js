@@ -116,13 +116,24 @@ describe('timer ownership', () => {
         expect(claimTimerRun).not.toHaveBeenCalled();
     });
 
-    test('fires anyway when the claim cannot reach Firestore', async () => {
+    test('fires anyway when the claim cannot reach Firestore, and records the run afterwards', async () => {
         addDueTimer();
         claimTimerRun.mockRejectedValue(new Error('UNAVAILABLE'));
 
         await _tick();
 
         expect(enqueueMessage).toHaveBeenCalledTimes(1);
+        // The claim never wrote lastRunAt; without this the next owner would
+        // find the timer overdue and post it again.
+        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'mobile_sub_discount', { writeLastRunAt: true });
+    });
+
+    test('a claimed run leaves lastRunAt to the claim', async () => {
+        addDueTimer();
+
+        await _tick();
+
+        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'mobile_sub_discount', { writeLastRunAt: false });
     });
 
     test('the echo of the claim\'s own lastRunAt write keeps the prefetched message', () => {

@@ -83,7 +83,7 @@ describe('timerManager tick', () => {
         await _tick();
 
         expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, 'Check out the socials!', { skipTranslation: false });
-        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'promo');
+        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'promo', { writeLastRunAt: false });
         expect(_getRuntime().get(CHANNEL).get('promo').lastRunAtMs).toBeGreaterThan(0);
     });
 
@@ -148,7 +148,7 @@ describe('timerManager tick', () => {
 
         expect(enqueueMessage).toHaveBeenCalledTimes(1);
         expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, expect.any(String), expect.any(Object));
-        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'older');
+        expect(recordTimerRun).toHaveBeenCalledWith(CHANNEL, 'older', { writeLastRunAt: false });
     });
 
     test('prompt timers call resolvePrompt with timer source and chat context', async () => {

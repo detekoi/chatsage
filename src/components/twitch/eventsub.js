@@ -17,6 +17,7 @@ import {
     isOwnershipEnabled,
     ownsBroadcaster,
     claimChannel,
+    getKnownPeerOwner,
     touchBroadcaster,
     whenOwnershipReady,
 } from '../../lib/channelOwnership.js';
@@ -156,18 +157,25 @@ async function forwardIfNotOwner(target, messageId, rawBody, isChat) {
             touchBroadcaster(broadcasterId);
             return false;
         }
-        const claim = await claimChannel(broadcasterId, channelName);
-        if (claim.owned) {
-            touchBroadcaster(broadcasterId);
-            return false;
+        // A peer seen holding the channel moments ago is trusted briefly, so
+        // busy chat on a non-owner costs one claim transaction every few
+        // seconds rather than one per message.
+        let ownerId = getKnownPeerOwner(broadcasterId);
+        if (!ownerId) {
+            const claim = await claimChannel(broadcasterId, channelName);
+            if (claim.owned) {
+                touchBroadcaster(broadcasterId);
+                return false;
+            }
+            ownerId = claim.ownerId;
         }
         await forwardToInbox(broadcasterId, {
             messageId,
             payload: rawBody.toString('utf8'),
             isChat,
-            targetOwner: claim.ownerId,
+            targetOwner: ownerId,
         });
-        logger.debug({ channelName, messageId, ownerId: claim.ownerId }, '[EventSub] Forwarded to channel owner');
+        logger.debug({ channelName, messageId, ownerId }, '[EventSub] Forwarded to channel owner');
         return true;
     } catch (err) {
         logger.warn({ err, channelName, messageId }, '[EventSub] Channel routing failed, handling locally');
@@ -220,8 +228,7 @@ export async function clearPhantomEventSubEntries(streamNames = []) {
 
 function verifySignature(req, rawBody) {
     // Allow bypassing signature verification for local development
-    const bypass = process.env.EVENTSUB_BYPASS === '1' || process.env.EVENTSUB_BYPASS === 'true';
-    if (bypass) {
+    if (config.twitch.eventSubBypass) {
         logger.warn('[DEV] EVENTSUB_BYPASS enabled - skipping signature verification');
         return true;
     }

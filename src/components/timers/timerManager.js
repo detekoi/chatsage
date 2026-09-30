@@ -189,6 +189,7 @@ async function fireTimer(channelName, timer) {
     // channel changes hands (a deploy, an instance being recycled), and this
     // is the check that guarantees a single post per run regardless.
     const intervalMs = (timer.intervalMinutes || DEFAULT_INTERVAL_MINUTES) * 60 * 1000;
+    let claimed = false;
     try {
         const claim = await claimTimerRun(channelName, timer.name, intervalMs);
         if (!claim.claimed) {
@@ -197,6 +198,7 @@ async function fireTimer(channelName, timer) {
                 '[TimerManager] Timer run already claimed elsewhere, skipping');
             return;
         }
+        claimed = true;
     } catch (err) {
         // Fail open: a Firestore hiccup should not silence timers, and with a
         // single owner per channel a duplicate here is already unlikely.
@@ -255,7 +257,8 @@ async function fireTimer(channelName, timer) {
     }
 
     await enqueueMessage(`#${channelName}`, finalOutput, { skipTranslation });
-    recordTimerRun(channelName, timer.name);
+    // An unclaimed run never wrote lastRunAt, so record it now.
+    recordTimerRun(channelName, timer.name, { writeLastRunAt: !claimed });
     logger.info(`[TimerManager] Fired timer ${timer.name} in ${channelName} (type: ${timer.type || 'text'})`);
 }
 
