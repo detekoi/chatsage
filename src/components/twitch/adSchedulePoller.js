@@ -7,6 +7,7 @@ import { getSecretValue } from '../../lib/secretManager.js';
 import { isCloudTasksEnabled, scheduleTask, cancelTask, buildTaskId } from '../../lib/cloudTasks.js';
 import { isStreamLive } from '../context/liveStatus.js';
 import { getBroadcasterIdForChannel } from '../../lib/allowList.js';
+import { ownsChannel } from '../../lib/channelOwnership.js';
 
 // How far ahead of the ad break the warning is sent.
 const PRE_ROLL_MS = 60_000;
@@ -419,6 +420,15 @@ export function startAdSchedulePoller() {
             logger.debug({ channelCount }, '[AdSchedule] Poller tick - checking channels');
 
             for (const [channelName, state] of channelStates) {
+                // Another instance polls channels it owns. Forget which ads were
+                // already scheduled here too: the in-process warning just
+                // cancelled would otherwise never be rescheduled if ownership
+                // comes back. notifyAdSoon's distributed dedup stops a double send.
+                if (!ownsChannel(channelName)) {
+                    clearTimer(channelName);
+                    notifiedAds.delete(channelName);
+                    continue;
+                }
                 // Only if live - check stream context directly
                 const isLive = !!(state.streamContext?.game && state.streamContext.game !== 'N/A' && state.streamContext.game !== null);
                 logger.debug({

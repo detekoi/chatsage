@@ -324,8 +324,42 @@ export async function removeTimer(channelName, timerName) {
     }
 }
 
+// How early, relative to its interval, a claim still counts as due. The lastRunAt
+// this process last wrote is a server timestamp taken slightly after its local
+// fire time, and fires are only evaluated once per one-minute tick.
+export const CLAIM_SLACK_MS = 60 * 1000;
+
 /**
- * Records a successful timer fire. Fire-and-forget — errors are logged, never thrown.
+ * Atomically claims one run of a timer, before anything is posted. Only one
+ * instance can claim a given run: a second claim inside the interval sees the
+ * first one's lastRunAt and is refused. Throws on Firestore errors so the
+ * caller decides whether to fail open.
+ * @param {string} channelName - The channel name.
+ * @param {string} timerName - The timer name.
+ * @param {number} intervalMs - The timer's firing interval.
+ * @returns {Promise<{claimed: boolean, lastRunAtMs: number}>} On refusal,
+ *   lastRunAtMs is the run that got there first.
+ */
+export async function claimTimerRun(channelName, timerName, intervalMs) {
+    const db = _getDb();
+    const docRef = _timerDocRef(db, channelName, timerName);
+    return db.runTransaction(async (t) => {
+        const snap = await t.get(docRef);
+        if (!snap.exists) return { claimed: false, lastRunAtMs: 0 };
+        const lastRunAt = snap.get('lastRunAt');
+        const lastRunAtMs = typeof lastRunAt?.toMillis === 'function' ? lastRunAt.toMillis() : 0;
+        const nowMs = Date.now();
+        if (lastRunAtMs && nowMs - lastRunAtMs < intervalMs - CLAIM_SLACK_MS) {
+            return { claimed: false, lastRunAtMs };
+        }
+        t.update(docRef, { lastRunAt: FieldValue.serverTimestamp() });
+        return { claimed: true, lastRunAtMs: nowMs };
+    });
+}
+
+/**
+ * Counts a successful timer fire. lastRunAt was already written when the run
+ * was claimed (claimTimerRun). Fire-and-forget — errors are logged, never thrown.
  * @param {string} channelName - The channel name.
  * @param {string} timerName - The timer name.
  */
@@ -333,7 +367,6 @@ export async function recordTimerRun(channelName, timerName) {
     const db = _getDb();
     try {
         await _timerDocRef(db, channelName, timerName).update({
-            lastRunAt: FieldValue.serverTimestamp(),
             useCount: FieldValue.increment(1),
         });
     } catch (error) {

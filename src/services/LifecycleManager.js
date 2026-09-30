@@ -10,8 +10,11 @@ import { listenForChannelChanges } from '../components/twitch/channelManager.js'
 import { onPersonaChanges } from '../components/context/personaStorage.js';
 import { onChannelLanguageChanges } from '../components/context/languageStorage.js';
 import { resetChatSession } from '../components/llm/llmClient.js';
-import { getChannelNameForBroadcasterId } from '../lib/allowList.js';
+import { getActiveChannels, getChannelNameForBroadcasterId } from '../lib/allowList.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
+import { startChannelOwnership, onOwnershipChange, getOwnedBroadcasterIds } from '../lib/channelOwnership.js';
+import { startInbox, stopInbox, stopAllInboxes } from '../lib/channelInbox.js';
+import { isStreamLive } from '../components/context/liveStatus.js';
 
 class LifecycleManager {
     constructor() {
@@ -21,6 +24,7 @@ class LifecycleManager {
         this.channelChangeListener = null;
         this.personaChangeListener = null;
         this.languageChangeListener = null;
+        this.ownershipListener = null;
         this._instance = null;
     }
 
@@ -56,6 +60,29 @@ class LifecycleManager {
                 contextManager,
                 this // Pass the lifecycle manager instance to receive stream status updates
             );
+
+            // 1b. Claim channels. Runs after the first stream poll so live
+            // channels are known, and before the managers below so their first
+            // ticks already see which channels this instance owns. An owned
+            // channel's inbox receives webhooks other instances forward to it.
+            logger.info('LifecycleManager: Starting channel ownership...');
+            const { handleForwardedNotification } = await import('../components/twitch/eventsub.js');
+            this.ownershipListener = onOwnershipChange(({ type, broadcasterId }) => {
+                if (type === 'acquired') {
+                    startInbox(broadcasterId, handleForwardedNotification);
+                } else {
+                    stopInbox(broadcasterId);
+                }
+            });
+            // A webhook that waited out the ownership-ready timeout can claim a
+            // channel before the listener above existed.
+            for (const broadcasterId of getOwnedBroadcasterIds()) {
+                startInbox(broadcasterId, handleForwardedNotification);
+            }
+            await startChannelOwnership({
+                getCandidates: getActiveChannels,
+                isChannelLive: isStreamLive,
+            });
 
             // 2. Start Auto Chat Manager
             logger.info('LifecycleManager: Starting Auto-Chat Manager...');
@@ -164,6 +191,14 @@ class LifecycleManager {
             }
             this.channelChangeListener = null;
         }
+
+        // 3b. Stop consuming forwarded events. Leases are released separately
+        // (stopChannelOwnership) because that needs to await Firestore.
+        if (typeof this.ownershipListener === 'function') {
+            this.ownershipListener();
+            this.ownershipListener = null;
+        }
+        stopAllInboxes();
 
         // 4. Stop Stream Info Poller
         try {

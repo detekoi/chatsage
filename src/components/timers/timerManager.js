@@ -14,9 +14,11 @@ import { parseVariables, formatDuration } from '../customCommands/variableParser
 import { resolvePrompt } from '../customCommands/promptResolver.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { timerSource } from '../llm/inferenceHistoryStorage.js';
+import { ownsChannel, onOwnershipChange } from '../../lib/channelOwnership.js';
 import {
     loadAllTimers,
     listenForTimerChanges,
+    claimTimerRun,
     recordTimerRun,
     DEFAULT_INTERVAL_MINUTES,
     DEFAULT_MIN_CHAT_LINES,
@@ -31,6 +33,7 @@ const PREFETCH_LEAD_MS = 3 * 60 * 1000; // 3 minutes prefetch lead time
 let startTimeoutId = null;
 let intervalId = null;
 let unsubscribeListener = null;
+let unsubscribeOwnership = null;
 let tickInProgress = false;
 
 // Timer definitions, written only by loadAllTimers() and the snapshot listener.
@@ -72,8 +75,32 @@ function seedRuntime(channelName, timer, countBaselineValid = false) {
     });
 }
 
+/**
+ * A channel just moved to this instance. Its runtime state was either never
+ * built here or is stale from an earlier stint as owner, while the previous
+ * owner kept writing lastRunAt. Rebuild it from the listener-fresh config so
+ * the first tick continues the previous owner's schedule instead of re-firing.
+ */
+function handleChannelAcquired({ type, channelName }) {
+    if (type !== 'acquired' || !channelName) return;
+    const timers = configCache.get(channelName);
+    runtime.delete(channelName);
+    defaultPrefetchCache.clearPrefix(`timer:${channelName}:`);
+    if (!timers) return;
+    for (const timer of timers.values()) {
+        seedRuntime(channelName, timer);
+    }
+    logger.debug(`[TimerManager] Reseeded ${timers.size} timers for newly owned channel ${channelName}`);
+}
+
 function handleTimerChange({ type, channelName, timerName, timer }) {
-    defaultPrefetchCache.clear(getTimerPrefetchKey(channelName, timerName));
+    // A prefetched prompt-timer message is only stale when what generates it
+    // changed. The bot's own lastRunAt/useCount writes echo back through this
+    // listener while the message is being fired, and must not evict it.
+    const previous = configCache.get(channelName)?.get(timerName);
+    if (type !== 'modified' || previous?.response !== timer?.response || previous?.type !== timer?.type) {
+        defaultPrefetchCache.clear(getTimerPrefetchKey(channelName, timerName));
+    }
 
     if (type === 'removed') {
         configCache.get(channelName)?.delete(timerName);
@@ -148,13 +175,34 @@ async function fireTimer(channelName, timer) {
 
     // Advance runtime before any slow work so a failed/slow LLM call
     // can't cause the same timer to re-fire on the next tick.
-    channelRuntime.set(timer.name, {
+    const runState = {
         lastRunAtMs: Date.now(),
         lastSeenMessageCount: getMessageCount(channelName),
         lastPrefetchAtMs: 0, // Reset prefetch tracking for the next interval
         // This process observed the fire, so the counter baseline is meaningful.
         countBaselineValid: true,
-    });
+    };
+    channelRuntime.set(timer.name, runState);
+
+    // Claim the run in Firestore before posting. Channel ownership already
+    // keeps other instances out, but ownership can briefly overlap while a
+    // channel changes hands (a deploy, an instance being recycled), and this
+    // is the check that guarantees a single post per run regardless.
+    const intervalMs = (timer.intervalMinutes || DEFAULT_INTERVAL_MINUTES) * 60 * 1000;
+    try {
+        const claim = await claimTimerRun(channelName, timer.name, intervalMs);
+        if (!claim.claimed) {
+            runState.lastRunAtMs = claim.lastRunAtMs || Date.now();
+            logger.info({ channel: channelName, timer: timer.name },
+                '[TimerManager] Timer run already claimed elsewhere, skipping');
+            return;
+        }
+    } catch (err) {
+        // Fail open: a Firestore hiccup should not silence timers, and with a
+        // single owner per channel a duplicate here is already unlikely.
+        logger.warn({ err, channel: channelName, timer: timer.name },
+            '[TimerManager] Could not claim timer run, firing anyway');
+    }
 
     const streamContext = contextManager.getStreamContextSnapshot(channelName);
     const resolvedText = await parseVariables(timer.response, {
@@ -224,6 +272,11 @@ async function tick() {
         for (const [channelName, timers] of configCache) {
             try {
                 if (timers.size === 0) continue;
+                // Another instance runs timers for channels it owns.
+                if (!ownsChannel(channelName)) {
+                    defaultPrefetchCache.clearPrefix(`timer:${channelName}:`);
+                    continue;
+                }
                 if (!isStreamLive(channelName)) {
                     defaultPrefetchCache.clearPrefix(`timer:${channelName}:`);
                     continue;
@@ -270,10 +323,17 @@ async function tick() {
                     return (channelRuntime.get(a.name)?.lastRunAtMs || 0) - (channelRuntime.get(b.name)?.lastRunAtMs || 0);
                 });
                 
-                await Promise.race([
-                    fireTimer(channelName, eligible[0]),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('fireTimer timeout exceeded')), 30000))
-                ]);
+                let fireTimeoutId;
+                try {
+                    await Promise.race([
+                        fireTimer(channelName, eligible[0]),
+                        new Promise((_, reject) => {
+                            fireTimeoutId = setTimeout(() => reject(new Error('fireTimer timeout exceeded')), 30000);
+                        })
+                    ]);
+                } finally {
+                    clearTimeout(fireTimeoutId);
+                }
             } catch (err) {
                 logger.error({ err, channel: channelName }, '[TimerManager] Error processing channel during tick');
             }
@@ -299,6 +359,7 @@ export async function startTimerManager() {
     }
 
     unsubscribeListener = listenForTimerChanges(handleTimerChange);
+    unsubscribeOwnership = onOwnershipChange(handleChannelAcquired);
 
     startTimeoutId = setTimeout(() => {
         startTimeoutId = null;
@@ -322,6 +383,10 @@ export function stopTimerManager() {
         unsubscribeListener();
         unsubscribeListener = null;
     }
+    if (unsubscribeOwnership) {
+        unsubscribeOwnership();
+        unsubscribeOwnership = null;
+    }
     defaultPrefetchCache.clearAll();
     configCache.clear();
     runtime.clear();
@@ -329,6 +394,6 @@ export function stopTimerManager() {
 }
 
 // Exported for testing only
-export { tick as _tick, fireTimer as _fireTimer, handleTimerChange as _handleTimerChange };
+export { tick as _tick, fireTimer as _fireTimer, handleTimerChange as _handleTimerChange, handleChannelAcquired as _handleChannelAcquired };
 export function _getRuntime() { return runtime; }
 export function _getConfigCache() { return configCache; }

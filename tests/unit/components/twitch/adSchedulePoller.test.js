@@ -6,6 +6,7 @@ import { notifyAdSoon, generateAdNotification } from '../../../../src/components
 import axios from 'axios';
 import logger from '../../../../src/lib/logger.js';
 import { isStreamLive } from '../../../../src/components/context/liveStatus.js';
+import { ownsChannel } from '../../../../src/lib/channelOwnership.js';
 
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/context/autoChatStorage.js');
@@ -13,6 +14,7 @@ jest.mock('../../../../src/components/autoChat/autoChatManager.js');
 jest.mock('axios');
 jest.mock('../../../../src/lib/logger.js');
 jest.mock('../../../../src/components/context/liveStatus.js');
+jest.mock('../../../../src/lib/channelOwnership.js', () => ({ ownsChannel: jest.fn(() => true) }));
 jest.mock('../../../../src/lib/secretManager.js', () => ({
     getSecretValue: jest.fn().mockResolvedValue('mock-token'),
     initializeSecretManager: jest.fn(),
@@ -676,6 +678,32 @@ describe('Ad Schedule Poller', () => {
         // Assert - the warning still went out. Before this fix the failed poll
         // cleared the timer while the ad stayed in notifiedAds, so no later poll
         // rescheduled it and the warning was lost.
+        expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads in about a minute!', nextAdTime.getTime());
+    });
+
+    test('reschedules the warning when ownership lapses and comes back before it fires', async () => {
+        // Arrange - ad 3 minutes out, so the send timer is 120s away.
+        const nextAdTime = new Date(Date.now() + 180_000);
+        getContextManager.mockReturnValue({
+            getAllChannelStates: () => new Map([['testchannel', { streamContext: { game: 'Test Game' } }]]),
+        });
+        getChannelAutoChatConfig.mockResolvedValue({ mode: 'medium', categories: { ads: true } });
+        generateAdNotification.mockResolvedValue('Ads in about a minute!');
+        axios.get.mockResolvedValue({
+            data: { success: true, data: { data: [{ next_ad_at: nextAdTime.toISOString(), duration: 60 }] } }
+        });
+        ownsChannel
+            .mockReturnValueOnce(true)   // poll 1: schedules the in-process warning
+            .mockReturnValueOnce(false)  // poll 2: lease renewal lagged, timer cancelled
+            .mockReturnValue(true);      // poll 3 onwards: owned again
+
+        // Act
+        startAdSchedulePoller();
+        await jest.advanceTimersByTimeAsync(30_000);
+        await jest.advanceTimersByTimeAsync(30_000);
+        await jest.advanceTimersByTimeAsync(150_000);
+
+        // Assert - the cancelled warning was rescheduled rather than lost.
         expect(notifyAdSoon).toHaveBeenCalledWith('testchannel', 60, 'Ads in about a minute!', nextAdTime.getTime());
     });
 

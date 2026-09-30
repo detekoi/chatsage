@@ -4,11 +4,11 @@ import logger from './lib/logger.js';
 import { getSecretManagerStatus } from './lib/secretManager.js';
 import { clearMessageQueue } from './lib/ircSender.js';
 import { shutdownCommandStateManager } from './components/context/commandStateManager.js';
-import { stopTimerManager } from './components/timers/timerManager.js';
 import LifecycleManager from './services/LifecycleManager.js';
 import { getContextManager } from './components/context/contextManager.js';
 import { stashUnextractedMessages } from './components/memory/memoryExtractor.js';
 import { hasDevChannels } from './lib/devChannels.js';
+import { stopChannelOwnership } from './lib/channelOwnership.js';
 
 // Extracted modules
 import { createHealthServer, closeHealthServer } from './server/healthServer.js';
@@ -40,19 +40,16 @@ async function gracefulShutdown(signal) {
         logger.error({ err: error }, 'Error stopping lifecycle manager during shutdown.');
     }
 
+    // Hand channel leases back so another instance takes over immediately
+    // instead of waiting for them to expire.
+    shutdownTasks.push(stopChannelOwnership());
+
     // Clean up command state manager
     try {
         logger.info('Shutting down command state manager...');
         shutdownCommandStateManager();
     } catch (error) {
         logger.error({ err: error }, 'Error shutting down command state manager during shutdown.');
-    }
-
-    // Stop timer manager
-    try {
-        stopTimerManager();
-    } catch (error) {
-        logger.error({ err: error }, 'Error stopping timer manager during shutdown.');
     }
 
     // No time for an LLM call here, so chat that has not been through memory extraction is

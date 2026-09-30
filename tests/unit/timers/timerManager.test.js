@@ -25,6 +25,7 @@ jest.mock('../../../src/components/customCommands/promptResolver.js');
 jest.mock('../../../src/components/timers/timersStorage.js', () => ({
     loadAllTimers: jest.fn(async () => new Map()),
     listenForTimerChanges: jest.fn(() => jest.fn()),
+    claimTimerRun: jest.fn(async () => ({ claimed: true, lastRunAtMs: Date.now() })),
     recordTimerRun: jest.fn(),
     DEFAULT_INTERVAL_MINUTES: 15,
     DEFAULT_MIN_CHAT_LINES: 5,
