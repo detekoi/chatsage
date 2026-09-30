@@ -8,7 +8,7 @@ import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
 import { isTextTooSimilar as _isAnswerTooSimilar } from '../../lib/stringUtils.js';
 import {
     formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
-    formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage
+    formatTimeoutMessage, formatStopMessage, formatGameSessionScoresMessage, formatLeaderboardMessage
 } from './triviaMessageFormatter.js';
 import { t, isCatalogued } from '../../lib/i18n.js';
 import {
@@ -505,18 +505,11 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         if (gameState.config.scoreTracking) {
             try {
                 const leaderboardData = await getLeaderboard(gameState.channelName, 5);
-                if (leaderboardData && leaderboardData.length > 0) {
-                    let leaderboardMessage = `🏆 Trivia Champions: `;
-                    const topPlayers = leaderboardData
-                        .sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0))
-                        .slice(0, 5);
-
-                    leaderboardMessage += topPlayers
-                        .map((p, i) => `${i + 1}. ${p.data?.displayName || p.id} (${p.data?.channelPoints || 0} pts)`)
-                        .join(', ');
-
-                    enqueueMessage(`#${gameState.channelName}`, leaderboardMessage);
-                }
+                // Announced even when empty, like the geo and riddle games, so all three end alike.
+                const lang = gameState.botLanguage || null;
+                enqueueMessage(`#${gameState.channelName}`,
+                    formatLeaderboardMessage(leaderboardData, gameState.channelName, lang),
+                    { skipTranslation: isCatalogued(lang) });
             } catch (error) {
                 logger.error({ err: error }, `[TriviaGame][${gameState.channelName}] Error fetching leaderboard.`);
             }

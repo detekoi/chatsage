@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 最終スコア: {list}",
         "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
         "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。",
-        "answerWas": "{roundPrefix}正解は: {answer}"
+        "answerWas": "{roundPrefix}正解は: {answer}",
+        "noLeaderboard": "このチャンネル ({channelName}) のトリビア記録はまだありません！",
+        "leaderboard": "🏆 #{channelName} のトリビアチャンピオン: {list}",
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 正解数:{correct})"
     },
     "riddle": {
         "start": "🤔 なぞなぞ{roundText}をスタート！ {topicText} 制限時間は{questionTimeSeconds}秒。チャットで回答してね！",
@@ -91,14 +94,23 @@ export default {
         "NoScoresSession": "🏁 ゲーム終了。このセッションではスコアが記録されませんでした。",
         "LeaderboardFetchFailed": "チャンネル全体のリーダーボードを取得できませんでした。",
         "NoLocationEndingGame": "⚠️ エラー: ラウンド{currentRound}に適した新しい場所が見つかりませんでした。ゲームを終了します。",
-        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。"
+        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。",
+        "noLeaderboard": "このチャンネル ({channelName}) のGeo-Game記録はまだありません！",
+        "leaderboard": "🏆 #{channelName} のGeo-Gameトッププレイヤー: {list}",
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 勝利数:{wins})"
     },
     "cmd": {
         "ask": {
             "SorryICouldnT": "すみません、今は回答を見つけたり生成したりできませんでした。",
             "PleaseAskQuestionAfter": "コマンドの後に質問を入力してください。使い方: !ask <質問内容>",
             "HeyThereWhatS": "やあ！何か聞きたいことある？",
-            "SorryICouldnT2": "すみません、現在のコンテキストを取得できませんでした。"
+            "SorryICouldnT2": "すみません、現在のコンテキストを取得できませんでした。",
+            "ErrorProcessingQuestion": "すみません、質問の処理中にエラーが発生しました。"
+        },
+        "auto": {
+            "Status": "オートチャット: {settings}。{usage}",
+            "ModeSet": "オートチャットのモードを {mode} に設定しました。",
+            "Updated": "オートチャットを更新しました: {settings}"
         },
         "botlang": {
             "BotCurrentlySetSpeak2": "Botの言語は現在 英語（デフォルト）に設定されています。変更するには「!botlang <言語>」を使用してください。",
@@ -196,6 +208,29 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [地域] [ラウンド数] (現実版開始), !geo game [タイトル] [ラウンド数] (ゲーム版開始), !geo stop (モデレーター/開始者), !geo config <設定...> (モデレーター), !geo resetconfig (モデレーター), !geo leaderboard, !geo clearleaderboard (モデレーター), !geo report <理由...>, !geo help",
             "UnknownCommandFormatOr": "コマンドの形式が無効か、余分な引数があります。!geo help を使用してください。"
         },
+        "help": {
+            "CommandList": "コマンド一覧はこちらでご覧いただけます: {url}"
+        },
+        "memory": {
+            "UsageRemember": "使い方: !remember <覚える内容>。例: !remember ゲイリー = デスクの上のラバーダック",
+            "Remembered": "了解、覚えておくね。",
+            "UpdatedMemory": "了解、その記憶を更新したよ。",
+            "MemoryFull": "このチャンネルの記憶容量がいっぱいです。!forget <フレーズ> で空きを作ってね。",
+            "CouldNotRemember": "どう整理していいか分からなかったよ。次のように試してみて: !remember <フレーズ> = <意味>",
+            "MemoryIsOff": "このチャンネルでは記憶機能がオフになっています。モデレーターは !memory on でオンにできます。",
+            "UsageForget": "使い方: !forget <フレーズ>",
+            "ForgotCount": "「{phrase}」に一致する記憶を{count}件忘れたよ。",
+            "NothingToForget": "「{phrase}」については何も覚えてないよ。",
+            "ForgotUser": "完了。このチャンネルでのあなたについての記憶を削除したよ。今後も記憶しないようにするね。",
+            "TurnedOn": "記憶機能をオンにしたよ。このチャンネルの歴史や身内ネタを覚えます。オフにするには !memory off。",
+            "TurnedOff": "記憶機能をオフにしたよ。チャンネルの記憶を記録・使用しません。オンに戻すには !memory on。",
+            "StatusOn": "記憶機能はオンです（保存済み: {count}件）。モデレーター: !memory off | !remember <覚える内容> | !forget <フレーズ>。誰でも: !forgetme",
+            "StatusOff": "記憶機能はオフです（保存済み: {count}件）。モデレーターは !memory on でオンにできます。",
+            "SorrySomethingWentWrong": "ごめん、記憶の処理で問題が発生したよ。後でもう一度試してね。"
+        },
+        "ping": {
+            "Pong": "Pong!"
+        },
         "quote": {
             "NoQuotesYetAdd": "名言はまだありません。\"!quote add <テキスト [- 発言者]>\" で追加できます。",
             "QuoteNotFound": "名言 #{id} が見つかりませんでした。",
@@ -264,7 +299,8 @@ export default {
             "TimerDisabled": "タイマー「{timerName}」を無効にしました。",
             "LinesCleared": "タイマー \"{timerName}\" の実行にチャットアクティビティが不要になりました。",
             "LinesSet": "タイマー \"{timerName}\" の実行には {minChatLines} 行のチャットが必要になりました。",
-            "ErrorAddingTimer": "タイマーの追加に失敗しました。後でもう一度お試しください。"
+            "ErrorAddingTimer": "タイマーの追加に失敗しました。後でもう一度お試しください。",
+            "MaxTimersReached": "チャンネル {channelName} のタイマーはすでに上限の {max} 個に達しています"
         },
         "translate": {
             "UsageTranslateLanguageUser": "使用法: !translate <言語> [ユーザー] | !translate stop [ユーザー|all]",
@@ -285,23 +321,6 @@ export default {
             "TranslationAlreadyOff": "翻訳はすでにオフになっています。",
             "StoppedTranslationFor": "{user} の翻訳を停止しました。",
             "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
-        },
-        "memory": {
-            "UsageRemember": "使い方: !remember <覚える内容>。例: !remember ゲイリー = デスクの上のラバーダック",
-            "Remembered": "了解、覚えておくね。",
-            "UpdatedMemory": "了解、その記憶を更新したよ。",
-            "MemoryFull": "このチャンネルの記憶容量がいっぱいです。!forget <フレーズ> で空きを作ってね。",
-            "CouldNotRemember": "どう整理していいか分からなかったよ。次のように試してみて: !remember <フレーズ> = <意味>",
-            "MemoryIsOff": "このチャンネルでは記憶機能がオフになっています。モデレーターは !memory on でオンにできます。",
-            "UsageForget": "使い方: !forget <フレーズ>",
-            "ForgotCount": "「{phrase}」に一致する記憶を{count}件忘れたよ。",
-            "NothingToForget": "「{phrase}」については何も覚えてないよ。",
-            "ForgotUser": "完了。このチャンネルでのあなたについての記憶を削除したよ。今後も記憶しないようにするね。",
-            "TurnedOn": "記憶機能をオンにしたよ。このチャンネルの歴史や身内ネタを覚えます。オフにするには !memory off。",
-            "TurnedOff": "記憶機能をオフにしたよ。チャンネルの記憶を記録・使用しません。オンに戻すには !memory on。",
-            "StatusOn": "記憶機能はオンです（保存済み: {count}件）。モデレーター: !memory off | !remember <覚える内容> | !forget <フレーズ>。誰でも: !forgetme",
-            "StatusOff": "記憶機能はオフです（保存済み: {count}件）。モデレーターは !memory on でオンにできます。",
-            "SorrySomethingWentWrong": "ごめん、記憶の処理で問題が発生したよ。後でもう一度試してね。"
         }
     },
     "result": {
@@ -358,10 +377,6 @@ export default {
             "SettingsChangedMemoryBut": "メモリ上の設定は変更されましたが、保存に失敗しました。",
             "RiddleGameConfigurationReset": "なぞなぞゲームの設定を初期状態にリセットしました。",
             "ConfigResetMemoryBut": "メモリ上の設定はリセットされましたが、保存に失敗しました。",
-            "ICouldnTFind": "このチャンネルで通報対象となる最近プレイされたなぞなぞが見つかりませんでした。",
-            "LastRiddleFoundSeems": "見つかった最新のなぞなぞが不完全なため、通報できません。",
-            "ThanksFeedbackRiddleStarting": "フィードバックありがとうございます！「{p1}...」で始まるなぞなぞを通報しました。",
-            "SorryErrorOccurredWhile": "申し訳ありません。なぞなぞの通報中にエラーが発生しました。",
             "ICouldnTFind2": "このチャンネルで通報対象となる最近のなぞなぞが見つかりませんでした。",
             "CouldNotIdentifySpecific": "通報対象のなぞなぞを特定できませんでした。",
             "ThanksFeedbackRiddleHas": "フィードバックありがとうございます！なぞなぞ (\"{p1}...\") を通報しました。",
@@ -439,7 +454,20 @@ export default {
             "None": "なし"
         }
     },
+    "llm": {
+        "Stumped": "ちょっと分かりませんでした！ 別の聞き方で試してみてください。",
+        "error": {
+            "Network": "すみません、現在接続に問題があります。しばらくしてからもう一度お試しください。",
+            "Timeout": "すみません、処理に時間がかかりすぎました。もう一度お試しください。",
+            "RateLimited": "現在リクエストが多すぎます。少し待ってからもう一度お試しください。",
+            "Unavailable": "AIサービスが一時的に利用できません。しばらくしてからもう一度お試しください。",
+            "Generic": "すみません、処理中にエラーが発生しました。"
+        }
+    },
     "usage": {
+        "auto": {
+            "Help": "使い方: !auto [off|low|medium|high] または !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>"
+        },
         "riddle": {
             "Config": "使い方: !riddle config difficulty <easy|normal|hard> | questiontime <秒> | pointsbase <数値> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <数値> | keywordslimit <数値> | rounddelay <ミリ秒>"
         },

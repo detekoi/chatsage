@@ -176,6 +176,25 @@ describe('Message Handlers', () => {
             expect(mockContextManager.addMessage).toHaveBeenCalled();
         });
 
+        test('should send a keyed report result from the catalog in a catalogued bot language', async () => {
+            getContextManager.mockReturnValue({ ...mockContextManager, getBotLanguage: () => 'spanish' });
+            mockRiddleManager.finalizeReportWithRoundNumber.mockResolvedValue({
+                success: false,
+                messageKey: 'result.riddle.ICouldnTFind3',
+                messageParams: { username: 'testuser', roundNum: '7' },
+                message: "@testuser, I couldn't find the riddle for round 7. Please try reporting again."
+            });
+
+            await handlePendingReport(createBaseParams());
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                expect.stringContaining('@testuser'),
+                { skipTranslation: true }
+            );
+            expect(enqueueMessage.mock.calls[0][1]).not.toMatch(/I couldn't find/);
+        });
+
         test('should process trivia report when riddle returns null', async () => {
             mockRiddleManager.finalizeReportWithRoundNumber.mockResolvedValue({ message: null });
             mockTriviaManager.finalizeReportWithRoundNumber.mockResolvedValue({

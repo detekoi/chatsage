@@ -3,7 +3,7 @@ import logger from '../../../lib/logger.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { getTriviaGameManager } from '../../trivia/triviaGameManager.js';
 import { getLeaderboard } from '../../trivia/triviaStorage.js';
-import { formatHelpMessage } from '../../trivia/triviaMessageFormatter.js';
+import { formatHelpMessage, formatLeaderboardMessage } from '../../trivia/triviaMessageFormatter.js';
 import { isCatalogued } from '../../../lib/i18n.js';
 import {
     extractGameContext,
@@ -21,33 +21,6 @@ import {
 
 const GAME_NAME = 'Trivia';
 const COMMAND_NAME = 'trivia';
-
-/**
- * Helper function to format the leaderboard message.
- * @param {Array<{id: string, data: object}>} leaderboardData - Data from getLeaderboard.
- * @param {string} channelName - The channel name for context.
- * @returns {string} Formatted leaderboard message.
- */
-function formatLeaderboardMessage(leaderboardData, channelName) {
-    if (!leaderboardData || leaderboardData.length === 0) {
-        return `No Trivia stats found for this channel (${channelName}) yet!`;
-    }
-
-    // Sort by points
-    leaderboardData.sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0));
-
-    const topPlayers = leaderboardData.slice(0, 5); // Show top 5
-
-    const listItems = topPlayers.map((player, index) => {
-        const rank = index + 1;
-        const name = player.data?.displayName || player.id;
-        const points = player.data?.channelPoints || 0;
-        const correct = player.data?.channelSuccesses || 0;
-        return `${rank}. ${name} (${points} pts, ${correct} correct)`;
-    });
-
-    return `🏆 Trivia Champions in #${channelName}: ${listItems.join(', ')}`;
-}
 
 /**
  * Config schema for trivia game options.

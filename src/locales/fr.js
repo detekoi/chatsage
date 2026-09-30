@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 Scores finaux : {list}",
         "NoQuestionEndingGame": "⚠️ Erreur : Impossible de générer une question pour la manche {currentRound}. Fin de la partie.",
         "InvalidQuestionEndingGame": "⚠️ Erreur : La question générée est invalide. Fin de la partie.",
-        "answerWas": "{roundPrefix}La réponse était : {answer}"
+        "answerWas": "{roundPrefix}La réponse était : {answer}",
+        "noLeaderboard": "Pas encore de stats de Trivia pour cette chaîne ({channelName}) !",
+        "leaderboard": "🏆 Champions de Trivia sur #{channelName} : {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {correct} bonnes réponses)"
     },
     "riddle": {
         "start": "🤔 Lancement de {roundText} d'énigmes ! {topicText} Vous avez {questionTimeSeconds} secondes pour répondre. Tapez vos réponses dans le chat !",
@@ -91,14 +94,23 @@ export default {
         "NoScoresSession": "🏁 Partie terminée. Aucun score enregistré pour cette session.",
         "LeaderboardFetchFailed": "Impossible de récupérer le classement général de la chaîne.",
         "NoLocationEndingGame": "⚠️ Erreur : Impossible de trouver un nouveau lieu approprié pour la manche {currentRound}. Fin de la partie.",
-        "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie."
+        "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie.",
+        "noLeaderboard": "Pas encore de stats de Geo-Game pour cette chaîne ({channelName}) !",
+        "leaderboard": "🏆 Meilleurs joueurs de Geo-Game sur #{channelName} : {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {wins} victoires)"
     },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Désolé, impossible de trouver ou générer une réponse pour le moment.",
             "PleaseAskQuestionAfter": "Pose une question après la commande. Utilisation : !ask <ta question>",
             "HeyThereWhatS": "Salut ! Qu'est-ce que tu as en tête ?",
-            "SorryICouldnT2": "Désolé, impossible de récupérer le contexte actuel."
+            "SorryICouldnT2": "Désolé, impossible de récupérer le contexte actuel.",
+            "ErrorProcessingQuestion": "Désolé, une erreur est survenue lors du traitement de ta question."
+        },
+        "auto": {
+            "Status": "Auto-chat : {settings}. {usage}",
+            "ModeSet": "Mode auto-chat défini sur {mode}.",
+            "Updated": "Auto-chat mis à jour : {settings}"
         },
         "botlang": {
             "BotCurrentlySetSpeak2": "Le bot est actuellement configuré en anglais (par défaut). Utilise \"!botlang <langue>\" pour changer.",
@@ -196,6 +208,29 @@ export default {
             "GeoGameGeoRegion": "Geo-Game : !geo [région] [manches] (lancer réel), !geo game [Titre] [manches] (lancer jeu), !geo stop (mods/initiateur), !geo config <options...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <raison...>, !geo help",
             "UnknownCommandFormatOr": "Format de commande inconnu ou arguments en trop. Utilisez !geo help."
         },
+        "help": {
+            "CommandList": "Tu trouveras ma liste de commandes ici : {url}"
+        },
+        "memory": {
+            "UsageRemember": "Utilisation : !remember <fait>. Exemple : !remember gary = le canard en plastique sur le bureau",
+            "Remembered": "C'est noté, je m'en souviendrai.",
+            "UpdatedMemory": "C'est noté, j'ai mis à jour ce que je savais là-dessus.",
+            "MemoryFull": "Ma mémoire pour cette chaîne est pleine. Utilise !forget <terme> pour faire de la place.",
+            "CouldNotRemember": "Je n'ai pas réussi à classer ça. Essaie : !remember <terme> = <ce que ça veut dire>",
+            "MemoryIsOff": "La mémoire est désactivée sur cette chaîne. Un modo peut l'activer avec !memory on.",
+            "UsageForget": "Utilisation : !forget <terme>",
+            "ForgotCount": "{count} souvenirs correspondant à \"{phrase}\" oubliés.",
+            "NothingToForget": "Je n'ai rien en mémoire sur \"{phrase}\".",
+            "ForgotUser": "C'est fait. J'ai oublié ce que je savais sur toi ici et je ne retiendrai plus rien à l'avenir.",
+            "TurnedOn": "Mémoire activée. Je retiendrai le lore et les délires de la chaîne. Désactive-la avec !memory off.",
+            "TurnedOff": "Mémoire désactivée. Je n'enregistrerai ni n'utiliserai les souvenirs de la chaîne. Réactive-la avec !memory on.",
+            "StatusOn": "Mémoire activée ({count} souvenirs stockés). Modos : !memory off | !remember <fait> | !forget <terme>. Tout le monde : !forgetme",
+            "StatusOff": "Mémoire désactivée ({count} souvenirs stockés). Les modos peuvent l'activer avec !memory on.",
+            "SorrySomethingWentWrong": "Désolé, un problème est survenu avec ma mémoire. Réessaie plus tard."
+        },
+        "ping": {
+            "Pong": "Pong !"
+        },
         "quote": {
             "NoQuotesYetAdd": "Aucune citation pour le moment. Ajoutez-en une avec \"!quote add <texte [- auteur]>\"",
             "QuoteNotFound": "Citation #{id} introuvable.",
@@ -264,7 +299,8 @@ export default {
             "TimerDisabled": "Le timer \"{timerName}\" a été désactivé.",
             "LinesCleared": "Le timer \"{timerName}\" ne nécessite plus d'activité dans le chat pour se déclencher.",
             "LinesSet": "Le timer \"{timerName}\" nécessite désormais {minChatLines} lignes de chat entre chaque déclenchement.",
-            "ErrorAddingTimer": "Erreur lors de l'ajout du timer. Réessaie plus tard."
+            "ErrorAddingTimer": "Erreur lors de l'ajout du timer. Réessaie plus tard.",
+            "MaxTimersReached": "La chaîne {channelName} a déjà atteint le maximum de {max} timers"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Utilisation : !translate <langue> [utilisateur] | !translate stop [utilisateur|all]",
@@ -285,23 +321,6 @@ export default {
             "TranslationAlreadyOff": "La traduction était déjà désactivée.",
             "StoppedTranslationFor": "Traduction arrêtée pour {user}.",
             "TranslationAlreadyOffFor": "La traduction était déjà désactivée pour {user}."
-        },
-        "memory": {
-            "UsageRemember": "Utilisation : !remember <fait>. Exemple : !remember gary = le canard en plastique sur le bureau",
-            "Remembered": "C'est noté, je m'en souviendrai.",
-            "UpdatedMemory": "C'est noté, j'ai mis à jour ce que je savais là-dessus.",
-            "MemoryFull": "Ma mémoire pour cette chaîne est pleine. Utilise !forget <terme> pour faire de la place.",
-            "CouldNotRemember": "Je n'ai pas réussi à classer ça. Essaie : !remember <terme> = <ce que ça veut dire>",
-            "MemoryIsOff": "La mémoire est désactivée sur cette chaîne. Un modo peut l'activer avec !memory on.",
-            "UsageForget": "Utilisation : !forget <terme>",
-            "ForgotCount": "{count} souvenirs correspondant à \"{phrase}\" oubliés.",
-            "NothingToForget": "Je n'ai rien en mémoire sur \"{phrase}\".",
-            "ForgotUser": "C'est fait. J'ai oublié ce que je savais sur toi ici et je ne retiendrai plus rien à l'avenir.",
-            "TurnedOn": "Mémoire activée. Je retiendrai le lore et les délires de la chaîne. Désactive-la avec !memory off.",
-            "TurnedOff": "Mémoire désactivée. Je n'enregistrerai ni n'utiliserai les souvenirs de la chaîne. Réactive-la avec !memory on.",
-            "StatusOn": "Mémoire activée ({count} souvenirs stockés). Modos : !memory off | !remember <fait> | !forget <terme>. Tout le monde : !forgetme",
-            "StatusOff": "Mémoire désactivée ({count} souvenirs stockés). Les modos peuvent l'activer avec !memory on.",
-            "SorrySomethingWentWrong": "Désolé, un problème est survenu avec ma mémoire. Réessaie plus tard."
         }
     },
     "result": {
@@ -358,10 +377,6 @@ export default {
             "SettingsChangedMemoryBut": "Paramètres modifiés en mémoire, mais échec de la sauvegarde.",
             "RiddleGameConfigurationReset": "Configuration du jeu d'énigmes réinitialisée par défaut.",
             "ConfigResetMemoryBut": "Config réinitialisée en mémoire, mais échec de la sauvegarde.",
-            "ICouldnTFind": "Impossible de trouver une énigme récemment jouée sur cette chaîne à signaler.",
-            "LastRiddleFoundSeems": "La dernière énigme trouvée semble incomplète et ne peut pas être signalée.",
-            "ThanksFeedbackRiddleStarting": "Merci pour le retour ! L'énigme commençant par \"{p1}...\" a bien été signalée.",
-            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors du signalement de l'énigme.",
             "ICouldnTFind2": "Impossible de trouver des énigmes récentes sur cette chaîne à signaler.",
             "CouldNotIdentifySpecific": "Impossible d'identifier une énigme précise à signaler.",
             "ThanksFeedbackRiddleHas": "Merci pour le retour ! L'énigme (\"{p1}...\") a bien été signalée.",
@@ -439,7 +454,20 @@ export default {
             "None": "Aucun"
         }
     },
+    "llm": {
+        "Stumped": "Là, tu me laisses sans voix ! Essaie de poser la question autrement ?",
+        "error": {
+            "Network": "Désolé, j'ai du mal à me connecter pour le moment. Réessaie dans un instant.",
+            "Timeout": "Désolé, le traitement a pris trop de temps. Réessaie.",
+            "RateLimited": "Je reçois trop de requêtes en ce moment. Patiente un instant et réessaie.",
+            "Unavailable": "Mon service d'IA est temporairement indisponible. Réessaie dans un instant.",
+            "Generic": "Désolé, une erreur est survenue lors du traitement."
+        }
+    },
     "usage": {
+        "auto": {
+            "Help": "Utilisation : !auto [off|low|medium|high] ou !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>"
+        },
         "riddle": {
             "Config": "Utilisation : !riddle config difficulty <facile|normal|difficile> | questiontime <sec> | pointsbase <nb> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <nb> | keywordslimit <nb> | rounddelay <ms>"
         },

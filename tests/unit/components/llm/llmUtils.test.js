@@ -5,6 +5,7 @@ jest.mock('../../../../src/lib/activityLogger.js');
 jest.mock('../../../../src/components/context/contextManager.js');
 jest.mock('../../../../src/components/llm/llmClient.js');
 jest.mock('../../../../src/components/llm/botResponseHandler.js');
+jest.mock('../../../../src/lib/localizedMessage.js');
 jest.mock('../../../../src/components/llm/conversationStorage.js');
 jest.mock('../../../../src/components/twitch/sharedChatManager.js');
 jest.mock('../../../../src/lib/pronounService.js', () => ({
@@ -15,6 +16,9 @@ jest.mock('../../../../src/lib/pronounService.js', () => ({
 
 import {
     removeMarkdownAsterisks,
+    getUserFriendlyError,
+    getUserFriendlyErrorMessage,
+    GENERIC_ERROR_KEY,
     handleStandardLlmQuery,
     recordBotExchange,
     resolveSharedSessionId,
@@ -29,6 +33,8 @@ import {
     getChatSession
 } from '../../../../src/components/llm/llmClient.js';
 import { sendBotResponse } from '../../../../src/components/llm/botResponseHandler.js';
+import { sendLocalized } from '../../../../src/lib/localizedMessage.js';
+import { t } from '../../../../src/lib/i18n.js';
 import * as sharedChatManager from '../../../../src/components/twitch/sharedChatManager.js';
 
 describe('llmUtils', () => {
@@ -67,6 +73,36 @@ describe('llmUtils', () => {
         });
 
         sendBotResponse.mockResolvedValue();
+        sendLocalized.mockResolvedValue();
+    });
+
+    describe('getUserFriendlyError', () => {
+        it.each([
+            [new Error('fetch failed'), 'llm.error.Network'],
+            [new Error('request timed out'), 'llm.error.Timeout'],
+            [Object.assign(new Error('quota'), { status: 429 }), 'llm.error.RateLimited'],
+            [Object.assign(new Error('down'), { status: 503 }), 'llm.error.Unavailable'],
+            [new Error('something else'), 'llm.error.Generic']
+        ])('maps %s to %s', (error, key) => {
+            expect(getUserFriendlyError(error).key).toBe(key);
+        });
+
+        it('exposes the generic key so callers can substitute their own wording', () => {
+            expect(getUserFriendlyError(new Error('boom')).key).toBe(GENERIC_ERROR_KEY);
+        });
+
+        it('keeps getUserFriendlyErrorMessage returning the English fallback', () => {
+            expect(getUserFriendlyErrorMessage(new Error('boom'))).toBe('Sorry, an error occurred while processing that.');
+        });
+
+        it('only returns keys that are catalogued', () => {
+            const errors = [new Error('fetch failed'), new Error('timeout'), Object.assign(new Error('x'), { status: 429 }),
+                Object.assign(new Error('x'), { status: 503 }), new Error('other')];
+            for (const error of errors) {
+                const { key } = getUserFriendlyError(error);
+                expect(t(key, {}, 'spanish')).not.toBeNull();
+            }
+        });
     });
 
     describe('removeMarkdownAsterisks', () => {
@@ -210,7 +246,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            console.log(logger.error.mock.calls); expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
+            expect(sendLocalized).toHaveBeenCalledWith('#testchannel', 'llm.Stumped', {}, "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
             expect(logger.error).toHaveBeenCalledWith(
                 '[testchannel] LLM generated null or empty response after retry. Sending fallback.'
             );
@@ -226,7 +262,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            console.log(logger.error.mock.calls); expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
+            expect(sendLocalized).toHaveBeenCalledWith('#testchannel', 'llm.Stumped', {}, "I'm a bit stumped on that one! Try asking another way?", { replyToId: null });
         });
 
         it('should handle long responses with summarization', async () => {
@@ -297,7 +333,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Sorry, an error occurred while processing that.', { replyToId: null });
+            expect(sendLocalized).toHaveBeenCalledWith('#testchannel', 'llm.error.Generic', {}, 'Sorry, an error occurred while processing that.', { replyToId: null });
             expect(logger.error).toHaveBeenCalledWith(
                 expect.objectContaining({
                     err: expect.any(Error),
@@ -314,7 +350,7 @@ describe('llmUtils', () => {
                 sendMessage: jest.fn().mockRejectedValue(new Error('LLM API Error'))
             });
 
-            sendBotResponse.mockRejectedValue(new Error('Failed to send error message'));
+            sendLocalized.mockRejectedValue(new Error('Failed to send error message'));
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 

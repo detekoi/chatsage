@@ -4,38 +4,52 @@ import { logConversation } from './conversationStorage.js';
 import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, summarizeText, getOrCreateChatSession, getChatSession } from './llmClient.js';
 import { sendBotResponse } from './botResponseHandler.js';
+import { sendLocalized } from '../../lib/localizedMessage.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 import { pronounService } from '../../lib/pronounService.js';
 import { retrieveMemories, formatMemoriesForPrompt } from '../memory/memoryManager.js';
+
+/** Catalog key of the generic LLM error, exported so callers can substitute a more specific message. */
+export const GENERIC_ERROR_KEY = 'llm.error.Generic';
+
+/**
+ * Classifies an error into a catalog key plus its English text. The text is the fallback handed to
+ * sendLocalized, so an uncatalogued bot language still reaches the runtime translator.
+ * @param {Error & { status?: number }} [error] The failure to classify; matched on its message and HTTP status.
+ * @returns {{ key: string, fallback: string }}
+ */
+export function getUserFriendlyError(error) {
+    const message = error?.message || '';
+
+    // Network-level failures
+    if (/fetch failed|network|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)) {
+        return { key: 'llm.error.Network', fallback: "Sorry, I'm having trouble connecting right now. Please try again in a moment." };
+    }
+
+    // API timeouts
+    if (/timeout|timed out/i.test(message)) {
+        return { key: 'llm.error.Timeout', fallback: 'Sorry, that took too long to process. Please try again.' };
+    }
+
+    // Rate limiting
+    if (error?.status === 429 || /rate limit|too many requests/i.test(message)) {
+        return { key: 'llm.error.RateLimited', fallback: "I'm getting too many requests right now. Please wait a moment and try again." };
+    }
+
+    // Service unavailable
+    if (error?.status === 503 || /service unavailable/i.test(message)) {
+        return { key: 'llm.error.Unavailable', fallback: 'My AI service is temporarily unavailable. Please try again in a moment.' };
+    }
+
+    // Generic fallback
+    return { key: GENERIC_ERROR_KEY, fallback: 'Sorry, an error occurred while processing that.' };
+}
 
 /**
  * Helper to generate user-friendly error messages based on error type
  */
 export function getUserFriendlyErrorMessage(error) {
-    const message = error?.message || '';
-
-    // Network-level failures
-    if (/fetch failed|network|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)) {
-        return "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
-    }
-
-    // API timeouts
-    if (/timeout|timed out/i.test(message)) {
-        return "Sorry, that took too long to process. Please try again.";
-    }
-
-    // Rate limiting
-    if (error?.status === 429 || /rate limit|too many requests/i.test(message)) {
-        return "I'm getting too many requests right now. Please wait a moment and try again.";
-    }
-
-    // Service unavailable
-    if (error?.status === 503 || /service unavailable/i.test(message)) {
-        return "My AI service is temporarily unavailable. Please try again in a moment.";
-    }
-
-    // Generic fallback
-    return "Sorry, an error occurred while processing that.";
+    return getUserFriendlyError(error).fallback;
 }
 
 const MAX_IRC_MESSAGE_LENGTH = 500; // Twitch IRC message limit
@@ -353,7 +367,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         // If even the retry fails, provide a fallback message
         if (!initialResponseText?.trim()) {
             logger.error(`[${cleanChannel}] LLM generated null or empty response after retry. Sending fallback.`);
-            await sendBotResponse(channel, `I'm a bit stumped on that one! Try asking another way?`, { replyToId });
+            await sendLocalized(channel, 'llm.Stumped', {}, `I'm a bit stumped on that one! Try asking another way?`, { replyToId });
             return;
         }
 
@@ -399,8 +413,8 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
     } catch (error) {
         logger.error({ err: error, channel: cleanChannel, user: lowerUsername, trigger: triggerType }, `Error processing standard LLM query.`);
         try {
-            const errorMessage = getUserFriendlyErrorMessage(error);
-            await sendBotResponse(channel, errorMessage, { replyToId });
+            const { key, fallback } = getUserFriendlyError(error);
+            await sendLocalized(channel, key, {}, fallback, { replyToId });
         } catch (sayError) { logger.error({ err: sayError }, 'Failed to send LLM error message to chat.'); }
     }
 }

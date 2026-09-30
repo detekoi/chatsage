@@ -33,7 +33,10 @@ export default {
         "finalScores": "🏁 Итоговый счет: {list}",
         "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
         "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру.",
-        "answerWas": "{roundPrefix}Правильный ответ: {answer}"
+        "answerWas": "{roundPrefix}Правильный ответ: {answer}",
+        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по викторине!",
+        "leaderboard": "🏆 Чемпионы викторины в #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {correct} верно)"
     },
     "riddle": {
         "start": "🤔 Начинаем {roundText} загадок! {topicText} У вас есть {questionTimeSeconds} сек., чтобы ответить. Пишите варианты в чат!",
@@ -91,14 +94,23 @@ export default {
         "NoScoresSession": "🏁 Игра окончена. В этой сессии никто не набрал очков.",
         "LeaderboardFetchFailed": "Не удалось загрузить общую таблицу лидеров канала.",
         "NoLocationEndingGame": "⚠️ Ошибка: не удалось найти подходящую новую локацию для раунда {currentRound}. Завершаем игру.",
-        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру."
+        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру.",
+        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по Geo-Game!",
+        "leaderboard": "🏆 Лучшие игроки Geo-Game в #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {wins} побед)"
     },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Извини, не получилось найти или сгенерировать ответ прямо сейчас.",
             "PleaseAskQuestionAfter": "Пожалуйста, укажи вопрос после команды. Использование: !ask <твой вопрос>",
             "HeyThereWhatS": "Привет! О чем думаешь?",
-            "SorryICouldnT2": "Извини, не удалось получить текущий контекст."
+            "SorryICouldnT2": "Извини, не удалось получить текущий контекст.",
+            "ErrorProcessingQuestion": "Извини, произошла ошибка при обработке твоего вопроса."
+        },
+        "auto": {
+            "Status": "Авточат: {settings}. {usage}",
+            "ModeSet": "Режим авточата установлен на {mode}.",
+            "Updated": "Авточат обновлён: {settings}"
         },
         "botlang": {
             "BotCurrentlySetSpeak2": "Сейчас бот настроен говорить на английском (по умолчанию). Используй \"!botlang <язык>\", чтобы изменить.",
@@ -196,6 +208,29 @@ export default {
             "GeoGameGeoRegion": "Гео-игра: !geo [регион] [раунды] (реальный мир), !geo game [название] [раунды] (игра), !geo stop (модеры/создатель), !geo config <параметры...> (модеры), !geo resetconfig (модеры), !geo leaderboard, !geo clearleaderboard (модеры), !geo report <причина...>, !geo help",
             "UnknownCommandFormatOr": "Неизвестный формат команды или лишние аргументы. Используйте !geo help."
         },
+        "help": {
+            "CommandList": "Список моих команд можно найти здесь: {url}"
+        },
+        "memory": {
+            "UsageRemember": "Использование: !remember <факт>. Пример: !remember gary = резиновая уточка на столе",
+            "Remembered": "Понял, запомню.",
+            "UpdatedMemory": "Понял, обновил информацию об этом.",
+            "MemoryFull": "Память для этого канала заполнена. Используйте !forget <фраза>, чтобы освободить место.",
+            "CouldNotRemember": "Не удалось понять, к чему это относится. Попробуйте: !remember <фраза> = <значение>",
+            "MemoryIsOff": "Память на этом канале отключена. Модератор может включить её командой !memory on.",
+            "UsageForget": "Использование: !forget <фраза>",
+            "ForgotCount": "Забыто воспоминаний ({count}) по запросу \"{phrase}\".",
+            "NothingToForget": "У меня ничего не сохранено о \"{phrase}\".",
+            "ForgotUser": "Готово. Я забыл всё, что знал о тебе здесь, и больше не буду тебя запоминать.",
+            "TurnedOn": "Память включена. Буду запоминать лор и локальные мемы канала. Отключить: !memory off.",
+            "TurnedOff": "Память отключена. Не сохраняю и не использую воспоминания канала. Включить обратно: !memory on.",
+            "StatusOn": "Память включена, сохранено записей: {count}. Модераторам: !memory off | !remember <факт> | !forget <фраза>. Всем: !forgetme",
+            "StatusOff": "Память отключена, сохранено записей: {count}. Модераторы могут включить её командой !memory on.",
+            "SorrySomethingWentWrong": "Извини, что-то пошло не так с моей памятью. Попробуй позже."
+        },
+        "ping": {
+            "Pong": "Понг!"
+        },
         "quote": {
             "NoQuotesYetAdd": "Цитат пока нет. Добавьте первую: \"!quote add <текст [- автор]>\"",
             "QuoteNotFound": "Цитата #{id} не найдена.",
@@ -264,7 +299,8 @@ export default {
             "TimerDisabled": "Таймер \"{timerName}\" выключен.",
             "LinesCleared": "Таймер \"{timerName}\" больше не требует активности в чате для срабатывания.",
             "LinesSet": "Таймер \"{timerName}\" теперь требует {minChatLines} строк чата между срабатываниями.",
-            "ErrorAddingTimer": "Ошибка при добавлении таймера. Попробуйте позже."
+            "ErrorAddingTimer": "Ошибка при добавлении таймера. Попробуйте позже.",
+            "MaxTimersReached": "В канале {channelName} уже максимальное количество таймеров: {max}"
         },
         "translate": {
             "UsageTranslateLanguageUser": "Использование: !translate <язык> [пользователь] | !translate stop [пользователь|all]",
@@ -285,23 +321,6 @@ export default {
             "TranslationAlreadyOff": "Перевод уже был выключен.",
             "StoppedTranslationFor": "Перевод для {user} остановлен.",
             "TranslationAlreadyOffFor": "Перевод для {user} уже был выключен."
-        },
-        "memory": {
-            "UsageRemember": "Использование: !remember <факт>. Пример: !remember gary = резиновая уточка на столе",
-            "Remembered": "Понял, запомню.",
-            "UpdatedMemory": "Понял, обновил информацию об этом.",
-            "MemoryFull": "Память для этого канала заполнена. Используйте !forget <фраза>, чтобы освободить место.",
-            "CouldNotRemember": "Не удалось понять, к чему это относится. Попробуйте: !remember <фраза> = <значение>",
-            "MemoryIsOff": "Память на этом канале отключена. Модератор может включить её командой !memory on.",
-            "UsageForget": "Использование: !forget <фраза>",
-            "ForgotCount": "Забыто воспоминаний ({count}) по запросу \"{phrase}\".",
-            "NothingToForget": "У меня ничего не сохранено о \"{phrase}\".",
-            "ForgotUser": "Готово. Я забыл всё, что знал о тебе здесь, и больше не буду тебя запоминать.",
-            "TurnedOn": "Память включена. Буду запоминать лор и локальные мемы канала. Отключить: !memory off.",
-            "TurnedOff": "Память отключена. Не сохраняю и не использую воспоминания канала. Включить обратно: !memory on.",
-            "StatusOn": "Память включена, сохранено записей: {count}. Модераторам: !memory off | !remember <факт> | !forget <фраза>. Всем: !forgetme",
-            "StatusOff": "Память отключена, сохранено записей: {count}. Модераторы могут включить её командой !memory on.",
-            "SorrySomethingWentWrong": "Извини, что-то пошло не так с моей памятью. Попробуй позже."
         }
     },
     "result": {
@@ -358,10 +377,6 @@ export default {
             "SettingsChangedMemoryBut": "Настройки изменены в памяти, но не сохранились.",
             "RiddleGameConfigurationReset": "Настройки игры в загадки сброшены по умолчанию.",
             "ConfigResetMemoryBut": "Конфигурация сброшена в памяти, но не сохранилась.",
-            "ICouldnTFind": "Не удалось найти недавнюю загадку на этом канале для отправки жалобы.",
-            "LastRiddleFoundSeems": "Кажется, последняя найденная загадка неполная, на неё нельзя пожаловаться.",
-            "ThanksFeedbackRiddleStarting": "Спасибо за отзыв! Жалоба на загадку, начинающуюся с \"{p1}...\", отправлена.",
-            "SorryErrorOccurredWhile": "Извините, произошла ошибка при попытке отправить жалобу на загадку.",
             "ICouldnTFind2": "Не удалось найти недавние загадки на этом канале для отправки жалобы.",
             "CouldNotIdentifySpecific": "Не удалось определить конкретную загадку для отправки жалобы.",
             "ThanksFeedbackRiddleHas": "Спасибо за отзыв! Жалоба на загадку (\"{p1}...\") отправлена.",
@@ -439,7 +454,20 @@ export default {
             "None": "Нет"
         }
     },
+    "llm": {
+        "Stumped": "Тут я в замешательстве! Попробуй спросить по-другому?",
+        "error": {
+            "Network": "Извини, сейчас у меня проблемы с подключением. Попробуй ещё раз чуть позже.",
+            "Timeout": "Извини, обработка заняла слишком много времени. Попробуй ещё раз.",
+            "RateLimited": "Сейчас слишком много запросов. Подожди немного и попробуй ещё раз.",
+            "Unavailable": "Мой ИИ-сервис временно недоступен. Попробуй ещё раз чуть позже.",
+            "Generic": "Извини, при обработке произошла ошибка."
+        }
+    },
     "usage": {
+        "auto": {
+            "Help": "Использование: !auto [off|low|medium|high] или !auto config greetings:<on|off> facts:<on|off> questions:<on|off> follows:<on|off> subscriptions:<on|off> raids:<on|off> ads:<on|off>"
+        },
         "riddle": {
             "Config": "Использование: !riddle config difficulty <easy|normal|hard> | questiontime <сек> | pointsbase <число> | pointstimebonus <true|false> | pointsdifficultymultiplier <true|false> | scoretracking <true|false> | maxrounds <число> | keywordslimit <число> | rounddelay <мс>"
         },

@@ -63,10 +63,16 @@ const UNSUPPORTED_TIMER_VARIABLES = [
  * Custom error class for timers storage operations.
  */
 export class TimersStorageError extends Error {
-    constructor(message, cause) {
+    /**
+     * @param {string} message
+     * @param {Error} [cause] Underlying failure. Absent for errors that are safe to report to chat.
+     * @param {string} [code] Machine-readable reason, so callers can localize the chat reply.
+     */
+    constructor(message, cause, code) {
         super(message);
         this.name = 'TimersStorageError';
         this.cause = cause;
+        this.code = code;
     }
 }
 
@@ -177,7 +183,7 @@ export async function addTimer(channelName, timerName, response, createdBy, type
             const allTimers = await t.get(_timersColRef(db, lowerChannel));
             
             if (allTimers.size >= MAX_TIMERS_PER_CHANNEL) {
-                throw new TimersStorageError(`Channel ${lowerChannel} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`);
+                throw new TimersStorageError(`Channel ${lowerChannel} already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`, undefined, 'MAX_TIMERS');
             }
 
             const clampedInterval = Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, intervalMinutes));

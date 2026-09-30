@@ -1,6 +1,6 @@
 // src/components/commands/handlers/ping.js
 import logger from '../../../lib/logger.js';
-import { enqueueMessage } from '../../../lib/ircSender.js';
+import { sendLocalized } from '../../../lib/localizedMessage.js';
 
 /**
  * Handler for the !ping command.
@@ -19,7 +19,7 @@ const pingHandler = {
         logger.info({ channel, user: user.username }, `[PingCommand] PRE-ENQUEUE: Preparing ping response for ${user.username}`);
 
         try {
-            await enqueueMessage(channel, response, { replyToId });
+            await sendLocalized(channel, 'cmd.ping.Pong', {}, response, { replyToId });
             logger.info({ channel, user: user.username }, `[PingCommand] POST-ENQUEUE: Successfully called enqueueMessage`);
 
             logger.info(`Executed !ping command in ${channel} for ${user.username}`);

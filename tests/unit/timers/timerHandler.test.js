@@ -90,6 +90,29 @@ describe('timer handler (!timer)', () => {
         );
     });
 
+    describe('add failures', () => {
+        test('reports the timer limit', async () => {
+            const { TimersStorageError, MAX_TIMERS_PER_CHANNEL } = jest.requireActual('../../../src/components/timers/timersStorage.js');
+            addTimer.mockRejectedValue(new TimersStorageError('limit', undefined, 'MAX_TIMERS'));
+
+            await execute(makeContext('add promo 30 Hello there'));
+
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                `Channel testchannel already has the maximum of ${MAX_TIMERS_PER_CHANNEL} timers`,
+            );
+        });
+
+        test('does not leak an internal storage error message to chat', async () => {
+            const { TimersStorageError } = jest.requireActual('../../../src/components/timers/timersStorage.js');
+            addTimer.mockRejectedValue(new TimersStorageError('Failed to add timer promo for testchannel', new Error('firestore down')));
+
+            await execute(makeContext('add promo 30 Hello there'));
+
+            expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', 'Error adding timer. Please try again later.');
+        });
+    });
+
     test('add rejects a reserved name', async () => {
         await execute(makeContext('add list 30 some message'));
         expect(addTimer).not.toHaveBeenCalled();

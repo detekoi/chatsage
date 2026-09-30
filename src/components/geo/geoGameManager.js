@@ -6,7 +6,7 @@ import { translateText } from '../../lib/translationUtils.js';
 import { selectLocation, validateGuess } from './geoLocationService.js';
 import { isTextTooSimilar as _isLocationTooSimilar } from '../../lib/stringUtils.js';
 import { generateInitialClue, generateFollowUpClue, generateFinalReveal } from './geoClueService.js';
-import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage, formatRevealMessage } from './geoMessageFormatter.js';
+import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, formatTimeoutMessage, formatStopMessage, formatStartNextRoundMessage, formatGameSessionScoresMessage, formatRevealMessage, formatLeaderboardMessage } from './geoMessageFormatter.js';
 import { t, isCatalogued } from '../../lib/i18n.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
 import { summarizeText } from '../llm/llmClient.js';
@@ -394,15 +394,10 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         if (gameState.config.scoreTracking) {
             try {
                 const leaderboardData = await getLeaderboard(gameState.channelName, 5);
-                let leaderboardMessage = `🏆 Overall Top Players in #${gameState.channelName}: `;
-                if (!leaderboardData || leaderboardData.length === 0) {
-                    leaderboardMessage += `No stats yet!`;
-                } else {
-                    const sortedData = leaderboardData.sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0));
-                    const topPlayers = sortedData.slice(0, 5);
-                    leaderboardMessage += topPlayers.map((p, i) => `${i + 1}. ${p.data?.displayName || p.id} (${p.data?.channelPoints || 0} pts)`).join(', ');
-                }
-                enqueueMessage(`#${gameState.channelName}`, leaderboardMessage);
+                const lang = gameState.botLanguage || null;
+                enqueueMessage(`#${gameState.channelName}`,
+                    formatLeaderboardMessage(leaderboardData, gameState.channelName, lang),
+                    { skipTranslation: isCatalogued(lang) });
             } catch (error) {
                 logger.error({ err: error, channel: gameState.channelName }, `[GeoGame][${gameState.channelName}] Failed to fetch or format overall leaderboard.`);
                 enqueueMessage(`#${gameState.channelName}`, (t('geo.LeaderboardFetchFailed', {}, gameState.botLanguage || null) ?? `Could not fetch the overall channel leaderboard.`), { skipTranslation: isCatalogued(gameState.botLanguage) });
@@ -581,7 +576,7 @@ async function _startNextRound(gameState) {
     gameState.state = 'started';
 
     const nextRoundMessage = formatStartNextRoundMessage(gameState.currentRound, gameState.totalRounds, gameState.botLanguage || null);
-    enqueueMessage(`#${gameState.channelName}`, nextRoundMessage);
+    enqueueMessage(`#${gameState.channelName}`, nextRoundMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
 
     await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -759,7 +754,7 @@ async function _startGameProcess(channelName, mode, scope = null, initiatorUsern
     // --- Send Game Start Announcement Immediately (only if rounds > 1 or scope specified) ---
     if (gameState.totalRounds > 1 || scope !== null) {
         const startMessage = formatStartMessage(mode, gameState.gameTitleScope, gameState.config.roundDurationMinutes, gameState.totalRounds, gameState.sessionRegionScope, gameState.botLanguage || null);
-        enqueueMessage(`#${channelName}`, startMessage);
+        enqueueMessage(`#${channelName}`, startMessage, { skipTranslation: isCatalogued(gameState.botLanguage) });
     }
 
     try {

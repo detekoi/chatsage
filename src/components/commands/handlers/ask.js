@@ -8,7 +8,7 @@ import {
     generateUnifiedResponse,
     fetchIanaTimezoneForLocation
 } from '../../llm/llmClient.js';
-import { removeMarkdownAsterisks, getUserFriendlyErrorMessage, recordBotExchange } from '../../llm/llmUtils.js';
+import { removeMarkdownAsterisks, getUserFriendlyError, GENERIC_ERROR_KEY, recordBotExchange } from '../../llm/llmUtils.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
@@ -193,12 +193,12 @@ const askHandler = {
 
         } catch (error) {
             logger.error({ err: error, command: 'ask', query: userQuery }, `Error executing !ask command.`);
-            const errorMessage = getUserFriendlyErrorMessage(error);
-            const finalMessage = errorMessage === 'Sorry, an error occurred while processing that.'
-                ? 'Sorry, an error occurred while processing your question.'
-                : errorMessage;
+            const friendly = getUserFriendlyError(error);
+            const { key, fallback } = friendly.key === GENERIC_ERROR_KEY
+                ? { key: 'cmd.ask.ErrorProcessingQuestion', fallback: 'Sorry, an error occurred while processing your question.' }
+                : friendly;
             try {
-                await enqueueMessage(channel, finalMessage, { replyToId: user?.id || user?.['message-id'] || null });
+                await sendLocalized(channel, key, {}, fallback, { replyToId: user?.id || user?.['message-id'] || null });
             } catch (msgError) {
                 logger.warn({ err: msgError }, '[AskCommand] Failed to send error message to chat');
             }

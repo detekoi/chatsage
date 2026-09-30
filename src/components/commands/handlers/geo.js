@@ -3,6 +3,7 @@ import logger from '../../../lib/logger.js';
 import { getGeoGameManager } from '../../geo/geoGameManager.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getLeaderboard } from '../../geo/geoStorage.js';
+import { formatLeaderboardMessage } from '../../geo/geoMessageFormatter.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 import {
     extractGameContext,
@@ -20,33 +21,6 @@ import {
 
 const GAME_NAME = 'Geo-Game';
 const COMMAND_NAME = 'geo';
-
-/**
- * Helper function to format the leaderboard message.
- * @param {Array<{id: string, data: object}>} leaderboardData - Data from getLeaderboard.
- * @param {string} channelName - The channel name for context.
- * @returns {string} Formatted leaderboard message.
- */
-function formatLeaderboardMessage(leaderboardData, channelName) {
-    if (!leaderboardData || leaderboardData.length === 0) {
-        return `No Geo-Game stats found for this channel (${channelName}) yet!`;
-    }
-
-    // Sort by channel points (getLeaderboard should already do this, but double-check)
-    leaderboardData.sort((a, b) => (b.data?.channelPoints || 0) - (a.data?.channelPoints || 0));
-
-    const topPlayers = leaderboardData.slice(0, 5); // Show top 5
-
-    const listItems = topPlayers.map((player, index) => {
-        const rank = index + 1;
-        const name = player.data?.displayName || player.id;
-        const points = player.data?.channelPoints || 0;
-        const wins = player.data?.channelSuccesses || 0;
-        return `${rank}. ${name} (${points} pts, ${wins} wins)`;
-    });
-
-    return `🏆 Geo-Game Top Players in #${channelName}: ${listItems.join(', ')}`;
-}
 
 /**
  * Config schema for geo game options.
