@@ -14,9 +14,6 @@ describe('translationUtils', () => {
         return JSON.stringify({ same_language: sameLanguage, translated_text: translatedText });
     };
 
-    // Helper: create a plain-text response (for attempt 2 fallback)
-    const createPlainTextResponse = (text) => text;
-
     beforeEach(() => {
         jest.clearAllMocks();
         cleanupTranslationUtils();
@@ -93,7 +90,7 @@ describe('translationUtils', () => {
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBeNull();
-            // Two calls: attempt 1 (structured) fails, attempt 2 (plain text) fails
+            // Two structured attempts, both fail
             expect(generateLiteContent).toHaveBeenCalledTimes(2);
         });
 
@@ -116,26 +113,28 @@ describe('translationUtils', () => {
             expect(result).toBe('Hola mundo');
         });
 
-        it('should retry with plain-text prompt when structured fails', async () => {
-            // First attempt (structured) fails
-            generateLiteContent.mockRejectedValueOnce(new Error('Structured API Error'));
-            // Second attempt (plain text) succeeds
-            generateLiteContent.mockResolvedValueOnce(
-                createPlainTextResponse('Hola mundo')
-            );
+        it('should retry with the same structured prompt when the first attempt fails', async () => {
+            // generateLiteContent returns null when the API errors (e.g. a 503 after its own retries)
+            generateLiteContent.mockResolvedValueOnce(null);
+            generateLiteContent.mockResolvedValueOnce(createStructuredResponse(false, 'Hola mundo'));
 
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBe('Hola mundo');
             expect(generateLiteContent).toHaveBeenCalledTimes(2);
+            const [firstPrompt, firstOptions] = generateLiteContent.mock.calls[0];
+            const [secondPrompt, secondOptions] = generateLiteContent.mock.calls[1];
+            expect(secondPrompt).toBe(firstPrompt);
+            expect(secondOptions.responseSchema).toBe(firstOptions.responseSchema);
         });
 
-        it('should fall back to raw text when JSON parsing fails', async () => {
-            generateLiteContent.mockResolvedValue('Hola mundo');
+        it('should never post unparseable model output as a translation', async () => {
+            generateLiteContent.mockResolvedValue('"bai" is too short to translate without context.');
 
-            const result = await translateText('Hello world', 'Spanish');
+            const result = await translateText('bai', 'English');
 
-            expect(result).toBe('Hola mundo');
+            expect(result).toBeNull();
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
         });
 
         it('should use cached translation on second call', async () => {
@@ -213,6 +212,54 @@ describe('translationUtils', () => {
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('profanity');
             expect(prompt).toContain('slur');
+        });
+    });
+
+    describe('translateText untranslatable handling', () => {
+        it('should return null and log notes without retrying when the model marks text untranslatable', async () => {
+            generateLiteContent.mockResolvedValue(JSON.stringify({
+                same_language: false,
+                untranslatable: true,
+                translated_text: '',
+                notes: '"bai" is too short to translate without context'
+            }));
+
+            const result = await translateText('bai', 'Simple English');
+
+            expect(result).toBeNull();
+            // A deliberate skip is final; no retry
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.objectContaining({ text: 'bai', notes: '"bai" is too short to translate without context' }),
+                '[Translate] Model declined to translate; skipping.'
+            );
+        });
+
+        it('should log notes but return only the translation when one is provided', async () => {
+            generateLiteContent.mockResolvedValue(JSON.stringify({
+                same_language: false,
+                untranslatable: false,
+                translated_text: 'Hola mundo',
+                notes: 'Informal greeting'
+            }));
+
+            const result = await translateText('Hello world', 'Spanish');
+
+            expect(result).toBe('Hola mundo');
+            expect(logger.info).toHaveBeenCalledWith(
+                expect.objectContaining({ notes: 'Informal greeting' }),
+                '[Translate] Translation notes'
+            );
+        });
+
+        it('should tell the model to keep commentary out of translated_text', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(true, ''));
+
+            await translateText('Hello', 'Spanish');
+
+            const prompt = generateLiteContent.mock.calls[0][0];
+            expect(prompt).toContain('untranslatable');
+            expect(prompt).toContain('notes');
         });
     });
 

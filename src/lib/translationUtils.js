@@ -185,62 +185,63 @@ export async function translateText(textToTranslate, targetLanguage) {
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via lite model');
 
-    let translatedText = null;
-
-    // Attempt 1: Structured JSON output for reliable detection + translation
-    try {
-        const translationPrompt = `You are a professional interpreter for Twitch live-stream chat. Analyze the following text and translate it into ${targetLanguage}.
+    const translationPrompt = `You are a professional interpreter for Twitch live-stream chat. Analyze the following text and translate it into ${targetLanguage}.
 Rules:
 1. If the text is already in ${targetLanguage}, set same_language to true and leave translated_text empty.
-2. Otherwise, set same_language to false and provide the translation in translated_text.
-3. Preserve the original formatting — no markdown, no quotes, no explanations.
-4. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
-5. Preserve all profanity exactly as-is in translation (e.g. swear words, vulgar language). Only replace extreme slurs (racial or homophobic slurs) with a bracketed placeholder like [slur].
+2. If the text is too short, ambiguous or meaningless to translate confidently, set untranslatable to true, leave translated_text empty, and explain why in notes.
+3. Otherwise, set same_language and untranslatable to false and provide the translation in translated_text.
+4. translated_text is posted to chat verbatim: it holds only the translation — no markdown, no quotes, no explanations, no commentary about meaning or ambiguity. Any such reasoning goes in notes, which only operators see. Leave notes empty for a routine translation; use it only when you skipped the text or had to pick a reading of ambiguous or misspelled text.
+5. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
+6. Preserve all profanity exactly as-is in translation (e.g. swear words, vulgar language). Only replace extreme slurs (racial or homophobic slurs) with a bracketed placeholder like [slur].
 
 Text:
 ${textToTranslate}`;
 
-        const responseText = await withLlmCaller('translate', () => generateLiteContent(translationPrompt, {
-            temperature: 0.3,
-            maxOutputTokens: 2048,
-            responseSchema: TranslationResponseSchema
-        }));
-
-        if (responseText) {
-            try {
-                const parsed = JSON.parse(responseText);
-                if (parsed.same_language === true) {
-                    logger.debug({ targetLanguage }, 'Message already in target language, skipping translation.');
-                    return SAME_LANGUAGE;
-                }
-                translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
-            } catch (parseErr) {
-                logger.debug({ err: parseErr }, 'Failed to parse structured response, using raw text.');
-                translatedText = responseText.trim() || null;
-            }
-        }
-    } catch (e) {
-        logger.warn({ err: e }, 'Translation attempt1 (structured) failed.');
-    }
-
-    // Attempt 2: Simplified plain-text prompt if first attempt failed
-    if (!translatedText) {
+    // Both attempts use structured output. A free-form fallback can't tell a translation
+    // from the model's commentary about it, and that commentary ends up in chat.
+    let translatedText = null;
+    for (let attempt = 1; attempt <= 2 && !translatedText; attempt++) {
+        let responseText;
         try {
-            const simplePrompt = `Translate to ${targetLanguage} (replace any slurs or hate speech with neutral descriptive terms like "[slur]" instead of translating them literally): ${textToTranslate}`;
-            const text2 = await withLlmCaller('translate', () => generateLiteContent(simplePrompt, {
-                temperature: 0.2,
-                maxOutputTokens: 1536
+            responseText = await withLlmCaller('translate', () => generateLiteContent(translationPrompt, {
+                temperature: 0.3,
+                maxOutputTokens: 2048,
+                responseSchema: TranslationResponseSchema
             }));
-            if (text2) {
-                logger.debug({
-                    phase: 'attempt2',
-                    hasText: true
-                }, 'Translation attempt2 result');
-                translatedText = text2;
-            }
-        } catch (e2) {
-            logger.warn({ err: e2 }, 'Translation attempt2 (plain text) failed.');
+        } catch (e) {
+            logger.warn({ err: e, attempt }, 'Translation attempt failed.');
+            continue;
         }
+        if (!responseText) continue;
+
+        let parsed;
+        try {
+            parsed = JSON.parse(responseText);
+        } catch (parseErr) {
+            logger.warn({ err: parseErr, attempt, responseLength: responseText.length }, 'Failed to parse structured translation response.');
+            continue;
+        }
+
+        if (parsed.same_language === true) {
+            logger.debug({ targetLanguage, notes: parsed.notes || undefined }, 'Message already in target language, skipping translation.');
+            return SAME_LANGUAGE;
+        }
+        if (parsed.untranslatable === true) {
+            logger.info({
+                targetLanguage,
+                text: textToTranslate.substring(0, 200),
+                notes: parsed.notes || null
+            }, '[Translate] Model declined to translate; skipping.');
+            return null;
+        }
+        if (parsed.notes) {
+            logger.info({
+                targetLanguage,
+                text: textToTranslate.substring(0, 200),
+                notes: parsed.notes
+            }, '[Translate] Translation notes');
+        }
+        translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
     }
 
     if (!translatedText) {

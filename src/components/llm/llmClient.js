@@ -9,7 +9,7 @@ import * as openAiCore from './openai/core.js';
 import * as openAiChat from './openai/chat.js';
 import * as openAiGen from './openai/generation.js';
 
-import { toGeminiSchema } from './schemaUtils.js';
+import { toGeminiJsonSchema } from './schemaUtils.js';
 
 export { buildContextPrompt } from './gemini/prompts.js';
 
@@ -121,11 +121,10 @@ export async function generateStructuredJson({
 }) {
     if (model === 'lite') {
         const geminiModel = geminiCore.getGeminiClient();
-        const geminiSchema = toGeminiSchema(schema);
         const parts = [{ text: prompt }, ...(multimodalParts || [])];
         const genConfig = {
             responseMimeType: 'application/json',
-            responseSchema: geminiSchema
+            responseJsonSchema: toGeminiJsonSchema(schema)
         };
         if (temperature !== undefined) genConfig.temperature = temperature;
 

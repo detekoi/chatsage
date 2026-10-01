@@ -1,5 +1,3 @@
-import { Type as GenAIType } from '@google/genai';
-
 /**
  * Converts a standard plain JSON schema into an OpenAI strict JSON schema:
  * - Adds `additionalProperties: false` to object schemas
@@ -42,58 +40,39 @@ export function toOpenAiStrictSchema(schema) {
 }
 
 /**
- * Converts a standard plain JSON schema into a Gemini GenAI Type schema.
+ * Converts a standard plain JSON schema into the JSON Schema subset Gemini accepts
+ * in `responseJsonSchema`. Unlike the OpenAPI-style `responseSchema`, the model emits
+ * properties in the order the keys are written, so put decisions before free text.
+ * - Converts `nullable: true` to `type: [type, "null"]` (`nullable` is not JSON Schema)
  */
-export function toGeminiSchema(schema) {
+export function toGeminiJsonSchema(schema) {
     if (!schema || typeof schema !== 'object') return schema;
 
-    function mapType(typeStr) {
-        switch (typeStr) {
-            case 'object': return GenAIType.OBJECT;
-            case 'string': return GenAIType.STRING;
-            case 'number': return GenAIType.NUMBER;
-            case 'integer': return GenAIType.INTEGER;
-            case 'boolean': return GenAIType.BOOLEAN;
-            case 'array': return GenAIType.ARRAY;
-            default: return typeStr;
-        }
-    }
+    const copy = JSON.parse(JSON.stringify(schema));
 
     function processNode(node) {
-        if (!node || typeof node !== 'object') return node;
+        if (!node || typeof node !== 'object') return;
 
-        const result = {};
-
-        if (node.type) {
-            result.type = mapType(node.type);
+        if (node.nullable !== undefined) {
+            if (node.nullable === true && typeof node.type === 'string') {
+                node.type = [node.type, 'null'];
+            }
+            delete node.nullable;
         }
 
-        if (node.description) result.description = node.description;
-        if (node.enum) result.enum = node.enum;
-
         if (node.properties) {
-            result.properties = {};
             for (const key of Object.keys(node.properties)) {
-                result.properties[key] = processNode(node.properties[key]);
+                processNode(node.properties[key]);
             }
         }
 
-        if (node.required) {
-            result.required = [...node.required];
-        }
-
         if (node.items) {
-            result.items = processNode(node.items);
+            processNode(node.items);
         }
-
-        if (node.nullable !== undefined) {
-            result.nullable = node.nullable;
-        }
-
-        return result;
     }
 
-    return processNode(schema);
+    processNode(copy);
+    return copy;
 }
 
 // --- Application Schemas (Standard JSON Schema format) ---
@@ -235,9 +214,12 @@ export const TranslationResponseSchema = {
     type: 'object',
     properties: {
         same_language: { type: 'boolean', description: 'True if already in target language' },
-        translated_text: { type: 'string', description: 'Translated text string' }
+        untranslatable: { type: 'boolean', description: 'True if the text is too short, ambiguous or meaningless to translate confidently' },
+        notes: { type: 'string', description: 'Only for a judgment call: why the text was skipped, or which reading of an ambiguous or misspelled text was chosen. Logged for operators, never shown in chat. Empty for a routine translation.' },
+        translated_text: { type: 'string', description: 'Only the translation itself, posted verbatim to chat. Empty when same_language or untranslatable is true.' }
     },
-    required: ['same_language', 'translated_text']
+    // Key order matters to Gemini (responseJsonSchema): decide and explain before writing the chat text
+    required: ['same_language', 'untranslatable', 'notes', 'translated_text']
 };
 
 export const MemoryExtractionSchema = {

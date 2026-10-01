@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import logger from '../../../lib/logger.js';
 import { retryWithBackoff, executeWithFlexFallback } from './utils.js';
 import { instrumentGenAiClient } from '../llmRequestLog.js';
+import { toGeminiJsonSchema } from '../schemaUtils.js';
 
 let genAI = null;
 let generativeModel = null; // Wrapper that mirrors old API (generateContent/startChat)
@@ -116,7 +117,7 @@ export function getConfiguredModelId() {
  * @param {string} prompt - The text prompt
  * @param {object} [options={}] - Optional config overrides
  * @param {string} [options.systemInstruction] - System instruction text
- * @param {object} [options.responseSchema] - JSON schema for structured output
+ * @param {object} [options.responseSchema] - Plain JSON schema for structured output (sent as responseJsonSchema)
  * @param {number} [options.temperature] - Temperature override
  * @param {Array} [options.multimodalParts] - Additional content parts (e.g. emote images)
  * @param {number} [options.maxOutputTokens] - Max tokens
@@ -134,7 +135,7 @@ export async function generateLiteContent(prompt, options = {}) {
     }
     if (options.responseSchema) {
         config.responseMimeType = 'application/json';
-        config.responseSchema = options.responseSchema;
+        config.responseJsonSchema = toGeminiJsonSchema(options.responseSchema);
     }
     if (options.temperature !== undefined) {
         config.temperature = options.temperature;

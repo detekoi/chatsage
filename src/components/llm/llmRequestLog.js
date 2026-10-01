@@ -91,7 +91,7 @@ export function instrumentGenAiClient(genAI) {
             model: payload?.model ?? null,
             serviceTier: cfg.serviceTier ?? null,
             tools: Array.isArray(cfg.tools) ? cfg.tools.flatMap(t => Object.keys(t ?? {})) : [],
-            structured: !!cfg.responseSchema || cfg.responseMimeType === 'application/json',
+            structured: !!(cfg.responseJsonSchema || cfg.responseSchema) || cfg.responseMimeType === 'application/json',
             thinkingLevel: cfg.thinkingConfig?.thinkingLevel ?? null,
         };
         try {

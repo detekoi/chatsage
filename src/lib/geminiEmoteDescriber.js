@@ -243,7 +243,7 @@ export async function describeSingleEmote(emoteId, emoteName, isAnimated = false
                 config: {
                     systemInstruction: SYSTEM_INSTRUCTION,
                     responseMimeType: 'application/json',
-                    responseSchema: {
+                    responseJsonSchema: {
                         type: 'object',
                         properties: {
                             description: { type: 'string', description: 'A 2-8 word visual and emotional description of the emote.' },

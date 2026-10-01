@@ -4,9 +4,9 @@ import { getGeminiClient, generateLiteContent } from './core.js';
 import { safeExtractText, safeParseJsonResponse } from './utils.js';
 import { buildSystemInstruction } from './prompts.js';
 import { standardAnswerTools, searchTool } from './tools.js';
-import { TimezoneSchema, SummarySchema, toGeminiSchema } from '../schemaUtils.js';
+import { TimezoneSchema, SummarySchema, toGeminiJsonSchema } from '../schemaUtils.js';
 
-const geminiTimezoneSchema = toGeminiSchema(TimezoneSchema);
+const geminiTimezoneSchema = toGeminiJsonSchema(TimezoneSchema);
 
 /**
  * Uses the LLM to infer a valid IANA timezone for a given location string.
@@ -29,7 +29,7 @@ Return STRICT JSON.`;
             generationConfig: {
                 temperature: 0.0,
                 responseMimeType: 'application/json',
-                responseSchema: geminiTimezoneSchema
+                responseJsonSchema: geminiTimezoneSchema
             }
         });
 
@@ -229,8 +229,6 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
     }
 }
 
-const geminiSummarySchema = toGeminiSchema(SummarySchema);
-
 export async function summarizeText(textToSummarize, targetCharLength = 400, _options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || !textToSummarize.trim()) return null;
 
@@ -240,7 +238,7 @@ Text: ${textToSummarize}`;
     try {
         const responseText = await generateLiteContent(prompt, {
             ..._options,
-            responseSchema: geminiSummarySchema
+            responseSchema: SummarySchema
         });
 
         if (responseText) {

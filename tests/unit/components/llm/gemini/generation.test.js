@@ -56,6 +56,7 @@ describe('gemini/generation.js', () => {
             const callArgs = mockGenerateContent.mock.calls[0][0];
             expect(callArgs.generationConfig.responseMimeType).toBeUndefined();
             expect(callArgs.generationConfig.responseSchema).toBeUndefined();
+            expect(callArgs.generationConfig.responseJsonSchema).toBeUndefined();
             expect(response).toBe('Mocked response text');
         });
 
