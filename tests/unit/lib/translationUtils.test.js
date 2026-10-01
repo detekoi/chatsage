@@ -215,6 +215,60 @@ describe('translationUtils', () => {
         });
     });
 
+    describe('translateText context', () => {
+        it('should include prior messages and the reply parent in the prompt', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'bye'));
+
+            await translateText('bai', 'English', {
+                priorMessages: ['kumusta kayo', 'salamat'],
+                replyParent: { displayName: 'Pedro', text: 'see you tomorrow' },
+            });
+
+            const prompt = generateLiteContent.mock.calls[0][0];
+            expect(prompt).toContain('"kumusta kayo"');
+            expect(prompt).toContain('"salamat"');
+            expect(prompt).toContain('reply to this message from Pedro');
+            expect(prompt).toContain('"see you tomorrow"');
+            expect(prompt).toContain('Translate only the text, never the context');
+            expect(prompt.trim().endsWith('bai')).toBe(true);
+        });
+
+        it('should leave the context section out when there is none', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'Hola'));
+
+            await translateText('Hello', 'Spanish', { priorMessages: [], replyParent: null });
+
+            const prompt = generateLiteContent.mock.calls[0][0];
+            expect(prompt).not.toContain('Context:');
+        });
+
+        it('should not read or write the cache when context is given', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'bye'));
+            await translateText('bai', 'English');
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
+
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'paalam'));
+            const withContext = await translateText('bai', 'English', { priorMessages: ['kumusta'] });
+            expect(withContext).toBe('paalam');
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
+
+            // The context-free cache entry is untouched
+            const cached = await translateText('bai', 'English');
+            expect(cached).toBe('bye');
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
+        });
+
+        it('should clip long context messages', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'ok'));
+
+            await translateText('vale', 'English', { priorMessages: ['x'.repeat(500)] });
+
+            const prompt = generateLiteContent.mock.calls[0][0];
+            expect(prompt).toContain(`${'x'.repeat(200)}…`);
+            expect(prompt).not.toContain('x'.repeat(201));
+        });
+    });
+
     describe('translateText untranslatable handling', () => {
         it('should return null and log notes without retrying when the model marks text untranslatable', async () => {
             generateLiteContent.mockResolvedValue(JSON.stringify({

@@ -280,6 +280,58 @@ describe('contextManager', () => {
         });
     });
 
+    describe('getRecentUserMessages', () => {
+        let manager;
+        let channelCounter = 0;
+        let channel;
+
+        beforeEach(async () => {
+            channelCounter++;
+            channel = `recentchannel${channelCounter}`;
+            await initializeContextManager([channel]);
+            manager = getContextManager();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('should return only the given user\'s messages, oldest first, up to the limit', async () => {
+            await manager.addMessage(channel, 'alice', 'one', { id: 'a1' });
+            await manager.addMessage(channel, 'bob', 'not alice', { id: 'b1' });
+            await manager.addMessage(channel, 'alice', 'two', { id: 'a2' });
+            await manager.addMessage(channel, 'alice', 'three', { id: 'a3' });
+
+            const result = manager.getRecentUserMessages(channel, 'Alice', { limit: 2 });
+
+            expect(result.map(m => m.message)).toEqual(['two', 'three']);
+        });
+
+        it('should leave out the excluded message id', async () => {
+            await manager.addMessage(channel, 'alice', 'earlier', { id: 'a1' });
+            await manager.addMessage(channel, 'alice', 'current', { id: 'a2' });
+
+            const result = manager.getRecentUserMessages(channel, 'alice', { excludeMessageId: 'a2' });
+
+            expect(result.map(m => m.message)).toEqual(['earlier']);
+        });
+
+        it('should ignore messages older than maxAgeMs', async () => {
+            jest.useFakeTimers({ now: new Date('2026-10-01T12:00:00Z') });
+            await manager.addMessage(channel, 'alice', 'stale', { id: 'a1' });
+            jest.setSystemTime(new Date('2026-10-01T12:20:00Z'));
+            await manager.addMessage(channel, 'alice', 'fresh', { id: 'a2' });
+
+            const result = manager.getRecentUserMessages(channel, 'alice', { maxAgeMs: 10 * 60 * 1000 });
+
+            expect(result.map(m => m.message)).toEqual(['fresh']);
+        });
+
+        it('should return an empty array for an unknown channel', () => {
+            expect(manager.getRecentUserMessages('nochannel', 'alice')).toEqual([]);
+        });
+    });
+
     describe('addMessage summarization behavior', () => {
         let manager;
 

@@ -186,6 +186,28 @@ export function stripEmotesFromMessage(message, fragments) {
 }
 
 /**
+ * Collects surrounding chat that helps the translator tell which language a
+ * message is in: the chatter's recent messages and the message being replied to.
+ * @returns {{priorMessages: string[], replyParent: {displayName: string, text: string}|null}}
+ */
+export function buildTranslationContext({ contextManager, cleanChannel, lowerUsername, tags }) {
+    const currentId = tags?.id || tags?.['message-id'] || null;
+    const recent = contextManager?.getRecentUserMessages?.(cleanChannel, lowerUsername, { excludeMessageId: currentId }) || [];
+    const priorMessages = recent
+        // Commands say nothing about the language the chatter speaks
+        .filter(entry => typeof entry.message === 'string' && !entry.message.trim().startsWith('!'))
+        .map(entry => stripEmotesFromMessage(entry.message, entry.tags?.fragments))
+        .filter(Boolean);
+
+    const parentText = tags?.['reply-parent-msg-body'];
+    const replyParent = typeof parentText === 'string' && parentText.trim()
+        ? { displayName: tags['reply-parent-display-name'] || tags['reply-parent-user-login'] || null, text: parentText }
+        : null;
+
+    return { priorMessages, replyParent };
+}
+
+/**
  * Handles automatic translation for messages
  * @param {Object} params - Parameters object
  * @returns {Promise<boolean>} True if translation was performed, false otherwise
@@ -197,7 +219,8 @@ export async function handleAutoTranslation({
     channel,
     tags,
     userState,
-    wasTranslateCommand
+    wasTranslateCommand,
+    contextManager
 }) {
     // Only translate if enabled and NOT the translate command itself
     if (!userState?.isTranslating || !userState.targetLanguage || wasTranslateCommand) {
@@ -212,7 +235,8 @@ export async function handleAutoTranslation({
 
     logger.debug(`[${cleanChannel}] Translating message from ${lowerUsername} to ${userState.targetLanguage}`);
     try {
-        const translatedText = await translateText(textToTranslate, userState.targetLanguage);
+        const translationContext = buildTranslationContext({ contextManager, cleanChannel, lowerUsername, tags });
+        const translatedText = await translateText(textToTranslate, userState.targetLanguage, translationContext);
         if (translatedText && translatedText !== SAME_LANGUAGE) {
             const reply = `🌐💬 ${translatedText}`;
             const replyToId = tags?.id || tags?.['message-id'] || null;

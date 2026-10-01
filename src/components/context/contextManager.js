@@ -718,6 +718,33 @@ function getUserTranslationState(channelName, username) {
 }
 
 /**
+ * Returns a user's most recent chat messages in a channel, oldest first.
+ * @param {string} channelName - Channel name (without '#').
+ * @param {string} username - Chatter login.
+ * @param {object} [options]
+ * @param {number} [options.limit=5] - Maximum messages to return.
+ * @param {number} [options.maxAgeMs=600000] - Ignore messages older than this.
+ * @param {string|null} [options.excludeMessageId] - Message id to leave out (e.g. the message being handled).
+ * @returns {Array<{timestamp: Date, message: string, tags: object}>}
+ */
+function getRecentUserMessages(channelName, username, { limit = 5, maxAgeMs = 10 * 60 * 1000, excludeMessageId = null } = {}) {
+    const channelState = channelStates.get(channelName);
+    if (!channelState || !username) return [];
+    const lowerUsername = username.toLowerCase();
+    const cutoff = Date.now() - maxAgeMs;
+    const result = [];
+    for (let i = channelState.chatHistory.length - 1; i >= 0 && result.length < limit; i--) {
+        const entry = channelState.chatHistory[i];
+        if (entry.username !== lowerUsername) continue;
+        if (entry.timestamp.getTime() < cutoff) break;
+        const entryId = entry.tags?.id || entry.tags?.['message-id'] || null;
+        if (excludeMessageId && entryId === excludeMessageId) continue;
+        result.push({ timestamp: entry.timestamp, message: entry.message, tags: entry.tags });
+    }
+    return result.reverse();
+}
+
+/**
  * Sets the bot's language for responses in a specific channel.
  * @param {string} channelName - Channel name (without '#').
  * @param {string} language - Target language (null to use default English).
@@ -927,6 +954,7 @@ const manager = {
     enableUserTranslation,
     disableUserTranslation,
     getUserTranslationState,
+    getRecentUserMessages,
     disableAllTranslationsInChannel,
     setBotLanguage,
     getBotLanguage,
@@ -950,6 +978,7 @@ export {
     initializeContextManager,
     getContextManager,
     getUserTranslationState,
+    getRecentUserMessages,
     disableUserTranslation,
     disableAllTranslationsInChannel,
     setBotLanguage,

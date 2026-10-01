@@ -160,7 +160,8 @@ export async function handleChatMessage(channel, tags, message) {
         channel,
         tags,
         userState,
-        wasTranslateCommand
+        wasTranslateCommand,
+        contextManager
     });
 
     // --- Mention or Reply-to-Bot Check ---

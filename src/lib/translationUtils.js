@@ -157,25 +157,59 @@ Return JSON only.`;
 }
 
 
+const CONTEXT_MESSAGE_MAX_CHARS = 200;
+
+/**
+ * Formats surrounding chat for the translation prompt.
+ * @returns {string} Prompt section, or an empty string when there is no context
+ */
+function buildTranslationContextBlock(priorMessages, replyParent) {
+    const clip = (text) => text.length > CONTEXT_MESSAGE_MAX_CHARS ? `${text.slice(0, CONTEXT_MESSAGE_MAX_CHARS)}…` : text;
+    const sections = [];
+
+    const prior = (Array.isArray(priorMessages) ? priorMessages : [])
+        .filter(m => typeof m === 'string' && m.trim())
+        .map(m => `- ${JSON.stringify(clip(m.trim()))}`);
+    if (prior.length > 0) {
+        sections.push(`Earlier messages from the same chatter, oldest first:\n${prior.join('\n')}`);
+    }
+
+    const parentText = typeof replyParent?.text === 'string' ? replyParent.text.trim() : '';
+    if (parentText) {
+        const who = replyParent.displayName || 'another chatter';
+        sections.push(`The text is a reply to this message from ${who}:\n- ${JSON.stringify(clip(parentText))}`);
+    }
+
+    return sections.length > 0 ? `Context:\n${sections.join('\n\n')}` : '';
+}
+
 /**
  * Translates text using LLM lite content call.
  * Uses structured JSON output for both same-language detection and translation in one round-trip.
  * @param {string} textToTranslate - The text to translate
  * @param {string} targetLanguage - The target language
+ * @param {object} [context] - Surrounding chat, used only to work out the language and meaning
+ * @param {string[]} [context.priorMessages] - The same chatter's earlier messages, oldest first
+ * @param {{displayName?: string, text?: string}|null} [context.replyParent] - The message this one replies to
  * @returns {Promise<string|Symbol|null>} The translated text, SAME_LANGUAGE if already in target language, or null on failure
  */
-export async function translateText(textToTranslate, targetLanguage) {
+export async function translateText(textToTranslate, targetLanguage, { priorMessages = [], replyParent = null } = {}) {
     if (!textToTranslate || !targetLanguage) {
         logger.error('translateText called with missing text or target language.');
         return null;
     }
+
+    const contextBlock = buildTranslationContextBlock(priorMessages, replyParent);
+    // The same text can mean different things in different conversations, so only
+    // context-free translations are cached
+    const useCache = !contextBlock;
 
     // Create cache key with normalized inputs
     const cacheKey = `${targetLanguage.toLowerCase()}:${textToTranslate.toLowerCase().trim()}`;
     const now = Date.now();
 
     // Check cache first
-    const cachedEntry = translationCache.get(cacheKey);
+    const cachedEntry = useCache ? translationCache.get(cacheKey) : null;
     if (cachedEntry && (now - cachedEntry.timestamp < CACHE_EXPIRY_MS)) {
         translationCache.delete(cacheKey);
         translationCache.set(cacheKey, cachedEntry);
@@ -183,7 +217,7 @@ export async function translateText(textToTranslate, targetLanguage) {
         return cachedEntry.translation;
     }
 
-    logger.debug({ targetLanguage, textLength: textToTranslate.length }, 'Attempting translation via lite model');
+    logger.debug({ targetLanguage, textLength: textToTranslate.length, hasContext: !useCache }, 'Attempting translation via lite model');
 
     const translationPrompt = `You are a professional interpreter for Twitch live-stream chat. Analyze the following text and translate it into ${targetLanguage}.
 Rules:
@@ -193,7 +227,10 @@ Rules:
 4. translated_text is posted to chat verbatim: it holds only the translation — no markdown, no quotes, no explanations, no commentary about meaning or ambiguity. Any such reasoning goes in notes, which only operators see. Leave notes empty for a routine translation; use it only when you skipped the text or had to pick a reading of ambiguous or misspelled text.
 5. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
 6. Preserve all profanity exactly as-is in translation (e.g. swear words, vulgar language). Only replace extreme slurs (racial or homophobic slurs) with a bracketed placeholder like [slur].
+${contextBlock ? `7. Use the context below only to work out which language the text is in and what it means. Translate only the text, never the context.
 
+${contextBlock}
+` : ''}
 Text:
 ${textToTranslate}`;
 
@@ -271,7 +308,7 @@ ${textToTranslate}`;
     }
 
     // Cache the successful translation
-    if (cleanedText && cleanedText.length > 0) {
+    if (useCache && cleanedText && cleanedText.length > 0) {
         if (translationCache.size >= MAX_CACHE_SIZE) {
             const oldestKey = translationCache.keys().next().value;
             translationCache.delete(oldestKey);

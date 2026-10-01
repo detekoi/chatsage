@@ -509,7 +509,7 @@ describe('Message Handlers', () => {
             const result = await handleAutoTranslation(createBaseParams());
 
             expect(result).toBe(true);
-            expect(translateText).toHaveBeenCalledWith('Hello world', 'es');
+            expect(translateText).toHaveBeenCalledWith('Hello world', 'es', { priorMessages: [], replyParent: null });
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 '🌐💬 Hola mundo',
@@ -536,7 +536,35 @@ describe('Message Handlers', () => {
             });
 
             expect(result).toBe(true);
-            expect(translateText).toHaveBeenCalledWith('omg esta canción', 'es');
+            expect(translateText).toHaveBeenCalledWith('omg esta canción', 'es', expect.any(Object));
+        });
+
+        test('should pass the chatter\'s recent messages and the reply parent as context', async () => {
+            translateText.mockResolvedValue('bye');
+            const contextManager = {
+                getRecentUserMessages: jest.fn().mockReturnValue([
+                    { message: 'kumusta kayo', tags: {} },
+                    { message: '!translate english', tags: {} },
+                    { message: 'salamat pedrom90BounceFrog', tags: { fragments: [{ type: 'text', text: 'salamat ' }, { type: 'emote', text: 'pedrom90BounceFrog' }] } },
+                ]),
+            };
+
+            await handleAutoTranslation({
+                ...createBaseParams(),
+                message: 'bai',
+                contextManager,
+                tags: {
+                    id: 'msg-123',
+                    'reply-parent-msg-body': 'see you tomorrow',
+                    'reply-parent-display-name': 'Pedro',
+                },
+            });
+
+            expect(contextManager.getRecentUserMessages).toHaveBeenCalledWith('testchannel', 'testuser', { excludeMessageId: 'msg-123' });
+            expect(translateText).toHaveBeenCalledWith('bai', 'es', {
+                priorMessages: ['kumusta kayo', 'salamat'],
+                replyParent: { displayName: 'Pedro', text: 'see you tomorrow' },
+            });
         });
 
         test('should skip translation for emote-only messages', async () => {
