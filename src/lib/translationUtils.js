@@ -285,7 +285,7 @@ ${textToTranslate}`;
     }
 
     if (!translatedText) {
-        logger.warn('Translation response missing extractable text.');
+        logger.warn({ targetLanguage, text: textToTranslate.substring(0, 200) }, 'Translation response missing extractable text.');
         return null;
     }
 
@@ -293,7 +293,11 @@ ${textToTranslate}`;
     cleanedText = cleanedText.replace(/\*\*/g, '').trim();
 
     if (!cleanedText) {
-        logger.warn('Translation was empty after cleanup.');
+        logger.warn({
+            targetLanguage,
+            text: textToTranslate.substring(0, 200),
+            rawTranslation: translatedText.substring(0, 200)
+        }, 'Translation was empty after cleanup.');
         return null;
     }
 

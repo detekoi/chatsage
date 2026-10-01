@@ -100,7 +100,10 @@ describe('translationUtils', () => {
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBeNull();
-            expect(logger.warn).toHaveBeenCalledWith('Translation response missing extractable text.');
+            expect(logger.warn).toHaveBeenCalledWith(
+                { targetLanguage: 'Spanish', text: 'Hello world' },
+                'Translation response missing extractable text.'
+            );
         });
 
         it('should clean quotation marks from translation', async () => {
@@ -232,6 +235,10 @@ describe('translationUtils', () => {
             const result = await translateText('Hello world', 'Spanish');
 
             expect(result).toBeNull();
+            expect(logger.warn).toHaveBeenCalledWith(
+                { targetLanguage: 'Spanish', text: 'Hello world', rawTranslation: '""' },
+                'Translation was empty after cleanup.'
+            );
         });
 
         it('should treat an echo with a corrected typo as same language', async () => {
