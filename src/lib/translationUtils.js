@@ -1,4 +1,5 @@
 import logger from './logger.js';
+import { calculateStringSimilarity } from './stringUtils.js';
 import { generateLiteContent } from '../components/llm/llmClient.js';
 import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { TranslateCommandSchema, TranslationResponseSchema } from '../components/llm/schemaUtils.js';
@@ -191,7 +192,8 @@ function buildTranslationContextBlock(priorMessages, replyParent) {
  * @param {object} [context] - Surrounding chat, used only to work out the language and meaning
  * @param {string[]} [context.priorMessages] - The same chatter's earlier messages, oldest first
  * @param {{displayName?: string, text?: string}|null} [context.replyParent] - The message this one replies to
- * @returns {Promise<string|Symbol|null>} The translated text, SAME_LANGUAGE if already in target language, or null on failure
+ * @returns {Promise<string|Symbol|null>} The translated text, SAME_LANGUAGE if already in target language, or null on
+ *   failure or when the model flags the text as untranslatable (too short or ambiguous)
  */
 export async function translateText(textToTranslate, targetLanguage, { priorMessages = [], replyParent = null } = {}) {
     if (!textToTranslate || !targetLanguage) {
@@ -278,7 +280,8 @@ ${textToTranslate}`;
                 notes: parsed.notes
             }, '[Translate] Translation notes');
         }
-        translatedText = parsed.translated_text && parsed.translated_text.length > 0 ? parsed.translated_text : null;
+        // A blank or whitespace-only translation counts as a failed attempt, so the retry still runs
+        translatedText = typeof parsed.translated_text === 'string' && parsed.translated_text.trim() ? parsed.translated_text : null;
     }
 
     if (!translatedText) {
@@ -289,17 +292,18 @@ ${textToTranslate}`;
     let cleanedText = translatedText.replace(/^"(.*)"$/s, '$1').trim();
     cleanedText = cleanedText.replace(/\*\*/g, '').trim();
 
-    // Similarity safeguard: if the "translation" is nearly identical to the input, treat as same language
+    if (!cleanedText) {
+        logger.warn('Translation was empty after cleanup.');
+        return null;
+    }
+
+    // Similarity safeguard: if the "translation" is nearly identical to the input, treat as same language.
+    // Edit distance rather than a per-position match, so an inserted or fixed character doesn't misalign the rest.
     const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const normOriginal = normalize(textToTranslate);
     const normTranslated = normalize(cleanedText);
     if (normOriginal.length > 0 && normTranslated.length > 0) {
-        const maxLen = Math.max(normOriginal.length, normTranslated.length);
-        let matches = 0;
-        for (let i = 0; i < Math.min(normOriginal.length, normTranslated.length); i++) {
-            if (normOriginal[i] === normTranslated[i]) matches++;
-        }
-        const similarity = matches / maxLen;
+        const similarity = calculateStringSimilarity(normOriginal, normTranslated);
         if (similarity >= 0.85) {
             logger.debug({ targetLanguage, similarity: similarity.toFixed(2) },
                 'Translation too similar to original, treating as same language.');
@@ -308,7 +312,7 @@ ${textToTranslate}`;
     }
 
     // Cache the successful translation
-    if (useCache && cleanedText && cleanedText.length > 0) {
+    if (useCache) {
         if (translationCache.size >= MAX_CACHE_SIZE) {
             const oldestKey = translationCache.keys().next().value;
             translationCache.delete(oldestKey);

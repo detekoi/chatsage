@@ -215,6 +215,35 @@ describe('translationUtils', () => {
         });
     });
 
+    describe('translateText blank and echoed output', () => {
+        it('should retry when translated_text is whitespace only', async () => {
+            generateLiteContent.mockResolvedValueOnce(createStructuredResponse(false, '   '));
+            generateLiteContent.mockResolvedValueOnce(createStructuredResponse(false, 'Hola mundo'));
+
+            const result = await translateText('Hello world', 'Spanish');
+
+            expect(result).toBe('Hola mundo');
+            expect(generateLiteContent).toHaveBeenCalledTimes(2);
+        });
+
+        it('should return null, not an empty string, when cleanup leaves nothing', async () => {
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, '""'));
+
+            const result = await translateText('Hello world', 'Spanish');
+
+            expect(result).toBeNull();
+        });
+
+        it('should treat an echo with a corrected typo as same language', async () => {
+            // A per-position comparison scored this 0.33; edit distance scores it 0.89
+            generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'hello chat'));
+
+            const result = await translateText('helo chat', 'English');
+
+            expect(result).toBe(SAME_LANGUAGE);
+        });
+    });
+
     describe('translateText context', () => {
         it('should include prior messages and the reply parent in the prompt', async () => {
             generateLiteContent.mockResolvedValue(createStructuredResponse(false, 'bye'));

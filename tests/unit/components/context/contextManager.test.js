@@ -327,6 +327,25 @@ describe('contextManager', () => {
             expect(result.map(m => m.message)).toEqual(['fresh']);
         });
 
+        it('should stop at the age cutoff even when other users fill the history', async () => {
+            jest.useFakeTimers({ now: new Date('2026-10-01T12:00:00Z') });
+            await manager.addMessage(channel, 'alice', 'stale', { id: 'a1' });
+            jest.setSystemTime(new Date('2026-10-01T12:20:00Z'));
+            await manager.addMessage(channel, 'bob', 'recent from bob', { id: 'b1' });
+
+            const result = manager.getRecentUserMessages(channel, 'alice', { maxAgeMs: 10 * 60 * 1000 });
+
+            expect(result).toEqual([]);
+        });
+
+        it('should match usernames stored with mixed case', async () => {
+            await manager.addMessage(channel, 'WildcatSage', 'self message', { id: 'w1' });
+
+            const result = manager.getRecentUserMessages(channel, 'wildcatsage');
+
+            expect(result.map(m => m.message)).toEqual(['self message']);
+        });
+
         it('should return an empty array for an unknown channel', () => {
             expect(manager.getRecentUserMessages('nochannel', 'alice')).toEqual([]);
         });

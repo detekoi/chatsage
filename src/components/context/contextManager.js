@@ -735,8 +735,10 @@ function getRecentUserMessages(channelName, username, { limit = 5, maxAgeMs = 10
     const result = [];
     for (let i = channelState.chatHistory.length - 1; i >= 0 && result.length < limit; i--) {
         const entry = channelState.chatHistory[i];
-        if (entry.username !== lowerUsername) continue;
+        // History is in time order, so the first stale entry ends the search whoever sent it
         if (entry.timestamp.getTime() < cutoff) break;
+        // Bot self-messages are stored with the raw login, so compare case-insensitively
+        if (entry.username?.toLowerCase() !== lowerUsername) continue;
         const entryId = entry.tags?.id || entry.tags?.['message-id'] || null;
         if (excludeMessageId && entryId === excludeMessageId) continue;
         result.push({ timestamp: entry.timestamp, message: entry.message, tags: entry.tags });
