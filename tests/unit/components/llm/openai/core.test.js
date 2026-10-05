@@ -61,7 +61,7 @@ describe('OpenAI Core Module', () => {
                 expect.objectContaining({
                     service_tier: 'flex'
                 }),
-                { timeout: 900000 }
+                { timeout: 900000, maxRetries: 0 }
             );
         });
 

@@ -3,6 +3,11 @@ import logger from '../../lib/logger.js';
 export const MAX_RETRIES = 3;
 export const BASE_RETRY_DELAY_MS = 500;
 
+// Flex requests queue for spare capacity and can stall for minutes (the OpenAI SDK
+// default timeout is 10 minutes, retried twice). A chat reply that late is useless,
+// so a stalled Flex call is cut off here and goes straight to the standard tier.
+export const FLEX_TIMEOUT_MS = 20000;
+
 /**
  * Check if an error is retryable (network failures, timeouts, 500, 502, 503, 504, 429, OpenAI APIConnectionError)
  */
@@ -25,6 +30,15 @@ export function isRetryableError(error) {
 }
 
 /**
+ * Check if an error is a client-side request timeout (SDK timeout or aborted request)
+ */
+export function isTimeoutError(error) {
+    const name = error?.name || '';
+    if (name === 'APIConnectionTimeoutError' || name === 'AbortError' || name === 'TimeoutError') return true;
+    return /timed out|timeout|aborted/i.test(error?.message || '');
+}
+
+/**
  * Sleep helper for retry backoff
  */
 export function sleep(ms) {
@@ -37,7 +51,7 @@ export function sleep(ms) {
  * @param {string} operationName - Name of the operation for logging
  * @returns {Promise} Result of the function call
  */
-export async function retryWithBackoff(fn, operationName = 'LLM API call') {
+export async function retryWithBackoff(fn, operationName = 'LLM API call', shouldRetry = isRetryableError) {
     let lastError;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -47,7 +61,7 @@ export async function retryWithBackoff(fn, operationName = 'LLM API call') {
             lastError = error;
             const attemptNum = attempt + 1;
 
-            if (isRetryableError(error) && attempt < MAX_RETRIES - 1) {
+            if (shouldRetry(error) && attempt < MAX_RETRIES - 1) {
                 const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
                 logger.warn({
                     attempt: attemptNum,
@@ -92,7 +106,9 @@ export function resolveServiceTier(options = {}) {
  */
 export async function retryWithFlexFallback(flexFn, standardFn, operationName = 'Flex LLM Call') {
     try {
-        return await retryWithBackoff(flexFn, `${operationName} (Flex)`);
+        // A timed-out Flex call means no Flex capacity right now; retrying Flex
+        // would only stack more waiting before the standard fallback.
+        return await retryWithBackoff(flexFn, `${operationName} (Flex)`, error => isRetryableError(error) && !isTimeoutError(error));
     } catch (error) {
         if (typeof standardFn === 'function') {
             const status = error?.status || error?.response?.status || error?.statusCode;
@@ -121,21 +137,21 @@ export async function executeWithFlexFallback(apiCallFn, basePayload, options = 
     const reqOpts = options.timeout ? { timeout: options.timeout } : undefined;
 
     if (serviceTier === 'flex') {
+        const flexTimeout = options.timeout || FLEX_TIMEOUT_MS;
+        // maxRetries: 0 stops the OpenAI SDK's own retries; retryWithFlexFallback handles retrying.
+        const flexReqOpts = { timeout: flexTimeout, maxRetries: 0 };
         const flexPayload = { ...basePayload, service_tier: 'flex' };
         const stdPayload = { ...basePayload };
         delete stdPayload.service_tier;
 
         if (stdPayload.config && typeof stdPayload.config === 'object') {
-            flexPayload.config = { ...stdPayload.config, serviceTier: 'flex' };
-            if (options.timeout) {
-                flexPayload.config.httpOptions = { timeout: options.timeout };
-            }
+            flexPayload.config = { ...stdPayload.config, serviceTier: 'flex', httpOptions: { timeout: flexTimeout } };
             stdPayload.config = { ...stdPayload.config };
             delete stdPayload.config.serviceTier;
         }
 
         return await retryWithFlexFallback(
-            () => apiCallFn(flexPayload, reqOpts),
+            () => apiCallFn(flexPayload, flexReqOpts),
             () => apiCallFn(stdPayload, reqOpts),
             operationName
         );

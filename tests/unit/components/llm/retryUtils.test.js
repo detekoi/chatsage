@@ -1,7 +1,8 @@
 import {
     resolveServiceTier,
     retryWithFlexFallback,
-    executeWithFlexFallback
+    executeWithFlexFallback,
+    FLEX_TIMEOUT_MS
 } from '../../../../src/components/llm/retryUtils.js';
 
 describe('LLM Retry Utilities', () => {
@@ -104,8 +105,32 @@ describe('LLM Retry Utilities', () => {
             const result = await executeWithFlexFallback(apiCallFn, basePayload, { serviceTier: 'flex' }, 'TestExecuteFlex');
 
             expect(result).toBe('fallback result');
-            expect(apiCallFn).toHaveBeenCalledWith(expect.objectContaining({ service_tier: 'flex' }), undefined);
+            expect(apiCallFn).toHaveBeenCalledWith(expect.objectContaining({ service_tier: 'flex' }), { timeout: FLEX_TIMEOUT_MS, maxRetries: 0 });
             expect(apiCallFn).toHaveBeenCalledWith(expect.not.objectContaining({ service_tier: 'flex' }), undefined);
+        });
+
+        test('should fall back to standard after a single Flex timeout without retrying Flex', async () => {
+            const apiCallFn = jest.fn().mockImplementation((payload) => {
+                if (payload.service_tier === 'flex') {
+                    const err = new Error('Request timed out.');
+                    err.name = 'APIConnectionTimeoutError';
+                    return Promise.reject(err);
+                }
+                return Promise.resolve('standard result');
+            });
+
+            const result = await executeWithFlexFallback(apiCallFn, { model: 'gpt-6-luna' }, { serviceTier: 'flex' }, 'TestFlexTimeout');
+
+            expect(result).toBe('standard result');
+            expect(apiCallFn).toHaveBeenCalledTimes(2);
+        });
+
+        test('should bound Gemini Flex calls with httpOptions.timeout', async () => {
+            const apiCallFn = jest.fn().mockResolvedValue('ok');
+
+            await executeWithFlexFallback(apiCallFn, { model: 'gemini', config: { tools: [] } }, { serviceTier: 'flex' }, 'TestGeminiFlex');
+
+            expect(apiCallFn.mock.calls[0][0].config).toEqual({ tools: [], serviceTier: 'flex', httpOptions: { timeout: FLEX_TIMEOUT_MS } });
         });
     });
 });
