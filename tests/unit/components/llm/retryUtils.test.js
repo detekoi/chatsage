@@ -4,6 +4,7 @@ import {
     executeWithFlexFallback,
     FLEX_TIMEOUT_MS
 } from '../../../../src/components/llm/retryUtils.js';
+import logger from '../../../../src/lib/logger.js';
 
 describe('LLM Retry Utilities', () => {
     describe('resolveServiceTier', () => {
@@ -123,6 +124,17 @@ describe('LLM Retry Utilities', () => {
 
             expect(result).toBe('standard result');
             expect(apiCallFn).toHaveBeenCalledTimes(2);
+        });
+
+        test('should log a Flex failure with a standard fallback as a warning, not an error', async () => {
+            const errorSpy = jest.spyOn(logger, 'error');
+            const flexFn = jest.fn().mockRejectedValue(Object.assign(new Error('Request timed out.'), { name: 'APIConnectionTimeoutError' }));
+            const standardFn = jest.fn().mockResolvedValue('standard result');
+
+            await retryWithFlexFallback(flexFn, standardFn, 'TestFlexLogLevel');
+
+            expect(errorSpy).not.toHaveBeenCalled();
+            errorSpy.mockRestore();
         });
 
         test('should bound Gemini Flex calls with httpOptions.timeout', async () => {

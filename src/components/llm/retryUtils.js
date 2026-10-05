@@ -51,9 +51,11 @@ export function sleep(ms) {
  * Retry wrapper with exponential backoff for LLM API calls
  * @param {Function} fn - Async function to retry
  * @param {string} operationName - Name of the operation for logging
+ * @param {Function} [shouldRetry=isRetryableError] - Decides whether an error is worth another attempt
+ * @param {string} [finalLogLevel='error'] - Log level for the final failure ('warn' when the caller has a fallback)
  * @returns {Promise} Result of the function call
  */
-export async function retryWithBackoff(fn, operationName = 'LLM API call', shouldRetry = isRetryableError) {
+export async function retryWithBackoff(fn, operationName = 'LLM API call', shouldRetry = isRetryableError, finalLogLevel = 'error') {
     let lastError;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -76,7 +78,7 @@ export async function retryWithBackoff(fn, operationName = 'LLM API call', shoul
             }
 
             // Non-retryable error or out of retries
-            logger.error({
+            logger[finalLogLevel]({
                 attempt: attemptNum,
                 operation: operationName,
                 err: { message: error.message, status: error?.status, stack: error.stack }
@@ -110,7 +112,13 @@ export async function retryWithFlexFallback(flexFn, standardFn, operationName = 
     try {
         // A timed-out Flex call means no Flex capacity right now; retrying Flex
         // would only stack more waiting before the standard fallback.
-        return await retryWithBackoff(flexFn, `${operationName} (Flex)`, error => isRetryableError(error) && !isTimeoutError(error));
+        // With a standard fallback, a Flex failure is expected and logged as a warning.
+        return await retryWithBackoff(
+            flexFn,
+            `${operationName} (Flex)`,
+            error => isRetryableError(error) && !isTimeoutError(error),
+            typeof standardFn === 'function' ? 'warn' : 'error'
+        );
     } catch (error) {
         if (typeof standardFn === 'function') {
             const status = error?.status || error?.response?.status || error?.statusCode;
