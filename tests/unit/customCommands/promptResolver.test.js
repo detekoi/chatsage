@@ -64,6 +64,14 @@ describe('promptResolver', () => {
         expect(result).toBe('Mocked response');
     });
 
+    test('uses the standard tier by default and Flex only when asked', async () => {
+        await resolvePrompt('Check-in reply');
+        expect(generateLiteContent.mock.calls[0][1]).not.toHaveProperty('serviceTier');
+
+        await resolvePrompt('Timer message', null, null, false, { serviceTier: 'flex' });
+        expect(generateLiteContent.mock.calls[1][1]).toHaveProperty('serviceTier', 'flex');
+    });
+
     test('successfully generates and cleans response', async () => {
         generateLiteContent.mockResolvedValue('**A fun string**');
         const result = await resolvePrompt('Say something fun');

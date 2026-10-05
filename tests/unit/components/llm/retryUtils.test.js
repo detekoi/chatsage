@@ -132,5 +132,13 @@ describe('LLM Retry Utilities', () => {
 
             expect(apiCallFn.mock.calls[0][0].config).toEqual({ tools: [], serviceTier: 'flex', httpOptions: { timeout: FLEX_TIMEOUT_MS } });
         });
+
+        test('should set Gemini Flex tier and timeout when the payload has no config', async () => {
+            const apiCallFn = jest.fn().mockResolvedValue('ok');
+
+            await executeWithFlexFallback(apiCallFn, { model: 'gemini', contents: [] }, { serviceTier: 'flex' }, 'TestGeminiFlexNoConfig');
+
+            expect(apiCallFn.mock.calls[0][0].config).toEqual({ serviceTier: 'flex', httpOptions: { timeout: FLEX_TIMEOUT_MS } });
+        });
     });
 });

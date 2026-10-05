@@ -3,10 +3,12 @@ import logger from '../../lib/logger.js';
 export const MAX_RETRIES = 3;
 export const BASE_RETRY_DELAY_MS = 500;
 
-// Flex requests queue for spare capacity and can stall for minutes (the OpenAI SDK
-// default timeout is 10 minutes, retried twice). A chat reply that late is useless,
-// so a stalled Flex call is cut off here and goes straight to the standard tier.
-export const FLEX_TIMEOUT_MS = 20000;
+// Flex requests queue for spare capacity and can stall for many minutes (the OpenAI
+// SDK default timeout is 10 minutes, retried twice). Flex is only used for background
+// work (auto-chat, timers, summaries, memory extraction) that can afford to wait, so
+// this is a backstop against hangs, not a latency target: slow-but-healthy Flex calls
+// still finish, and a stalled one goes straight to the standard tier.
+export const FLEX_TIMEOUT_MS = 120000;
 
 /**
  * Check if an error is retryable (network failures, timeouts, 500, 502, 503, 504, 429, OpenAI APIConnectionError)
@@ -144,8 +146,13 @@ export async function executeWithFlexFallback(apiCallFn, basePayload, options = 
         const stdPayload = { ...basePayload };
         delete stdPayload.service_tier;
 
-        if (stdPayload.config && typeof stdPayload.config === 'object') {
-            flexPayload.config = { ...stdPayload.config, serviceTier: 'flex', httpOptions: { timeout: flexTimeout } };
+        // Gemini reads the tier and timeout from payload.config, which callers omit
+        // when they pass no generation options, so create it for any Gemini payload.
+        const hasConfig = stdPayload.config && typeof stdPayload.config === 'object';
+        if (hasConfig || basePayload.contents) {
+            flexPayload.config = { ...(hasConfig ? stdPayload.config : {}), serviceTier: 'flex', httpOptions: { timeout: flexTimeout } };
+        }
+        if (hasConfig) {
             stdPayload.config = { ...stdPayload.config };
             delete stdPayload.config.serviceTier;
         }
