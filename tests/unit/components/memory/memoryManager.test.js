@@ -123,6 +123,22 @@ describe('retrieveMemories', () => {
         expect(many).toHaveLength(5);
     });
 
+    it('treats focus users like named members, beyond the asker-only cap', async () => {
+        mockStored.memories = [
+            ...[1, 2, 3].map(i => memory(`s${i}`, { subjects: ['sleepysabrinas'] })),
+            memory('other', { subjects: ['bob'] }),
+        ];
+        const found = await retrieveMemories('chan', { text: 'make a parfait', username: 'sleepysabrinas', focusUsers: ['@SleepySabrinas'] });
+        expect(found.map(m => m.id).sort()).toEqual(['s1', 's2', 's3']);
+    });
+
+    it('leaves usage counters alone when trackUsage is false', async () => {
+        mockStored.memories = [memory('m1', { keys: ['gary'] })];
+        const found = await retrieveMemories('chan', { text: 'gary' }, { trackUsage: false });
+        expect(found.map(m => m.id)).toEqual(['m1']);
+        expect(storage.bumpUsage).not.toHaveBeenCalled();
+    });
+
     it('returns nothing and skips usage bumps when the channel opted out', async () => {
         mockStored.enabled = false;
         mockStored.memories = [memory('m1', { keys: ['gary'] })];

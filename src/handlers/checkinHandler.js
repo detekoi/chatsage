@@ -111,6 +111,8 @@ export async function handleCheckinRedemption(event) {
                 channel: channelLogin,
                 source: CHECKIN_SOURCE,
                 chatContext,
+                useMemory: true,
+                memoryUsers: [userLogin],
             }));
 
             const elapsed = Date.now() - startTime;

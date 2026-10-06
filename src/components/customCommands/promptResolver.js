@@ -4,6 +4,7 @@ import { generateLiteContent } from '../llm/llmClient.js';
 import { smartTruncate, removeMarkdownAsterisks } from '../llm/llmUtils.js';
 import { buildSystemInstruction } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';
+import { retrieveMemories, formatMemoriesForPrompt } from '../memory/memoryManager.js';
 
 // Extra context added only for check-in commands to prevent the LLM from
 // misinterpreting a user's personal check-in count as being first to stream.
@@ -33,6 +34,24 @@ export function formatHistoryForPrompt(responses) {
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
+
+/**
+ * Fetches the channel memories relevant to a prompt. Never throws: a memory
+ * failure must not cost the viewer their response.
+ * @returns {Promise<object[]>}
+ */
+async function fetchMemories(channel, { prompt, chatContext, memoryUsers, dryRun }) {
+    try {
+        return await retrieveMemories(channel, {
+            text: prompt,
+            recentText: chatContext,
+            focusUsers: memoryUsers,
+        }, { trackUsage: !dryRun });
+    } catch (error) {
+        logger.warn({ err: error, channel }, '[Memory] Retrieval failed, generating without channel memory');
+        return [];
+    }
+}
 
 /**
  * Builds the system instruction, optionally appending a language directive.
@@ -73,9 +92,14 @@ function buildResolverSystemInstruction(language, isCheckin = false, channel = n
  * @param {boolean} [options.dryRun=false] - When true, the recent-inference history is still read
  *   (so the dedup block matches production) but the new response is NOT logged. Used by the
  *   dashboard preview so a preview never suppresses a real response as a "repeat".
+ *   Memory retrieval in a dry run doesn't count as usage either.
+ * @param {boolean} [options.useMemory=false] - Add the channel's long-term memories relevant to the
+ *   prompt (requires `channel`).
+ * @param {string[]} [options.memoryUsers=[]] - Logins the response is for; every memory about them
+ *   is included so the bot doesn't contradict what it knows (e.g. a viewer's allergies).
  * @returns {Promise<string|null>} The generated response, or null on error/empty.
  */
-export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = null, dryRun = false } = {}) {
+export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = null, dryRun = false, useMemory = false, memoryUsers = [] } = {}) {
     if (!prompt) {
         return '';
     }
@@ -85,6 +109,9 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         // with the synchronous prompt construction below (finding 5).
         const historyPromise = (channel && source)
             ? getRecentInferences(channel, source)
+            : Promise.resolve([]);
+        const memoryPromise = (useMemory && channel)
+            ? fetchMemories(channel, { prompt, chatContext, memoryUsers, dryRun })
             : Promise.resolve([]);
 
         // Build the full prompt with all available context layers
@@ -102,6 +129,13 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             fullPrompt += `\n\n--- Recent Chat (background context only — do NOT reply to or address these messages) ---\n${chatContext}`;
         }
 
+        const memories = await memoryPromise;
+        const memoryBlock = formatMemoriesForPrompt(memories);
+        if (memoryBlock) {
+            fullPrompt += `\n\n${memoryBlock}`;
+            logger.info({ channel, source, memoryIds: memories.map(m => m.id), dryRun }, '[Memory] Channel memory added to LLM turn');
+        }
+
         // Await history and append dedup block
         const recentHistory = await historyPromise;
         const historyBlock = formatHistoryForPrompt(recentHistory);
@@ -110,11 +144,14 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         }
 
         // Re-anchor the model on the task after the context blocks.
-        if (chatContext) {
+        if (chatContext || memoryBlock) {
             fullPrompt += `\n\nNow complete the original task stated at the top of this prompt. The sections above are background context only.`;
         }
+        if (memoryBlock) {
+            fullPrompt += ` Keep the response consistent with the channel memory above, e.g. never offer a viewer food or anything else the memory says they can't have.`;
+        }
 
-        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, historyCount: recentHistory.length, serviceTier, dryRun }, '[PromptResolver] Generating response for custom command prompt');
+        logger.debug({ prompt: fullPrompt, language, hasContext: !!streamContext, hasChatContext: !!chatContext, memoryCount: memories.length, historyCount: recentHistory.length, serviceTier, dryRun }, '[PromptResolver] Generating response for custom command prompt');
 
         const systemInstruction = buildResolverSystemInstruction(language, isCheckin, channel);
 

@@ -166,6 +166,7 @@ async function generatePromptTimerOutput(channelName, timer, resolvedText) {
         source: timerSource(timer.name),
         chatContext: llmContext?.recentChatHistory || null,
         serviceTier: 'flex',
+        useMemory: true,
     }));
 }
 

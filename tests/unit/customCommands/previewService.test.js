@@ -107,6 +107,8 @@ describe('previewService', () => {
                     source: 'custom:hello',
                     chatContext: 'viewer1: hi\nviewer2: hello',
                     dryRun: true,
+                    useMemory: true,
+                    memoryUsers: ['testchannel', 'cats', 'and', 'dogs'],
                 }),
             );
         });
@@ -126,7 +128,7 @@ describe('previewService', () => {
                 null,
                 'Game: Celeste | Title: chill run',
                 false,
-                expect.objectContaining({ source: 'timer:hype', serviceTier: 'flex', dryRun: true }),
+                expect.objectContaining({ source: 'timer:hype', serviceTier: 'flex', dryRun: true, useMemory: true }),
             );
         });
 
@@ -140,7 +142,7 @@ describe('previewService', () => {
                 null,
                 'Channel: testchannel\nGame: Celeste',
                 true,
-                expect.objectContaining({ source: 'checkin', dryRun: true }),
+                expect.objectContaining({ source: 'checkin', dryRun: true, useMemory: true, memoryUsers: ['testchannel'] }),
             );
         });
 

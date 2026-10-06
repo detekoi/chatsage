@@ -167,6 +167,7 @@ describe('timerManager tick', () => {
                 channel: CHANNEL,
                 source: 'timer:hype',
                 chatContext: 'user1: hello',
+                useMemory: true,
             }),
         );
         expect(enqueueMessage).toHaveBeenCalledWith(`#${CHANNEL}`, 'AI generated message', { skipTranslation: false });

@@ -99,6 +99,8 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 source: customCommandSource(name || 'preview'),
                 chatContext: llmContext?.recentChatHistory || null,
                 dryRun: true,
+                useMemory: true,
+                memoryUsers: [sampleUser, ...argList],
             });
             break;
         }
@@ -118,6 +120,7 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 chatContext: llmContext?.recentChatHistory || null,
                 serviceTier: 'flex',
                 dryRun: true,
+                useMemory: true,
             });
             break;
         }
@@ -138,6 +141,8 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 source: CHECKIN_SOURCE,
                 chatContext: llmContext?.recentChatHistory || null,
                 dryRun: true,
+                useMemory: true,
+                memoryUsers: [sampleUser],
             });
             break;
         }

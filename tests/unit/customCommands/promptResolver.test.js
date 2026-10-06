@@ -3,6 +3,7 @@ import { resolvePrompt, formatHistoryForPrompt } from '../../../src/components/c
 import { generateLiteContent } from '../../../src/components/llm/llmClient.js';
 import { smartTruncate } from '../../../src/components/llm/llmUtils.js';
 import { getRecentInferences, logInference } from '../../../src/components/llm/inferenceHistoryStorage.js';
+import { retrieveMemories } from '../../../src/components/memory/memoryManager.js';
 
 jest.mock('../../../src/components/llm/llmClient.js', () => ({
     generateLiteContent: jest.fn()
@@ -18,6 +19,13 @@ jest.mock('../../../src/components/llm/inferenceHistoryStorage.js', () => ({
     logInference: jest.fn().mockResolvedValue(undefined),
     CHECKIN_SOURCE: 'checkin',
     customCommandSource: jest.fn((name) => `custom:${name}`),
+}));
+
+jest.mock('../../../src/components/memory/memoryManager.js', () => ({
+    retrieveMemories: jest.fn().mockResolvedValue([]),
+    formatMemoriesForPrompt: jest.fn(memories => (memories.length
+        ? `--- CHANNEL MEMORY ---\n${memories.map(m => `- ${m.text}`).join('\n')}\n--- END CHANNEL MEMORY ---`
+        : null)),
 }));
 
 jest.mock('../../../src/lib/logger.js', () => ({
@@ -251,6 +259,57 @@ describe('promptResolver', () => {
     });
 
     // ─── formatHistoryForPrompt ─────────────────────────────────────────
+
+    describe('channel memory', () => {
+        const allergy = { id: 'm1', text: 'sleepysabrinas cannot have tree nuts.' };
+
+        test('adds relevant memories and asks the model to stay consistent with them', async () => {
+            retrieveMemories.mockResolvedValueOnce([allergy]);
+            await resolvePrompt('Make sleepysabrinas a parfait', null, null, true, {
+                channel: 'parfaitfair', source: 'checkin', chatContext: 'chat line', useMemory: true, memoryUsers: ['sleepysabrinas'],
+            });
+
+            expect(retrieveMemories).toHaveBeenCalledWith('parfaitfair', {
+                text: 'Make sleepysabrinas a parfait', recentText: 'chat line', focusUsers: ['sleepysabrinas'],
+            }, { trackUsage: true });
+            const prompt = generateLiteContent.mock.calls[0][0];
+            expect(prompt).toContain('- sleepysabrinas cannot have tree nuts.');
+            expect(prompt).toContain('consistent with the channel memory above');
+        });
+
+        test('re-anchors on the task when memory is present without chat context', async () => {
+            retrieveMemories.mockResolvedValueOnce([allergy]);
+            await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair', useMemory: true });
+
+            expect(generateLiteContent.mock.calls[0][0]).toContain('Now complete the original task');
+        });
+
+        test('skips retrieval unless asked, and adds nothing when no memory matches', async () => {
+            await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair' });
+            expect(retrieveMemories).not.toHaveBeenCalled();
+
+            await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair', useMemory: true });
+            expect(retrieveMemories).toHaveBeenCalledTimes(1);
+            for (const [prompt] of generateLiteContent.mock.calls) {
+                expect(prompt).not.toContain('CHANNEL MEMORY');
+                expect(prompt).not.toContain('Now complete the original task');
+            }
+        });
+
+        test('still responds when retrieval fails', async () => {
+            retrieveMemories.mockRejectedValueOnce(new Error('firestore down'));
+            const result = await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair', useMemory: true });
+
+            expect(result).toBe('Mocked response');
+            expect(generateLiteContent.mock.calls[0][0]).not.toContain('CHANNEL MEMORY');
+        });
+
+        test('a dry run does not count as memory usage', async () => {
+            await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair', useMemory: true, dryRun: true });
+
+            expect(retrieveMemories.mock.calls[0][2]).toEqual({ trackUsage: false });
+        });
+    });
 
     describe('formatHistoryForPrompt', () => {
         test('returns null for empty array', () => {

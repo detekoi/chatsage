@@ -179,7 +179,7 @@ describe('checkinHandler', () => {
                 null,
                 'Channel: testchannel\nGame: Just Chatting',
                 true,
-                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey' }
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey', useMemory: true, memoryUsers: ['testviewer'] }
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -195,7 +195,7 @@ describe('checkinHandler', () => {
             await handleCheckinRedemption(baseEvent);
 
             expect(resolvePrompt).toHaveBeenCalledWith('resolved prompt', null, null, true,
-                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: null });
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: null, useMemory: true, memoryUsers: ['testviewer'] });
         });
 
         test('passes bot language to resolvePrompt when configured', async () => {
@@ -210,7 +210,7 @@ describe('checkinHandler', () => {
                 'japanese',
                 'Channel: testchannel\nGame: Just Chatting',
                 true,
-                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey' }
+                { channel: 'testchannel', source: CHECKIN_SOURCE, chatContext: 'user1: hello\nuser2: hey', useMemory: true, memoryUsers: ['testviewer'] }
             );
         });
 

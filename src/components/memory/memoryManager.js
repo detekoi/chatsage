@@ -204,10 +204,11 @@ export async function isUserOptedOut(channelName, login) {
     return cache.optedOut.has(String(login || '').toLowerCase());
 }
 
-function _scoreMemories(cache, { text, username, recentText }) {
+function _scoreMemories(cache, { text, username, recentText, focusUsers }) {
     const primary = ` ${normalizeText(text)} `;
     const recent = recentText ? ` ${normalizeText(recentText)} ` : '';
     const asker = String(username || '').toLowerCase();
+    const focus = new Set(sanitizeSubjects(focusUsers));
 
     const scored = [];
     for (const memory of cache.memories.values()) {
@@ -223,6 +224,7 @@ function _scoreMemories(cache, { text, username, recentText }) {
         for (const subject of memory.subjects || []) {
             const subjectPhrase = normalizeText(subject);
             if (subjectPhrase && _containsPhrase(primary, subjectPhrase)) score += 8;
+            else if (focus.has(subject)) score += 8;
         }
         const askerOnly = score === 0 && asker && (memory.subjects || []).includes(asker);
         if (askerOnly) score += 4;
@@ -238,10 +240,13 @@ function _scoreMemories(cache, { text, username, recentText }) {
 /**
  * Finds the memories relevant to a message.
  * @param {string} channelName
- * @param {{text: string, username?: string, recentText?: string}} query
+ * @param {{text: string, username?: string, recentText?: string, focusUsers?: string[]}} query
+ *   `focusUsers` are viewers the output is for (e.g. whoever checked in), so every memory about
+ *   them counts as relevant, as if they had been named in the text.
+ * @param {{trackUsage?: boolean}} [options] - `trackUsage: false` leaves usage counters alone (previews).
  * @returns {Promise<object[]>} Best-first, already trimmed to the prompt budget.
  */
-export async function retrieveMemories(channelName, query) {
+export async function retrieveMemories(channelName, query, { trackUsage = true } = {}) {
     if (!(await isMemoryEnabled(channelName))) return [];
     const cache = channelCaches.get(channelName.toLowerCase());
     if (!cache || cache.memories.size === 0) return [];
@@ -258,7 +263,7 @@ export async function retrieveMemories(channelName, query) {
         if (picked.length >= RETRIEVE_LIMIT) break;
     }
 
-    if (picked.length > 0) {
+    if (picked.length > 0 && trackUsage) {
         bumpUsage(channelName, picked.map(m => m.id));
         for (const memory of picked) memory.useCount = (memory.useCount || 0) + 1;
     }
