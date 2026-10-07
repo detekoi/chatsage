@@ -38,6 +38,13 @@ export function formatHistoryForPrompt(responses) {
 /**
  * Fetches the channel memories relevant to a prompt. Never throws: a memory
  * failure must not cost the viewer their response.
+ * @param {string} channel
+ * @param {object} options
+ * @param {string} options.prompt - The resolved prompt, matched against memory keys and subjects.
+ * @param {string|null} options.chatContext - Recent chat, for weaker key matches.
+ * @param {string|null} options.username - Login of the viewer who triggered the prompt.
+ * @param {string[]} options.memoryUsers - Logins the response is for.
+ * @param {boolean} options.dryRun - Previews don't count as memory usage.
  * @returns {Promise<object[]>}
  */
 async function fetchMemories(channel, { prompt, chatContext, username, memoryUsers, dryRun }) {

@@ -147,6 +147,17 @@ describe('retrieveMemories', () => {
         expect(uncapped.map(m => m.id)).toEqual(['bob1', 'bob2', 'alice1', 'alice2', 'alice3']);
     });
 
+    it('breaks score ties in favour of the target, even when the caller\'s facts load first', async () => {
+        // A manual, well-mentioned caller fact scores 4 + 2 + 2.5 = 8.5, the same as a fresh auto
+        // fact about the target (8 + 0.5).
+        mockStored.memories = [
+            ...[1, 2, 3, 4, 5].map(i => memory(`alice${i}`, { subjects: ['alice'], source: 'manual', mentions: 5 })),
+            memory('bob1', { subjects: ['bob'] }),
+        ];
+        const found = await retrieveMemories('chan', { text: 'give them a hug', username: 'alice', focusUsers: ['bob'] }, { askerOnlyLimit: Infinity });
+        expect(found.map(m => m.id)).toEqual(['bob1', 'alice1', 'alice2', 'alice3', 'alice4']);
+    });
+
     it('leaves usage counters alone when trackUsage is false', async () => {
         mockStored.memories = [memory('m1', { keys: ['gary'] })];
         const found = await retrieveMemories('chan', { text: 'gary' }, { trackUsage: false });

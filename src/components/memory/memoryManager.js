@@ -234,7 +234,10 @@ function _scoreMemories(cache, { text, username, recentText, focusUsers }) {
         score += Math.min(memory.mentions || 1, 5) * 0.5;
         scored.push({ memory, score, askerOnly });
     }
-    return scored.sort((a, b) => b.score - a.score);
+    // A well-mentioned manual fact about the asker can reach the lowest score of a memory the text
+    // asks about (4 + 2 + 2.5 vs 8 + 0.5), so ties go to the latter: with the asker cap lifted, the
+    // asker's facts must never crowd out the target's.
+    return scored.sort((a, b) => (b.score - a.score) || (Number(a.askerOnly) - Number(b.askerOnly)));
 }
 
 /**
@@ -243,9 +246,11 @@ function _scoreMemories(cache, { text, username, recentText, focusUsers }) {
  * @param {{text: string, username?: string, recentText?: string, focusUsers?: string[]}} query
  *   `focusUsers` are viewers the output is for (e.g. whoever checked in), so every memory about
  *   them counts as relevant, as if they had been named in the text.
- * @param {{trackUsage?: boolean, askerOnlyLimit?: number}} [options] - `trackUsage: false` leaves usage
- *   counters alone (previews). `askerOnlyLimit` caps the facts that match only because they're about
- *   `username`; they always rank below memories the text asks about, so lifting the cap never crowds those out.
+ * @param {object} [options]
+ * @param {boolean} [options.trackUsage=true] - `false` leaves usage counters alone (previews).
+ * @param {number} [options.askerOnlyLimit=ASKER_ONLY_LIMIT] - Caps the facts that match only because
+ *   they're about `username`. Those never rank above memories the text asks about (ties included),
+ *   so lifting the cap never crowds those out.
  * @returns {Promise<object[]>} Best-first, already trimmed to the prompt budget.
  */
 export async function retrieveMemories(channelName, query, { trackUsage = true, askerOnlyLimit = ASKER_ONLY_LIMIT } = {}) {
