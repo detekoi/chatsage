@@ -108,7 +108,8 @@ describe('previewService', () => {
                     chatContext: 'viewer1: hi\nviewer2: hello',
                     dryRun: true,
                     useMemory: true,
-                    memoryUsers: ['testchannel', 'cats', 'and', 'dogs'],
+                    username: 'testchannel',
+                    memoryUsers: ['cats', 'and', 'dogs'],
                 }),
             );
         });

@@ -132,6 +132,21 @@ describe('retrieveMemories', () => {
         expect(found.map(m => m.id).sort()).toEqual(['s1', 's2', 's3']);
     });
 
+    it('ranks the target above the caller and keeps every caller fact when the asker cap is lifted', async () => {
+        mockStored.memories = [
+            ...[1, 2, 3].map(i => memory(`alice${i}`, { subjects: ['alice'], mentions: 5 })),
+            memory('bob1', { subjects: ['bob'] }),
+            memory('bob2', { subjects: ['bob'] }),
+        ];
+        const query = { text: 'give them a hug', username: 'alice', focusUsers: ['bob'] };
+
+        const capped = await retrieveMemories('chan', query);
+        expect(capped.map(m => m.id)).toEqual(['bob1', 'bob2', 'alice1', 'alice2']);
+
+        const uncapped = await retrieveMemories('chan', query, { askerOnlyLimit: Infinity });
+        expect(uncapped.map(m => m.id)).toEqual(['bob1', 'bob2', 'alice1', 'alice2', 'alice3']);
+    });
+
     it('leaves usage counters alone when trackUsage is false', async () => {
         mockStored.memories = [memory('m1', { keys: ['gary'] })];
         const found = await retrieveMemories('chan', { text: 'gary' }, { trackUsage: false });

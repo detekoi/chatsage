@@ -40,13 +40,17 @@ export function formatHistoryForPrompt(responses) {
  * failure must not cost the viewer their response.
  * @returns {Promise<object[]>}
  */
-async function fetchMemories(channel, { prompt, chatContext, memoryUsers, dryRun }) {
+async function fetchMemories(channel, { prompt, chatContext, username, memoryUsers, dryRun }) {
     try {
+        // Facts about whoever triggered the prompt rank below the target's and the prompt's own
+        // matches, but none are capped out: a reply that ignores a viewer's allergy is worse than
+        // one with a little less lore.
         return await retrieveMemories(channel, {
             text: prompt,
+            username,
             recentText: chatContext,
             focusUsers: memoryUsers,
-        }, { trackUsage: !dryRun });
+        }, { trackUsage: !dryRun, askerOnlyLimit: Infinity });
     } catch (error) {
         logger.warn({ err: error, channel }, '[Memory] Retrieval failed, generating without channel memory');
         return [];
@@ -95,11 +99,14 @@ function buildResolverSystemInstruction(language, isCheckin = false, channel = n
  *   Memory retrieval in a dry run doesn't count as usage either.
  * @param {boolean} [options.useMemory=false] - Add the channel's long-term memories relevant to the
  *   prompt (requires `channel`).
+ * @param {string|null} [options.username=null] - Login of the viewer who triggered the prompt; their
+ *   memories are included after the ones about `memoryUsers` and the prompt itself.
  * @param {string[]} [options.memoryUsers=[]] - Logins the response is for; every memory about them
- *   is included so the bot doesn't contradict what it knows (e.g. a viewer's allergies).
+ *   ranks as if they were named in the prompt, so the bot doesn't contradict what it knows
+ *   (e.g. a viewer's allergies).
  * @returns {Promise<string|null>} The generated response, or null on error/empty.
  */
-export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = null, dryRun = false, useMemory = false, memoryUsers = [] } = {}) {
+export async function resolvePrompt(prompt, language = null, streamContext = null, isCheckin = false, { channel = null, source = null, chatContext = null, serviceTier = null, dryRun = false, useMemory = false, username = null, memoryUsers = [] } = {}) {
     if (!prompt) {
         return '';
     }
@@ -111,7 +118,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
             ? getRecentInferences(channel, source)
             : Promise.resolve([]);
         const memoryPromise = (useMemory && channel)
-            ? fetchMemories(channel, { prompt, chatContext, memoryUsers, dryRun })
+            ? fetchMemories(channel, { prompt, chatContext, username, memoryUsers, dryRun })
             : Promise.resolve([]);
 
         // Build the full prompt with all available context layers

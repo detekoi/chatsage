@@ -356,9 +356,10 @@ async function _tryCustomCommand(channelName, tags, commandCandidates, args) {
                 source: customCommandSource(command),
                 chatContext,
                 useMemory: true,
+                username: userLogin,
                 // Args often name the viewer the command is aimed at ("!hug @bob"); words that
                 // aren't logins are dropped by the memory lookup.
-                memoryUsers: [userLogin, ...args],
+                memoryUsers: args,
             }));
 
             if (!finalOutput) {

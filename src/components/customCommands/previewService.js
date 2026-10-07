@@ -100,7 +100,8 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 chatContext: llmContext?.recentChatHistory || null,
                 dryRun: true,
                 useMemory: true,
-                memoryUsers: [sampleUser, ...argList],
+                username: sampleUser,
+                memoryUsers: argList,
             });
             break;
         }

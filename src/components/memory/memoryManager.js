@@ -243,10 +243,12 @@ function _scoreMemories(cache, { text, username, recentText, focusUsers }) {
  * @param {{text: string, username?: string, recentText?: string, focusUsers?: string[]}} query
  *   `focusUsers` are viewers the output is for (e.g. whoever checked in), so every memory about
  *   them counts as relevant, as if they had been named in the text.
- * @param {{trackUsage?: boolean}} [options] - `trackUsage: false` leaves usage counters alone (previews).
+ * @param {{trackUsage?: boolean, askerOnlyLimit?: number}} [options] - `trackUsage: false` leaves usage
+ *   counters alone (previews). `askerOnlyLimit` caps the facts that match only because they're about
+ *   `username`; they always rank below memories the text asks about, so lifting the cap never crowds those out.
  * @returns {Promise<object[]>} Best-first, already trimmed to the prompt budget.
  */
-export async function retrieveMemories(channelName, query, { trackUsage = true } = {}) {
+export async function retrieveMemories(channelName, query, { trackUsage = true, askerOnlyLimit = ASKER_ONLY_LIMIT } = {}) {
     if (!(await isMemoryEnabled(channelName))) return [];
     const cache = channelCaches.get(channelName.toLowerCase());
     if (!cache || cache.memories.size === 0) return [];
@@ -255,7 +257,7 @@ export async function retrieveMemories(channelName, query, { trackUsage = true }
     let chars = 0;
     let askerOnlyCount = 0;
     for (const { memory, askerOnly } of _scoreMemories(cache, query)) {
-        if (askerOnly && askerOnlyCount >= ASKER_ONLY_LIMIT) continue;
+        if (askerOnly && askerOnlyCount >= askerOnlyLimit) continue;
         if (chars + memory.text.length > RETRIEVE_CHAR_BUDGET) continue;
         picked.push(memory);
         chars += memory.text.length;

@@ -270,11 +270,19 @@ describe('promptResolver', () => {
             });
 
             expect(retrieveMemories).toHaveBeenCalledWith('parfaitfair', {
-                text: 'Make sleepysabrinas a parfait', recentText: 'chat line', focusUsers: ['sleepysabrinas'],
-            }, { trackUsage: true });
+                text: 'Make sleepysabrinas a parfait', username: null, recentText: 'chat line', focusUsers: ['sleepysabrinas'],
+            }, { trackUsage: true, askerOnlyLimit: Infinity });
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('- sleepysabrinas cannot have tree nuts.');
             expect(prompt).toContain('consistent with the channel memory above');
+        });
+
+        test('passes the triggering viewer separately from the viewers the response is for', async () => {
+            await resolvePrompt('Hug bob', null, null, false, {
+                channel: 'parfaitfair', useMemory: true, username: 'alice', memoryUsers: ['@bob'],
+            });
+
+            expect(retrieveMemories.mock.calls[0][1]).toEqual(expect.objectContaining({ username: 'alice', focusUsers: ['@bob'] }));
         });
 
         test('re-anchors on the task when memory is present without chat context', async () => {
@@ -307,7 +315,7 @@ describe('promptResolver', () => {
         test('a dry run does not count as memory usage', async () => {
             await resolvePrompt('Make a parfait', null, null, false, { channel: 'parfaitfair', useMemory: true, dryRun: true });
 
-            expect(retrieveMemories.mock.calls[0][2]).toEqual({ trackUsage: false });
+            expect(retrieveMemories.mock.calls[0][2]).toEqual(expect.objectContaining({ trackUsage: false }));
         });
     });
 
