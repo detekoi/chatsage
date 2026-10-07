@@ -7,7 +7,7 @@
 //
 // Usage: LLM_PROVIDER=openai node scripts/test-prompt-personality-openai.js
 //        ... --model gpt-6-sol        (A/B another model id)
-//        ... --effort minimal|low|medium|high
+//        ... --effort none|low|medium|high|xhigh|max
 //        ... --lang spanish --lang japanese  (botlang adherence legs)
 
 import dotenv from 'dotenv';
