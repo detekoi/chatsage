@@ -110,7 +110,6 @@ ${JSON.stringify(entries, null, 2)}`;
  */
 export async function translateBatch(generate, languageName, entries, modelId) {
     const responseText = await generate(buildPrompt(languageName, entries), {
-        temperature: 0.3,
         maxOutputTokens: 8192,
         responseSchema: BatchSchema,
         modelId

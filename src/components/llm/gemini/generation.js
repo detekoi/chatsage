@@ -27,7 +27,6 @@ Return STRICT JSON.`;
         const result = await model.generateContent({
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
-                temperature: 0.0,
                 responseMimeType: 'application/json',
                 responseJsonSchema: geminiTimezoneSchema
             }

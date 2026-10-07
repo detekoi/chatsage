@@ -40,7 +40,6 @@ Return JSON ONLY: {"is_correct": boolean, "confidence": number, "reasoning": str
       model: modelId,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
-        temperature: 0.0,
         maxOutputTokens: 200,
         responseMimeType: "application/json",
         responseSchema,

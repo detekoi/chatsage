@@ -134,7 +134,6 @@ Return JSON only.`;
 
     try {
         const responseText = await withLlmCaller('translate-command', () => generateLiteContent(prompt, {
-            temperature: 0,
             responseSchema: TranslateCommandSchema
         }));
 
@@ -243,7 +242,6 @@ ${textToTranslate}`;
         let responseText;
         try {
             responseText = await withLlmCaller('translate', () => generateLiteContent(translationPrompt, {
-                temperature: 0.3,
                 maxOutputTokens: 2048,
                 responseSchema: TranslationResponseSchema
             }));

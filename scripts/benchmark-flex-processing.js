@@ -86,32 +86,28 @@ const TEST_CASES = [
         category: 'ad',
         name: 'Ad Notification (Pre-cached 60s ahead)',
         systemInstruction: 'You are a Twitch chat bot generating a scheduled ad break reminder. Keep it friendly, short, and under 250 characters. Remind chat to grab water/snacks.',
-        prompt: 'Notice: A 90-second ad break will run in exactly 60 seconds. Generate a warm, stream-appropriate warning announcement for chat.',
-        temperature: 0.7
+        prompt: 'Notice: A 90-second ad break will run in exactly 60 seconds. Generate a warm, stream-appropriate warning announcement for chat.'
     },
     {
         id: 'chat_lull_autochat',
         category: 'lull',
         name: 'Chat Lull Auto-Chat (Asynchronous spark prompt)',
         systemInstruction: 'You are WildcatSage, an AI Twitch bot. Respond to stream context when chat has been quiet. One sentence. <= 25 words. Relaxed, confident. No meta about the lull.',
-        prompt: 'Chat has been quiet for 5 minutes during a gaming stream. Generate a natural conversation-starter for chat.',
-        temperature: 0.8
+        prompt: 'Chat has been quiet for 5 minutes during a gaming stream. Generate a natural conversation-starter for chat.'
     },
     {
         id: 'stream_recap_prefetch',
         category: 'recap',
         name: 'Stream Recap & Background Prefetch',
         systemInstruction: 'You are WildcatSage generating a background stream recap summary for stream overlays or discord notifications. 2 concise sentences.',
-        prompt: 'Stream summary data: 14 new followers, 4 sub renewals, peak viewers: 240, playing Elden Ring Nightreign. Summarize progress for background notification.',
-        temperature: 0.5
+        prompt: 'Stream summary data: 14 new followers, 4 sub renewals, peak viewers: 240, playing Elden Ring Nightreign. Summarize progress for background notification.'
     },
     {
         id: 'chat_summary_flex',
         category: 'summary',
         name: 'Chat Summary (Asynchronous chat summarization - Gemini Flash Lite)',
         systemInstruction: 'You are an AI assistant producing a structured summary of recent Twitch chat activity for stream analytics.',
-        prompt: 'Chat log transcript (100 messages): [User1: Hype! User2: GG WP! User3: What build is that? User4: boss is hard! User5: LUL]. Summarize viewer sentiment, key topics, and questions asked in 3 bullet points.',
-        temperature: 0.3
+        prompt: 'Chat log transcript (100 messages): [User1: Hype! User2: GG WP! User3: What build is that? User4: boss is hard! User5: LUL]. Summarize viewer sentiment, key topics, and questions asked in 3 bullet points.'
     }
 ];
 
@@ -241,7 +237,6 @@ async function callGeminiFlexOrStandard(testCase, modelId, serviceTier, enableFa
     const makeCall = async (tierToUse) => {
         const streamConfig = {
             systemInstruction: testCase.systemInstruction ? { parts: [{ text: testCase.systemInstruction }] } : undefined,
-            temperature: testCase.temperature || 0.7,
             httpOptions: { timeout: TIMEOUT_MS }
         };
         if (tierToUse && tierToUse !== 'auto') {

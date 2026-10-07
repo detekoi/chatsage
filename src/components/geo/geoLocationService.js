@@ -22,7 +22,6 @@ export async function selectLocation(mode, config = {}, gameTitle = null, exclud
             logger.debug(`[GeoLocation] Enabling search tool for game mode location selection: ${gameTitle}`);
         }
         const text = await withLlmCaller('geo', () => generateText(prompt, {
-            temperature: 0.5, // Moderate temp for variety
             webSearch: mode === 'game'
         }));
 
@@ -68,8 +67,7 @@ Otherwise, mark as incorrect. Provide brief reasoning. Return STRICT JSON.`;
         const parsed = await withLlmCaller('geo', () => generateStructuredJson({
             prompt,
             schema: GeoCheckGuessSchema,
-            schemaName: 'geo_check_guess',
-            temperature: 0.0
+            schemaName: 'geo_check_guess'
         }));
 
         if (parsed) {

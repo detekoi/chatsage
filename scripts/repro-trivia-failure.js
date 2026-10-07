@@ -44,8 +44,7 @@ async function testFunctionCalling() {
                     functionCallingConfig: {
                         mode: "ANY",
                     }
-                },
-                temperature: 0.7
+                }
             }
         });
 

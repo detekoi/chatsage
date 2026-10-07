@@ -37,7 +37,6 @@ async function runTest(tc) {
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
                 systemInstruction: { parts: [{ text: SYSTEM }] },
-                temperature: 1.5,
             }
         });
         const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '(empty)';

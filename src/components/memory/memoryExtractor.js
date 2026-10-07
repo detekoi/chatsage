@@ -188,7 +188,6 @@ ${chatText}`;
         schema: MemoryExtractionSchema,
         schemaName: 'memory_extraction',
         systemInstruction: EXTRACTION_SYSTEM_INSTRUCTION,
-        temperature: 0.2,
         model: 'lite',
         serviceTier: 'flex',
     }));
@@ -323,7 +322,6 @@ async function _structureManualText(rawText) {
             schema: ManualMemorySchema,
             schemaName: 'manual_memory',
             systemInstruction: MANUAL_SYSTEM_INSTRUCTION,
-            temperature: 0.1,
             model: 'lite',
         }));
         if (parsed?.text && Array.isArray(parsed.keys) && parsed.keys.length > 0) {

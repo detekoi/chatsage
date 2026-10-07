@@ -112,7 +112,6 @@ export async function generateStructuredJson({
     schema,
     schemaName = 'structured_output',
     systemInstruction,
-    temperature,
     model = 'main',
     tools,
     multimodalParts,
@@ -126,8 +125,6 @@ export async function generateStructuredJson({
             responseMimeType: 'application/json',
             responseJsonSchema: toGeminiJsonSchema(schema)
         };
-        if (temperature !== undefined) genConfig.temperature = temperature;
-
         const result = await geminiModel.generateContent({
             model: config.gemini.liteModelId,
             contents: [{ role: 'user', parts }],
@@ -148,7 +145,6 @@ export async function generateStructuredJson({
             systemInstruction,
             responseSchema: schema,
             schemaName,
-            temperature,
             modelId: config.openai.modelId,
             reasoningEffort: config.openai.reasoningEffort,
             tools,
@@ -178,7 +174,6 @@ export async function generateStructuredJson({
  */
 export async function generateText(prompt, {
     systemInstruction,
-    temperature,
     maxOutputTokens,
     webSearch = false,
     model = 'main',
@@ -187,7 +182,6 @@ export async function generateText(prompt, {
     if (model === 'lite') {
         return geminiCore.generateLiteContent(prompt, {
             systemInstruction,
-            temperature,
             maxOutputTokens,
             multimodalParts,
             ...(webSearch ? { tools: [{ googleSearch: {} }] } : {})

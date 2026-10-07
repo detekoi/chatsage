@@ -216,8 +216,7 @@ async function testGeminiVision(modelId, item, asset) {
                 }
             ],
             config: {
-                systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-                temperature: 0.2
+                systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] }
             }
         });
 

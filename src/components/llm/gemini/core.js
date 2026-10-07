@@ -118,7 +118,6 @@ export function getConfiguredModelId() {
  * @param {object} [options={}] - Optional config overrides
  * @param {string} [options.systemInstruction] - System instruction text
  * @param {object} [options.responseSchema] - Plain JSON schema for structured output (sent as responseJsonSchema)
- * @param {number} [options.temperature] - Temperature override
  * @param {Array} [options.multimodalParts] - Additional content parts (e.g. emote images)
  * @param {number} [options.maxOutputTokens] - Max tokens
  * @param {Array} [options.tools] - Tool declarations (e.g. [{ googleSearch: {} }] for grounding)
@@ -136,9 +135,6 @@ export async function generateLiteContent(prompt, options = {}) {
     if (options.responseSchema) {
         config.responseMimeType = 'application/json';
         config.responseJsonSchema = toGeminiJsonSchema(options.responseSchema);
-    }
-    if (options.temperature !== undefined) {
-        config.temperature = options.temperature;
     }
     if (options.maxOutputTokens) {
         config.maxOutputTokens = options.maxOutputTokens;

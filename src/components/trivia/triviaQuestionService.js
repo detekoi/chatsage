@@ -89,7 +89,6 @@ Only use web search if the question requires very recent or obscure facts that m
             systemInstruction: buildGameSystemInstruction(channelName),
             schema: activeSchema,
             schemaName: 'trivia_question',
-            temperature: 0.7,
             tools: [{ googleSearch: {} }],
             returnMeta: true
         }));
@@ -234,8 +233,7 @@ Return STRICT JSON.`;
         const parsed = await withLlmCaller('trivia', () => generateStructuredJson({
             prompt,
             schema: TriviaVerificationSchema,
-            schemaName: 'trivia_verification',
-            temperature: 0.0
+            schemaName: 'trivia_verification'
         }));
 
         if (parsed) {
@@ -280,7 +278,7 @@ Topic: ${topic}
 Your explanation should be informative, engaging, and around 1-2 sentences long.`;
 
     try {
-        const explanation = await withLlmCaller('trivia', () => generateText(prompt, { temperature: 0.7 }));
+        const explanation = await withLlmCaller('trivia', () => generateText(prompt));
         return explanation?.trim() || `The correct answer is ${answer}.`;
     } catch (error) {
         logger.error({ err: error }, 'Error generating explanation');

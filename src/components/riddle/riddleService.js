@@ -156,7 +156,6 @@ Return JSON matching the schema.${languageDirective}`;
             systemInstruction: buildGameSystemInstruction(channelName),
             schema: activeSchema,
             schemaName: 'riddle',
-            temperature: 0.75,
             tools: [{ googleSearch: {} }],
             returnMeta: true
         }));
@@ -246,8 +245,7 @@ Return STRICT JSON.`;
         const parsed = await withLlmCaller('riddle', () => generateStructuredJson({
             prompt,
             schema: RiddleVerificationSchema,
-            schemaName: 'riddle_verification',
-            temperature: 0.0
+            schemaName: 'riddle_verification'
         }));
 
         if (parsed) {

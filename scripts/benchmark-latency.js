@@ -89,24 +89,21 @@ const TEST_CASES = [
         category: 'checkin',
         name: 'Daily Check-In: Newcomer (1st check-in)',
         systemInstruction: CHECKIN_SYSTEM,
-        prompt: `Note that @idzuna just checked in for time #1. React with quiet warmth and welcome them to the stream!`,
-        temperature: 1.2
+        prompt: `Note that @idzuna just checked in for time #1. React with quiet warmth and welcome them to the stream!`
     },
     {
         id: 'checkin_regular',
         category: 'checkin',
         name: 'Daily Check-In: Regular (42nd check-in)',
         systemInstruction: CHECKIN_SYSTEM,
-        prompt: `Note that @parfaitfair just checked in for time #42. React with quiet warmth and a touch of wit, like someone who genuinely notices the regulars.`,
-        temperature: 1.2
+        prompt: `Note that @parfaitfair just checked in for time #42. React with quiet warmth and a touch of wit, like someone who genuinely notices the regulars.`
     },
     {
         id: 'checkin_milestone',
         category: 'checkin',
         name: 'Daily Check-In: Milestone (100th check-in)',
         systemInstruction: CHECKIN_SYSTEM,
-        prompt: `Note that @turboicehusky just checked in for time #100! Celebrate this major milestone with excitement and genuine gratitude.`,
-        temperature: 1.3
+        prompt: `Note that @turboicehusky just checked in for time #100! Celebrate this major milestone with excitement and genuine gratitude.`
     },
 
     // ── Translation Use Cases ──
@@ -115,40 +112,35 @@ const TEST_CASES = [
         category: 'translation',
         name: 'Translation: English -> Japanese',
         systemInstruction: TRANSLATION_SYSTEM,
-        prompt: `Target language: Japanese\nText to translate: "Good luck on the boss fight, you got this!"`,
-        temperature: 0.2
+        prompt: `Target language: Japanese\nText to translate: "Good luck on the boss fight, you got this!"`
     },
     {
         id: 'trans_ja_en',
         category: 'translation',
         name: 'Translation: Japanese -> English',
         systemInstruction: TRANSLATION_SYSTEM,
-        prompt: `Target language: English\nText to translate: "今日は配信ありがとうございます！応援しています"`,
-        temperature: 0.2
+        prompt: `Target language: English\nText to translate: "今日は配信ありがとうございます！応援しています"`
     },
     {
         id: 'trans_en_es',
         category: 'translation',
         name: 'Translation: English -> Spanish',
         systemInstruction: TRANSLATION_SYSTEM,
-        prompt: `Target language: Spanish\nText to translate: "Hello everyone in twitch chat! Hope you are having a wonderful stream."`,
-        temperature: 0.2
+        prompt: `Target language: Spanish\nText to translate: "Hello everyone in twitch chat! Hope you are having a wonderful stream."`
     },
     {
         id: 'trans_slang',
         category: 'translation',
         name: 'Translation: Twitch Chat Slang / Emotes',
         systemInstruction: TRANSLATION_SYSTEM,
-        prompt: `Target language: Japanese\nText to translate: "LFG let's go chat gg!"`,
-        temperature: 0.2
+        prompt: `Target language: Japanese\nText to translate: "LFG let's go chat gg!"`
     },
     {
         id: 'trans_same_lang',
         category: 'translation',
         name: 'Translation: Same-Language Detection',
         systemInstruction: TRANSLATION_SYSTEM,
-        prompt: `Target language: Spanish\nText to translate: "Buenas noches a todos"`,
-        temperature: 0.2
+        prompt: `Target language: Spanish\nText to translate: "Buenas noches a todos"`
     },
 
     // ── General Use Cases ──
@@ -157,32 +149,28 @@ const TEST_CASES = [
         category: 'general',
         name: 'General Q&A: TCP vs UDP Explanation',
         systemInstruction: GENERAL_SYSTEM,
-        prompt: 'Explain the key difference between TCP and UDP networking protocols in exactly 2 concise sentences.',
-        temperature: 0.7
+        prompt: 'Explain the key difference between TCP and UDP networking protocols in exactly 2 concise sentences.'
     },
     {
         id: 'general_summarize',
         category: 'general',
         name: 'General Summarization: Stream Event Highlights',
         systemInstruction: GENERAL_SYSTEM,
-        prompt: 'Summarize the following chat stream events into 2 concise bullet points:\n- Streamer started with a warm welcome and announced a sub goal.\n- The community played 3 rounds of Marbles on Stream.\n- The stream concluded with a friendly raid.',
-        temperature: 0.5
+        prompt: 'Summarize the following chat stream events into 2 concise bullet points:\n- Streamer started with a warm welcome and announced a sub goal.\n- The community played 3 rounds of Marbles on Stream.\n- The stream concluded with a friendly raid.'
     },
     {
         id: 'general_code_explain',
         category: 'general',
         name: 'General Code Explanation: JS Array Reduce',
         systemInstruction: GENERAL_SYSTEM,
-        prompt: 'Explain what Array.prototype.reduce does in JavaScript in under 200 characters.',
-        temperature: 0.3
+        prompt: 'Explain what Array.prototype.reduce does in JavaScript in under 200 characters.'
     },
     {
         id: 'general_joke',
         category: 'general',
         name: 'General Creative: Gaming Banter',
         systemInstruction: GENERAL_SYSTEM,
-        prompt: 'Tell a funny 1-liner joke about packet loss or lag in online games.',
-        temperature: 1.0
+        prompt: 'Tell a funny 1-liner joke about packet loss or lag in online games.'
     }
 ];
 
@@ -202,7 +190,6 @@ async function callGeminiStream(tc, modelId) {
             contents: [{ role: 'user', parts: [{ text: tc.prompt }] }],
             config: {
                 systemInstruction: tc.systemInstruction ? { parts: [{ text: tc.systemInstruction }] } : undefined,
-                temperature: tc.temperature || 1.0,
             }
         });
 
