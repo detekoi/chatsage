@@ -248,6 +248,7 @@ function formatReplyParent(replyParent) {
  * @param {{displayName?: string, text?: string, isBot?: boolean}|null} [options.replyParent] - The message
  *   this one is a Twitch reply to. Included in the turn so "how do I connect it" resolves against the
  *   answer it was sent under, even when that answer came from a one-shot command.
+ * @param {string|null} [options.userId] - The asker's Twitch user ID, for channel memory about them.
  */
 export async function handleStandardLlmQuery(channel, cleanChannel, displayName, lowerUsername, userMessage, triggerType = "mention", replyToId = null, sessionId = null, emoteImageParts = [], options = {}) {
     const logContext = sessionId 
@@ -332,7 +333,7 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
                 .slice(-5)
                 .map(msg => msg.message)
                 .join('\n');
-            const memories = await retrieveMemories(cleanChannel, { text: userMessage, username: lowerUsername, recentText });
+            const memories = await retrieveMemories(cleanChannel, { text: userMessage, userId: options.userId || null, recentText });
             memoryContext = formatMemoriesForPrompt(memories);
             if (memoryContext) {
                 logger.info({ ...logContext, memoryIds: memories.map(m => m.id) }, '[Memory] Channel memory added to LLM turn');

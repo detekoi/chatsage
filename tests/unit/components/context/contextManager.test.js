@@ -28,6 +28,9 @@ import {
 import { loadAllUserTranslations, saveUserTranslation, removeUserTranslation } from '../../../../src/components/context/translationStorage.js';
 import { getEmoteContextString } from '../../../../src/lib/geminiEmoteDescriber.js';
 
+// enableUserTranslation is exposed on the manager object only
+const enableUserTranslation = (...args) => getContextManager().enableUserTranslation(...args);
+
 describe('contextManager', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -127,15 +130,86 @@ describe('contextManager', () => {
         });
 
         it('should return null for non-existent user', () => {
-            const state = getUserTranslationState('testchannel', 'nonexistentuser');
+            const state = getUserTranslationState('testchannel', '99999999');
 
             expect(state).toBeNull();
         });
 
+        it('should return null without a user ID', () => {
+            expect(getUserTranslationState('testchannel', null)).toBeNull();
+        });
+
         it('should return translation state for existing user', () => {
-            // This would require setting up a user state first
-            // For now, we'll test that the function exists and handles basic cases
-            expect(typeof getUserTranslationState).toBe('function');
+            enableUserTranslation('testchannel', '1001', 'alice', 'spanish');
+
+            expect(getUserTranslationState('testchannel', '1001')).toEqual({
+                userId: '1001',
+                username: 'alice',
+                isTranslating: true,
+                targetLanguage: 'spanish',
+            });
+            disableUserTranslation('testchannel', '1001');
+        });
+    });
+
+    describe('translation state keyed by user ID', () => {
+        beforeEach(async () => {
+            await initializeContextManager(['testchannel']);
+        });
+
+        it('persists with the user ID and current login', () => {
+            enableUserTranslation('testchannel', '2001', 'Bob', 'french');
+
+            expect(saveUserTranslation).toHaveBeenCalledWith('testchannel', '2001', 'bob', 'french');
+            disableUserTranslation('testchannel', '2001');
+        });
+
+        it('keeps a renamed user translating (same ID, new login)', () => {
+            enableUserTranslation('testchannel', '2002', 'oldname', 'german');
+
+            // The login is not a lookup key: the renamed user is found by ID alone
+            const state = getUserTranslationState('testchannel', '2002');
+            expect(state.isTranslating).toBe(true);
+            expect(state.targetLanguage).toBe('german');
+            expect(getUserTranslationState('testchannel', 'oldname')).toBeNull();
+
+            // Re-enabling under the new login updates the display name on the same entry
+            enableUserTranslation('testchannel', '2002', 'newname', 'german');
+            expect(getUserTranslationState('testchannel', '2002').username).toBe('newname');
+
+            expect(disableUserTranslation('testchannel', '2002')).toBe(true);
+            expect(removeUserTranslation).toHaveBeenCalledWith('testchannel', '2002');
+        });
+
+        it('does not let a new owner of a released login inherit the setting', () => {
+            enableUserTranslation('testchannel', '2003', 'sharedname', 'italian');
+
+            expect(getUserTranslationState('testchannel', '2004')).toBeNull();
+            disableUserTranslation('testchannel', '2003');
+        });
+
+        it('ignores an enable without a user ID', () => {
+            enableUserTranslation('testchannel', null, 'ghost', 'spanish');
+
+            expect(saveUserTranslation).not.toHaveBeenCalled();
+        });
+
+        it('restores stored translations by user ID on startup', async () => {
+            loadAllUserTranslations.mockResolvedValue([
+                { channelName: 'testchannel', userId: '2005', login: 'restored', targetLanguage: 'japanese' },
+                { channelName: 'notconfigured', userId: '2006', login: 'other', targetLanguage: 'french' },
+            ]);
+
+            await initializeContextManager(['testchannel']);
+
+            expect(getUserTranslationState('testchannel', '2005')).toEqual({
+                userId: '2005',
+                username: 'restored',
+                isTranslating: true,
+                targetLanguage: 'japanese',
+            });
+            expect(getUserTranslationState('notconfigured', '2006')).toBeNull();
+            disableUserTranslation('testchannel', '2005');
         });
     });
 
@@ -145,11 +219,20 @@ describe('contextManager', () => {
         });
 
         it('should disable translation for user', () => {
-            expect(() => disableUserTranslation('testchannel', 'testuser')).not.toThrow();
+            enableUserTranslation('testchannel', '3001', 'testuser', 'spanish');
+
+            expect(disableUserTranslation('testchannel', '3001')).toBe(true);
+            expect(getUserTranslationState('testchannel', '3001').isTranslating).toBe(false);
+            expect(removeUserTranslation).toHaveBeenCalledWith('testchannel', '3001');
+        });
+
+        it('returns false when translation was already off', () => {
+            expect(disableUserTranslation('testchannel', '3002')).toBe(false);
+            expect(removeUserTranslation).not.toHaveBeenCalled();
         });
 
         it('should handle non-existent channel', () => {
-            expect(() => disableUserTranslation('nonexistentchannel', 'testuser')).not.toThrow();
+            expect(() => disableUserTranslation('nonexistentchannel', '3001')).not.toThrow();
         });
     });
 
@@ -160,6 +243,16 @@ describe('contextManager', () => {
 
         it('should disable all translations in channel', () => {
             expect(() => disableAllTranslationsInChannel('testchannel')).not.toThrow();
+        });
+
+        it('removes each stored setting by user ID', () => {
+            enableUserTranslation('testchannel', '4001', 'one', 'spanish');
+            enableUserTranslation('testchannel', '4002', 'two', 'french');
+
+            expect(disableAllTranslationsInChannel('testchannel')).toBe(2);
+            expect(removeUserTranslation).toHaveBeenCalledWith('testchannel', '4001');
+            expect(removeUserTranslation).toHaveBeenCalledWith('testchannel', '4002');
+            expect(getUserTranslationState('testchannel', '4001').isTranslating).toBe(false);
         });
     });
 
@@ -276,7 +369,7 @@ describe('contextManager', () => {
         });
 
         it('should handle enableUserTranslation without errors', () => {
-            expect(() => manager.enableUserTranslation('testchannel', 'testuser', 'es')).not.toThrow();
+            expect(() => manager.enableUserTranslation('testchannel', '5001', 'testuser', 'es')).not.toThrow();
         });
     });
 

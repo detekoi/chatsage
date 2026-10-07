@@ -37,6 +37,7 @@ class TriviaStorage extends BaseGameStorage {
                 question: gameDetails.question || 'Unknown question',
                 answer: gameDetails.answer || 'Unknown',
                 winner: gameDetails.winner || null,
+                winnerUserId: gameDetails.winnerUserId || null,
                 winnerDisplay: gameDetails.winnerDisplay || null,
                 startTime: gameDetails.startTime || null,
                 endTime: gameDetails.endTime || new Date().toISOString(),
@@ -146,44 +147,6 @@ class TriviaStorage extends BaseGameStorage {
             logger.info(`[TriviaStorage] Flagged problematic question: ${questionText.substring(0, 30)}... (${reason})`);
         } catch (error) {
             logger.error({ err: error }, `[TriviaStorage] Error flagging problem question`);
-        }
-    }
-
-    /**
-     * Gets player statistics with trivia-specific field aliases.
-     */
-    async getPlayerStats(username, channelName = null) {
-        const lowerUsername = username.toLowerCase();
-        const docRef = this._getDb().collection(this.statsCollection).doc(lowerUsername);
-
-        try {
-            const docSnap = await docRef.get();
-            if (docSnap.exists) {
-                const data = docSnap.data();
-
-                if (channelName) {
-                    const lowerChannel = channelName.toLowerCase();
-
-                    return {
-                        ...data,
-                        channelStats: data.channels?.[lowerChannel] || null,
-                        correct: data.globalSuccesses || data.globalCorrect || 0,
-                        points: data.globalPoints || 0,
-                        participation: data.globalParticipation || 0
-                    };
-                }
-
-                return data;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            logger.error({
-                err: error,
-                player: lowerUsername,
-                channel: channelName
-            }, `[TriviaStorage] Error getting player stats`);
-            return null;
         }
     }
 
@@ -308,14 +271,13 @@ const loadChannelConfig = (channelName) => triviaStorage.loadChannelConfig(chann
 const saveChannelConfig = (channelName, config) => triviaStorage.saveChannelConfig(channelName, config);
 const recordGameResult = (gameDetails) => triviaStorage.recordGameResult(gameDetails);
 const reportProblemQuestion = (questionText, reason) => triviaStorage.reportProblemQuestion(questionText, reason);
-const updatePlayerScore = (username, channelName, points, displayName) => triviaStorage.updatePlayerScore(username, channelName, points, displayName);
-const getPlayerStats = (username, channelName) => triviaStorage.getPlayerStats(username, channelName);
+const updatePlayerScore = (userId, login, channelName, points, displayName) => triviaStorage.updatePlayerScore(userId, login, channelName, points, displayName);
 const getLeaderboard = (channelName, limit) => triviaStorage.getLeaderboard(channelName, limit);
 const getRecentQuestions = (channelName, topic, limit) => triviaStorage.getRecentQuestions(channelName, topic, limit);
 const getRecentAnswers = (channelName, topic, limit) => triviaStorage.getRecentAnswers(channelName, topic, limit);
 const clearChannelLeaderboardData = (channelName) => triviaStorage.clearChannelLeaderboardData(channelName);
 const getLatestCompletedSessionInfo = (channelName) => triviaStorage.getLatestCompletedSessionInfo(channelName);
-const flagTriviaQuestionByDocId = (docId, reason, reportedByUsername) => triviaStorage.flagHistoryEntryByDocId(docId, reason, reportedByUsername);
+const flagTriviaQuestionByDocId = (docId, reason, reportedByUsername, reportedById) => triviaStorage.flagHistoryEntryByDocId(docId, reason, reportedByUsername, reportedById);
 
 export {
     initializeStorage,
@@ -325,7 +287,6 @@ export {
     recordGameResult,
     reportProblemQuestion,
     updatePlayerScore,
-    getPlayerStats,
     getLeaderboard,
     getRecentQuestions,
     getRecentAnswers,

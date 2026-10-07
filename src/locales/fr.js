@@ -31,12 +31,12 @@ export default {
         },
         "gameStoppedScores": "🏁 Partie arrêtée. Scores finaux : {list}",
         "finalScores": "🏁 Scores finaux : {list}",
-        "NoQuestionEndingGame": "⚠️ Erreur : Impossible de générer une question pour la manche {currentRound}. Fin de la partie.",
-        "InvalidQuestionEndingGame": "⚠️ Erreur : La question générée est invalide. Fin de la partie.",
-        "answerWas": "{roundPrefix}La réponse était : {answer}",
         "noLeaderboard": "Pas encore de stats de Trivia pour cette chaîne ({channelName}) !",
         "leaderboard": "🏆 Champions de Trivia sur #{channelName} : {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} pts, {correct} bonnes réponses)"
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {correct} bonnes réponses)",
+        "NoQuestionEndingGame": "⚠️ Erreur : Impossible de générer une question pour la manche {currentRound}. Fin de la partie.",
+        "InvalidQuestionEndingGame": "⚠️ Erreur : La question générée est invalide. Fin de la partie.",
+        "answerWas": "{roundPrefix}La réponse était : {answer}"
     },
     "riddle": {
         "start": "🤔 Lancement de {roundText} d'énigmes ! {topicText} Vous avez {questionTimeSeconds} secondes pour répondre. Tapez vos réponses dans le chat !",
@@ -91,13 +91,13 @@ export default {
         },
         "roundError": "Une erreur est survenue lors de la révélation de la réponse pour la manche {currentRound}.",
         "roundEnded": "La manche est terminée.",
+        "noLeaderboard": "Pas encore de stats de Geo-Game pour cette chaîne ({channelName}) !",
+        "leaderboard": "🏆 Meilleurs joueurs de Geo-Game sur #{channelName} : {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pts, {wins} victoires)",
         "NoScoresSession": "🏁 Partie terminée. Aucun score enregistré pour cette session.",
         "LeaderboardFetchFailed": "Impossible de récupérer le classement général de la chaîne.",
         "NoLocationEndingGame": "⚠️ Erreur : Impossible de trouver un nouveau lieu approprié pour la manche {currentRound}. Fin de la partie.",
-        "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie.",
-        "noLeaderboard": "Pas encore de stats de Geo-Game pour cette chaîne ({channelName}) !",
-        "leaderboard": "🏆 Meilleurs joueurs de Geo-Game sur #{channelName} : {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} pts, {wins} victoires)"
+        "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie."
     },
     "cmd": {
         "ask": {
@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "Désolé, une erreur est survenue lors de l'arrêt de toutes les traductions.",
             "OnlyModsOrBroadcaster2": "Seuls les modos ou le diffuseur peuvent gérer la traduction pour les autres utilisateurs.",
             "PleaseSpecifyLanguageExample": "Précise une langue. Exemple : !translate spanish",
-            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors du traitement de la commande de traduction."
+            "SorryErrorOccurredWhile": "Désolé, une erreur est survenue lors du traitement de la commande de traduction.",
+            "UserNotFound": "Utilisateur \"{targetUsername}\" introuvable."
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "Oups ! Une erreur est survenue lors de l'exécution de !{command}."

@@ -28,6 +28,10 @@ jest.mock('../../../src/components/memory/memoryManager.js', () => ({
         : null)),
 }));
 
+jest.mock('../../../src/lib/userIdentity.js', () => ({
+    resolveUserIds: jest.fn(async (logins) => new Map(logins.filter(l => l === '@bob').map(() => ['bob', '22']))),
+}));
+
 jest.mock('../../../src/lib/logger.js', () => ({
     __esModule: true,
     default: {
@@ -266,11 +270,11 @@ describe('promptResolver', () => {
         test('adds relevant memories and asks the model to stay consistent with them', async () => {
             retrieveMemories.mockResolvedValueOnce([allergy]);
             await resolvePrompt('Make sleepysabrinas a parfait', null, null, true, {
-                channel: 'parfaitfair', source: 'checkin', chatContext: 'chat line', useMemory: true, memoryUsers: ['sleepysabrinas'],
+                channel: 'parfaitfair', source: 'checkin', chatContext: 'chat line', useMemory: true, memoryUserIds: ['33'],
             });
 
             expect(retrieveMemories).toHaveBeenCalledWith('parfaitfair', {
-                text: 'Make sleepysabrinas a parfait', username: null, recentText: 'chat line', focusUsers: ['sleepysabrinas'],
+                text: 'Make sleepysabrinas a parfait', userId: null, recentText: 'chat line', focusUserIds: ['33'],
             }, { trackUsage: true, askerOnlyLimit: Infinity });
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('- sleepysabrinas cannot have tree nuts.');
@@ -279,10 +283,10 @@ describe('promptResolver', () => {
 
         test('passes the triggering viewer separately from the viewers the response is for', async () => {
             await resolvePrompt('Hug bob', null, null, false, {
-                channel: 'parfaitfair', useMemory: true, username: 'alice', memoryUsers: ['@bob'],
+                channel: 'parfaitfair', useMemory: true, userId: '44', memoryUserIds: ['55'], memoryLogins: ['@bob', 'hugs'],
             });
 
-            expect(retrieveMemories.mock.calls[0][1]).toEqual(expect.objectContaining({ username: 'alice', focusUsers: ['@bob'] }));
+            expect(retrieveMemories.mock.calls[0][1]).toEqual(expect.objectContaining({ userId: '44', focusUserIds: ['55', '22'] }));
         });
 
         test('re-anchors on the task when memory is present without chat context', async () => {

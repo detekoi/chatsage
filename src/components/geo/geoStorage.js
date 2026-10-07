@@ -27,56 +27,6 @@ class GeoStorage extends BaseGameStorage {
         return data.location || null;
     }
 
-    /**
-     * Retrieves player stats with geo-specific backward-compatible aliases.
-     */
-    async getPlayerStats(username, channelName = null) {
-        const lowerUsername = username.toLowerCase();
-        const docRef = this._getDb().collection(this.statsCollection).doc(lowerUsername);
-
-        try {
-            const docSnap = await docRef.get();
-            if (docSnap.exists) {
-                const data = docSnap.data();
-                const globalStats = {
-                    points: data.globalPoints ?? data.globalSuccesses ?? 0,
-                    wins: data.globalSuccesses ?? data.globalWins ?? 0,
-                    participation: data.globalParticipation ?? 0,
-                    displayName: data.displayName || lowerUsername,
-                    lastWinTimestamp: data.lastSuccessTimestamp || data.lastWinTimestamp || null,
-                    channelsData: data.channels || {}
-                };
-
-                if (channelName) {
-                    const lowerChannel = channelName.toLowerCase();
-                    const channelData = data.channels?.[lowerChannel];
-                    const channelStats = channelData ? {
-                        points: channelData.points ?? channelData.successes ?? 0,
-                        wins: channelData.successes ?? channelData.wins ?? 0,
-                        participation: channelData.participation ?? 0,
-                        lastWinTimestamp: channelData.lastSuccessTimestamp || channelData.lastWinTimestamp || null
-                    } : { points: 0, wins: 0, participation: 0, lastWinTimestamp: null };
-
-                    return {
-                        ...globalStats,
-                        channelStats,
-                    };
-                }
-
-                return globalStats;
-            } else {
-                return null;
-            }
-        } catch (error) {
-            logger.error({
-                err: error,
-                player: lowerUsername,
-                channel: channelName
-            }, `[GeoStorage] Error getting player stats for ${lowerUsername}`);
-            throw new StorageError(`Failed to get player stats for ${lowerUsername}`, error);
-        }
-    }
-
     // ── Geo-specific methods ───────────────────────────────────────────
 
     /**
@@ -130,7 +80,7 @@ class GeoStorage extends BaseGameStorage {
     /**
      * Reports a problem with a specific location by finding and flagging it in history.
      */
-    async reportProblemLocation(locationName, reason, channelName, reportedByUsername = null) {
+    async reportProblemLocation(locationName, reason, channelName, reportedByUsername = null, reportedById = null) {
         const db = this._getDb();
         const historyCol = db.collection(HISTORY_COLLECTION);
         const lowerChannel = channelName.toLowerCase();
@@ -160,6 +110,9 @@ class GeoStorage extends BaseGameStorage {
             if (reportedByUsername) {
                 updateData.reportedBy = reportedByUsername.toLowerCase();
             }
+            if (reportedById) {
+                updateData.reportedById = String(reportedById);
+            }
             await docRef.update(updateData);
 
             logger.info(`[GeoStorage] Successfully flagged location "${primaryLocationName}" in channel ${lowerChannel}.`);
@@ -182,14 +135,13 @@ const initializeStorage = () => geoStorage.initializeStorage();
 const loadChannelConfig = (channelName) => geoStorage.loadChannelConfig(channelName);
 const saveChannelConfig = (channelName, config) => geoStorage.saveChannelConfig(channelName, config);
 const recordGameResult = (gameDetails) => geoStorage.recordGameResult(gameDetails);
-const updatePlayerScore = (username, channelName, points, displayName) => geoStorage.updatePlayerScore(username, channelName, points, displayName);
-const getPlayerStats = (username, channelName) => geoStorage.getPlayerStats(username, channelName);
+const updatePlayerScore = (userId, login, channelName, points, displayName) => geoStorage.updatePlayerScore(userId, login, channelName, points, displayName);
 const getLeaderboard = (channelName, limit) => geoStorage.getLeaderboard(channelName, limit);
 const getRecentLocations = (channelName, limit) => geoStorage.getRecentLocations(channelName, limit);
 const clearChannelLeaderboardData = (channelName) => geoStorage.clearChannelLeaderboardData(channelName);
-const reportProblemLocation = (locationName, reason, channelName, reportedByUsername) => geoStorage.reportProblemLocation(locationName, reason, channelName, reportedByUsername);
+const reportProblemLocation = (locationName, reason, channelName, reportedByUsername, reportedById) => geoStorage.reportProblemLocation(locationName, reason, channelName, reportedByUsername, reportedById);
 const getLatestCompletedSessionInfo = (channelName) => geoStorage.getLatestCompletedSessionInfo(channelName);
-const flagGeoLocationByDocId = (docId, reason, reportedByUsername) => geoStorage.flagHistoryEntryByDocId(docId, reason, reportedByUsername);
+const flagGeoLocationByDocId = (docId, reason, reportedByUsername, reportedById) => geoStorage.flagHistoryEntryByDocId(docId, reason, reportedByUsername, reportedById);
 
 export {
     initializeStorage,
@@ -198,7 +150,6 @@ export {
     saveChannelConfig,
     recordGameResult,
     updatePlayerScore,
-    getPlayerStats,
     getLeaderboard,
     getRecentLocations,
     clearChannelLeaderboardData,

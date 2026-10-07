@@ -11,6 +11,7 @@ import { getContextManager } from '../components/context/contextManager.js';
 import { buildContextPrompt } from '../components/llm/gemini/prompts.js';
 import { CHECKIN_SOURCE } from '../components/llm/inferenceHistoryStorage.js';
 import { pronounService } from '../lib/pronounService.js';
+import { noteUser } from '../lib/userIdentity.js';
 
 /**
  * Handle a Channel Points redemption event for the Daily Check-In feature.
@@ -58,6 +59,7 @@ export async function handleCheckinRedemption(event) {
     // Fetch user pronouns (fire and forget / non-blocking if slow)
     // We await it here since we need it for context, but it has a short timeout
     const userLogin = (event?.user_login || userName).toLowerCase();
+    noteUser(userId, userLogin);
     const grammar = await pronounService.getUserPronouns(userLogin);
     const userPronouns = grammar ? { display: grammar.display, grammar } : null;
 
@@ -112,7 +114,7 @@ export async function handleCheckinRedemption(event) {
                 source: CHECKIN_SOURCE,
                 chatContext,
                 useMemory: true,
-                memoryUsers: [userLogin],
+                memoryUserIds: [userId],
             }));
 
             const elapsed = Date.now() - startTime;

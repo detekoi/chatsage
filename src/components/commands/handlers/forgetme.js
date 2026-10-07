@@ -16,9 +16,12 @@ async function execute(context) {
     const replyToId = user?.id || user?.['message-id'] || null;
 
     try {
-        const count = await forgetUser(channelName, username);
+        const userId = user['user-id'];
+        // The opt-out is stored by user ID; without one, saying "done" would be a promise not kept.
+        if (!userId) throw new Error('Message carried no user ID');
+        const count = await forgetUser(channelName, userId);
         await sendLocalized(channel, 'cmd.memory.ForgotUser', {}, `Done. I've forgotten what I knew about you here and won't remember you going forward.`, { replyToId });
-        logger.info({ channel: channelName, user: username, count }, '[ForgetMeCommand] Handled !forgetme');
+        logger.info({ channel: channelName, user: username, userId, count }, '[ForgetMeCommand] Handled !forgetme');
     } catch (error) {
         logger.error({ err: error, channel: channelName, user: username }, `[ForgetMeCommand] Error executing forgetme command in channel ${channelName}`);
         try {

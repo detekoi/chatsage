@@ -29,8 +29,9 @@ interface StreamContext {
     offlineMissCount: number; // consecutive polls reporting offline
 }
 
-interface UserState { // <-- NEW Interface
-    username: string; // Store the username lowercase for consistent lookup
+interface UserState {
+    userId: string; // Immutable Twitch user ID; the userStates map key
+    username: string; // Current login (lowercase), for display and logs only
     isTranslating: boolean;
     targetLanguage: string | null;
 }
@@ -42,7 +43,7 @@ interface ChannelState {
     chatSummary: string;
     isSummarizing: boolean; // <-- Lock flag to prevent concurrent summarization
     streamContext: StreamContext;
-    userStates: Map<string, UserState>; // <-- Map: username -> UserState
+    userStates: Map<string, UserState>; // Map: Twitch user ID -> UserState
     botLanguage: string | null | undefined; // undefined = never configured (auto-detect from Twitch); null = explicitly English
 }
 */
@@ -140,13 +141,13 @@ async function initializeContextManager(configuredChannels = []) {
     // Load user translation states from Firestore
     try {
         const translations = await loadAllUserTranslations();
-        for (const { channelName, username, targetLanguage } of translations) {
+        for (const { channelName, userId, login, targetLanguage } of translations) {
             // Only restore if the channel is configured
             if (channelStates.has(channelName)) {
-                const userState = _getOrCreateUserState(channelName, username);
+                const userState = _getOrCreateUserState(channelName, userId, login);
                 userState.isTranslating = true;
                 userState.targetLanguage = targetLanguage;
-                logger.debug(`Restored translation for ${username} in ${channelName}: ${targetLanguage}`);
+                logger.debug(`Restored translation for ${login || userId} in ${channelName}: ${targetLanguage}`);
             }
         }
         if (translations.length > 0) {
@@ -196,22 +197,28 @@ function _getOrCreateChannelState(channelName) {
 
 /**
  * Gets or creates the state object for a given user within a channel.
+ * Keyed by the immutable Twitch user ID so a rename keeps the user's settings.
  * @param {string} channelName - Channel name (without '#').
- * @param {string} username - Username (lowercase).
+ * @param {string} userId - Twitch user ID.
+ * @param {string|null} [login] - Current login; refreshes the stored display name when given.
  * @returns {UserState} The state object for the user in that channel.
  */
-function _getOrCreateUserState(channelName, username) {
+function _getOrCreateUserState(channelName, userId, login = null) {
     const channelState = _getOrCreateChannelState(channelName);
-    const lowerUser = username.toLowerCase(); // Use lowercase for map key consistency
-    if (!channelState.userStates.has(lowerUser)) {
-        logger.debug(`[${channelName}] Creating new state for user: ${lowerUser}`);
-        channelState.userStates.set(lowerUser, {
-            username: lowerUser,
+    const key = String(userId);
+    const lowerLogin = login ? String(login).toLowerCase() : null;
+    if (!channelState.userStates.has(key)) {
+        logger.debug(`[${channelName}] Creating new state for user: ${lowerLogin || key} (${key})`);
+        channelState.userStates.set(key, {
+            userId: key,
+            username: lowerLogin || key,
             isTranslating: false,
             targetLanguage: null,
         });
+    } else if (lowerLogin) {
+        channelState.userStates.get(key).username = lowerLogin;
     }
-    return channelState.userStates.get(lowerUser);
+    return channelState.userStates.get(key);
 }
 
 /**
@@ -671,34 +678,42 @@ async function getChannelsForPolling() {
 /**
  * Enables translation mode for a user in a channel.
  * @param {string} channelName - Channel name (without '#').
- * @param {string} username - Username (lowercase).
+ * @param {string} userId - Twitch user ID.
+ * @param {string|null} login - Current login, for display and the stored document.
  * @param {string} language - Target language.
  */
-function enableUserTranslation(channelName, username, language) {
-    const userState = _getOrCreateUserState(channelName, username);
+function enableUserTranslation(channelName, userId, login, language) {
+    if (!userId) {
+        logger.warn(`[${channelName}] Ignoring translation enable without a user ID (login: ${login})`);
+        return;
+    }
+    const userState = _getOrCreateUserState(channelName, userId, login);
     userState.isTranslating = true;
     userState.targetLanguage = language;
-    logger.info(`[${channelName}] Enabled translation to ${language} for user ${username}`);
+    logger.info(`[${channelName}] Enabled translation to ${language} for user ${userState.username} (${userState.userId})`);
     // Persist to Firestore (fire-and-forget)
-    saveUserTranslation(channelName, username, language).catch(err =>
-        logger.error({ err }, `[${channelName}] Failed to persist translation for ${username}`)
+    saveUserTranslation(channelName, userState.userId, userState.username, language).catch(err =>
+        logger.error({ err }, `[${channelName}] Failed to persist translation for ${userState.username}`)
     );
 }
 
 /**
  * Disables translation mode for a user in a channel.
  * @param {string} channelName - Channel name (without '#').
- * @param {string} username - Username (lowercase).
+ * @param {string} userId - Twitch user ID.
+ * @returns {boolean} True if translation was on and is now off.
  */
-function disableUserTranslation(channelName, username) {
-    const userState = _getOrCreateUserState(channelName, username);
-    if (userState.isTranslating) {
+function disableUserTranslation(channelName, userId) {
+    if (!userId) return false;
+    const channelState = channelStates.get(channelName);
+    const userState = channelState?.userStates.get(String(userId));
+    if (userState && userState.isTranslating) {
         userState.isTranslating = false;
         userState.targetLanguage = null;
-        logger.info(`[${channelName}] Disabled translation for user ${username}`);
+        logger.info(`[${channelName}] Disabled translation for user ${userState.username} (${userState.userId})`);
         // Remove from Firestore (fire-and-forget)
-        removeUserTranslation(channelName, username).catch(err =>
-            logger.error({ err }, `[${channelName}] Failed to remove translation for ${username}`)
+        removeUserTranslation(channelName, userState.userId).catch(err =>
+            logger.error({ err }, `[${channelName}] Failed to remove translation for ${userState.username}`)
         );
         return true; // Indicate that translation was disabled
     }
@@ -708,13 +723,14 @@ function disableUserTranslation(channelName, username) {
 /**
  * Gets the current translation state for a user.
  * @param {string} channelName - Channel name (without '#').
- * @param {string} username - Username (lowercase).
- * @returns {UserState | null} The user's state or null if not found (shouldn't happen with getOrCreate).
+ * @param {string} userId - Twitch user ID.
+ * @returns {UserState | null} The user's state, or null if none exists.
  */
-function getUserTranslationState(channelName, username) {
+function getUserTranslationState(channelName, userId) {
+    if (!userId) return null;
     const channelState = channelStates.get(channelName); // Only check existing channels
     if (!channelState) return null;
-    return channelState.userStates.get(username.toLowerCase()) || null; // Return null if user state doesn't exist yet
+    return channelState.userStates.get(String(userId)) || null;
 }
 
 /**
@@ -859,7 +875,7 @@ function disableAllTranslationsInChannel(channelName) {
             disabledCount++;
             logger.debug(`[${channelName}] Disabled translation for user ${userState.username} via global stop.`);
             // Remove from Firestore (fire-and-forget)
-            removeUserTranslation(channelName, userState.username).catch(err =>
+            removeUserTranslation(channelName, userState.userId).catch(err =>
                 logger.error({ err }, `[${channelName}] Failed to remove translation for ${userState.username}`)
             );
         }

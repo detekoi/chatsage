@@ -31,12 +31,12 @@ export default {
         },
         "gameStoppedScores": "🏁 ゲームを終了しました。最終スコア: {list}",
         "finalScores": "🏁 最終スコア: {list}",
-        "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
-        "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。",
-        "answerWas": "{roundPrefix}正解は: {answer}",
         "noLeaderboard": "このチャンネル ({channelName}) のトリビア記録はまだありません！",
         "leaderboard": "🏆 #{channelName} のトリビアチャンピオン: {list}",
-        "leaderboardEntry": "{rank}位. {name} ({points}pt, 正解数:{correct})"
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 正解数:{correct})",
+        "NoQuestionEndingGame": "⚠️ エラー: ラウンド{currentRound}の問題を生成できませんでした。ゲームを終了します。",
+        "InvalidQuestionEndingGame": "⚠️ エラー: 生成された問題が無効でした。ゲームを終了します。",
+        "answerWas": "{roundPrefix}正解は: {answer}"
     },
     "riddle": {
         "start": "🤔 なぞなぞ{roundText}をスタート！ {topicText} 制限時間は{questionTimeSeconds}秒。チャットで回答してね！",
@@ -91,13 +91,13 @@ export default {
         },
         "roundError": "ラウンド {currentRound} の正解発表中にエラーが発生しました。",
         "roundEnded": "ラウンドが終了しました。",
+        "noLeaderboard": "このチャンネル ({channelName}) のGeo-Game記録はまだありません！",
+        "leaderboard": "🏆 #{channelName} のGeo-Gameトッププレイヤー: {list}",
+        "leaderboardEntry": "{rank}位. {name} ({points}pt, 勝利数:{wins})",
         "NoScoresSession": "🏁 ゲーム終了。このセッションではスコアが記録されませんでした。",
         "LeaderboardFetchFailed": "チャンネル全体のリーダーボードを取得できませんでした。",
         "NoLocationEndingGame": "⚠️ エラー: ラウンド{currentRound}に適した新しい場所が見つかりませんでした。ゲームを終了します。",
-        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。",
-        "noLeaderboard": "このチャンネル ({channelName}) のGeo-Game記録はまだありません！",
-        "leaderboard": "🏆 #{channelName} のGeo-Gameトッププレイヤー: {list}",
-        "leaderboardEntry": "{rank}位. {name} ({points}pt, 勝利数:{wins})"
+        "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。"
     },
     "cmd": {
         "ask": {
@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "申し訳ありません。すべての翻訳を停止する際にエラーが発生しました。",
             "OnlyModsOrBroadcaster2": "他のユーザーの翻訳を管理できるのはモデレーターまたは配信者のみです。",
             "PleaseSpecifyLanguageExample": "言語を指定してください。例: !translate spanish",
-            "SorryErrorOccurredWhile": "申し訳ありません。翻訳コマンドの処理中にエラーが発生しました。"
+            "SorryErrorOccurredWhile": "申し訳ありません。翻訳コマンドの処理中にエラーが発生しました。",
+            "UserNotFound": "ユーザー「{targetUsername}」が見つかりません。"
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "おっと！!{command} の実行中に問題が発生しました。"

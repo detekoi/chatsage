@@ -2,13 +2,17 @@
 //
 // Long-term channel memory: lore, in-jokes and light facts about regulars.
 //
-//   channelMemories/{broadcasterId}              -> { channelName, optedOut: string[], enabled, updatedAt }
+//   channelMemories/{broadcasterId}              -> { channelName, optedOutIds: string[], enabled, updatedAt }
 //   channelMemories/{broadcasterId}/items/{id}   -> one memory (see addMemory)
 //   channelMemoryPending/{broadcasterId}         -> raw chat lines stashed at shutdown, waiting for extraction
 //
 // Documents are keyed by broadcaster ID (see lib/channelKey.js), never by login: memory text is
 // composed into prompts, so a renamed channel must keep it and the next owner of the freed name
 // must not inherit it. `channelName` is stored for readability only.
+//
+// Chatters are identified the same way. A memory's `subjectIds` maps each subject's Twitch user ID
+// to the login it had when the memory was written, and opt-outs are user IDs; `subjects` (logins)
+// are only names to recognise in chat text.
 //
 // No TTL on any of these: memories are meant to outlive streams, and the pending doc is deleted
 // by the next process that picks it up.
@@ -58,7 +62,7 @@ function _itemsRef(channelName) {
 /**
  * Loads every memory and the opt-out list for a channel.
  * @param {string} channelName
- * @returns {Promise<{memories: object[], optedOut: string[]}>}
+ * @returns {Promise<{memories: object[], optedOutIds: string[], enabled: boolean}>}
  */
 export async function loadChannelMemories(channelName) {
     try {
@@ -69,11 +73,11 @@ export async function loadChannelMemories(channelName) {
         const memories = [];
         itemsSnap.forEach(doc => memories.push({ id: doc.id, ...doc.data() }));
         const parent = parentSnap.exists ? parentSnap.data() : {};
-        const optedOut = parent.optedOut || [];
+        const optedOutIds = parent.optedOutIds || [];
         // Opt-out: a channel that never touched the setting has memory on.
         const enabled = parent.enabled !== false;
         logger.debug(`[MemoryStorage] Loaded ${memories.length} memories for channel ${channelName}`);
-        return { memories, optedOut, enabled };
+        return { memories, optedOutIds, enabled };
     } catch (error) {
         logger.error({ err: error, channel: channelName }, `[MemoryStorage] Error loading memories for channel ${channelName}`);
         throw new MemoryStorageError(`Failed to load memories for ${channelName}`, error);
@@ -83,7 +87,8 @@ export async function loadChannelMemories(channelName) {
 /**
  * Adds a memory.
  * @param {string} channelName
- * @param {{text: string, keys: string[], subjects: string[], kind: string, source: 'auto'|'manual', addedBy: string|null}} memory
+ * @param {{text: string, keys: string[], subjects: string[], subjectIds: Object<string, string>, kind: string,
+ *   source: 'auto'|'manual', addedBy: string|null, addedById: string|null}} memory
  * @returns {Promise<object>} The stored memory including its id.
  */
 export async function addMemory(channelName, memory) {
@@ -92,9 +97,11 @@ export async function addMemory(channelName, memory) {
         text: memory.text,
         keys: memory.keys || [],
         subjects: memory.subjects || [],
+        subjectIds: memory.subjectIds || {},
         kind: memory.kind || 'other',
         source: memory.source || 'auto',
         addedBy: memory.addedBy || null,
+        addedById: memory.addedById || null,
         createdAt: now,
         updatedAt: now,
         lastSeenAt: now,
@@ -145,13 +152,13 @@ export async function deleteMemories(channelName, memoryIds) {
 /**
  * Records that a user does not want to be remembered in this channel.
  * @param {string} channelName
- * @param {string} login Lowercase login.
+ * @param {string} userId Twitch user ID.
  */
-export async function addOptOut(channelName, login) {
+export async function addOptOut(channelName, userId) {
     try {
         await _channelRef(channelName).set({
             channelName: normalizeChannelName(channelName),
-            optedOut: FieldValue.arrayUnion(login.toLowerCase()),
+            optedOutIds: FieldValue.arrayUnion(String(userId)),
             updatedAt: new Date(),
         }, { merge: true });
     } catch (error) {
@@ -207,7 +214,7 @@ export function bumpUsage(channelName, memoryIds) {
  * Stashes chat lines that have not been through extraction yet. Called at shutdown, where there
  * is no time for an LLM call.
  * @param {string} channelName
- * @param {{username: string, message: string, ts: number}[]} messages
+ * @param {{userId: string, username: string, message: string, ts: number}[]} messages
  */
 export async function savePendingMessages(channelName, messages) {
     try {
@@ -225,7 +232,7 @@ export async function savePendingMessages(channelName, messages) {
 /**
  * Returns and removes the stashed chat lines for a channel.
  * @param {string} channelName
- * @returns {Promise<{username: string, message: string, ts: number}[]>}
+ * @returns {Promise<{userId?: string, username: string, message: string, ts: number}[]>}
  */
 export async function takePendingMessages(channelName) {
     try {

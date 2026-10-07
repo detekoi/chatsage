@@ -115,7 +115,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
     test('1. Bot language is English: translateText NOT called, verifyAnswer called with original answer', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
         const userAnswer = "Paris";
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user1', 'User1', userAnswer);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-user1', 'user1', 'User1', userAnswer);
         await new Promise(process.nextTick);
 
 
@@ -135,7 +135,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const translatedAnswer = "Paris";
         translateText.mockResolvedValue(translatedAnswer);
 
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user2', 'User2', userAnswer);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-user2', 'user2', 'User2', userAnswer);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
@@ -153,7 +153,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const userAnswer = "Paris";
         translateText.mockRejectedValue(new Error("Translation API error"));
 
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user3', 'User3', userAnswer);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-user3', 'user3', 'User3', userAnswer);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
@@ -172,7 +172,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const userAnswer = "Paris";
         translateText.mockResolvedValue("  "); // Empty or whitespace
 
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user4', 'User4', userAnswer);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-user4', 'user4', 'User4', userAnswer);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
@@ -189,7 +189,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
     test('announces the overall leaderboard at game end even when there are no stats yet', async () => {
         verifyAnswer.mockResolvedValue({ is_correct: true });
 
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'user1', 'User1', 'Paris');
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-user1', 'user1', 'User1', 'Paris');
         for (let i = 0; i < 20; i++) await new Promise(setImmediate);
 
         expect(enqueueMessage).toHaveBeenCalledWith(
@@ -205,17 +205,17 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const userAnswer2 = "Second Answer";
 
         // First answer
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-userTriviaSpam', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(1); // Processed
 
         // Immediate duplicate answer from same user — should be throttled (2000ms limit)
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-userTriviaSpam', 'userTriviaSpam', 'UserTriviaSpam', userAnswer1);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(1); // No new call to verifyAnswer
 
         // Immediate DIFFERENT answer from same user — should process immediately (0ms limit)
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-userTriviaSpam', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(2); // New call to verifyAnswer
 
@@ -226,7 +226,7 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
 
         // Duplicate answer again after cooldown — no longer rate limited, but hits guessCache
         // Since verifyAnswer returns false in the mock, userAnswer2 is in guessCache
-        triviaGameManager.processPotentialAnswer('testtriviachannel', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
+        triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-userTriviaSpam', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(2); // Hit cache instead of verifyAnswer
     });

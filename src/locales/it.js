@@ -31,12 +31,12 @@ export default {
         },
         "gameStoppedScores": "🏁 Gioco interrotto. Punteggi finali: {list}",
         "finalScores": "🏁 Punteggi finali: {list}",
-        "NoQuestionEndingGame": "⚠️ Errore: Impossibile generare una domanda per il round {currentRound}. Fine della partita.",
-        "InvalidQuestionEndingGame": "⚠️ Errore: La domanda generata non è valida. Fine della partita.",
-        "answerWas": "{roundPrefix}La risposta era: {answer}",
         "noLeaderboard": "Nessuna statistica di Trivia trovata per questo canale ({channelName})!",
         "leaderboard": "🏆 Campioni di Trivia in #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} pt, {correct} corrette)"
+        "leaderboardEntry": "{rank}. {name} ({points} pt, {correct} corrette)",
+        "NoQuestionEndingGame": "⚠️ Errore: Impossibile generare una domanda per il round {currentRound}. Fine della partita.",
+        "InvalidQuestionEndingGame": "⚠️ Errore: La domanda generata non è valida. Fine della partita.",
+        "answerWas": "{roundPrefix}La risposta era: {answer}"
     },
     "riddle": {
         "start": "🤔 Inizia {roundText} di Indovinelli! {topicText} Avete {questionTimeSeconds} secondi per rispondere. Scrivete le vostre risposte in chat!",
@@ -91,13 +91,13 @@ export default {
         },
         "roundError": "Si è verificato un errore nel rivelare la risposta per il round {currentRound}.",
         "roundEnded": "Il round è terminato.",
+        "noLeaderboard": "Nessuna statistica di Geo-Game trovata per questo canale ({channelName})!",
+        "leaderboard": "🏆 Migliori giocatori di Geo-Game in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} pt, {wins} vittorie)",
         "NoScoresSession": "🏁 Partita terminata. Nessun punteggio registrato in questa sessione.",
         "LeaderboardFetchFailed": "Impossibile recuperare la classifica generale del canale.",
         "NoLocationEndingGame": "⚠️ Errore: Impossibile trovare una nuova posizione adatta per il round {currentRound}. Fine della partita.",
-        "NoClueEndingGame": "⚠️ Errore: Impossibile generare un indizio per il round {currentRound}. Fine della partita.",
-        "noLeaderboard": "Nessuna statistica di Geo-Game trovata per questo canale ({channelName})!",
-        "leaderboard": "🏆 Migliori giocatori di Geo-Game in #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} pt, {wins} vittorie)"
+        "NoClueEndingGame": "⚠️ Errore: Impossibile generare un indizio per il round {currentRound}. Fine della partita."
     },
     "cmd": {
         "ask": {
@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "Spiacente, si è verificato un errore durante l'interruzione di tutte le traduzioni.",
             "OnlyModsOrBroadcaster2": "Solo i mod o il broadcaster possono gestire le traduzioni per gli altri utenti.",
             "PleaseSpecifyLanguageExample": "Specifica una lingua. Esempio: !translate spanish",
-            "SorryErrorOccurredWhile": "Spiacente, si è verificato un errore durante l'elaborazione del comando translate."
+            "SorryErrorOccurredWhile": "Spiacente, si è verificato un errore durante l'elaborazione del comando translate.",
+            "UserNotFound": "Utente \"{targetUsername}\" non trovato."
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "Ops! Si è verificato un errore durante l'esecuzione di !{command}."

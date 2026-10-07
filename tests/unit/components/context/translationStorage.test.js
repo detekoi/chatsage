@@ -27,6 +27,11 @@ jest.mock('../../../../src/lib/firestore.js', () => {
     };
 });
 
+jest.mock('../../../../src/lib/allowList.js', () => ({
+    getBroadcasterIdForChannel: jest.fn((name) => ({ testchannel: '4242', channel2: '4343' })[String(name).toLowerCase()] || null),
+    getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'testchannel', 4343: 'channel2' })[id] || null),
+}));
+
 jest.mock('../../../../src/lib/logger.js', () => ({
     info: jest.fn(),
     warn: jest.fn(),
@@ -35,6 +40,7 @@ jest.mock('../../../../src/lib/logger.js', () => ({
 }));
 
 import { getFirestore } from '../../../../src/lib/firestore.js';
+import logger from '../../../../src/lib/logger.js';
 import {
     saveUserTranslation,
     removeUserTranslation,
@@ -53,56 +59,79 @@ describe('translationStorage', () => {
         mockDocRef = mockCollectionRef().doc;
     });
 
+    function mockSnapshot(docs) {
+        mockCollectionRef().get.mockResolvedValue({
+            forEach: (fn) => docs.forEach(fn),
+        });
+    }
+
     describe('saveUserTranslation', () => {
-        test('should save translation preference to Firestore', async () => {
+        test('keys the document by <broadcasterId>:<userId> and stores the login for readability', async () => {
             const mockSet = mockDocRef().set;
             mockSet.mockResolvedValue();
 
-            const result = await saveUserTranslation('testchannel', 'testuser', 'spanish');
+            const result = await saveUserTranslation('testchannel', '9001', 'TestUser', 'spanish');
 
             expect(result).toBe(true);
             expect(mockCollectionRef).toHaveBeenCalledWith('userTranslations');
-            expect(mockDocRef).toHaveBeenCalledWith('testchannel:testuser');
+            expect(mockDocRef).toHaveBeenCalledWith('4242:9001');
             expect(mockSet).toHaveBeenCalledWith(
-                expect.objectContaining({
+                {
                     channelName: 'testchannel',
-                    username: 'testuser',
+                    userId: '9001',
+                    login: 'testuser',
                     targetLanguage: 'spanish',
                     updatedAt: expect.any(Date),
-                }),
+                },
                 { merge: true }
             );
+        });
+
+        test('resolves the channel case-insensitively', async () => {
+            await saveUserTranslation('#TestChannel', '9001', 'testuser', 'french');
+
+            expect(mockDocRef).toHaveBeenCalledWith('4242:9001');
         });
 
         test('should return false on Firestore error', async () => {
             const mockSet = mockDocRef().set;
             mockSet.mockRejectedValue(new Error('Firestore write failed'));
 
-            const result = await saveUserTranslation('testchannel', 'testuser', 'spanish');
+            const result = await saveUserTranslation('testchannel', '9001', 'testuser', 'spanish');
 
             expect(result).toBe(false);
         });
 
-        test('should use lowercase channel and username for doc ID', async () => {
+        test('returns false without writing for a channel with no known broadcaster ID', async () => {
             const mockSet = mockDocRef().set;
-            mockSet.mockResolvedValue();
+            mockDocRef.mockClear();
 
-            await saveUserTranslation('TestChannel', 'TestUser', 'french');
+            const result = await saveUserTranslation('unknownchannel', '9001', 'testuser', 'spanish');
 
-            expect(mockDocRef).toHaveBeenCalledWith('testchannel:testuser');
+            expect(result).toBe(false);
+            expect(mockDocRef).not.toHaveBeenCalled();
+            expect(mockSet).not.toHaveBeenCalled();
+        });
+
+        test('returns false without writing for a missing or non-numeric user ID', async () => {
+            mockDocRef.mockClear();
+
+            expect(await saveUserTranslation('testchannel', null, 'testuser', 'spanish')).toBe(false);
+            expect(await saveUserTranslation('testchannel', 'testuser', 'testuser', 'spanish')).toBe(false);
+            expect(mockDocRef).not.toHaveBeenCalled();
         });
     });
 
     describe('removeUserTranslation', () => {
-        test('should delete translation document from Firestore', async () => {
+        test('should delete the ID-keyed translation document', async () => {
             const mockDeleteFn = mockDocRef().delete;
             mockDeleteFn.mockResolvedValue();
 
-            const result = await removeUserTranslation('testchannel', 'testuser');
+            const result = await removeUserTranslation('testchannel', '9001');
 
             expect(result).toBe(true);
             expect(mockCollectionRef).toHaveBeenCalledWith('userTranslations');
-            expect(mockDocRef).toHaveBeenCalledWith('testchannel:testuser');
+            expect(mockDocRef).toHaveBeenCalledWith('4242:9001');
             expect(mockDeleteFn).toHaveBeenCalled();
         });
 
@@ -110,43 +139,79 @@ describe('translationStorage', () => {
             const mockDeleteFn = mockDocRef().delete;
             mockDeleteFn.mockRejectedValue(new Error('Firestore delete failed'));
 
-            const result = await removeUserTranslation('testchannel', 'testuser');
+            const result = await removeUserTranslation('testchannel', '9001');
 
             expect(result).toBe(false);
         });
     });
 
     describe('loadAllUserTranslations', () => {
-        test('should load all translations from Firestore', async () => {
-            const mockDocs = [
-                { data: () => ({ channelName: 'channel1', username: 'user1', targetLanguage: 'spanish' }) },
-                { data: () => ({ channelName: 'channel2', username: 'user2', targetLanguage: 'french' }) },
-            ];
-            const mockGetAll = mockCollectionRef().get;
-            mockGetAll.mockResolvedValue({
-                forEach: (fn) => mockDocs.forEach(fn),
-            });
+        test('maps each document back to the current channel login and user ID', async () => {
+            mockSnapshot([
+                { id: '4242:9001', data: () => ({ channelName: 'testchannel', userId: '9001', login: 'user1', targetLanguage: 'spanish' }) },
+                // Stored channelName is stale (channel renamed); the allow-list mapping wins
+                { id: '4343:9002', data: () => ({ channelName: 'oldname', userId: '9002', login: 'user2', targetLanguage: 'french' }) },
+            ]);
 
             const result = await loadAllUserTranslations();
 
-            expect(result).toHaveLength(2);
-            expect(result[0]).toEqual({ channelName: 'channel1', username: 'user1', targetLanguage: 'spanish' });
-            expect(result[1]).toEqual({ channelName: 'channel2', username: 'user2', targetLanguage: 'french' });
+            expect(result).toEqual([
+                { channelName: 'testchannel', userId: '9001', login: 'user1', targetLanguage: 'spanish' },
+                { channelName: 'channel2', userId: '9002', login: 'user2', targetLanguage: 'french' },
+            ]);
         });
 
-        test('should skip documents with missing fields', async () => {
-            const mockDocs = [
-                { data: () => ({ channelName: 'channel1', username: 'user1', targetLanguage: 'spanish' }) },
-                { data: () => ({ channelName: 'channel2', username: 'user2' }) }, // Missing targetLanguage
-            ];
-            const mockGetAll = mockCollectionRef().get;
-            mockGetAll.mockResolvedValue({
-                forEach: (fn) => mockDocs.forEach(fn),
-            });
+        test('takes the user ID from the document ID and tolerates a missing login', async () => {
+            mockSnapshot([
+                { id: '4242:9001', data: () => ({ channelName: 'testchannel', targetLanguage: 'spanish' }) },
+            ]);
+
+            const result = await loadAllUserTranslations();
+
+            expect(result).toEqual([
+                { channelName: 'testchannel', userId: '9001', login: null, targetLanguage: 'spanish' },
+            ]);
+        });
+
+        test('skips legacy login-keyed documents with a debug log', async () => {
+            mockSnapshot([
+                { id: 'testchannel:user1', data: () => ({ channelName: 'testchannel', username: 'user1', targetLanguage: 'spanish' }) },
+                { id: '4242:user1', data: () => ({ channelName: 'testchannel', username: 'user1', targetLanguage: 'spanish' }) },
+                { id: '4242:9001', data: () => ({ channelName: 'testchannel', userId: '9001', login: 'user1', targetLanguage: 'german' }) },
+            ]);
+
+            const result = await loadAllUserTranslations();
+
+            expect(result).toEqual([
+                { channelName: 'testchannel', userId: '9001', login: 'user1', targetLanguage: 'german' },
+            ]);
+            expect(logger.debug).toHaveBeenCalledWith(
+                { docId: 'testchannel:user1' },
+                expect.stringContaining('legacy')
+            );
+        });
+
+        test('should skip documents with missing targetLanguage', async () => {
+            mockSnapshot([
+                { id: '4242:9001', data: () => ({ channelName: 'testchannel', userId: '9001', targetLanguage: 'spanish' }) },
+                { id: '4242:9002', data: () => ({ channelName: 'testchannel', userId: '9002' }) },
+            ]);
 
             const result = await loadAllUserTranslations();
 
             expect(result).toHaveLength(1);
+        });
+
+        test('falls back to the stored channelName for a broadcaster no longer in the allow-list', async () => {
+            mockSnapshot([
+                { id: '7777:9001', data: () => ({ channelName: 'removedchannel', userId: '9001', targetLanguage: 'spanish' }) },
+            ]);
+
+            const result = await loadAllUserTranslations();
+
+            expect(result).toEqual([
+                { channelName: 'removedchannel', userId: '9001', login: null, targetLanguage: 'spanish' },
+            ]);
         });
 
         test('should return empty array on Firestore error', async () => {

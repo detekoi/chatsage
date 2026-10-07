@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "Sorry, an error occurred trying to stop all translations.",
             "OnlyModsOrBroadcaster2": "Only mods or the broadcaster can manage translation for other users.",
             "PleaseSpecifyLanguageExample": "Please specify a language. Example: !translate spanish",
-            "SorryErrorOccurredWhile": "Sorry, an error occurred while processing the translate command."
+            "SorryErrorOccurredWhile": "Sorry, an error occurred while processing the translate command.",
+            "UserNotFound": "User \"{targetUsername}\" not found."
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "Oops! Something went wrong trying to run !{command}."

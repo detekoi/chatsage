@@ -62,11 +62,13 @@ export function extractGameContext(context) {
     const { channel, user, args } = context;
     const channelName = channel.substring(1);
     const username = user.username.toLowerCase();
+    // `user.id` is the message ID; the Twitch user ID is `user-id`.
+    const userId = user['user-id'] || null;
     const displayName = user['display-name'] || user.username;
     const replyToId = user?.id || user?.['message-id'] || null;
     const isMod = isPrivilegedUser(user, channelName);
 
-    return { channel, channelName, username, displayName, replyToId, isMod, args };
+    return { channel, channelName, userId, username, displayName, replyToId, isMod, args };
 }
 
 /**
@@ -169,12 +171,12 @@ export async function handleResetConfig(gameCtx, manager, gameName) {
 /**
  * Handles 'report'/'flag' subcommand.
  * @param {object} gameCtx - from extractGameContext.
- * @param {object} manager - must have .initiateReportProcess(channelName, reason, username).
+ * @param {object} manager - must have .initiateReportProcess(channelName, reason, username, userId).
  * @param {string} gameName - display name for log/error messages.
  * @param {string} commandName - the actual command name for usage hints (e.g., 'geo', 'trivia').
  */
 export async function handleReport(gameCtx, manager, gameName, commandName) {
-    const { channel, channelName, username, displayName, replyToId, args } = gameCtx;
+    const { channel, channelName, userId, username, displayName, replyToId, args } = gameCtx;
 
     if (args.length < 2) {
         await sendLocalized(channel, 'cmd.gameHandlerUtils.PleaseProvideReasonReporting', { commandName }, `Please provide a reason for reporting. Usage: !${commandName} report <your reason>`, { replyToId });
@@ -185,7 +187,7 @@ export async function handleReport(gameCtx, manager, gameName, commandName) {
     logger.info(`[${gameName}] ${displayName} is initiating report for last session in ${channelName}. Reason: ${reason}`);
 
     try {
-        const result = await manager.initiateReportProcess(channelName, reason, username);
+        const result = await manager.initiateReportProcess(channelName, reason, username, userId);
         if (result.message) {
             await sendLocalizedResult(channel, result, { replyToId });
         } else if (!result.success) {

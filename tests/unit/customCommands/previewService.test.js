@@ -1,6 +1,9 @@
 // tests/unit/customCommands/previewService.test.js
 
 jest.mock('../../../src/lib/logger.js');
+jest.mock('../../../src/lib/allowList.js', () => ({
+    getBroadcasterIdForChannel: jest.fn(name => (name === 'testchannel' ? '4242' : null)),
+}));
 jest.mock('../../../src/components/customCommands/promptResolver.js');
 jest.mock('../../../src/components/context/contextManager.js');
 jest.mock('../../../src/components/llm/gemini/prompts.js');
@@ -108,8 +111,8 @@ describe('previewService', () => {
                     chatContext: 'viewer1: hi\nviewer2: hello',
                     dryRun: true,
                     useMemory: true,
-                    username: 'testchannel',
-                    memoryUsers: ['cats', 'and', 'dogs'],
+                    userId: '4242',
+                    memoryLogins: ['cats', 'and', 'dogs'],
                 }),
             );
         });
@@ -143,7 +146,7 @@ describe('previewService', () => {
                 null,
                 'Channel: testchannel\nGame: Celeste',
                 true,
-                expect.objectContaining({ source: 'checkin', dryRun: true, useMemory: true, memoryUsers: ['testchannel'] }),
+                expect.objectContaining({ source: 'checkin', dryRun: true, useMemory: true, memoryUserIds: ['4242'] }),
             );
         });
 

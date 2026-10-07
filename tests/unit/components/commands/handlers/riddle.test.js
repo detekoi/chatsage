@@ -17,7 +17,7 @@ import config from '../../../../../src/config/index.js';
 describe('Riddle Command Handler', () => {
     let mockRiddleManager;
 
-    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '0' }) => ({
+    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', 'user-id': '555', mod: '0' }) => ({
         channel,
         user,
         args,
@@ -289,7 +289,8 @@ describe('Riddle Command Handler', () => {
             expect(mockRiddleManager.initiateReportProcess).toHaveBeenCalledWith(
                 'testchannel',
                 'incorrect answer',
-                'testuser'
+                'testuser',
+                '555'
             );
         });
 

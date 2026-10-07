@@ -5,6 +5,7 @@ import { translateText } from '../../../../src/lib/translationUtils.js';
 import { validateGuess, selectLocation } from '../../../../src/components/geo/geoLocationService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
+import { updatePlayerScore, recordGameResult } from '../../../../src/components/geo/geoStorage.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -126,7 +127,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
     test('1. Bot language is English (en): translateText NOT called, validateGuess called with original guess', async () => {
         getContextManager().getBotLanguage.mockReturnValue('en');
         const userGuess = "Paris";
-        geoGameManager.processPotentialGuess('testgeochannel', 'user1', 'User1', userGuess);
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-user1', 'user1', 'User1', userGuess);
         
         // Allow async operations within processPotentialGuess and _handleGuess to complete
         await new Promise(process.nextTick);
@@ -146,7 +147,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         const translatedGuess = "Paris";
         translateText.mockResolvedValue(translatedGuess);
 
-        geoGameManager.processPotentialGuess('testgeochannel', 'user2', 'User2', userGuess);
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-user2', 'user2', 'User2', userGuess);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userGuess, 'English');
@@ -162,7 +163,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         const userGuess = "Paris"; // Original guess
         translateText.mockRejectedValue(new Error("Translation API error"));
 
-        geoGameManager.processPotentialGuess('testgeochannel', 'user3', 'User3', userGuess);
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-user3', 'user3', 'User3', userGuess);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userGuess, 'English');
@@ -179,7 +180,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         const userGuess = "Paris"; // Original guess
         translateText.mockResolvedValue("  "); // Empty or whitespace
 
-        geoGameManager.processPotentialGuess('testgeochannel', 'user4', 'User4', userGuess);
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-user4', 'user4', 'User4', userGuess);
         await new Promise(process.nextTick);
 
         expect(translateText).toHaveBeenCalledWith(userGuess, 'English');
@@ -197,7 +198,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         const userGuess = "Some City";
 
         // First guess
-        geoGameManager.processPotentialGuess('testgeochannel', 'userGeoSpam', 'UserGeoSpam', userGuess);
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-userGeoSpam', 'userGeoSpam', 'UserGeoSpam', userGuess);
         await new Promise(process.nextTick);
         expect(validateGuess).toHaveBeenCalledTimes(1);
         
@@ -208,7 +209,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         // Immediate second guess - should be throttled
         // To make this test effective, we need to ensure lastMessageTimestamp is set by the first call
         // The current structure of _handleGuess updates it.
-        geoGameManager.processPotentialGuess('testgeochannel', 'userGeoSpam', 'UserGeoSpam', userGuess + " again");
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-userGeoSpam', 'userGeoSpam', 'UserGeoSpam', userGuess + " again");
         await new Promise(process.nextTick);
         // If the first call updated timestamp, this one should be throttled.
         // Note: The mockGameState.lastMessageTimestamp is updated by the _handleGuess function.
@@ -229,7 +230,7 @@ describe('GeoGameManager - _handleGuess (via processPotentialGuess)', () => {
         mockGameState.lastMessageTimestamp = Date.now() - 2000; // Simulate time has passed for the specific user's timestamp
 
         // Third guess - should not be throttled
-        geoGameManager.processPotentialGuess('testgeochannel', 'userGeoSpam', 'UserGeoSpam', userGuess + " yet again");
+        geoGameManager.processPotentialGuess('testgeochannel', 'id-userGeoSpam', 'userGeoSpam', 'UserGeoSpam', userGuess + " yet again");
         await new Promise(process.nextTick);
         expect(validateGuess).toHaveBeenCalledTimes(2);
     });
@@ -275,10 +276,10 @@ describe('GeoGameManager - guess ordering', () => {
         const resolvers = [];
         validateGuess.mockImplementation(() => new Promise(resolve => { resolvers.push(resolve); }));
 
-        geoGameManager.processPotentialGuess('geochan', 'alice', 'Alice', 'Paris');
+        geoGameManager.processPotentialGuess('geochan', 'id-alice', 'alice', 'Alice', 'Paris');
         await new Promise(r => setImmediate(r));
         gameState.lastMessageTimestamp = 0; // bypass the 1s throttle for the second guesser
-        geoGameManager.processPotentialGuess('geochan', 'bob', 'Bob', 'paris france');
+        geoGameManager.processPotentialGuess('geochan', 'id-bob', 'bob', 'Bob', 'paris france');
         await new Promise(r => setImmediate(r));
         expect(resolvers).toHaveLength(2);
 
@@ -291,5 +292,22 @@ describe('GeoGameManager - guess ordering', () => {
 
         expect(gameState.winner).toBeDefined();
         expect(gameState.winner.username).toBe('alice');
+        expect(gameState.winner.userId).toBe('id-alice');
+    });
+
+    it('credits the score and history to the winner\'s Twitch user ID', async () => {
+        gameState.config = { ...gameState.config, scoreTracking: true };
+        validateGuess.mockResolvedValue({ is_correct: true, confidence: 0.9 });
+
+        geoGameManager.processPotentialGuess('geochan', '12345', 'alice', 'Alice', 'Paris');
+        for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+
+        expect(gameState.winner).toEqual({ userId: '12345', username: 'alice', displayName: 'Alice' });
+        expect(updatePlayerScore).toHaveBeenCalledWith('12345', 'alice', 'geochan', expect.any(Number), 'Alice');
+        expect(recordGameResult).toHaveBeenCalledWith(expect.objectContaining({
+            winner: 'alice',
+            winnerUserId: '12345',
+        }));
+        expect(gameState.streakMap.get('12345')).toBe(1);
     });
 });

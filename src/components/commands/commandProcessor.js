@@ -31,6 +31,9 @@ const DUPLICATE_WINDOW_MS = 20000; // 20 seconds to reliably prevent double-fire
 
 // Cooldown tracking for custom commands is handled via distributedCache (Firestore)
 
+// Bounds the name lookups an AI command's args can trigger.
+const MAX_MEMORY_LOGIN_ARGS = 5;
+
 function _makeDedupKey(channelName, username, command, args, messageId = null) {
     // Prefer messageId if available (tmi.js may provide tags.id)
     if (messageId) {
@@ -356,10 +359,10 @@ async function _tryCustomCommand(channelName, tags, commandCandidates, args) {
                 source: customCommandSource(command),
                 chatContext,
                 useMemory: true,
-                username: userLogin,
+                userId: tags['user-id'] || null,
                 // Args often name the viewer the command is aimed at ("!hug @bob"); words that
                 // aren't logins are dropped by the memory lookup.
-                memoryUsers: args,
+                memoryLogins: args.slice(0, MAX_MEMORY_LOGIN_ARGS),
             }));
 
             if (!finalOutput) {

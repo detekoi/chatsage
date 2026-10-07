@@ -20,6 +20,9 @@ jest.mock('../../../src/lib/geminiEmoteDescriber.js', () => ({
 jest.mock('../../../src/components/geo/geoGameManager.js');
 jest.mock('../../../src/components/trivia/triviaGameManager.js');
 jest.mock('../../../src/components/riddle/riddleGameManager.js');
+jest.mock('../../../src/lib/userIdentity.js', () => ({
+    resolveUserIds: jest.fn(),
+}));
 
 import {
     handlePendingReport,
@@ -40,6 +43,7 @@ import config from '../../../src/config/index.js';
 import { getGeoGameManager } from '../../../src/components/geo/geoGameManager.js';
 import { getTriviaGameManager } from '../../../src/components/trivia/triviaGameManager.js';
 import { getRiddleGameManager } from '../../../src/components/riddle/riddleGameManager.js';
+import { resolveUserIds } from '../../../src/lib/userIdentity.js';
 
 describe('Message Handlers', () => {
     let mockContextManager;
@@ -140,7 +144,7 @@ describe('Message Handlers', () => {
             cleanChannel: 'testchannel',
             lowerUsername: 'testuser',
             channel: '#testchannel',
-            tags: { id: 'msg-123' },
+            tags: { id: 'msg-123', 'user-id': '555' },
             riddleManager: mockRiddleManager,
             triviaManager: mockTriviaManager,
             geoManager: mockGeoManager,
@@ -167,7 +171,8 @@ describe('Message Handlers', () => {
             expect(mockRiddleManager.finalizeReportWithRoundNumber).toHaveBeenCalledWith(
                 'testchannel',
                 'testuser',
-                '123'
+                '123',
+                '555'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -207,7 +212,8 @@ describe('Message Handlers', () => {
             expect(mockTriviaManager.finalizeReportWithRoundNumber).toHaveBeenCalledWith(
                 'testchannel',
                 'testuser',
-                '123'
+                '123',
+                '555'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -228,7 +234,8 @@ describe('Message Handlers', () => {
             expect(mockGeoManager.finalizeReportWithRoundNumber).toHaveBeenCalledWith(
                 'testchannel',
                 'testuser',
-                '123'
+                '123',
+                '555'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -259,7 +266,8 @@ describe('Message Handlers', () => {
             expect(mockRiddleManager.finalizeReportWithRoundNumber).toHaveBeenCalledWith(
                 'testchannel',
                 'testuser',
-                '456'
+                '456',
+                '555'
             );
         });
     });
@@ -271,9 +279,15 @@ describe('Message Handlers', () => {
             cleanChannel: 'testchannel',
             lowerUsername: 'testuser',
             channel: '#testchannel',
-            tags: { id: 'msg-123' },
+            tags: { id: 'msg-123', 'user-id': '1111' },
             isModOrBroadcaster: false,
             contextManager: mockContextManager
+        });
+
+        beforeEach(() => {
+            resolveUserIds.mockImplementation(async (logins) => new Map(
+                logins.filter(login => login === 'otheruser').map(login => [login, '2222'])
+            ));
         });
 
         test('should return false when not a stop request', async () => {
@@ -293,7 +307,7 @@ describe('Message Handlers', () => {
             expect(result).toBe(true);
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'testuser'
+                '1111'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -328,13 +342,52 @@ describe('Message Handlers', () => {
             expect(result).toBe(true);
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'otheruser'
+                '2222'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Stopped translation for otheruser.',
                 { replyToId: 'msg-123' }
             );
+        });
+
+        test('resolves a mod-targeted login to its user ID', async () => {
+            mockContextManager.disableUserTranslation.mockReturnValue(true);
+
+            await handleStopTranslation({
+                ...createBaseParams(),
+                message: '!translate stop OtherUser',
+                lowerMessage: '!translate stop otheruser',
+                isModOrBroadcaster: true
+            });
+
+            expect(resolveUserIds).toHaveBeenCalledWith(['otheruser']);
+            expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith('testchannel', '2222');
+        });
+
+        test('replies "not found" and disables nothing when a mod targets an unknown login', async () => {
+            const result = await handleStopTranslation({
+                ...createBaseParams(),
+                message: '!translate stop ghostuser',
+                lowerMessage: '!translate stop ghostuser',
+                isModOrBroadcaster: true
+            });
+
+            expect(result).toBe(true);
+            expect(resolveUserIds).toHaveBeenCalledWith(['ghostuser']);
+            expect(mockContextManager.disableUserTranslation).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'User "ghostuser" not found.',
+                { replyToId: 'msg-123' }
+            );
+        });
+
+        test('self-stop uses the user ID from tags without a lookup', async () => {
+            await handleStopTranslation(createBaseParams());
+
+            expect(resolveUserIds).not.toHaveBeenCalled();
+            expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith('testchannel', '1111');
         });
 
         test('should process as self-stop when non-mod tries to stop others', async () => {
@@ -351,7 +404,7 @@ describe('Message Handlers', () => {
             // Processes as self-stop, not as stopping other user
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'testuser'
+                '1111'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -396,7 +449,7 @@ describe('Message Handlers', () => {
             expect(mockContextManager.disableAllTranslationsInChannel).not.toHaveBeenCalled();
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'testuser'
+                '1111'
             );
         });
 
@@ -438,7 +491,7 @@ describe('Message Handlers', () => {
 
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'otheruser'
+                '2222'
             );
         });
 
@@ -661,7 +714,7 @@ describe('Message Handlers', () => {
             lowerUsername: 'testuser',
             displayName: 'TestUser',
             channel: '#testchannel',
-            tags: { id: 'msg-123' }
+            tags: { id: 'msg-123', 'user-id': '9001' }
         });
 
         beforeEach(() => {
@@ -681,7 +734,7 @@ describe('Message Handlers', () => {
                 'msg-123',
                 null,
                 expect.any(Array),
-                { replyParent: null }
+                { replyParent: null, userId: '9001' }
             );
         });
 
@@ -721,13 +774,13 @@ describe('Message Handlers', () => {
                 'msg-456',
                 null,
                 expect.any(Array),
-                {
+                expect.objectContaining({
                     replyParent: {
                         displayName: 'TestBot',
                         text: 'For Pokia: finish the physical repair, connect it for servicing, run the firmware update.',
                         isBot: true
                     }
-                }
+                })
             );
         });
 
@@ -754,7 +807,7 @@ describe('Message Handlers', () => {
                 'msg-789',
                 null,
                 expect.any(Array),
-                { replyParent: { displayName: 'Alice', text: 'the boss has 3 phases', isBot: false } }
+                expect.objectContaining({ replyParent: { displayName: 'Alice', text: 'the boss has 3 phases', isBot: false } })
             );
         });
 
@@ -817,7 +870,7 @@ describe('Message Handlers', () => {
                 'msg-123',
                 'session-456',
                 expect.any(Array),
-                { replyParent: null }
+                expect.objectContaining({ replyParent: null })
             );
         });
 
@@ -837,7 +890,7 @@ describe('Message Handlers', () => {
                 'msg-123',
                 null,
                 expect.any(Array),
-                { replyParent: null }
+                expect.objectContaining({ replyParent: null })
             );
         });
 
@@ -857,7 +910,7 @@ describe('Message Handlers', () => {
                 'fallback-id',
                 null,
                 expect.any(Array),
-                { replyParent: null }
+                expect.objectContaining({ replyParent: null })
             );
         });
 
@@ -877,7 +930,7 @@ describe('Message Handlers', () => {
                 'msg-123',
                 null,
                 expect.any(Array),
-                { replyParent: null }
+                expect.objectContaining({ replyParent: null })
             );
         });
 
@@ -897,7 +950,7 @@ describe('Message Handlers', () => {
                 'msg-123',
                 null,
                 expect.any(Array),
-                { replyParent: null }
+                expect.objectContaining({ replyParent: null })
             );
         });
     });
@@ -906,6 +959,7 @@ describe('Message Handlers', () => {
         const createBaseParams = () => ({
             message: 'guess answer',
             cleanChannel: 'testchannel',
+            userId: '555',
             lowerUsername: 'testuser',
             displayName: 'TestUser',
             geoManager: mockGeoManager,
@@ -918,18 +972,21 @@ describe('Message Handlers', () => {
 
             expect(mockGeoManager.processPotentialGuess).toHaveBeenCalledWith(
                 'testchannel',
+                '555',
                 'testuser',
                 'TestUser',
                 'guess answer'
             );
             expect(mockTriviaManager.processPotentialAnswer).toHaveBeenCalledWith(
                 'testchannel',
+                '555',
                 'testuser',
                 'TestUser',
                 'guess answer'
             );
             expect(mockRiddleManager.processPotentialAnswer).toHaveBeenCalledWith(
                 'testchannel',
+                '555',
                 'testuser',
                 'TestUser',
                 'guess answer'
@@ -955,6 +1012,7 @@ describe('Message Handlers', () => {
 
             expect(mockGeoManager.processPotentialGuess).toHaveBeenCalledWith(
                 'testchannel',
+                '555',
                 'testuser',
                 'TestUser',
                 ''

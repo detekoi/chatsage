@@ -29,7 +29,12 @@ async function execute(context) {
         }
 
         const structured = await structureManualMemory(rawText);
-        const result = await saveMemory(channelName, { ...structured, source: 'manual', addedBy: username });
+        const result = await saveMemory(channelName, {
+            ...structured,
+            source: 'manual',
+            addedBy: username,
+            addedById: user['user-id'] || null,
+        });
 
         if (result.action === 'added') {
             await sendLocalized(channel, 'cmd.memory.Remembered', {}, `Got it, I'll remember that.`, { replyToId });

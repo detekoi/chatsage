@@ -383,7 +383,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "fr": {
     "common.timeString": "af55bd7822fd103b",
@@ -769,7 +770,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "de": {
     "common.timeString": "af55bd7822fd103b",
@@ -1155,7 +1157,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "it": {
     "common.timeString": "af55bd7822fd103b",
@@ -1541,7 +1544,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "pt": {
     "common.timeString": "af55bd7822fd103b",
@@ -1927,7 +1931,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "ja": {
     "common.timeString": "af55bd7822fd103b",
@@ -2313,7 +2318,8 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   },
   "ru": {
     "common.timeString": "af55bd7822fd103b",
@@ -2699,6 +2705,7 @@
     "geo.noLeaderboard": "6a2812373507d242",
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
-    "cmd.timer.MaxTimersReached": "c52de791f6dc562e"
+    "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
   }
 }

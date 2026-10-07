@@ -101,7 +101,7 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
     test('1. Bot language is English: translateText NOT called, verifyRiddleAnswer called with original answer', async () => {
         getContextManager().getBotLanguage.mockReturnValue('english');
         const userAnswer = "A needle";
-        await riddleGameManager.processPotentialAnswer('testchannel', 'user1', 'User1', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', 'id-user1', 'user1', 'User1', userAnswer);
 
         expect(translateText).not.toHaveBeenCalled();
         expect(verifyRiddleAnswer).toHaveBeenCalledWith(
@@ -118,7 +118,7 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const translatedAnswer = "A needle";
         translateText.mockResolvedValue(translatedAnswer);
 
-        await riddleGameManager.processPotentialAnswer('testchannel', 'user2', 'User2', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', 'id-user2', 'user2', 'User2', userAnswer);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
         expect(verifyRiddleAnswer).toHaveBeenCalledWith(
@@ -134,7 +134,7 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const userAnswer = "Une aiguille";
         translateText.mockRejectedValue(new Error("Translation API error"));
 
-        await riddleGameManager.processPotentialAnswer('testchannel', 'user3', 'User3', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', 'id-user3', 'user3', 'User3', userAnswer);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
         expect(verifyRiddleAnswer).toHaveBeenCalledWith(
@@ -151,7 +151,7 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const userAnswer = "Eine Nadel";
         translateText.mockResolvedValue(" "); // Empty or whitespace
 
-        await riddleGameManager.processPotentialAnswer('testchannel', 'user4', 'User4', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', 'id-user4', 'user4', 'User4', userAnswer);
 
         expect(translateText).toHaveBeenCalledWith(userAnswer, 'English');
         expect(verifyRiddleAnswer).toHaveBeenCalledWith(
@@ -170,11 +170,11 @@ describe('RiddleGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         const username = 'userSpam';
 
         // First guess
-        await riddleGameManager.processPotentialAnswer('testchannel', username, 'UserSpam', userAnswer);
+        await riddleGameManager.processPotentialAnswer('testchannel', `id-${username}`, username, 'UserSpam', userAnswer);
         expect(verifyRiddleAnswer).toHaveBeenCalledTimes(1);
 
         // Immediate second guess - should be throttled (no additional verifyRiddleAnswer call)
-        await riddleGameManager.processPotentialAnswer('testchannel', username, 'UserSpam', userAnswer + " again");
+        await riddleGameManager.processPotentialAnswer('testchannel', `id-${username}`, username, 'UserSpam', userAnswer + " again");
         expect(verifyRiddleAnswer).toHaveBeenCalledTimes(1); // Still 1, because it was throttled
     });
 });
@@ -210,9 +210,9 @@ describe('RiddleGameManager - answer ordering', () => {
             new Promise(resolve => { resolvers.push(resolve); }));
 
         // "alice" answers first, "bob" second.
-        riddleGameManager.processPotentialAnswer('testchannel', 'alice', 'Alice', 'needle');
+        riddleGameManager.processPotentialAnswer('testchannel', 'id-alice', 'alice', 'Alice', 'needle');
         await new Promise(r => setImmediate(r));
-        riddleGameManager.processPotentialAnswer('testchannel', 'bob', 'Bob', 'a needle');
+        riddleGameManager.processPotentialAnswer('testchannel', 'id-bob', 'bob', 'Bob', 'a needle');
         await new Promise(r => setImmediate(r));
         expect(resolvers).toHaveLength(2);
 
@@ -226,6 +226,7 @@ describe('RiddleGameManager - answer ordering', () => {
 
         expect(gameState.winner).not.toBeNull();
         expect(gameState.winner.username).toBe('alice');
+        expect(gameState.winner.userId).toBe('id-alice');
     });
 
     it('clears the queue between rounds so a stale attempt cannot decide the next round', async () => {

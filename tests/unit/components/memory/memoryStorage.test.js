@@ -76,7 +76,7 @@ describe('loadChannelMemories', () => {
         const result = await loadChannelMemories('Chan');
         expect(result).toEqual({
             memories: [{ id: 'm1', text: 'Gary is the duck.', keys: ['gary'] }],
-            optedOut: [],
+            optedOutIds: [],
             enabled: true,
         });
     });
@@ -93,19 +93,19 @@ describe('loadChannelMemories', () => {
     });
 
     it('reads the channel opt-out and user opt-outs', async () => {
-        mockParentDoc = { exists: true, data: () => ({ enabled: false, optedOut: ['bob'] }) };
+        mockParentDoc = { exists: true, data: () => ({ enabled: false, optedOutIds: ['42'] }) };
         const result = await loadChannelMemories('chan');
         expect(result.enabled).toBe(false);
-        expect(result.optedOut).toEqual(['bob']);
+        expect(result.optedOutIds).toEqual(['42']);
     });
 });
 
 describe('writes', () => {
     it('addMemory stores counters and returns the id', async () => {
-        const stored = await addMemory('chan', { text: 'Gary is the duck.', keys: ['gary'], source: 'manual', addedBy: 'mod' });
+        const stored = await addMemory('chan', { text: 'Gary is the duck.', keys: ['gary'], source: 'manual', addedBy: 'mod', addedById: '7' });
         expect(stored.id).toBe('generated-id');
         expect(mockItemAdd).toHaveBeenCalledWith(expect.objectContaining({
-            text: 'Gary is the duck.', keys: ['gary'], subjects: [], source: 'manual', addedBy: 'mod', mentions: 1, useCount: 0,
+            text: 'Gary is the duck.', keys: ['gary'], subjects: [], subjectIds: {}, source: 'manual', addedBy: 'mod', addedById: '7', mentions: 1, useCount: 0,
         }));
     });
 
@@ -115,9 +115,9 @@ describe('writes', () => {
     });
 
     it('addOptOut and setChannelMemoryEnabled merge into the channel doc', async () => {
-        await addOptOut('chan', 'Bob');
+        await addOptOut('chan', 42);
         expect(mockChannelDocFn).toHaveBeenCalledWith(BROADCASTER_ID);
-        expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ channelName: 'chan', optedOut: { __arrayUnion: ['bob'] } }), { merge: true });
+        expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ channelName: 'chan', optedOutIds: { __arrayUnion: ['42'] } }), { merge: true });
         await setChannelMemoryEnabled('chan', false);
         expect(mockParentSet).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }), { merge: true });
     });
@@ -137,7 +137,7 @@ describe('writes', () => {
 
 describe('pending messages', () => {
     it('round-trips stashed lines and deletes the doc once taken', async () => {
-        const lines = [{ username: 'alice', message: 'hi', ts: 1 }];
+        const lines = [{ userId: '1', username: 'alice', message: 'hi', ts: 1 }];
         await savePendingMessages('chan', lines);
         expect(mockPendingDocFn).toHaveBeenCalledWith(BROADCASTER_ID);
         expect(mockPendingSet).toHaveBeenCalledWith(expect.objectContaining({ channelName: 'chan', messages: lines }));

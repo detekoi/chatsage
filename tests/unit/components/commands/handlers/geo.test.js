@@ -16,7 +16,7 @@ describe('Geo Command Handler', () => {
     let mockGeoManager;
     let mockContextManager;
 
-    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '0' }) => ({
+    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', 'user-id': '555', mod: '0' }) => ({
         channel,
         user,
         args,

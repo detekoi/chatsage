@@ -14,6 +14,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt } from '../llm/gemini/prompts.js';
 import { CHECKIN_SOURCE, customCommandSource, timerSource } from '../llm/inferenceHistoryStorage.js';
 import { buildTimerStreamContext } from '../timers/timerManager.js';
+import { getBroadcasterIdForChannel } from '../../lib/allowList.js';
 
 /** Preview kinds, matching the three AI-authored features in the dashboard. */
 export const PREVIEW_KINDS = ['command', 'timer', 'checkin'];
@@ -74,6 +75,7 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
     const botLanguage = contextManager.getBotLanguage(channel) || null;
     // The broadcaster stands in for the triggering viewer.
     const sampleUser = channel;
+    const sampleUserId = getBroadcasterIdForChannel(channel);
     const argList = (args || '').trim() ? args.trim().split(/\s+/) : [];
     const streamContext = contextManager.getStreamContextSnapshot(channel);
 
@@ -100,8 +102,8 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 chatContext: llmContext?.recentChatHistory || null,
                 dryRun: true,
                 useMemory: true,
-                username: sampleUser,
-                memoryUsers: argList,
+                userId: sampleUserId,
+                memoryLogins: argList,
             });
             break;
         }
@@ -143,7 +145,7 @@ export async function generatePreview({ channel, kind, prompt, name = null, args
                 chatContext: llmContext?.recentChatHistory || null,
                 dryRun: true,
                 useMemory: true,
-                memoryUsers: [sampleUser],
+                memoryUserIds: sampleUserId ? [sampleUserId] : [],
             });
             break;
         }

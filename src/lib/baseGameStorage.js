@@ -1,8 +1,9 @@
 // src/lib/baseGameStorage.js
 //
 // Per-channel game configs are keyed by broadcaster ID, not login (see
-// channelKey.js). Player stats and history are keyed and filtered by name;
-// that is a separate identity problem not addressed here.
+// channelKey.js). Player stats docs are keyed by the player's Twitch user ID,
+// and the per-channel map inside each one by broadcaster ID; the player's
+// current login and display name are stored as fields for display only.
 import { getFirestore, FieldValue } from './firestore.js';
 import { channelDocKey, normalizeChannelName } from './channelKey.js';
 import logger from './logger.js';
@@ -13,6 +14,17 @@ export class StorageError extends Error {
         this.name = 'StorageError';
         this.cause = cause;
     }
+}
+
+/**
+ * Label for a player stats doc: display name, then login, then the raw doc ID
+ * (a Twitch user ID) only when neither is stored.
+ * @param {string} docId
+ * @param {object} data
+ * @returns {string}
+ */
+export function playerLabel(docId, data) {
+    return data?.displayName || data?.login || docId;
 }
 
 export class BaseGameStorage {
@@ -106,21 +118,36 @@ export class BaseGameStorage {
     /**
      * Atomically increments a player's score using canonical field names:
      *   globalSuccesses, globalPoints, globalParticipation, lastSuccessTimestamp
-     *   channels.<ch>.successes, .points, .participation, .lastSuccessTimestamp
+     *   channels.<broadcasterId>.successes, .points, .participation, .lastSuccessTimestamp
+     *
+     * The doc is keyed by the player's Twitch user ID, so a rename keeps the
+     * player's history. `login` and `displayName` are refreshed on every write.
+     * Without a user ID the write is skipped rather than keyed by login.
+     *
+     * @param {string} userId - Twitch user ID of the player.
+     * @param {string} login - Player's current login.
+     * @param {string} channelName - Channel login (resolved to broadcaster ID).
+     * @param {number} [points=1]
+     * @param {string|null} [displayName=null]
      */
-    async updatePlayerScore(username, channelName, points = 1, displayName = null) {
-        const lowerUsername = username.toLowerCase();
-        const lowerChannel = channelName.toLowerCase();
-        const docRef = this._getDb().collection(this.statsCollection).doc(lowerUsername);
+    async updatePlayerScore(userId, login, channelName, points = 1, displayName = null) {
+        const lowerLogin = typeof login === 'string' ? login.toLowerCase() : null;
+        if (!userId) {
+            logger.warn({ player: lowerLogin, channel: channelName }, `${this._tag()} No user ID for player; skipping score update.`);
+            return;
+        }
+        const playerId = String(userId);
+        const docRef = this._getDb().collection(this.statsCollection).doc(playerId);
 
         try {
+            const channelKey = channelDocKey(channelName);
             const updateData = {
                 globalSuccesses: FieldValue.increment(points > 0 ? 1 : 0),
                 globalPoints: FieldValue.increment(points),
                 globalParticipation: FieldValue.increment(1),
                 ...(points > 0 && { lastSuccessTimestamp: FieldValue.serverTimestamp() }),
                 channels: {
-                    [lowerChannel]: {
+                    [channelKey]: {
                         successes: FieldValue.increment(points > 0 ? 1 : 0),
                         points: FieldValue.increment(points),
                         participation: FieldValue.increment(1),
@@ -129,64 +156,14 @@ export class BaseGameStorage {
                 }
             };
 
-            if (displayName) updateData.displayName = displayName;
+            if (lowerLogin) updateData.login = lowerLogin;
+            updateData.displayName = displayName || login || playerId;
 
             await docRef.set(updateData, { merge: true });
-            logger.debug(`${this._tag()} Updated stats for player ${lowerUsername} in channel ${lowerChannel} (+${points} points)`);
+            logger.debug(`${this._tag()} Updated stats for player ${lowerLogin} (${playerId}) in channel ${channelName} (+${points} points)`);
         } catch (error) {
-            logger.error({ err: error, player: lowerUsername, channel: lowerChannel }, `${this._tag()} Error updating player score`);
-            throw new StorageError(`Failed to update player score for ${lowerUsername} in ${lowerChannel}`, error);
-        }
-    }
-
-    // ── Player Stats ───────────────────────────────────────────────────
-
-    /**
-     * Retrieves player statistics using canonical field names.
-     * Subclasses can override to provide game-specific aliases.
-     * @param {string} username
-     * @param {string|null} channelName
-     * @returns {Promise<object|null>}
-     */
-    async getPlayerStats(username, channelName = null) {
-        const lowerUsername = username.toLowerCase();
-        const docRef = this._getDb().collection(this.statsCollection).doc(lowerUsername);
-
-        try {
-            const docSnap = await docRef.get();
-            if (!docSnap.exists) return null;
-
-            const data = docSnap.data();
-            const globalStats = {
-                successes: data.globalSuccesses || 0,
-                points: data.globalPoints || 0,
-                participation: data.globalParticipation || 0,
-                displayName: data.displayName || lowerUsername,
-                lastSuccessTimestamp: data.lastSuccessTimestamp || null,
-                channelsData: data.channels || {}
-            };
-
-            if (channelName) {
-                const lowerChannel = channelName.toLowerCase();
-                const channelData = data.channels?.[lowerChannel];
-                const channelStats = channelData ? {
-                    successes: channelData.successes || 0,
-                    points: channelData.points || 0,
-                    participation: channelData.participation || 0,
-                    lastSuccessTimestamp: channelData.lastSuccessTimestamp || null
-                } : { successes: 0, points: 0, participation: 0, lastSuccessTimestamp: null };
-
-                return { ...globalStats, channelStats };
-            }
-
-            return globalStats;
-        } catch (error) {
-            logger.error({
-                err: error,
-                player: lowerUsername,
-                channel: channelName
-            }, `${this._tag()} Error getting player stats`);
-            return null;
+            logger.error({ err: error, player: lowerLogin, userId: playerId, channel: channelName }, `${this._tag()} Error updating player score`);
+            throw new StorageError(`Failed to update player score for ${lowerLogin} (${playerId}) in ${channelName}`, error);
         }
     }
 
@@ -197,6 +174,8 @@ export class BaseGameStorage {
      * Returns a standardized shape:
      *   Channel: { id, data: { displayName, channelPoints, channelSuccesses, channelParticipation } }
      *   Global:  { id, data: { displayName, points, successes, participation } }
+     * `id` is the player's Twitch user ID; `displayName` falls back to the
+     * stored login so a bare numeric ID is shown only for a doc with neither.
      */
     async getLeaderboard(channelName = null, limit = 10) {
         const db = this._getDb();
@@ -206,10 +185,11 @@ export class BaseGameStorage {
         try {
             if (channelName) {
                 const lowerChannel = channelName.toLowerCase();
+                const channelKey = channelDocKey(channelName);
                 logger.debug(`${this._tag()} Retrieving channel-specific leaderboard for ${lowerChannel}`);
 
                 let snapshot;
-                const pointsFieldPath = `channels.${lowerChannel}.points`;
+                const pointsFieldPath = `channels.${channelKey}.points`;
 
                 try {
                     snapshot = await colRef
@@ -219,7 +199,7 @@ export class BaseGameStorage {
                 } catch (indexError) {
                     // Fallback: query by existence + manual sort if index is missing
                     logger.warn({ err: indexError, channel: lowerChannel }, `${this._tag()} Index likely missing for channel points sort. Falling back to manual sort.`);
-                    const participationPath = `channels.${lowerChannel}.participation`;
+                    const participationPath = `channels.${channelKey}.participation`;
                     const allSnapshot = await colRef
                         .where(participationPath, '>', 0)
                         .limit(limit * 5)
@@ -228,12 +208,12 @@ export class BaseGameStorage {
                     const players = [];
                     allSnapshot.forEach(doc => {
                         const data = doc.data();
-                        const channelData = data.channels?.[lowerChannel];
+                        const channelData = data.channels?.[channelKey];
                         if (channelData) {
                             players.push({
                                 id: doc.id,
                                 data: {
-                                    displayName: data.displayName || doc.id,
+                                    displayName: playerLabel(doc.id, data),
                                     channelPoints: channelData.points || 0,
                                     channelSuccesses: channelData.successes || 0,
                                     channelParticipation: channelData.participation || 0,
@@ -247,11 +227,11 @@ export class BaseGameStorage {
 
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    const channelData = data.channels?.[lowerChannel];
+                    const channelData = data.channels?.[channelKey];
                     leaderboard.push({
                         id: doc.id,
                         data: {
-                            displayName: data.displayName || doc.id,
+                            displayName: playerLabel(doc.id, data),
                             channelPoints: channelData?.points || 0,
                             channelSuccesses: channelData?.successes || 0,
                             channelParticipation: channelData?.participation || 0,
@@ -269,7 +249,7 @@ export class BaseGameStorage {
                     leaderboard.push({
                         id: doc.id,
                         data: {
-                            displayName: data.displayName || doc.id,
+                            displayName: playerLabel(doc.id, data),
                             points: data.globalPoints || 0,
                             successes: data.globalSuccesses || 0,
                             participation: data.globalParticipation || 0
@@ -292,7 +272,7 @@ export class BaseGameStorage {
 
     /**
      * Deletes channel-specific stats for all players in a channel
-     * by removing the `channels.<channel>` nested map in batches.
+     * by removing the `channels.<broadcasterId>` nested map in batches.
      */
     async clearChannelLeaderboardData(channelName) {
         const db = this._getDb();
@@ -304,7 +284,8 @@ export class BaseGameStorage {
         logger.info(`${this._tag()} Starting leaderboard clear process for channel: ${lowerChannel}`);
 
         try {
-            const fieldPath = `channels.${lowerChannel}`;
+            const channelKey = channelDocKey(channelName);
+            const fieldPath = `channels.${channelKey}`;
             let query = statsCol.where(fieldPath, '!=', null).limit(batchSize);
             let lastVisible;
 
@@ -318,7 +299,7 @@ export class BaseGameStorage {
 
                 const batch = db.batch();
                 snapshot.docs.forEach(doc => {
-                    batch.update(doc.ref, { [`channels.${lowerChannel}`]: FieldValue.delete() });
+                    batch.update(doc.ref, { [fieldPath]: FieldValue.delete() });
                     clearedCount++;
                 });
 
@@ -466,17 +447,23 @@ export class BaseGameStorage {
 
     /**
      * Flags a specific game history document as problematic by its Firestore ID.
+     * @param {string} docId
+     * @param {string} reason
+     * @param {string} reportedByUsername - Reporter's login.
+     * @param {string|null} [reportedById=null] - Reporter's Twitch user ID, when known.
      */
-    async flagHistoryEntryByDocId(docId, reason, reportedByUsername) {
+    async flagHistoryEntryByDocId(docId, reason, reportedByUsername, reportedById = null) {
         const docRef = this._getDb().collection(this.historyCollection).doc(docId);
         logger.info(`${this._tag()} Flagging entry ${docId} as problematic. Reason: "${reason}", Reported by: ${reportedByUsername}`);
         try {
-            await docRef.update({
+            const updateData = {
                 flaggedAsProblem: true,
                 problemReason: reason,
                 reportedBy: reportedByUsername.toLowerCase(),
                 flaggedTimestamp: FieldValue.serverTimestamp()
-            });
+            };
+            if (reportedById) updateData.reportedById = String(reportedById);
+            await docRef.update(updateData);
             logger.debug(`${this._tag()} Successfully flagged entry ${docId}.`);
         } catch (error) {
             logger.error({ err: error, docId, reason }, `${this._tag()} Error flagging entry ${docId}.`);

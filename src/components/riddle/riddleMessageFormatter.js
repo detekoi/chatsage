@@ -54,9 +54,9 @@ export function formatRiddleSessionScoresMessage(scoresMap, lang = null) {
     }
     const scoresArray = Array.from(scoresMap.entries()).sort(([, a], [, b]) => b.score - a.score);
     const topPlayers = scoresArray.slice(0, 5);
-    const listItems = topPlayers.map(([username, data], index) => {
+    const listItems = topPlayers.map(([key, data], index) => {
         const rank = index + 1;
-        const name = data.displayName || username;
+        const name = data.displayName || data.username || key;
         return t('common.scoreEntry', { rank, name, score: data.score }, lang)
             ?? `${rank}. ${name} (${data.score} pts)`;
     });
@@ -85,7 +85,7 @@ export function formatRiddleLeaderboardMessage(leaderboardData, channelName, lan
         const pts = player.data?.channelPoints ?? player.data?.points ?? 0;
         const solved = player.data?.channelSuccesses ?? player.data?.successes ?? 0;
         const rank = index + 1;
-        const name = player.data?.displayName || player.id;
+        const name = player.data?.displayName || player.data?.login || player.id;
         return t('riddle.leaderboardEntry', { rank, name, points: pts, solved }, lang)
             ?? `${rank}. ${name} (${pts} pts, ${solved} solved)`;
     });

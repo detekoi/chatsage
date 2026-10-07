@@ -20,6 +20,7 @@ import {
     processGameGuesses
 } from './messageHandlers.js';
 import { isPrivilegedUser } from '../lib/permissions.js';
+import { noteUser } from '../lib/userIdentity.js';
 
 /**
  * Handle a chat message from any source (EventSub or IRC).
@@ -65,7 +66,9 @@ export async function handleChatMessage(channel, tags, message) {
     const riddleManager = getRiddleGameManager();
 
     const lowerUsername = tags.username.toLowerCase();
+    const userId = tags['user-id'] || null;
     const displayName = tags['display-name'] || tags.username;
+    noteUser(userId, lowerUsername);
     const isModOrBroadcaster = isPrivilegedUser(tags, cleanChannel);
 
     // --- Check for pending report responses (Riddle, Trivia, Geo) ---
@@ -140,6 +143,7 @@ export async function handleChatMessage(channel, tags, message) {
         processGameGuesses({
             message,
             cleanChannel,
+            userId,
             lowerUsername,
             displayName,
             geoManager,
@@ -149,7 +153,7 @@ export async function handleChatMessage(channel, tags, message) {
     }
 
     // --- Automatic Translation Logic ---
-    const userState = contextManager.getUserTranslationState(cleanChannel, lowerUsername);
+    const userState = contextManager.getUserTranslationState(cleanChannel, userId);
     // The result is deliberately discarded: the mention/reply check below does not
     // gate on whether the message was translated, so @mentions and replies to the
     // bot still get an AI response while translation is active.

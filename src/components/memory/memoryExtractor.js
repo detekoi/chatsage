@@ -30,6 +30,7 @@ import {
     reinforceMemory,
     normalizeText,
     sanitizeSubjects,
+    resolveSubjects,
 } from './memoryManager.js';
 
 const MIN_MESSAGES_TO_EXTRACT = 5;
@@ -60,7 +61,7 @@ const MANUAL_SYSTEM_INSTRUCTION = `A moderator is teaching a Twitch chat bot a f
 
 /** @type {Map<string, number>} channel -> timestamp (ms) of the newest message already ingested */
 const cursors = new Map();
-/** @type {Map<string, Array<{username: string, message: string, ts: number}>>} channel -> lines awaiting extraction */
+/** @type {Map<string, Array<{userId: string, username: string, message: string, ts: number}>>} channel -> lines awaiting extraction */
 const backlogs = new Map();
 /** @type {Set<string>} channels whose stashed lines have been checked for this process */
 const pendingChecked = new Set();
@@ -72,11 +73,18 @@ onMemoryDisabled(channel => backlogs.delete(channel));
 
 function _toLine(msg) {
     const ts = msg.ts ?? (msg.timestamp instanceof Date ? msg.timestamp.getTime() : Date.now());
-    return { username: String(msg.username || '').toLowerCase(), message: String(msg.message || ''), ts };
+    const userId = msg.userId ?? msg.tags?.['user-id'];
+    return {
+        userId: userId ? String(userId) : '',
+        username: String(msg.username || '').toLowerCase(),
+        message: String(msg.message || ''),
+        ts,
+    };
 }
 
 function _isCapturable(line, botLogin) {
-    if (!line.username || !line.message.trim()) return false;
+    // Without a user ID the speaker's opt-out can't be checked, so the line isn't captured.
+    if (!line.userId || !line.username || !line.message.trim()) return false;
     if (line.username === botLogin) return false;
     if (line.message.trim().startsWith('!')) return false;
     return true;
@@ -108,7 +116,7 @@ function _ingest(channel, messages) {
 async function _withoutOptedOut(channel, lines) {
     const kept = [];
     for (const line of lines) {
-        if (!(await isUserOptedOut(channel, line.username))) kept.push(line);
+        if (!(await isUserOptedOut(channel, line.userId))) kept.push(line);
     }
     return kept;
 }
@@ -128,7 +136,7 @@ async function _takeBatch(channel) {
     return null;
 }
 
-async function _applyOperations(channel, operations, relatedIds) {
+async function _applyOperations(channel, operations, relatedIds, knownIds) {
     const counts = { added: 0, updated: 0, reinforced: 0, rejected: 0 };
     let adds = 0;
     for (const op of operations) {
@@ -140,14 +148,14 @@ async function _applyOperations(channel, operations, relatedIds) {
                 result = await saveMemory(channel, {
                     text: op.text,
                     keys: op.keys,
-                    subjects: op.subjects,
+                    ...(await resolveSubjects(op.subjects, knownIds)),
                     kind: op.kind,
                     source: 'auto',
                 });
             } else if (relatedIds.has(op.id)) {
                 // Only ids we actually showed the model; anything else is a hallucinated id.
                 result = op.op === 'update'
-                    ? await reviseAutoMemory(channel, op.id, op)
+                    ? await reviseAutoMemory(channel, op.id, { ...op, ...(await resolveSubjects(op.subjects, knownIds)) })
                     : await reinforceMemory(channel, op.id);
             } else {
                 continue;
@@ -190,7 +198,9 @@ ${chatText}`;
         logger.debug({ channel, messages: batch.length }, '[Memory] Nothing worth remembering in this slice');
         return;
     }
-    const counts = await _applyOperations(channel, operations, new Set(related.map(m => m.id)));
+    // The model names subjects by login; the batch's own lines say which user ID each one is.
+    const knownIds = new Map(batch.map(line => [line.username, line.userId]));
+    const counts = await _applyOperations(channel, operations, new Set(related.map(m => m.id)), knownIds);
     logger.info({ channel, messages: batch.length, ...counts }, '[Memory] Extraction applied');
 }
 
@@ -296,11 +306,17 @@ function _deriveManualMemory(rawText) {
 }
 
 /**
- * Turns a moderator's free-text "!remember ..." into a storable memory.
+ * Turns a moderator's free-text "!remember ..." into a storable memory, with its subjects resolved
+ * to user IDs.
  * @param {string} rawText
- * @returns {Promise<{text: string, keys: string[], subjects: string[], kind: string}>}
+ * @returns {Promise<{text: string, keys: string[], subjects: string[], subjectIds: Object<string, string>, kind: string}>}
  */
 export async function structureManualMemory(rawText) {
+    const structured = await _structureManualText(rawText);
+    return { ...structured, ...(await resolveSubjects(structured.subjects)) };
+}
+
+async function _structureManualText(rawText) {
     try {
         const parsed = await withLlmCaller('memory-manual', () => generateStructuredJson({
             prompt: `Fact to remember:\n${rawText}`,

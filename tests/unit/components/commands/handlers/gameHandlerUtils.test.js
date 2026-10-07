@@ -25,6 +25,7 @@ describe('gameHandlerUtils', () => {
     const createGameCtx = (overrides = {}) => ({
         channel: '#testchannel',
         channelName: 'testchannel',
+        userId: '555',
         username: 'testuser',
         displayName: 'TestUser',
         replyToId: '123',
@@ -79,7 +80,7 @@ describe('gameHandlerUtils', () => {
             isPrivilegedUser.mockReturnValue(true);
             const context = {
                 channel: '#mychannel',
-                user: { username: 'bob', 'display-name': 'Bob', id: 'uid-1', mod: '1' },
+                user: { username: 'bob', 'display-name': 'Bob', id: 'msg-1', 'user-id': '777', mod: '1' },
                 args: ['stop'],
             };
 
@@ -88,12 +89,23 @@ describe('gameHandlerUtils', () => {
             expect(result).toEqual({
                 channel: '#mychannel',
                 channelName: 'mychannel',
+                userId: '777',
                 username: 'bob',
                 displayName: 'Bob',
-                replyToId: 'uid-1',
+                replyToId: 'msg-1',
                 isMod: true,
                 args: ['stop'],
             });
+        });
+
+        test('should not mistake the message id for the user id', () => {
+            const context = {
+                channel: '#ch',
+                user: { username: 'u', id: 'msg-1' },
+                args: [],
+            };
+
+            expect(extractGameContext(context).userId).toBeNull();
         });
 
         test('should fall back to message-id for replyToId', () => {
@@ -318,7 +330,7 @@ describe('gameHandlerUtils', () => {
             const manager = createManager();
             await handleReport(createGameCtx({ args: ['report', 'wrong', 'answer'] }), manager, 'Trivia', 'trivia');
 
-            expect(manager.initiateReportProcess).toHaveBeenCalledWith('testchannel', 'wrong answer', 'testuser');
+            expect(manager.initiateReportProcess).toHaveBeenCalledWith('testchannel', 'wrong answer', 'testuser', '555');
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Report filed',

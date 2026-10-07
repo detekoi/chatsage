@@ -9,6 +9,9 @@ jest.mock('../../../../src/components/memory/memoryStorage.js', () => ({
     takePendingMessages: jest.fn().mockResolvedValue([]),
 }));
 
+// Deterministic stand-in for Twitch user IDs.
+const uid = (login) => String([...login].reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 1e9, 7));
+
 jest.mock('../../../../src/components/memory/memoryManager.js', () => ({
     isMemoryEnabled: jest.fn().mockResolvedValue(true),
     onMemoryDisabled: jest.fn(),
@@ -19,6 +22,11 @@ jest.mock('../../../../src/components/memory/memoryManager.js', () => ({
     reinforceMemory: jest.fn().mockResolvedValue({ action: 'reinforced' }),
     normalizeText: jest.requireActual('../../../../src/components/memory/memoryManager.js').normalizeText,
     sanitizeSubjects: jest.requireActual('../../../../src/components/memory/memoryManager.js').sanitizeSubjects,
+    // Resolves from the known pairs only, standing in for the Helix fallback.
+    resolveSubjects: jest.fn(async (logins = [], known = new Map()) => ({
+        subjects: logins,
+        subjectIds: Object.fromEntries(logins.filter(login => known.has(login)).map(login => [known.get(login), login])),
+    })),
 }));
 
 jest.mock('../../../../src/lib/logger.js', () => ({
@@ -42,7 +50,7 @@ const memoryDisabledListener = manager.onMemoryDisabled.mock.calls[0][0];
 
 const BOT = String(config.twitch.username).toLowerCase();
 let clock = 1000;
-const line = (username, message) => ({ username, message, timestamp: new Date(clock++) });
+const line = (username, message) => ({ username, message, timestamp: new Date(clock++), tags: { 'user-id': uid(username) } });
 const chat = (n, username = 'alice') => Array.from({ length: n }, (_, i) => line(username, `message number ${i}`));
 
 beforeEach(() => {
@@ -67,6 +75,23 @@ describe('captureMemories', () => {
         expect(manager.saveMemory).toHaveBeenCalledWith('chan', expect.objectContaining({ keys: ['ball knowledge'], source: 'auto' }));
     });
 
+    it('maps the subjects the model names to the user IDs of the lines it read', async () => {
+        generateStructuredJson.mockResolvedValue({
+            operations: [{ op: 'add', text: 'Bob mains Pichu.', keys: ['pichu'], subjects: ['bob'], kind: 'member' }],
+        });
+        await captureMemories('chan', [...chat(5), line('bob', 'i only play pichu')]);
+
+        expect(manager.saveMemory).toHaveBeenCalledWith('chan', expect.objectContaining({
+            subjects: ['bob'], subjectIds: { [uid('bob')]: 'bob' },
+        }));
+    });
+
+    it('skips lines that carry no user ID, since their opt-out cannot be checked', async () => {
+        const anonymous = Array.from({ length: 6 }, (_, i) => ({ username: 'anon', message: `hi ${i}`, timestamp: new Date(clock++) }));
+        await captureMemories('chan', anonymous);
+        expect(generateStructuredJson).not.toHaveBeenCalled();
+    });
+
     it('is a no-op when the model finds nothing worth keeping', async () => {
         await captureMemories('chan', chat(6));
         expect(manager.saveMemory).not.toHaveBeenCalled();
@@ -87,7 +112,7 @@ describe('captureMemories', () => {
     });
 
     it('filters out the bot, commands and opted-out users before calling the model', async () => {
-        manager.isUserOptedOut.mockImplementation(async (channel, login) => login === 'ghost');
+        manager.isUserOptedOut.mockImplementation(async (channel, userId) => userId === uid('ghost'));
         const messages = [
             ...chat(5, 'alice'),
             line(BOT, 'i am the bot'),
@@ -196,7 +221,7 @@ describe('captureMemories', () => {
 
     it('picks up lines stashed by a previous process, once', async () => {
         storage.takePendingMessages.mockResolvedValueOnce(
-            Array.from({ length: 5 }, (_, i) => ({ username: 'carol', message: `stashed ${i}`, ts: i + 1 }))
+            Array.from({ length: 5 }, (_, i) => ({ userId: uid('carol'), username: 'carol', message: `stashed ${i}`, ts: i + 1 }))
         );
         await captureMemories('chan', []);
         expect(generateStructuredJson.mock.calls[0][0].prompt).toContain('carol: stashed 0');
@@ -222,7 +247,7 @@ describe('stashUnextractedMessages', () => {
         const [channel, lines] = storage.savePendingMessages.mock.calls[0];
         expect(channel).toBe('busy');
         expect(lines).toHaveLength(9);
-        expect(lines[0]).toEqual({ username: 'alice', message: 'message number 0', ts: expect.any(Number) });
+        expect(lines[0]).toEqual({ userId: uid('alice'), username: 'alice', message: 'message number 0', ts: expect.any(Number) });
     });
 
     it('stashes lines that were handed over but are still waiting for a call', async () => {
@@ -261,7 +286,7 @@ describe('stashUnextractedMessages', () => {
     });
 
     it('leaves opted-out users out of the stash', async () => {
-        manager.isUserOptedOut.mockImplementation(async (channel, login) => login === 'ghost');
+        manager.isUserOptedOut.mockImplementation(async (channel, userId) => userId === uid('ghost'));
         await stashUnextractedMessages(new Map([['busy', { chatHistory: [...chat(8), line('ghost', 'not me')] }]]));
         const [, lines] = storage.savePendingMessages.mock.calls[0];
         expect(lines).toHaveLength(8);
@@ -285,7 +310,7 @@ describe('structureManualMemory', () => {
     it('uses the model output when it is usable', async () => {
         generateStructuredJson.mockResolvedValue({ text: 'Gary is the rubber duck on the desk.', keys: ['gary'], subjects: [], kind: 'lore' });
         const result = await structureManualMemory('gary = the rubber duck on the desk');
-        expect(result).toEqual({ text: 'Gary is the rubber duck on the desk.', keys: ['gary'], subjects: [], kind: 'lore' });
+        expect(result).toEqual({ text: 'Gary is the rubber duck on the desk.', keys: ['gary'], subjects: [], subjectIds: {}, kind: 'lore' });
     });
 
     it('derives keys locally when the model is unavailable', async () => {
@@ -293,6 +318,7 @@ describe('structureManualMemory', () => {
         const result = await structureManualMemory('ball knowledge = knowing every pokeball, per @akg_1k');
         expect(result.keys).toEqual(['ball knowledge']);
         expect(result.subjects).toEqual(['akg_1k']);
+        expect(manager.resolveSubjects).toHaveBeenCalledWith(['akg_1k']);
         expect(result.text).toBe('ball knowledge = knowing every pokeball, per @akg_1k');
     });
 });

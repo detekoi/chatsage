@@ -9,6 +9,7 @@ import { STOP_TRANSLATION_TRIGGERS, getMentionStopTriggers } from '../constants/
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
 import { getEmoteImageParts } from '../lib/geminiEmoteDescriber.js';
 import { sendLocalized, sendLocalizedResult } from '../lib/localizedMessage.js';
+import { resolveUserIds } from '../lib/userIdentity.js';
 
 
 
@@ -34,9 +35,10 @@ export async function handlePendingReport({
     }
 
     logger.debug(`[BotJS] Numeric message "${message.trim()}" from ${lowerUsername} in ${cleanChannel}. Checking for pending report.`);
+    const userId = tags?.['user-id'] || null;
 
     // Try Riddle first
-    let reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+    let reportFinalizationResult = await riddleManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim(), userId);
     if (reportFinalizationResult.message !== null) {
         await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Riddle finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
@@ -47,7 +49,7 @@ export async function handlePendingReport({
     }
 
     // Try Trivia next
-    reportFinalizationResult = await triviaManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+    reportFinalizationResult = await triviaManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim(), userId);
     if (reportFinalizationResult.message !== null) {
         await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Trivia finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
@@ -58,7 +60,7 @@ export async function handlePendingReport({
     }
 
     // Try Geo last
-    reportFinalizationResult = await geoManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim());
+    reportFinalizationResult = await geoManager.finalizeReportWithRoundNumber(cleanChannel, lowerUsername, message.trim(), userId);
     if (reportFinalizationResult.message !== null) {
         await sendLocalizedResult(channel, reportFinalizationResult);
         logger.info(`[BotJS] Numeric message from ${lowerUsername} was processed by Geo finalizeReportWithRoundNumber. Result message: "${reportFinalizationResult.message}"`);
@@ -144,8 +146,18 @@ export async function handleStopTranslation({
         if (targetUserForStop !== lowerUsername && !isModOrBroadcaster) {
             await sendLocalized(channel, 'cmd.messageHandlers.OnlyModsBroadcasterCan', {}, `Only mods/broadcaster can stop translation for others.`, { replyToId: tags?.id || tags?.['message-id'] || null });
         } else {
-            const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserForStop);
             const replyToId = tags?.id || tags?.['message-id'] || null;
+            // Translation settings are keyed by Twitch user ID; a mod's target is typed as a login.
+            let targetUserId = tags?.['user-id'] ? String(tags['user-id']) : null;
+            if (targetUserForStop !== lowerUsername) {
+                const resolved = await resolveUserIds([targetUserForStop]);
+                targetUserId = resolved.get(targetUserForStop) || null;
+                if (!targetUserId) {
+                    await sendLocalized(channel, 'cmd.translate.UserNotFound', { targetUsername: targetUserForStop }, `User "${targetUserForStop}" not found.`, { replyToId });
+                    return true;
+                }
+            }
+            const wasStopped = contextManager.disableUserTranslation(cleanChannel, targetUserId);
             if (targetUserForStop === lowerUsername) { // Message for self stop
                 await sendLocalized(channel,
                     wasStopped ? 'cmd.messageHandlers.TranslationStopped' : 'cmd.messageHandlers.TranslationAlreadyOff',
@@ -311,7 +323,7 @@ export async function handleBotMention({
             isBot: isReplyToBot
         }
         : null;
-    const queryOptions = { replyParent };
+    const queryOptions = { replyParent, userId: tags?.['user-id'] || null };
 
     // Check if channel is in a shared chat session
     const sessionId = await resolveSharedSessionId(cleanChannel);
@@ -347,6 +359,7 @@ export async function handleBotMention({
 export function processGameGuesses({
     message,
     cleanChannel,
+    userId,
     lowerUsername,
     displayName,
     geoManager,
@@ -358,7 +371,7 @@ export function processGameGuesses({
     }
 
     // Pass potential guess to the game managers
-    geoManager.processPotentialGuess(cleanChannel, lowerUsername, displayName, message);
-    triviaManager.processPotentialAnswer(cleanChannel, lowerUsername, displayName, message);
-    riddleManager.processPotentialAnswer(cleanChannel, lowerUsername, displayName, message);
+    geoManager.processPotentialGuess(cleanChannel, userId, lowerUsername, displayName, message);
+    triviaManager.processPotentialAnswer(cleanChannel, userId, lowerUsername, displayName, message);
+    riddleManager.processPotentialAnswer(cleanChannel, userId, lowerUsername, displayName, message);
 }

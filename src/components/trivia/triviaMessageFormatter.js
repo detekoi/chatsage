@@ -25,7 +25,7 @@ export function formatLeaderboardMessage(leaderboardData, channelName, lang = nu
         .slice(0, 5);
     const listItems = topPlayers.map((player, index) => {
         const rank = index + 1;
-        const name = player.data?.displayName || player.id;
+        const name = player.data?.displayName || player.data?.login || player.id;
         const points = player.data?.channelPoints || 0;
         const correct = player.data?.channelSuccesses || 0;
         return t('trivia.leaderboardEntry', { rank, name, points, correct }, lang)
@@ -144,7 +144,7 @@ export function formatStartNextRoundMessage(roundNumber, totalRounds, lang = nul
 
 /**
  * Formats a game session scores message.
- * @param {Map<string, {displayName: string, score: number}>} scoresMap - Map of player scores.
+ * @param {Map<string, {username?: string, displayName: string, score: number}>} scoresMap - Player scores keyed by Twitch user ID (or login when no ID was known).
  * @param {string|null} [lang=null] - Target language for catalog lookup.
  * @returns {string} Formatted message.
  */
@@ -154,9 +154,9 @@ export function formatGameSessionScoresMessage(scoresMap, lang = null) {
     }
 
     // Convert map to array and sort by score (descending)
-    const scoresArray = Array.from(scoresMap, ([username, data]) => ({
-        username,
-        displayName: data.displayName || username,
+    const scoresArray = Array.from(scoresMap, ([key, data]) => ({
+        username: data.username || key,
+        displayName: data.displayName || data.username || key,
         score: data.score || 0
     }));
 

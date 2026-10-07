@@ -31,6 +31,7 @@ interface GameConfig {
 }
 
 interface PlayerGuess {
+    userId: string | null;
     username: string;
     displayName: string;
     guess: string;
@@ -50,7 +51,7 @@ interface GameState {
     nextClueTimer: NodeJS.Timeout | null;
     roundEndTimer: NodeJS.Timeout | null;
     guesses: PlayerGuess[];
-    winner: { username: string, displayName: string } | null;
+    winner: { userId: string | null, username: string, displayName: string } | null;
     initiatorUsername: string | null; // Store the lowercase username of the initiator
     config: GameConfig; // Channel-specific config
     lastMessageTimestamp: number; // To help throttle guesses if needed
@@ -62,11 +63,11 @@ interface GameState {
     // --- Multi-Round Fields ---
     totalRounds: number; // Total number of rounds requested
     currentRound: number; // Current round number (1-based)
-    gameSessionScores: Map<string, { displayName: string; score: number }>; // username -> { displayName, score } for the current multi-round game
+    gameSessionScores: Map<string, { username: string; displayName: string; score: number }>; // user ID (login if none) -> { username, displayName, score } for the current multi-round game
     gameSessionExcludedLocations: Set<string>; // Locations used in the current multi-round session
 
     // --- NEW FIELDS ---
-    streakMap: Map<string, number>; // username -> consecutive correct guesses
+    streakMap: Map<string, number>; // user ID (login if none) -> consecutive correct guesses
     guessCache: Map<string, {result: Object, timestamp: number}>; // Cache for incorrect guesses this round
 
     // --- PHASE 1 ---
@@ -101,6 +102,24 @@ const pendingGeoReports = new Map();
 const PENDING_GEO_REPORT_TIMEOUT_MS = 60000;
 
 // --- Helper Functions ---
+
+/**
+ * Key for in-memory per-player maps: the Twitch user ID, or the login when no ID is known.
+ * @param {{userId?: string|null, username?: string}|null} player
+ * @returns {string|null}
+ */
+function _playerKey(player) {
+    if (!player) return null;
+    return player.userId ? String(player.userId) : (player.username?.toLowerCase() || null);
+}
+
+/**
+ * Key for a pending multi-round report, scoped to the channel and the reporter.
+ */
+function _reportKey(channelName, userId, username) {
+    return `${channelName}_${_playerKey({ userId, username })}`;
+}
+
 async function _getOrCreateGameState(channelName) {
     if (!activeGames.has(channelName)) {
         logger.debug(`[GeoGame] Creating new game state for channel: ${channelName}`);
@@ -202,16 +221,19 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     const isLastRound = gameState.currentRound === gameState.totalRounds;
     let points = 0;
     if (reason === "guessed" && gameState.winner?.username) {
+        const winnerUserId = gameState.winner.userId || null;
         const winnerUsername = gameState.winner.username;
         const winnerDisplayName = gameState.winner.displayName;
+        const winnerKey = _playerKey(gameState.winner);
         points = _calculatePoints(gameState, timeTakenMs || 0);
         logger.info(`[GeoGame][${gameState.channelName}] Awarding ${points} points to ${winnerUsername} for round ${gameState.currentRound}.`);
-        const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
-        gameState.streakMap.set(winnerUsername, currentStreak + 1);
+        const currentStreak = gameState.streakMap.get(winnerKey) || 0;
+        gameState.streakMap.set(winnerKey, currentStreak + 1);
         logger.debug(`[GeoGame][${gameState.channelName}] Updated streak for ${winnerUsername} to ${currentStreak + 1}`);
         if (isMultiRound) {
-            const currentSessionScore = gameState.gameSessionScores.get(winnerUsername)?.score || 0;
-            gameState.gameSessionScores.set(winnerUsername, {
+            const currentSessionScore = gameState.gameSessionScores.get(winnerKey)?.score || 0;
+            gameState.gameSessionScores.set(winnerKey, {
+                username: winnerUsername,
                 displayName: winnerDisplayName,
                 score: currentSessionScore + points
             });
@@ -220,7 +242,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         if (gameState.config.scoreTracking) {
             try {
                 logger.debug(`[GeoGame][${gameState.channelName}] Calling updatePlayerScore for ${winnerUsername} with ${points} points.`);
-                await updatePlayerScore(winnerUsername, gameState.channelName, points, winnerDisplayName);
+                await updatePlayerScore(winnerUserId, winnerUsername, gameState.channelName, points, winnerDisplayName);
                 logger.debug(`[GeoGame][${gameState.channelName}] Successfully awaited updatePlayerScore for ${winnerUsername}.`);
             } catch (scoreError) {
                 logger.error({ err: scoreError }, `[GeoGame][${gameState.channelName}] Error caught from updatePlayerScore call.`);
@@ -248,7 +270,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     ?? `(Round ${gameState.currentRound}/${gameState.totalRounds}) `)
                 : "";
             if (reason === "guessed" && gameState.winner) {
-                const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
+                const currentStreak = gameState.streakMap.get(_playerKey(gameState.winner)) || 1;
                 const streakInfo = currentStreak > 1 ? (t('common.streakInfo', { streak: currentStreak }, lang) ?? ` 🔥x${currentStreak}`) : '';
                 const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
                 baseMessageContent = formatCorrectGuessMessage(
@@ -276,7 +298,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 if (reason === "guessed" && gameState.winner) {
                     const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
                     const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : '';
-                    const currentStreak = gameState.streakMap.get(gameState.winner.username) || 1;
+                    const currentStreak = gameState.streakMap.get(_playerKey(gameState.winner)) || 1;
                     const streakInfo = currentStreak > 1 ? (t('common.streakInfo', { streak: currentStreak }, lang) ?? ` 🔥x${currentStreak}`) : '';
                     const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
                     const pfxParams = { roundPrefix, displayName: gameState.winner.displayName, locationName: gameState.targetLocation.name, timeString, streakInfo, pointsInfo };
@@ -331,6 +353,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 location: gameState.targetLocation.name,
                 gameTitle: gameState.gameTitleScope,
                 winner: gameState.winner?.username || null,
+                winnerUserId: gameState.winner?.userId || null,
                 winnerDisplay: gameState.winner?.displayName || null,
                 startTime: gameState.startTime ? new Date(gameState.startTime).toISOString() : null,
                 endTime: new Date().toISOString(),
@@ -898,7 +921,7 @@ function _resolveGeoWinner(gameState) {
 
         if (attempt.status === 'correct') {
             logger.info(`[GeoGame][${gameState.channelName}] Correct guess for round ${gameState.currentRound} by ${attempt.username}.`);
-            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            gameState.winner = { userId: attempt.userId || null, username: attempt.username, displayName: attempt.displayName };
             gameState.state = 'guessed';
             const timeTakenMs = attempt.timestamp - gameState.startTime;
             _transitionToEnding(gameState, "guessed", timeTakenMs);
@@ -907,7 +930,7 @@ function _resolveGeoWinner(gameState) {
     }
 }
 
-async function _handleGuess(channelName, username, displayName, guess) {
+async function _handleGuess(channelName, userId, username, displayName, guess) {
     const gameState = activeGames.get(channelName);
 
     if (!gameState || gameState.state !== 'inProgress') {
@@ -931,7 +954,7 @@ async function _handleGuess(channelName, username, displayName, guess) {
     }
 
     logger.debug(`[GeoGame][${channelName}] Processing guess for round ${gameState.currentRound}: "${trimmedGuess}" from ${username}`);
-    gameState.guesses.push({ username, displayName, guess: trimmedGuess, timestamp: new Date(), round: gameState.currentRound });
+    gameState.guesses.push({ userId: userId || null, username, displayName, guess: trimmedGuess, timestamp: new Date(), round: gameState.currentRound });
 
     // Added: Translate user's guess if botlang is set
     const contextManager = getContextManager();
@@ -956,7 +979,7 @@ async function _handleGuess(channelName, username, displayName, guess) {
 
     // Record arrival order before awaiting, so validation latency cannot reorder guesses.
     if (!gameState.processingQueue) gameState.processingQueue = [];
-    const attempt = { username, displayName, guess: trimmedGuess, timestamp: Date.now(), status: 'pending' };
+    const attempt = { userId: userId || null, username, displayName, guess: trimmedGuess, timestamp: Date.now(), status: 'pending' };
     gameState.processingQueue.push(attempt);
 
     try {
@@ -1057,15 +1080,16 @@ function stopGame(channelName) {
  * Processes a chat message to check if it's a potential guess for an active game round.
  * Delegates the actual handling and validation to _handleGuess.
  * @param {string} channelName - Channel name (without #).
+ * @param {string|null} userId - User's Twitch user ID (tags['user-id']).
  * @param {string} username - User's lowercase username.
  * @param {string} displayName - User's display name.
  * @param {string} message - The chat message text.
  */
-function processPotentialGuess(channelName, username, displayName, message) {
+function processPotentialGuess(channelName, userId, username, displayName, message) {
     const gameState = activeGames.get(channelName);
     // Check if game is 'inProgress' (meaning a round is active) and not a command
     if (gameState && gameState.state === 'inProgress' && !message.startsWith('!')) {
-        _handleGuess(channelName, username, displayName, message.trim()).catch(err => {
+        _handleGuess(channelName, userId, username, displayName, message.trim()).catch(err => {
             logger.error({ err, channel: channelName, user: username }, `[GeoGame][${channelName}] Unhandled error processing potential guess for round ${gameState.currentRound}.`);
         });
     }
@@ -1267,9 +1291,10 @@ function getLastPlayedLocation(channelName) {
  * @param {string} channelName - Channel name (without #).
  * @param {string} reason - Reason for reporting.
  * @param {string} reportedByUsername - Username of the reporter (lowercase).
+ * @param {string|null} [reportedById=null] - Reporter's Twitch user ID.
  * @returns {Promise<{success: boolean, message: string, needsFollowUp?: boolean}>}
  */
-async function initiateReportProcess(channelName, reason, reportedByUsername) {
+async function initiateReportProcess(channelName, reason, reportedByUsername, reportedById = null) {
     logger.info(`[GeoGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
     const sessionInfo = await getLatestGeoSession(channelName);
 
@@ -1282,11 +1307,12 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     const reportedByDisplayName = reportedByUsername;
 
     if (totalRounds > 1 && itemsInSession.length > 0) {
-        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        const reportKey = _reportKey(channelName, reportedById, reportedByUsername);
         pendingGeoReports.set(reportKey, {
             reason,
             itemsInSession,
             reportedByUsername,
+            reportedById: reportedById || null,
             expiresAt: Date.now() + PENDING_GEO_REPORT_TIMEOUT_MS
         });
         setTimeout(() => {
@@ -1309,7 +1335,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
             return { success: false, messageKey: 'result.geo.CouldNotIdentifySpecific', messageParams: {}, message: "Could not identify a specific location to report from the last game." };
         }
         try {
-            const directReportResult = await reportProblemLocation(itemToReport.itemData, reason, channelName, reportedByUsername);
+            const directReportResult = await reportProblemLocation(itemToReport.itemData, reason, channelName, reportedByUsername, reportedById);
             logger.info(`[GeoGameManager][${channelName}] Successfully reported single/latest location: "${itemToReport.itemData}"`);
             return { success: directReportResult.success, message: directReportResult.message };
         } catch (error) {
@@ -1327,12 +1353,13 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
  * @param {string} channelName - Channel name (without #).
  * @param {string} username - Username of the user responding (lowercase).
  * @param {string} roundNumberStr - The numeric string provided by the user.
+ * @param {string|null} [userId=null] - Responding user's Twitch user ID.
  * @returns {Promise<{success: boolean, message: string | null}>}
  * message is null if no pending report or if it's an internal error not messaged to user.
  * message is a string to be sent to the user otherwise.
  */
-async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
-    const reportKey = `${channelName}_${username.toLowerCase()}`;
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr, userId = null) {
+    const reportKey = _reportKey(channelName, userId, username);
     const pendingData = pendingGeoReports.get(reportKey);
 
     if (!pendingData) {
@@ -1362,7 +1389,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     }
 
     try {
-        await flagGeoLocationByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        await flagGeoLocationByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername, pendingData.reportedById);
         pendingGeoReports.delete(reportKey); // Clean up successful report
         logger.info(`[GeoGameManager][${channelName}] Successfully finalized report for geo round ${roundNum}, doc ID ${itemToReport.docId}, Location: "${itemToReport.itemData}"`);
         return { success: true, messageKey: 'result.geo.ThanksReportLocationFrom', messageParams: { username, roundNum, p3: String(itemToReport.itemData).substring(0, 30) }, message: `@${username}, thanks! Your report for the location from round ${roundNum} ("${String(itemToReport.itemData).substring(0, 30)}...") has been submitted.` };
@@ -1428,7 +1455,7 @@ function _calculatePoints(gameState, timeElapsedMs) {
     }
     const winnerUsername = gameState.winner?.username;
     if (winnerUsername) {
-        const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
+        const currentStreak = gameState.streakMap.get(_playerKey(gameState.winner)) || 0;
         if (currentStreak > 0) {
             const streakMultiplier = 1 + (currentStreak * 0.1);
             points = Math.floor(points * streakMultiplier);

@@ -50,7 +50,7 @@ const DEFAULT_RIDDLE_CONFIG = {
 /** @type {Map<string, GameState>} */
 const activeGames = new Map();
 
-const pendingReports = new Map(); // Key: "channelName_username", Value: { reason: string, riddlesInSession: Array<{docId, question, roundNumber}>, expiresAt: number }
+const pendingReports = new Map(); // Key: "channelName_<userId or login>", Value: { reason: string, riddlesInSession: Array<{docId, question, roundNumber}>, expiresAt: number }
 const PENDING_REPORT_TIMEOUT_MS = 60000; // 1 minute for user to reply
 
 /*
@@ -71,13 +71,13 @@ GameState structure:
     startTime: number | null, // Timestamp for when the current riddle was asked
     riddleTimeoutTimer: NodeJS.Timeout | null,
     transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
-    winner: { username: string, displayName: string } | null,
+    winner: { userId: string | null, username: string, displayName: string } | null,
     initiatorUsername: string | null, // Lowercase username
     config: Object, // Channel-specific config merged with defaults
 
     totalRounds: number,
     currentRound: number,
-    gameSessionScores: Map<string, { displayName: string, score: number }>, 
+    gameSessionScores: Map<string, { username: string, displayName: string, score: number }>, // keyed by user ID (login if none)
     // Stores SETS of keywords from riddles already used in THIS multi-round session
     gameSessionExcludedKeywordSets: Array<string[]>,
     gameSessionId: string,
@@ -85,6 +85,23 @@ GameState structure:
     guessCache: Map<string, {result: Object, timestamp: number}>, // Cache for incorrect guesses this round
 }
 */
+
+/**
+ * Key for in-memory per-player maps: the Twitch user ID, or the login when no ID is known.
+ * @param {{userId?: string|null, username?: string}|null} player
+ * @returns {string|null}
+ */
+function _playerKey(player) {
+    if (!player) return null;
+    return player.userId ? String(player.userId) : (player.username?.toLowerCase() || null);
+}
+
+/**
+ * Key for a pending multi-round report, scoped to the channel and the reporter.
+ */
+function _reportKey(channelName, userId, username) {
+    return `${channelName}_${_playerKey({ userId, username })}`;
+}
 
 async function _getOrCreateGameState(channelName) {
     if (!activeGames.has(channelName)) {
@@ -241,15 +258,17 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
             pointsAwarded = _calculatePoints(gameState, timeTakenMs || 0);
             if (config.scoreTracking) {
                 try {
-                    await updatePlayerScore(winner.username, channelName, pointsAwarded, winner.displayName);
+                    await updatePlayerScore(winner.userId || null, winner.username, channelName, pointsAwarded, winner.displayName);
                 } catch (scoreError) {
                     logger.error({ err: scoreError }, `[RiddleGameManager][${channelName}] Error updating score for ${winner.username}.`);
                 }
             }
             // Update session score
             if (totalRounds > 1) {
-                const currentSessionScore = gameState.gameSessionScores.get(winner.username)?.score || 0;
-                gameState.gameSessionScores.set(winner.username, {
+                const winnerKey = _playerKey(winner);
+                const currentSessionScore = gameState.gameSessionScores.get(winnerKey)?.score || 0;
+                gameState.gameSessionScores.set(winnerKey, {
+                    username: winner.username,
                     displayName: winner.displayName,
                     score: currentSessionScore + pointsAwarded
                 });
@@ -288,6 +307,7 @@ async function _transitionToEnding(gameState, reason = "answered", timeTakenMs =
                 topic: currentRiddle.topic || topic || "general",
                 difficulty: currentRiddle.difficulty,
                 winnerUsername: winner?.username || null,
+                winnerUserId: winner?.userId || null,
                 winnerDisplayName: winner?.displayName || null,
                 startTime: gameState.startTime ? new Date(gameState.startTime).toISOString() : null,
                 endTime: new Date().toISOString(),
@@ -568,7 +588,7 @@ async function _resolveRiddleWinner(gameState) {
 
         if (attempt.status === 'correct') {
             logger.info(`[RiddleGameManager][${gameState.channelName}] Correct answer from ${attempt.displayName} for round ${gameState.currentRound}.`);
-            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            gameState.winner = { userId: attempt.userId || null, username: attempt.username, displayName: attempt.displayName };
             const timeTakenMs = attempt.timestamp - gameState.startTime;
             await _transitionToEnding(gameState, "answered", timeTakenMs);
             return;
@@ -577,19 +597,20 @@ async function _resolveRiddleWinner(gameState) {
     }
 }
 
-async function _handleAnswer(channelName, username, displayName, message) {
+async function _handleAnswer(channelName, userId, username, displayName, message) {
     const gameState = activeGames.get(channelName);
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentRiddle) {
         return;
     }
 
     // Spam prevention
-    const lastGuessTime = gameState.userLastGuessTime?.[username.toLowerCase()];
+    const playerKey = _playerKey({ userId, username });
+    const lastGuessTime = gameState.userLastGuessTime?.[playerKey];
     if (lastGuessTime && (Date.now() - lastGuessTime < 2000)) {
         return;
     }
     if (!gameState.userLastGuessTime) gameState.userLastGuessTime = {};
-    gameState.userLastGuessTime[username.toLowerCase()] = Date.now();
+    gameState.userLastGuessTime[playerKey] = Date.now();
 
     const userAnswer = message.trim();
     if (!userAnswer) return;
@@ -606,6 +627,7 @@ async function _handleAnswer(channelName, username, displayName, message) {
     // Record arrival order before any awaiting, so verification latency cannot reorder answers.
     if (!gameState.processingQueue) gameState.processingQueue = [];
     const attempt = {
+        userId: userId || null,
         username: username.toLowerCase(),
         displayName,
         answer: userAnswer,
@@ -763,10 +785,18 @@ export function stopGame(channelName) {
     return { messageKey: 'result.riddle.RiddleGameBeingStopped', messageParams: {}, message: "Riddle game is being stopped." }; // Confirmation to initiator
 }
 
-export function processPotentialAnswer(channelName, username, displayName, message) {
+/**
+ * Processes a potential answer from chat.
+ * @param {string} channelName - Channel name without #.
+ * @param {string|null} userId - User's Twitch user ID (tags['user-id']).
+ * @param {string} username - User's login.
+ * @param {string} displayName - User's display name.
+ * @param {string} message - Chat message text.
+ */
+export function processPotentialAnswer(channelName, userId, username, displayName, message) {
     const gameState = activeGames.get(channelName);
     if (gameState && gameState.state === 'inProgress' && !message.startsWith('!')) {
-        _handleAnswer(channelName, username.toLowerCase(), displayName, message).catch(err => {
+        _handleAnswer(channelName, userId, username.toLowerCase(), displayName, message).catch(err => {
             logger.error({ err, channel: channelName, user: displayName }, `[RiddleGameManager] Unhandled error processing answer in processPotentialAnswer.`);
         });
     }
@@ -921,7 +951,7 @@ export function getRiddleGameManager() {
 // Export activeGames for testing
 export { activeGames, _isAnswerTooSimilar };
 
-async function initiateReportProcess(channelName, reason, reportedByUsername) {
+async function initiateReportProcess(channelName, reason, reportedByUsername, reportedById = null) {
     logger.info(`[RiddleGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
     const sessionInfo = await getLatestCompletedSessionInfo(channelName);
 
@@ -944,11 +974,12 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     if (totalRoundsFromInfo > 1 && riddlesFoundInSession.length > 1) {
         logger.info(`[RiddleGameManager][${channelName}] Multi-round report scenario. Prompting user for round number.`);
         // Multi-round game, ask for clarification
-        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        const reportKey = _reportKey(channelName, reportedById, reportedByUsername);
         pendingReports.set(reportKey, {
             reason,
             riddlesInSession: riddlesFoundInSession, // Store [{docId, question, roundNumber}, ...]
             reportedByUsername,
+            reportedById: reportedById || null,
             expiresAt: Date.now() + PENDING_REPORT_TIMEOUT_MS
         });
 
@@ -972,7 +1003,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
         }
         const questionPreview = riddleToReport.question || 'Unknown riddle';
         try {
-            await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername);
+            await flagRiddleAsProblem(riddleToReport.docId, reason, reportedByUsername, reportedById);
             logger.info(`[RiddleGameManager][${channelName}] Successfully reported single/latest riddle: "${questionPreview.substring(0, 50)}..."`);
             return { success: true, messageKey: 'result.riddle.ThanksFeedbackRiddleHas', messageParams: { p1: questionPreview.substring(0, 30) }, message: `Thanks for the feedback! The riddle ("${questionPreview.substring(0, 30)}...") has been reported.` };
         } catch (error) {
@@ -982,8 +1013,8 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     }
 }
 
-async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
-    const reportKey = `${channelName}_${username.toLowerCase()}`;
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr, userId = null) {
+    const reportKey = _reportKey(channelName, userId, username);
     const pendingData = pendingReports.get(reportKey);
 
     if (!pendingData) {
@@ -1003,7 +1034,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     }
 
     try {
-        await flagRiddleAsProblem(riddleToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        await flagRiddleAsProblem(riddleToReport.docId, pendingData.reason, pendingData.reportedByUsername, pendingData.reportedById);
         pendingReports.delete(reportKey); // Clean up successful report
         logger.info(`[RiddleGameManager][${channelName}] Successfully finalized report for round ${roundNum}, riddle ID ${riddleToReport.docId}`);
         return { success: true, messageKey: 'result.riddle.ThanksReportRiddleFrom', messageParams: { username, roundNum, p3: riddleToReport.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the riddle from round ${roundNum} ("${riddleToReport.question.substring(0, 30)}...") has been submitted.` };

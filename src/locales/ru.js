@@ -31,12 +31,12 @@ export default {
         },
         "gameStoppedScores": "🏁 Игра остановлена. Итоговый счет: {list}",
         "finalScores": "🏁 Итоговый счет: {list}",
-        "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
-        "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру.",
-        "answerWas": "{roundPrefix}Правильный ответ: {answer}",
         "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по викторине!",
         "leaderboard": "🏆 Чемпионы викторины в #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} очк., {correct} верно)"
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {correct} верно)",
+        "NoQuestionEndingGame": "⚠️ Ошибка: не удалось сгенерировать вопрос для раунда {currentRound}. Завершаем игру.",
+        "InvalidQuestionEndingGame": "⚠️ Ошибка: сгенерированный вопрос оказался некорректным. Завершаем игру.",
+        "answerWas": "{roundPrefix}Правильный ответ: {answer}"
     },
     "riddle": {
         "start": "🤔 Начинаем {roundText} загадок! {topicText} У вас есть {questionTimeSeconds} сек., чтобы ответить. Пишите варианты в чат!",
@@ -91,13 +91,13 @@ export default {
         },
         "roundError": "Произошла ошибка при показе ответа для раунда {currentRound}.",
         "roundEnded": "Раунд завершён.",
+        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по Geo-Game!",
+        "leaderboard": "🏆 Лучшие игроки Geo-Game в #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} очк., {wins} побед)",
         "NoScoresSession": "🏁 Игра окончена. В этой сессии никто не набрал очков.",
         "LeaderboardFetchFailed": "Не удалось загрузить общую таблицу лидеров канала.",
         "NoLocationEndingGame": "⚠️ Ошибка: не удалось найти подходящую новую локацию для раунда {currentRound}. Завершаем игру.",
-        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру.",
-        "noLeaderboard": "Для этого канала ({channelName}) пока нет статистики по Geo-Game!",
-        "leaderboard": "🏆 Лучшие игроки Geo-Game в #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} очк., {wins} побед)"
+        "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру."
     },
     "cmd": {
         "ask": {
@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "Извините, произошла ошибка при попытке остановить все переводы.",
             "OnlyModsOrBroadcaster2": "Только модераторы или стример могут управлять переводом для других пользователей.",
             "PleaseSpecifyLanguageExample": "Укажите язык. Пример: !translate spanish",
-            "SorryErrorOccurredWhile": "Извините, произошла ошибка при обработке команды translate."
+            "SorryErrorOccurredWhile": "Извините, произошла ошибка при обработке команды translate.",
+            "UserNotFound": "Пользователь \"{targetUsername}\" не найден."
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "Упс! Что-то пошло не так при выполнении команды !{command}."

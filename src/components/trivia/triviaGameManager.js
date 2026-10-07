@@ -81,8 +81,8 @@ GameState structure:
     startTime: number | null,
     questionEndTimer: NodeJS.Timeout | null,
     transitionTimer: NodeJS.Timeout | null, // Pending multi-round transition or reset
-    answers: Array<{username: string, displayName: string, answer: string, timestamp: Date}>,
-    winner: {username: string, displayName: string} | null,
+    answers: Array<{userId: string|null, username: string, displayName: string, answer: string, timestamp: Date}>,
+    winner: {userId: string|null, username: string, displayName: string} | null,
     initiatorUsername: string | null,
     config: Object,
     lastMessageTimestamp: number,
@@ -90,7 +90,8 @@ GameState structure:
     // Multi-round fields
     totalRounds: number,
     currentRound: number,
-    gameSessionScores: Map<string, {displayName: string, score: number}>,
+    // Per-player maps below are keyed by Twitch user ID (login only if no ID was known)
+    gameSessionScores: Map<string, {username: string, displayName: string, score: number}>,
     gameSessionExcludedQuestions: Set<string>,
     gameSessionExcludedAnswers: Set<string>,
     streakMap: Map<string, number>,
@@ -99,6 +100,23 @@ GameState structure:
 */
 
 // --- Helper Functions ---
+
+/**
+ * Key for in-memory per-player maps: the Twitch user ID, or the login when no ID is known.
+ * @param {{userId?: string|null, username?: string}|null} player
+ * @returns {string|null}
+ */
+function _playerKey(player) {
+    if (!player) return null;
+    return player.userId ? String(player.userId) : (player.username?.toLowerCase() || null);
+}
+
+/**
+ * Key for a pending multi-round report, scoped to the channel and the reporter.
+ */
+function _reportKey(channelName, userId, username) {
+    return `${channelName}_${_playerKey({ userId, username })}`;
+}
 /**
  * Gets or creates a game state for a channel.
  * @param {string} channelName - Channel name without #.
@@ -274,9 +292,9 @@ function _calculatePoints(gameState, timeElapsedMs) {
     }
 
     // Apply streak bonus if applicable
-    const username = gameState.winner?.username;
-    if (username) {
-        const currentStreak = gameState.streakMap.get(username) || 0;
+    const winnerKey = _playerKey(gameState.winner);
+    if (winnerKey) {
+        const currentStreak = gameState.streakMap.get(winnerKey) || 0;
         if (currentStreak > 1) {
             // Apply a streak multiplier (10% per consecutive answer after the first)
             const streakMultiplier = 1 + ((currentStreak - 1) * 0.1);
@@ -326,20 +344,23 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
     // --- 1. Handle Scoring ---
     let points = 0;
     if (reason === "guessed" && gameState.winner?.username) {
+        const winnerUserId = gameState.winner.userId || null;
         const winnerUsername = gameState.winner.username;
         const winnerDisplayName = gameState.winner.displayName;
+        const winnerKey = _playerKey(gameState.winner);
 
         // Calculate points
         points = _calculatePoints(gameState, timeTakenMs || 0);
 
         // Update streak for the winner
-        const currentStreak = gameState.streakMap.get(winnerUsername) || 0;
-        gameState.streakMap.set(winnerUsername, currentStreak + 1);
+        const currentStreak = gameState.streakMap.get(winnerKey) || 0;
+        gameState.streakMap.set(winnerKey, currentStreak + 1);
 
         // a) Update session score
         if (isMultiRound) {
-            const currentSessionScore = gameState.gameSessionScores.get(winnerUsername)?.score || 0;
-            gameState.gameSessionScores.set(winnerUsername, {
+            const currentSessionScore = gameState.gameSessionScores.get(winnerKey)?.score || 0;
+            gameState.gameSessionScores.set(winnerKey, {
+                username: winnerUsername,
                 displayName: winnerDisplayName,
                 score: currentSessionScore + points
             });
@@ -349,7 +370,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
         // b) Update persistent score
         if (gameState.config.scoreTracking) {
             try {
-                await updatePlayerScore(winnerUsername, gameState.channelName, points, winnerDisplayName);
+                await updatePlayerScore(winnerUserId, winnerUsername, gameState.channelName, points, winnerDisplayName);
                 logger.debug(`[TriviaGame][${gameState.channelName}] Successfully updated score for ${winnerUsername}.`);
             } catch (scoreError) {
                 logger.error({ err: scoreError }, `[TriviaGame][${gameState.channelName}] Error updating score for ${winnerUsername}.`);
@@ -377,7 +398,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
             if (reason === "guessed" && gameState.winner) {
                 const seconds = typeof timeTakenMs === 'number' ? Math.round(timeTakenMs / 1000) : null;
                 const timeString = seconds !== null ? (t('common.timeString', { seconds }, lang) ?? ` in ${seconds}s`) : '';
-                const streak = gameState.streakMap.get(gameState.winner.username);
+                const streak = gameState.streakMap.get(_playerKey(gameState.winner));
                 const streakInfo = streak > 1 ? (t('common.streakInfo', { streak }, lang) ?? ` 🔥x${streak}`) : '';
                 const pointsInfo = points > 0 ? (t('common.pointsInfo', { points }, lang) ?? ` (+${points} pts)`) : '';
 
@@ -435,6 +456,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                 question: gameState.currentQuestion.question,
                 answer: gameState.currentQuestion.answer,
                 winner: gameState.winner?.username || null,
+                winnerUserId: gameState.winner?.userId || null,
                 winnerDisplay: gameState.winner?.displayName || null,
                 startTime: gameState.startTime ? new Date(gameState.startTime).toISOString() : null,
                 endTime: new Date().toISOString(),
@@ -827,7 +849,7 @@ async function _resolveGameWinner(gameState) {
         if (attempt.status === 'correct') {
             // WINNER FOUND - This is the earliest correct answer
             logger.info(`[TriviaGame][${gameState.channelName}] Correct answer "${attempt.answer}" by ${attempt.username}.`);
-            gameState.winner = { username: attempt.username, displayName: attempt.displayName };
+            gameState.winner = { userId: attempt.userId || null, username: attempt.username, displayName: attempt.displayName };
             gameState.state = 'guessed';
             const timeTakenMs = attempt.timestamp - gameState.startTime;
             _transitionToEnding(gameState, "guessed", timeTakenMs);
@@ -939,12 +961,13 @@ async function _processAnswerAttempt(gameState, attempt) {
 /**
  * Processes a potential answer from a user.
  * @param {string} channelName - Channel name without #.
+ * @param {string|null} userId - User's Twitch user ID.
  * @param {string} username - User's lowercase username.
  * @param {string} displayName - User's display name.
  * @param {string} message - The chat message (potential answer).
  * @returns {Promise<void>}
  */
-async function _handleAnswer(channelName, username, displayName, message) {
+async function _handleAnswer(channelName, userId, username, displayName, message) {
     const gameState = activeGames.get(channelName);
 
     if (!gameState || gameState.state !== 'inProgress' || !gameState.currentQuestion) {
@@ -958,8 +981,9 @@ async function _handleAnswer(channelName, username, displayName, message) {
     if (!gameState.userLastMessageTimestamps) gameState.userLastMessageTimestamps = new Map();
     if (!gameState.userLastAnswers) gameState.userLastAnswers = new Map();
 
-    const lastTs = gameState.userLastMessageTimestamps.get(username) || 0;
-    const lastAnswer = gameState.userLastAnswers.get(username) || "";
+    const playerKey = _playerKey({ userId, username });
+    const lastTs = gameState.userLastMessageTimestamps.get(playerKey) || 0;
+    const lastAnswer = gameState.userLastAnswers.get(playerKey) || "";
     const currentAnswer = message.trim();
 
     if (!currentAnswer) return;
@@ -975,13 +999,14 @@ async function _handleAnswer(channelName, username, displayName, message) {
     }
 
     // Update Access
-    gameState.userLastMessageTimestamps.set(username, now);
-    gameState.userLastAnswers.set(username, currentAnswer);
-    gameState.answers.push({ username, displayName, answer: currentAnswer, timestamp: new Date(now) });
+    gameState.userLastMessageTimestamps.set(playerKey, now);
+    gameState.userLastAnswers.set(playerKey, currentAnswer);
+    gameState.answers.push({ userId: userId || null, username, displayName, answer: currentAnswer, timestamp: new Date(now) });
 
     // Create Queue Item
     const attempt = {
         id: crypto.randomUUID(),
+        userId: userId || null,
         username,
         displayName,
         answer: currentAnswer,
@@ -1244,15 +1269,16 @@ function stopGame(channelName) {
 /**
  * Processes a potential answer from chat.
  * @param {string} channelName - Channel name without #.
+ * @param {string|null} userId - User's Twitch user ID (tags['user-id']).
  * @param {string} username - User's lowercase username.
  * @param {string} displayName - User's display name.
  * @param {string} message - Chat message text.
  */
-function processPotentialAnswer(channelName, username, displayName, message) {
+function processPotentialAnswer(channelName, userId, username, displayName, message) {
     const gameState = activeGames.get(channelName);
 
     if (gameState && gameState.state === 'inProgress' && !message.startsWith('!')) {
-        _handleAnswer(channelName, username, displayName, message).catch(err => {
+        _handleAnswer(channelName, userId, username, displayName, message).catch(err => {
             logger.error({ err, channel: channelName, user: username }, `[TriviaGame][${channelName}] Unhandled error processing answer.`);
         });
     }
@@ -1454,9 +1480,10 @@ async function initializeTriviaGameManager() {
  * @param {string} channelName - Channel name (without #).
  * @param {string} reason - Reason for reporting.
  * @param {string} reportedByUsername - Username of the reporter (lowercase).
+ * @param {string|null} [reportedById=null] - Reporter's Twitch user ID.
  * @returns {Promise<{success: boolean, message: string, needsFollowUp?: boolean}>}
  */
-async function initiateReportProcess(channelName, reason, reportedByUsername) {
+async function initiateReportProcess(channelName, reason, reportedByUsername, reportedById = null) {
     logger.info(`[TriviaGameManager][${channelName}] Initiating report process. Reason: "${reason}", By: ${reportedByUsername}`);
     const sessionInfo = await getLatestTriviaSession(channelName);
 
@@ -1469,7 +1496,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
     const reportedByDisplayName = reportedByUsername;
 
     if (totalRounds > 1 && itemsInSession.length > 0) {
-        const reportKey = `${channelName}_${reportedByUsername.toLowerCase()}`;
+        const reportKey = _reportKey(channelName, reportedById, reportedByUsername);
         // Ensure these are set BEFORE pendingTriviaReports.set
         logger.debug({ key: reportKey }, "[TriviaGameManager] Stored pending trivia report");
         logger.debug({
@@ -1483,6 +1510,7 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
             reason,
             itemsInSession,
             reportedByUsername,
+            reportedById: reportedById || null,
             expiresAt: Date.now() + PENDING_TRIVIA_REPORT_TIMEOUT_MS
         });
         logger.debug({
@@ -1528,10 +1556,11 @@ async function initiateReportProcess(channelName, reason, reportedByUsername) {
  * @param {string} channelName - Channel name (without #).
  * @param {string} username - Username of the user responding (lowercase).
  * @param {string} roundNumberStr - The numeric string provided by the user.
+ * @param {string|null} [userId=null] - Responding user's Twitch user ID.
  * @returns {Promise<{success: boolean, message: string | null}>}
  */
-async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr) {
-    const reportKey = `${channelName}_${username.toLowerCase()}`;
+async function finalizeReportWithRoundNumber(channelName, username, roundNumberStr, userId = null) {
+    const reportKey = _reportKey(channelName, userId, username);
     // --- VERY FOCUSED DEBUG LOG ---
     logger.debug({
         location: "TriviaManager.finalizeReport - Start",
@@ -1572,7 +1601,7 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
     }
 
     try {
-        await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername);
+        await flagTriviaQuestionByDocId(itemToReport.docId, pendingData.reason, pendingData.reportedByUsername, pendingData.reportedById);
         pendingTriviaReports.delete(reportKey);
         logger.info(`[TriviaGameManager][${channelName}] Successfully finalized report for trivia round ${roundNum}, doc ID ${itemToReport.docId}, Question: "${itemToReport.itemData.question.substring(0, 30)}..."`);
         return { success: true, messageKey: 'result.trivia.ThanksReportQuestionFrom', messageParams: { username, roundNum, p3: itemToReport.itemData.question.substring(0, 30) }, message: `@${username}, thanks! Your report for the question from round ${roundNum} ("${itemToReport.itemData.question.substring(0, 30)}...") has been submitted.` };

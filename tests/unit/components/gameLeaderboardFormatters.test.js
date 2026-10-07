@@ -5,6 +5,7 @@ jest.mock('../../../src/components/llm/llmUtils.js', () => ({ removeMarkdownAste
 
 import { formatLeaderboardMessage as triviaLeaderboard } from '../../../src/components/trivia/triviaMessageFormatter.js';
 import { formatLeaderboardMessage as geoLeaderboard } from '../../../src/components/geo/geoMessageFormatter.js';
+import { formatRiddleLeaderboardMessage as riddleLeaderboard } from '../../../src/components/riddle/riddleMessageFormatter.js';
 
 const data = [
     { id: 'low', data: { displayName: 'Low', channelPoints: 10, channelSuccesses: 1 } },
@@ -46,5 +47,18 @@ describe.each([
 
     it('falls back to English in an uncatalogued language', () => {
         expect(format(data, 'chan', 'klingon')).toBe(expected);
+    });
+});
+
+// Stats docs are keyed by Twitch user ID, so a row's id is numeric; the stored login must be shown instead.
+describe.each([
+    ['trivia', triviaLeaderboard],
+    ['geo', geoLeaderboard],
+    ['riddle', riddleLeaderboard],
+])('%s leaderboard name fallback', (_name, format) => {
+    it('shows the login rather than the numeric user ID when no display name is stored', () => {
+        const out = format([{ id: '12345', data: { login: 'alice', channelPoints: 5, channelSuccesses: 1 } }], 'chan');
+        expect(out).toContain('alice');
+        expect(out).not.toContain('12345');
     });
 });

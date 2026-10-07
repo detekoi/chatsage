@@ -31,12 +31,12 @@ export default {
         },
         "gameStoppedScores": "🏁 Spiel beendet. Endstand: {list}",
         "finalScores": "🏁 Endstand: {list}",
-        "NoQuestionEndingGame": "⚠️ Fehler: Frage für Runde {currentRound} konnte nicht generiert werden. Spiel wird beendet.",
-        "InvalidQuestionEndingGame": "⚠️ Fehler: Generierte Frage war ungültig. Spiel wird beendet.",
-        "answerWas": "{roundPrefix}Die Antwort war: {answer}",
         "noLeaderboard": "Für diesen Kanal ({channelName}) gibt es noch keine Trivia-Statistiken!",
         "leaderboard": "🏆 Trivia-Champions in #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {correct} richtig)"
+        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {correct} richtig)",
+        "NoQuestionEndingGame": "⚠️ Fehler: Frage für Runde {currentRound} konnte nicht generiert werden. Spiel wird beendet.",
+        "InvalidQuestionEndingGame": "⚠️ Fehler: Generierte Frage war ungültig. Spiel wird beendet.",
+        "answerWas": "{roundPrefix}Die Antwort war: {answer}"
     },
     "riddle": {
         "start": "🤔 Starte {roundText} Rätsel! {topicText} Ihr habt {questionTimeSeconds} Sekunden zum Antworten. Schreibt eure Tipps in den Chat!",
@@ -91,13 +91,13 @@ export default {
         },
         "roundError": "Beim Aufdecken der Antwort für Runde {currentRound} ist ein Fehler aufgetreten.",
         "roundEnded": "Die Runde ist beendet.",
+        "noLeaderboard": "Für diesen Kanal ({channelName}) gibt es noch keine Geo-Game-Statistiken!",
+        "leaderboard": "🏆 Geo-Game-Topspieler in #{channelName}: {list}",
+        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {wins} Siege)",
         "NoScoresSession": "🏁 Spiel beendet. In dieser Session wurden keine Punkte erzielt.",
         "LeaderboardFetchFailed": "Die Gesamt-Rangliste des Kanals konnte nicht abgerufen werden.",
         "NoLocationEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein passender neuer Ort gefunden werden. Spiel wird beendet.",
-        "NoClueEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein Hinweis generiert werden. Spiel wird beendet.",
-        "noLeaderboard": "Für diesen Kanal ({channelName}) gibt es noch keine Geo-Game-Statistiken!",
-        "leaderboard": "🏆 Geo-Game-Topspieler in #{channelName}: {list}",
-        "leaderboardEntry": "{rank}. {name} ({points} Pkt., {wins} Siege)"
+        "NoClueEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein Hinweis generiert werden. Spiel wird beendet."
     },
     "cmd": {
         "ask": {
@@ -309,7 +309,8 @@ export default {
             "SorryErrorOccurredTrying": "Entschuldigung, beim Stoppen aller Übersetzungen ist ein Fehler aufgetreten.",
             "OnlyModsOrBroadcaster2": "Nur Mods oder der Broadcaster können die Übersetzung für andere Nutzer verwalten.",
             "PleaseSpecifyLanguageExample": "Bitte gib eine Sprache an. Beispiel: !translate spanish",
-            "SorryErrorOccurredWhile": "Entschuldigung, bei der Verarbeitung des Translate-Befehls ist ein Fehler aufgetreten."
+            "SorryErrorOccurredWhile": "Entschuldigung, bei der Verarbeitung des Translate-Befehls ist ein Fehler aufgetreten.",
+            "UserNotFound": "Benutzer \"{targetUsername}\" nicht gefunden."
         },
         "commandProcessor": {
             "OopsSomethingWentWrong": "Hoppla! Beim Ausführen von !{command} ist etwas schiefgelaufen."

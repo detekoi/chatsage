@@ -15,7 +15,7 @@ import { formatHelpMessage } from '../../../../../src/components/trivia/triviaMe
 describe('Trivia Command Handler', () => {
     let mockTriviaManager;
 
-    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '0' }) => ({
+    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', 'user-id': '555', mod: '0' }) => ({
         channel,
         user,
         args,
@@ -450,7 +450,8 @@ describe('Trivia Command Handler', () => {
             expect(mockTriviaManager.initiateReportProcess).toHaveBeenCalledWith(
                 'testchannel',
                 'incorrect answer',
-                'testuser'
+                'testuser',
+                '555'
             );
         });
 

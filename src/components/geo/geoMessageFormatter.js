@@ -123,7 +123,7 @@ export function formatRevealMessage(locationName, revealText, lang = null) {
 
 /**
  * Formats the game session scores message.
- * @param {Map<string, { displayName: string; score: number }>} gameSessionScores - Map of username -> { displayName, score (points) }.
+ * @param {Map<string, { username?: string; displayName: string; score: number }>} gameSessionScores - Map of Twitch user ID (or login when no ID was known) -> { username, displayName, score (points) }.
  * @param {string|null} [lang=null] - Target language for catalog lookup.
  * @returns {string} Formatted score message, or empty string if no scores.
  */
@@ -137,9 +137,9 @@ export function formatGameSessionScoresMessage(gameSessionScores, lang = null) {
 
     // Format top N players (e.g., top 5)
     const topN = 5;
-    const listItems = sortedScores.slice(0, topN).map(([username, data], index) => {
+    const listItems = sortedScores.slice(0, topN).map(([key, data], index) => {
         const rank = index + 1;
-        const name = data.displayName || username;
+        const name = data.displayName || data.username || key;
         const score = data.score; // score now represents points
         return t('common.scoreEntry', { rank, name, score }, lang)
             ?? `${rank}. ${name} (${score} pts)`; // Label as 'pts'
@@ -170,7 +170,7 @@ export function formatLeaderboardMessage(leaderboardData, channelName, lang = nu
         .slice(0, 5);
     const listItems = topPlayers.map((player, index) => {
         const rank = index + 1;
-        const name = player.data?.displayName || player.id;
+        const name = player.data?.displayName || player.data?.login || player.id;
         const points = player.data?.channelPoints || 0;
         const wins = player.data?.channelSuccesses || 0;
         return t('geo.leaderboardEntry', { rank, name, points, wins }, lang)

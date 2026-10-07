@@ -5,6 +5,7 @@ import { translateText, parseTranslateCommand, SAME_LANGUAGE } from '../../../li
 import { buildContextPrompt } from '../../llm/llmClient.js';
 import { isPrivilegedUser } from '../../../lib/permissions.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
+import { normalizeLogin, resolveUserIds } from '../../../lib/userIdentity.js';
 
 /**
  * Handler for the !translate command with LLM-based argument parsing.
@@ -18,6 +19,8 @@ const translateHandler = {
         const { channel, user, args } = context;
         const channelName = channel.substring(1);
         const invokingUsernameLower = user.username.toLowerCase();
+        // Translation settings are keyed by the immutable Twitch user ID (user.id is the message ID).
+        const invokingUserId = user['user-id'] ? String(user['user-id']) : null;
         const invokingDisplayName = user['display-name'] || user.username;
         const replyToId = user?.id || user?.['message-id'] || null;
         const contextManager = getContextManager();
@@ -49,7 +52,9 @@ const translateHandler = {
         const { action, targetUser, language } = parsed;
 
         // --- Determine effective target ---
-        let targetUsernameLower = targetUser || invokingUsernameLower;
+        const targetUsernameLower = targetUser
+            ? (normalizeLogin(targetUser) || String(targetUser).toLowerCase())
+            : invokingUsernameLower;
 
         // --- Permission checks ---
         if (action === 'stop_all') {
@@ -77,6 +82,22 @@ const translateHandler = {
             return;
         }
 
+        // --- Resolve the target's Twitch user ID ---
+        let targetUserId = invokingUserId;
+        if (targetUsernameLower !== invokingUsernameLower) {
+            const resolved = await resolveUserIds([targetUsernameLower]);
+            targetUserId = resolved.get(targetUsernameLower) || null;
+            if (!targetUserId) {
+                logger.info({ channel: channelName, targetUsername: targetUsernameLower }, '[TranslateCommand] Target user could not be resolved to a Twitch user ID');
+                await sendLocalized(channel, 'cmd.translate.UserNotFound', { targetUsername: targetUsernameLower }, `User "${targetUsernameLower}" not found.`, { replyToId });
+                return;
+            }
+        } else if (!invokingUserId) {
+            logger.warn({ channel: channelName, user: invokingUsernameLower }, '[TranslateCommand] Message tags carry no user ID; cannot manage translation');
+            await sendLocalized(channel, 'cmd.translate.SorryErrorOccurredWhile', {}, `Sorry, an error occurred while processing the translate command.`, { replyToId });
+            return;
+        }
+
         // --- Determine display name ---
         const effectiveDisplayName = (targetUsernameLower === invokingUsernameLower)
             ? invokingDisplayName
@@ -85,7 +106,7 @@ const translateHandler = {
         // --- Execute Action ---
         try {
             if (action === 'stop') {
-                const wasTranslating = contextManager.disableUserTranslation(channelName, targetUsernameLower);
+                const wasTranslating = contextManager.disableUserTranslation(channelName, targetUserId);
                 const stopMessage = wasTranslating
                     ? `Okay, stopped translating messages for ${effectiveDisplayName}.`
                     : `Translation was already off for ${effectiveDisplayName}.`;
@@ -97,7 +118,7 @@ const translateHandler = {
                     return;
                 }
 
-                contextManager.enableUserTranslation(channelName, targetUsernameLower, language);
+                contextManager.enableUserTranslation(channelName, targetUserId, targetUsernameLower, language);
 
                 const baseConfirmation = `Okay, translating messages for ${effectiveDisplayName} into ${language}. Use "!translate stop${targetUsernameLower !== invokingUsernameLower ? ' ' + targetUsernameLower : ''}" to disable.`;
                 const translatedConfirmation = await translateText(baseConfirmation, language);

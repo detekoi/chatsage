@@ -11,17 +11,25 @@ jest.mock('../../../../../src/components/context/contextManager.js');
 jest.mock('../../../../../src/components/llm/llmClient.js', () => ({
     buildContextPrompt: jest.fn().mockReturnValue('mock chat context')
 }));
+jest.mock('../../../../../src/lib/userIdentity.js', () => {
+    const actual = jest.requireActual('../../../../../src/lib/userIdentity.js');
+    return {
+        normalizeLogin: actual.normalizeLogin,
+        resolveUserIds: jest.fn(),
+    };
+});
 
 import translateHandler from '../../../../../src/components/commands/handlers/translate.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { translateText, parseTranslateCommand } from '../../../../../src/lib/translationUtils.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import logger from '../../../../../src/lib/logger.js';
+import { resolveUserIds } from '../../../../../src/lib/userIdentity.js';
 
 describe('Translate Command Handler', () => {
     let mockContextManager;
 
-    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '0' }) => ({
+    const createMockContext = (args = [], channel = '#testchannel', user = { username: 'testuser', 'display-name': 'TestUser', id: '123', 'user-id': '1111', mod: '0' }) => ({
         channel,
         user,
         args,
@@ -40,6 +48,11 @@ describe('Translate Command Handler', () => {
             getContextForLLM: jest.fn().mockReturnValue({ recentChatHistory: 'mock history' })
         };
         getContextManager.mockReturnValue(mockContextManager);
+
+        const knownIds = { otheruser: '2222', targetuser: '3333' };
+        resolveUserIds.mockImplementation(async (logins) => new Map(
+            logins.filter(login => knownIds[login]).map(login => [login, knownIds[login]])
+        ));
 
         enqueueMessage.mockResolvedValue();
         translateText.mockResolvedValue('Translated text');
@@ -87,6 +100,7 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
+                '1111',
                 'testuser',
                 'spanish'
             );
@@ -110,6 +124,7 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
+                '1111',
                 'testuser',
                 'pig latin'
             );
@@ -130,8 +145,9 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'testuser'
+                '1111'
             );
+            expect(resolveUserIds).not.toHaveBeenCalled();
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'Okay, stopped translating messages for TestUser.',
@@ -171,14 +187,16 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '1'
             });
 
             await translateHandler.execute(context);
 
+            expect(resolveUserIds).toHaveBeenCalledWith(['otheruser']);
             expect(mockContextManager.disableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
-                'otheruser'
+                '2222'
             );
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
@@ -198,6 +216,7 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '0'
             });
 
@@ -222,6 +241,7 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '1'
             });
 
@@ -229,6 +249,7 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
+                '2222',
                 'otheruser',
                 'spanish'
             );
@@ -245,6 +266,7 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '0'
             });
 
@@ -268,6 +290,7 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '1'
             });
 
@@ -283,6 +306,70 @@ describe('Translate Command Handler', () => {
             );
         });
 
+        test('replies "not found" when a mod targets a login Twitch does not know', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'enable',
+                targetUser: 'ghostuser',
+                language: 'spanish'
+            });
+            const context = createMockContext(['spanish', 'ghostuser'], '#testchannel', {
+                username: 'testuser',
+                'display-name': 'TestUser',
+                id: '123',
+                'user-id': '1111',
+                mod: '1'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(resolveUserIds).toHaveBeenCalledWith(['ghostuser']);
+            expect(mockContextManager.enableUserTranslation).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'User "ghostuser" not found.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('does not stop anything when a mod-targeted login cannot be resolved', async () => {
+            parseTranslateCommand.mockResolvedValue({
+                action: 'stop',
+                targetUser: '@GhostUser',
+                language: null
+            });
+            const context = createMockContext(['stop', '@GhostUser'], '#testchannel', {
+                username: 'testuser',
+                'display-name': 'TestUser',
+                id: '123',
+                'user-id': '1111',
+                mod: '1'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(resolveUserIds).toHaveBeenCalledWith(['ghostuser']);
+            expect(mockContextManager.disableUserTranslation).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                'User "ghostuser" not found.',
+                { replyToId: '123' }
+            );
+        });
+
+        test('uses the Twitch user ID, never the message ID, for the invoking user', async () => {
+            const context = createMockContext(['spanish'], '#testchannel', {
+                username: 'testuser',
+                'display-name': 'TestUser',
+                id: 'message-uuid',
+                'user-id': '1111',
+                mod: '0'
+            });
+
+            await translateHandler.execute(context);
+
+            expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith('testchannel', '1111', 'testuser', 'spanish');
+        });
+
         test('should reject non-mod stopping all translations', async () => {
             parseTranslateCommand.mockResolvedValue({
                 action: 'stop_all',
@@ -293,6 +380,7 @@ describe('Translate Command Handler', () => {
                 username: 'testuser',
                 'display-name': 'TestUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '0'
             });
 
@@ -336,6 +424,7 @@ describe('Translate Command Handler', () => {
                 username: 'moduser',
                 'display-name': 'ModUser',
                 id: '123',
+                'user-id': '1111',
                 mod: '1'
             });
 
@@ -343,6 +432,7 @@ describe('Translate Command Handler', () => {
 
             expect(mockContextManager.enableUserTranslation).toHaveBeenCalledWith(
                 'testchannel',
+                '3333',
                 'targetuser',
                 'french'
             );
