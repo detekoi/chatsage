@@ -68,13 +68,13 @@ If your channel is approved, follow these steps to add or remove WildcatSage:
 
 5. **User Interaction:**
    - Viewers can talk to WildcatSage by mentioning the bot name: `@WildcatSageBot hello`.
-   - Viewers can use [bot commands](https://docs.wildcat.chat/botcommands.html) such as `!ask` and `!translate`.
+   - Viewers can use [bot commands](https://docs.wildcat.chat/sage-commands.html) such as `!ask` and `!translate`.
 
 ## Usage Examples
 
 ### Chat Commands
 
-For a full list of commands, read the [Bot Commands Documentation](https://docs.wildcat.chat/botcommands.html).
+For a full list of commands, read the [Bot Commands Documentation](https://docs.wildcat.chat/sage-commands.html).
 
 ### Context-Aware Responses
 

@@ -41,7 +41,7 @@ describe('Help Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'You can find my command list here: https://docs.wildcat.chat/botcommands.html',
+                'You can find my command list here: https://docs.wildcat.chat/sage-commands.html',
                 { replyToId: '123' }
             );
         });
@@ -52,7 +52,7 @@ describe('Help Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'Puedes encontrar mi lista de comandos aquí: https://docs.wildcat.chat/botcommands.html',
+                'Puedes encontrar mi lista de comandos aquí: https://docs.wildcat.chat/sage-commands.html',
                 { replyToId: '123', skipTranslation: true }
             );
         });
@@ -116,7 +116,7 @@ describe('Help Command Handler', () => {
 
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
-                'You can find my command list here: https://docs.wildcat.chat/botcommands.html',
+                'You can find my command list here: https://docs.wildcat.chat/sage-commands.html',
                 { replyToId: '123' }
             );
         });

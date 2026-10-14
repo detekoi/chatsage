@@ -1,7 +1,7 @@
 import logger from '../../../lib/logger.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 
-const HELP_URL = 'https://docs.wildcat.chat/botcommands.html';
+const HELP_URL = 'https://docs.wildcat.chat/sage-commands.html';
 
 /**
  * Handler for the !help command.
