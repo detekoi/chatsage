@@ -484,6 +484,66 @@ async function sendAnnouncement(broadcasterId, moderatorId, message, accessToken
 }
 
 /**
+ * Sends a Twitch Shoutout (the native /shoutout) from one broadcaster to another.
+ *
+ * Like announcements, this endpoint requires a **user access token** for the
+ * moderator, here with the moderator:manage:shoutouts scope.
+ *
+ * Twitch enforces the rules and answers with a status: 400 when the sending
+ * channel is not live (or the target is the sender), 403 when the token's user
+ * is not a moderator there, 429 when a cooldown applies (one Shoutout every two
+ * minutes, and the same target once an hour).
+ *
+ * Not retried: a timeout does not tell us whether Twitch sent it, and a retry
+ * would then fail on the cooldown.
+ *
+ * @param {string} fromBroadcasterId - The channel sending the Shoutout.
+ * @param {string} toBroadcasterId - The channel being shouted out.
+ * @param {string} moderatorId - The ID of the user whose token is provided (a mod or the broadcaster).
+ * @param {string} accessToken - That user's access token with moderator:manage:shoutouts scope.
+ * @returns {Promise<{success: boolean, status?: number, message?: string}>}
+ *   success=true on 204, or success=false with the HTTP status and Twitch's message on failure.
+ */
+async function sendShoutout(fromBroadcasterId, toBroadcasterId, moderatorId, accessToken) {
+    if (!fromBroadcasterId || !toBroadcasterId || !moderatorId || !accessToken) {
+        logger.warn({ fromBroadcasterId, toBroadcasterId, moderatorId, hasToken: !!accessToken }, 'sendShoutout called with missing params');
+        return { success: false };
+    }
+
+    try {
+        // Docs: https://dev.twitch.tv/docs/api/reference/#send-a-shoutout
+        await axios.post(`${TWITCH_HELIX_URL}/chat/shoutouts`, null, {
+            params: {
+                from_broadcaster_id: fromBroadcasterId,
+                to_broadcaster_id: toBroadcasterId,
+                moderator_id: moderatorId,
+            },
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Client-ID': config.twitch.clientId,
+            },
+            timeout: 15000,
+        });
+
+        logger.info({ fromBroadcasterId, toBroadcasterId, moderatorId }, 'Successfully sent shoutout');
+        return { success: true };
+    } catch (error) {
+        const status = error.response?.status;
+        const message = error.response?.data?.message;
+        // 400 and 429 are Twitch's own rules (offline, cooldown), not faults
+        const logFn = status === 400 || status === 429 ? logger.info : logger.warn;
+        logFn.call(logger, {
+            err: { message: error.message, code: error.code, status },
+            twitchMessage: message,
+            fromBroadcasterId,
+            toBroadcasterId,
+            moderatorId,
+        }, 'Shoutout not sent');
+        return { success: false, status, message };
+    }
+}
+
+/**
  * Sends a chat message as the bot via the Helix API, using the shared client's
  * app access token. Requires user:bot on the bot and either mod status or
  * channel:bot from the broadcaster.
@@ -570,6 +630,7 @@ export {
     getLiveStreams,
     getSharedChatSession,
     sendAnnouncement,
+    sendShoutout,
     sendChatMessage,
     getModerators,
 };

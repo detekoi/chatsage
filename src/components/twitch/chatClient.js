@@ -4,7 +4,7 @@
 
 import config from '../../config/index.js';
 import logger from '../../lib/logger.js';
-import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendChatMessage as helixSendChatMessage } from './helixClient.js';
+import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendShoutout as helixSendShoutout, sendChatMessage as helixSendChatMessage } from './helixClient.js';
 import { getBroadcasterAccessToken, clearCachedBroadcasterToken, clearAllCachedBroadcasterTokens } from './broadcasterTokenHelper.js';
 import { getBotAccessToken, clearCachedBotToken, _resetBotTokenState } from './botTokenHelper.js';
 
@@ -206,3 +206,67 @@ export async function sendAnnouncement(channelName, message, color = 'primary') 
     }
 }
 
+
+/**
+ * Sends a native Twitch Shoutout (/shoutout) from a channel to another broadcaster.
+ *
+ * Uses the same two authorization paths as sendAnnouncement: the bot's own
+ * user token with the bot as moderator first, then the broadcaster's token.
+ * Both need the moderator:manage:shoutouts scope. Only an authorization
+ * failure (401/403) moves on to the broadcaster's token; a 400 (channel not
+ * live) or 429 (cooldown) is Twitch's rule for the channel and would be
+ * refused the same way.
+ *
+ * @param {string} channelName - The channel sending the Shoutout
+ * @param {string} toBroadcasterId - User ID of the broadcaster to shout out
+ * @returns {Promise<{success: boolean, status?: number}>} The outcome of the last attempt
+ */
+export async function sendShoutout(channelName, toBroadcasterId) {
+    if (!channelName || !toBroadcasterId) {
+        logger.warn('sendShoutout called with missing channel or target');
+        return { success: false };
+    }
+
+    const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
+
+    try {
+        const botAccessToken = await getBotAccessToken();
+        if (botAccessToken) {
+            const [broadcasterId, botId] = await Promise.all([
+                _getBroadcasterId(cleanChannelName),
+                getBotUserId(),
+            ]);
+            if (broadcasterId && botId) {
+                const result = await helixSendShoutout(broadcasterId, toBroadcasterId, botId, botAccessToken);
+                if (result.success || (result.status !== 401 && result.status !== 403)) {
+                    return { success: result.success, status: result.status };
+                }
+                // A token that predates the shoutout scope also answers 401; refreshing would not help it
+                if (result.status === 401 && !/scope/i.test(result.message || '')) {
+                    clearCachedBotToken();
+                }
+                logger.info({ channel: cleanChannelName, status: result.status },
+                    'Bot token shoutout not authorized, trying broadcaster token');
+            }
+        }
+
+        const broadcasterAuth = await getBroadcasterAccessToken(cleanChannelName);
+        if (!broadcasterAuth) {
+            logger.warn({ channel: cleanChannelName }, 'No token available to send shoutout');
+            return { success: false };
+        }
+
+        const { accessToken, twitchUserId: broadcasterId } = broadcasterAuth;
+        const result = await helixSendShoutout(broadcasterId, toBroadcasterId, broadcasterId, accessToken);
+        if (result.status === 401 && !/scope/i.test(result.message || '')) {
+            clearCachedBroadcasterToken(cleanChannelName);
+        }
+        return { success: result.success, status: result.status };
+    } catch (error) {
+        logger.error({
+            err: error.response ? error.response.data : error.message,
+            channel: cleanChannelName,
+        }, 'Error sending shoutout via Helix');
+        return { success: false };
+    }
+}

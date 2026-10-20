@@ -322,6 +322,15 @@ export default {
             "TranslationAlreadyOff": "Übersetzung war bereits ausgeschaltet.",
             "StoppedTranslationFor": "Übersetzung für {user} gestoppt.",
             "TranslationAlreadyOffFor": "Übersetzung für {user} war bereits ausgeschaltet."
+        },
+        "so": {
+            "Usage": "Verwendung: !so <Benutzername>",
+            "UserNotFound": "Benutzer \"{targetUsername}\" nicht gefunden.",
+            "OwnChannel": "Du kannst dem Kanal, in dem du gerade bist, kein Shoutout geben!",
+            "LiveNow": "Lasst {targetDisplayName} etwas Liebe da! Gerade live mit {game}: {url}",
+            "LastPlaying": "Schaut mal bei {targetDisplayName} vorbei! Zuletzt lief {game}: {url}",
+            "NoGame": "Schaut mal bei {targetDisplayName} vorbei: {url}",
+            "SorryThereWasError": "Sorry, beim Senden des Shoutouts ist ein Fehler aufgetreten. Bitte versuch es später noch einmal."
         }
     },
     "result": {

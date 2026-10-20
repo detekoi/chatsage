@@ -322,6 +322,15 @@ export default {
             "TranslationAlreadyOff": "Перевод уже был выключен.",
             "StoppedTranslationFor": "Перевод для {user} остановлен.",
             "TranslationAlreadyOffFor": "Перевод для {user} уже был выключен."
+        },
+        "so": {
+            "Usage": "Использование: !so <пользователь>",
+            "UserNotFound": "Пользователь \"{targetUsername}\" не найден.",
+            "OwnChannel": "Нельзя сделать шаутаут текущему каналу!",
+            "LiveNow": "Поддержите {targetDisplayName}! Прямо сейчас в эфире, играет в {game}: {url}",
+            "LastPlaying": "Загляните к {targetDisplayName}! Последняя игра — {game}: {url}",
+            "NoGame": "Загляните к {targetDisplayName}: {url}",
+            "SorryThereWasError": "Произошла ошибка при отправке шаутаута. Попробуйте позже."
         }
     },
     "result": {

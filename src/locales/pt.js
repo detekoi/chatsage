@@ -322,6 +322,15 @@ export default {
             "TranslationAlreadyOff": "A tradução já estava desativada.",
             "StoppedTranslationFor": "Tradução parada para {user}.",
             "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
+        },
+        "so": {
+            "Usage": "Uso: !so <usuário>",
+            "UserNotFound": "Usuário \"{targetUsername}\" não encontrado.",
+            "OwnChannel": "Você não pode dar shoutout no próprio canal!",
+            "LiveNow": "Vão dar uma força para {targetDisplayName}! Está ao vivo agora jogando {game}: {url}",
+            "LastPlaying": "Vá conferir {targetDisplayName}! Da última vez estava jogando {game}: {url}",
+            "NoGame": "Vá conferir {targetDisplayName}: {url}",
+            "SorryThereWasError": "Desculpe, ocorreu um erro ao enviar o shoutout. Tente novamente mais tarde."
         }
     },
     "result": {

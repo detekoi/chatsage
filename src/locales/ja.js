@@ -322,6 +322,15 @@ export default {
             "TranslationAlreadyOff": "翻訳はすでにオフになっています。",
             "StoppedTranslationFor": "{user} の翻訳を停止しました。",
             "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
+        },
+        "so": {
+            "Usage": "使い方: !so <ユーザー名>",
+            "UserNotFound": "ユーザー \"{targetUsername}\" が見つかりません。",
+            "OwnChannel": "現在いるチャンネルにはシャウトアウトできません！",
+            "LiveNow": "{targetDisplayName} の配信も見に行ってみよう！現在 {game} を配信中: {url}",
+            "LastPlaying": "{targetDisplayName} をチェックしてみてね！直近では {game} をプレイしていました: {url}",
+            "NoGame": "{targetDisplayName} をチェックしてみてね: {url}",
+            "SorryThereWasError": "シャウトアウトの送信中にエラーが発生しました。後でもう一度お試しください。"
         }
     },
     "result": {

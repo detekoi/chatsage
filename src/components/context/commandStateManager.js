@@ -23,7 +23,8 @@ const COMMAND_ALIASES = {
     'commands': 'help',
     'sage': 'ask',
     'quotes': 'quote',
-    'timers': 'timer'
+    'timers': 'timer',
+    'shoutout': 'so'
 };
 
 /**

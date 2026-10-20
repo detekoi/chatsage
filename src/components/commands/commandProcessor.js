@@ -201,6 +201,11 @@ async function processMessage(channelName, tags, message) {
         return await _tryCustomCommand(channelName, tags, candidates, args);
     }
 
+    // A channel's own custom command of the same name wins over a built-in that yields to it
+    if (handler.yieldsToCustomCommand && await _tryCustomCommand(channelName, tags, [command], args)) {
+        return true;
+    }
+
     // --- Command Disabled Check ---
     logger.debug(`Checking if command !${command} is disabled in #${channelName}`);
     const commandDisabled = isCommandDisabled(channelName, command);

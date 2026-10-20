@@ -155,7 +155,7 @@ Make sure that you set all required variables in your environment or `.env` file
 WildcatSage uses two kinds of Twitch token:
 
 - An **app access token** for most Helix calls, including sending chat messages. WildcatSage gets it from `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET`. You do not need to set it up.
-- A **user access token for the bot account** for chat announcements. Twitch rejects app access tokens on the announcements endpoint.
+- A **user access token for the bot account** for chat announcements and the native shoutout that `!so` sends. Twitch rejects app access tokens on both endpoints.
 
 To set up the bot's user token:
 
@@ -166,14 +166,14 @@ To set up the bot's user token:
 
 2. **Generate the refresh token:**
    - Run `node scripts/get-user-token.js`.
-   - Sign in to Twitch with the bot account and authorize the requested scopes. The scopes include `moderator:manage:announcements`.
+   - Sign in to Twitch with the bot account and authorize the requested scopes. The scopes include `moderator:manage:announcements` and `moderator:manage:shoutouts`.
    - The script prints the access token and the refresh token.
 
 3. **Store the refresh token:**
    - For local development, set `TWITCH_BOT_REFRESH_TOKEN` in your `.env` file.
    - For production, add the refresh token as a new version of the `TWITCH_BOT_REFRESH_TOKEN` secret in Google Secret Manager. The deploy workflow mounts that secret as the `TWITCH_BOT_REFRESH_TOKEN` environment variable. Grant the `Secret Manager Secret Accessor` IAM role to the service account that runs WildcatSage.
 
-4. **Make the bot a moderator** in each channel where it should send announcements. In a channel where the bot is not a moderator, WildcatSage sends announcements with the broadcaster's token, so they show as coming from the broadcaster.
+4. **Make the bot a moderator** in each channel where it should send announcements and shoutouts. In a channel where the bot is not a moderator, WildcatSage sends them with the broadcaster's token, so they show as coming from the broadcaster.
 
 When the bot's access token expires, WildcatSage requests a new one with the refresh token. If the refresh token becomes invalid, run `scripts/get-user-token.js` again and add a new secret version.
 
