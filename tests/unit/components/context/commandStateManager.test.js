@@ -11,7 +11,8 @@ import {
     enableCommandForChannel,
     getDisabledCommandsForChannel,
     getAllAvailableCommands,
-    isValidCommand
+    isValidCommand,
+    isProtectedCommand
 } from '../../../../src/components/context/commandStateManager.js';
 import logger from '../../../../src/lib/logger.js';
 import * as channelCommandsStorage from '../../../../src/components/context/channelCommandsStorage.js';
@@ -129,6 +130,32 @@ describe('commandStateManager', () => {
 
             expect(result).toBe(false);
         });
+
+        it('should ignore a stored disable for protected commands', async () => {
+            shutdownCommandStateManager();
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
+                new Map([['testchannel', new Set(['enable', 'disable', 'forgetme', 'trivia'])]])
+            );
+            await initializeCommandStateManager();
+
+            expect(isCommandDisabled('testchannel', 'enable')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'disable')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'forgetme')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'trivia')).toBe(true);
+        });
+
+        it('should apply a disable to every alias of the command', async () => {
+            shutdownCommandStateManager();
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
+                new Map([['testchannel', new Set(['quote', 'timer', 'help', 'ask'])]])
+            );
+            await initializeCommandStateManager();
+
+            expect(isCommandDisabled('testchannel', 'quotes')).toBe(true);
+            expect(isCommandDisabled('testchannel', 'timers')).toBe(true);
+            expect(isCommandDisabled('testchannel', 'commands')).toBe(true);
+            expect(isCommandDisabled('testchannel', 'sage')).toBe(true);
+        });
     });
 
     describe('disableCommandForChannel', () => {
@@ -168,6 +195,17 @@ describe('commandStateManager', () => {
                 wasAlreadyDisabled: false
             }));
             expect(channelCommandsStorage.disableCommand).toHaveBeenCalledWith('testchannel', 'help');
+        });
+
+        it.each(['enable', 'disable', 'forgetme'])('should refuse to disable the protected command %s', async (name) => {
+            const result = await disableCommandForChannel('testchannel', name);
+
+            expect(result).toEqual(expect.objectContaining({
+                success: false,
+                messageKey: 'result.commandState.CommandAlwaysAvailableCannot',
+                wasAlreadyDisabled: false
+            }));
+            expect(channelCommandsStorage.disableCommand).not.toHaveBeenCalled();
         });
 
         it('should handle storage errors', async () => {
@@ -222,6 +260,45 @@ describe('commandStateManager', () => {
                 success: false,
                 message: "Error enabling command '!trivia'. Please try again.",
                 wasAlreadyEnabled: false
+            }));
+        });
+    });
+
+    describe('isProtectedCommand', () => {
+        it('should be true for enable, disable and forgetme in any case', () => {
+            expect(isProtectedCommand('enable')).toBe(true);
+            expect(isProtectedCommand('DISABLE')).toBe(true);
+            expect(isProtectedCommand('forgetme')).toBe(true);
+        });
+
+        it('should be false for other commands and aliases', () => {
+            expect(isProtectedCommand('trivia')).toBe(false);
+            expect(isProtectedCommand('quotes')).toBe(false);
+        });
+    });
+
+    describe('protected commands in stored state', () => {
+        beforeEach(async () => {
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
+                new Map([['testchannel', new Set(['enable', 'forgetme', 'trivia'])]])
+            );
+            await initializeCommandStateManager();
+        });
+
+        it('should leave protected commands out of the disabled list', () => {
+            expect(getDisabledCommandsForChannel('testchannel')).toEqual(['trivia']);
+        });
+
+        it('should clear a stale entry but report the protected command as already enabled', async () => {
+            channelCommandsStorage.enableCommand.mockResolvedValue(true);
+
+            const result = await enableCommandForChannel('testchannel', 'forgetme');
+
+            expect(channelCommandsStorage.enableCommand).toHaveBeenCalledWith('testchannel', 'forgetme');
+            expect(result).toEqual(expect.objectContaining({
+                success: true,
+                messageKey: 'result.commandState.CommandAlreadyEnabled',
+                wasAlreadyEnabled: true
             }));
         });
     });
