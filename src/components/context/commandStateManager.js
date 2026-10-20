@@ -23,9 +23,14 @@ const COMMAND_ALIASES = {
 };
 
 /**
- * Core management commands that cannot be disabled to prevent lockout
+ * Commands that cannot be disabled: !enable and !disable so a channel cannot
+ * lock its moderators out of re-enabling commands, and !forgetme so a viewer
+ * can always opt out of channel memory. The dashboard writes disabledCommands
+ * directly, so isCommandDisabled() ignores these even when the stored list
+ * names them. chatsage-web-ui keeps the same list (ALWAYS_ON_COMMANDS in
+ * functions/src/config/constants.ts); change both together.
  */
-const PROTECTED_COMMANDS = new Set(['enable', 'disable']);
+const PROTECTED_COMMANDS = new Set(['enable', 'disable', 'forgetme']);
 
 /**
  * Initializes the command state manager.
@@ -93,6 +98,10 @@ function normalizeCommandName(commandName) {
 export function isCommandDisabled(channelName, commandName) {
     const normalizedChannel = channelName.toLowerCase();
     const normalizedCommand = normalizeCommandName(commandName);
+
+    if (PROTECTED_COMMANDS.has(normalizedCommand)) {
+        return false;
+    }
 
     const disabledCommands = channelCommandStates.get(normalizedChannel);
     if (!disabledCommands) {

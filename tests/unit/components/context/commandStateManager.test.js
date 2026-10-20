@@ -129,6 +129,19 @@ describe('commandStateManager', () => {
 
             expect(result).toBe(false);
         });
+
+        it('should ignore a stored disable for protected commands', async () => {
+            shutdownCommandStateManager();
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
+                new Map([['testchannel', new Set(['enable', 'disable', 'forgetme', 'trivia'])]])
+            );
+            await initializeCommandStateManager();
+
+            expect(isCommandDisabled('testchannel', 'enable')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'disable')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'forgetme')).toBe(false);
+            expect(isCommandDisabled('testchannel', 'trivia')).toBe(true);
+        });
     });
 
     describe('disableCommandForChannel', () => {
@@ -168,6 +181,17 @@ describe('commandStateManager', () => {
                 wasAlreadyDisabled: false
             }));
             expect(channelCommandsStorage.disableCommand).toHaveBeenCalledWith('testchannel', 'help');
+        });
+
+        it.each(['enable', 'disable', 'forgetme'])('should refuse to disable the protected command %s', async (name) => {
+            const result = await disableCommandForChannel('testchannel', name);
+
+            expect(result).toEqual(expect.objectContaining({
+                success: false,
+                messageKey: 'result.commandState.CommandAlwaysAvailableCannot',
+                wasAlreadyDisabled: false
+            }));
+            expect(channelCommandsStorage.disableCommand).not.toHaveBeenCalled();
         });
 
         it('should handle storage errors', async () => {
