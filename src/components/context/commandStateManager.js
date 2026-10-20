@@ -17,9 +17,13 @@ let firestoreListener = null;
  * Command alias mappings - maps alias to primary command name
  * This ensures that disabling a command affects all its aliases
  */
+// Every alias registered in commands/handlers/index.js, so disabling a
+// command also disables its alias.
 const COMMAND_ALIASES = {
     'commands': 'help',
-    'sage': 'ask'
+    'sage': 'ask',
+    'quotes': 'quote',
+    'timers': 'timer'
 };
 
 /**
@@ -90,6 +94,15 @@ function normalizeCommandName(commandName) {
 }
 
 /**
+ * Checks whether a command, or its alias, can never be disabled.
+ * @param {string} commandName - The command name.
+ * @returns {boolean} True for a protected command.
+ */
+export function isProtectedCommand(commandName) {
+    return PROTECTED_COMMANDS.has(normalizeCommandName(commandName));
+}
+
+/**
  * Checks if a command is disabled for a specific channel.
  * @param {string} channelName - The channel name (without #).
  * @param {string} commandName - The command name to check.
@@ -99,7 +112,7 @@ export function isCommandDisabled(channelName, commandName) {
     const normalizedChannel = channelName.toLowerCase();
     const normalizedCommand = normalizeCommandName(commandName);
 
-    if (PROTECTED_COMMANDS.has(normalizedCommand)) {
+    if (isProtectedCommand(normalizedCommand)) {
         return false;
     }
 
@@ -126,7 +139,7 @@ export async function disableCommandForChannel(channelName, commandName) {
     const normalizedCommand = normalizeCommandName(commandName);
 
     // Check if it's a protected command
-    if (PROTECTED_COMMANDS.has(normalizedCommand)) {
+    if (isProtectedCommand(normalizedCommand)) {
         return {
             success: false,
             messageKey: 'result.commandState.CommandAlwaysAvailableCannot', messageParams: { normalizedCommand }, message: `The command '${normalizedCommand}' is always available and cannot be disabled.`,
@@ -176,7 +189,10 @@ export async function enableCommandForChannel(channelName, commandName) {
     const normalizedCommand = normalizeCommandName(commandName);
 
     try {
-        const wasNewlyEnabled = await enableCommand(normalizedChannel, normalizedCommand);
+        // A protected command was running even if the stored list named it,
+        // so removing that stale entry still reports it as already enabled.
+        const wasNewlyEnabled = await enableCommand(normalizedChannel, normalizedCommand)
+            && !isProtectedCommand(normalizedCommand);
 
         // Update local cache immediately
         const disabledCommands = channelCommandStates.get(normalizedChannel);
@@ -214,7 +230,8 @@ export async function enableCommandForChannel(channelName, commandName) {
 export function getDisabledCommandsForChannel(channelName) {
     const normalizedChannel = channelName.toLowerCase();
     const disabledCommands = channelCommandStates.get(normalizedChannel);
-    return disabledCommands ? Array.from(disabledCommands) : [];
+    // A protected command in the stored list is not disabled (isCommandDisabled).
+    return disabledCommands ? Array.from(disabledCommands).filter(cmd => !isProtectedCommand(cmd)) : [];
 }
 
 /**
