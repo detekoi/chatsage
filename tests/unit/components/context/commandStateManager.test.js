@@ -18,6 +18,9 @@ import {
 import logger from '../../../../src/lib/logger.js';
 import * as channelCommandsStorage from '../../../../src/components/context/channelCommandsStorage.js';
 
+// The shape loadAllChannelCommandSettings() resolves to
+const settings = (disabledCommands, commandOptions = new Map()) => ({ disabledCommands, commandOptions });
+
 describe('commandStateManager', () => {
     const mockCommandHandlers = {
         help: jest.fn(),
@@ -32,7 +35,7 @@ describe('commandStateManager', () => {
 
         // Mock the storage functions using jest.spyOn
         jest.spyOn(channelCommandsStorage, 'initializeChannelCommandsStorage').mockResolvedValue();
-        jest.spyOn(channelCommandsStorage, 'loadAllChannelCommandSettings').mockResolvedValue(new Map());
+        jest.spyOn(channelCommandsStorage, 'loadAllChannelCommandSettings').mockResolvedValue(settings(new Map()));
         jest.spyOn(channelCommandsStorage, 'listenForCommandSettingsChanges').mockReturnValue(jest.fn());
         jest.spyOn(channelCommandsStorage, 'disableCommand').mockResolvedValue(true);
         jest.spyOn(channelCommandsStorage, 'enableCommand').mockResolvedValue(true);
@@ -68,7 +71,7 @@ describe('commandStateManager', () => {
                 ['testchannel', new Set(['trivia', 'geo'])]
             ]);
 
-            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(mockChannelStates);
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(settings(mockChannelStates));
 
             await initializeCommandStateManager();
 
@@ -135,7 +138,7 @@ describe('commandStateManager', () => {
         it('should ignore a stored disable for protected commands', async () => {
             shutdownCommandStateManager();
             channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
-                new Map([['testchannel', new Set(['enable', 'disable', 'forgetme', 'trivia'])]])
+                settings(new Map([['testchannel', new Set(['enable', 'disable', 'forgetme', 'trivia'])]]))
             );
             await initializeCommandStateManager();
 
@@ -148,7 +151,7 @@ describe('commandStateManager', () => {
         it('should apply a disable to every alias of the command', async () => {
             shutdownCommandStateManager();
             channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
-                new Map([['testchannel', new Set(['quote', 'timer', 'help', 'ask'])]])
+                settings(new Map([['testchannel', new Set(['quote', 'timer', 'help', 'ask'])]]))
             );
             await initializeCommandStateManager();
 
@@ -281,7 +284,7 @@ describe('commandStateManager', () => {
     describe('protected commands in stored state', () => {
         beforeEach(async () => {
             channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
-                new Map([['testchannel', new Set(['enable', 'forgetme', 'trivia'])]])
+                settings(new Map([['testchannel', new Set(['enable', 'forgetme', 'trivia'])]]))
             );
             await initializeCommandStateManager();
         });
@@ -377,11 +380,10 @@ describe('commandStateManager', () => {
                 changeCallback = cb;
                 return jest.fn();
             });
-            const initialSet = new Set();
-            initialSet.commandOptions = { so: { aiMessage: false } };
-            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
-                new Map([['testchannel', initialSet]])
-            );
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(settings(
+                new Map([['testchannel', new Set()]]),
+                new Map([['testchannel', { so: { aiMessage: false } }]])
+            ));
 
             await initializeCommandStateManager();
 

@@ -82,7 +82,8 @@ describe('So Command Handler', () => {
 
             expect(sendBotResponse).toHaveBeenCalledWith(
                 '#testchannel',
-                `Idzuna is braving Steel Soul in Hollow Knight, puns included. Go say hi to her! ${URL}`
+                `Idzuna is braving Steel Soul in Hollow Knight, puns included. Go say hi to her! ${URL}`,
+                { skipTranslation: false }
             );
             expect(enqueueMessage).not.toHaveBeenCalled();
             expect(sendShoutout).toHaveBeenCalledWith('testchannel', TARGET.id);
@@ -111,6 +112,28 @@ describe('So Command Handler', () => {
 
             const [prompt] = generateLiteContent.mock.calls[0];
             expect(prompt).toContain('Write in Spanish, whatever language the facts are written in.');
+            // The line is already in Spanish, so the bot does not translate it again
+            expect(sendBotResponse.mock.calls[0][2]).toEqual({ skipTranslation: true });
+        });
+
+        test('posts the fixed message after 10 seconds even while the AI call is still retrying', async () => {
+            jest.useFakeTimers();
+            try {
+                generateLiteContent.mockReturnValue(new Promise(() => {}));
+
+                const run = soHandler.execute(createMockContext());
+                await jest.advanceTimersByTimeAsync(10000);
+                await run;
+
+                expect(generateLiteContent.mock.calls[0][1].timeout).toBe(10000);
+                expect(sendBotResponse).not.toHaveBeenCalled();
+                expect(enqueueMessage).toHaveBeenCalledWith(
+                    '#testchannel',
+                    `Go check out Idzuna! They were last playing Hollow Knight: ${URL}`
+                );
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         test('uses they/them/their forms for singular pronoun sets ("Any", "Other")', async () => {
@@ -143,7 +166,7 @@ describe('So Command Handler', () => {
 
             await soHandler.execute(createMockContext());
 
-            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', expectedMessage);
+            expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', expectedMessage, { skipTranslation: false });
         });
 
         test('works without pronouns when the lookup fails', async () => {

@@ -106,7 +106,8 @@ async function execute(context) {
         }
 
         if (aiLine) {
-            await sendBotResponse(channel, `${aiLine} ${url}`);
+            // The AI already wrote in the bot language, so the line needs no second translation
+            await sendBotResponse(channel, `${aiLine} ${url}`, { skipTranslation: !!facts.language });
         } else if (stream && game) {
             await sendLocalized(channel, 'cmd.so.LiveNow', { targetDisplayName, game, url }, `Go show ${targetDisplayName} some love! They're live right now playing ${game}: ${url}`);
         } else if (game) {
@@ -209,12 +210,21 @@ CONSTRAINTS: Write in ${language}, whatever language the facts are written in. O
  * @returns {Promise<string|null>} The line, or null when the AI fails, is slow, or returns nothing.
  */
 async function _writeAiLine(channelName, facts, logger) {
+    let timer;
     try {
-        const raw = await generateLiteContent(buildShoutoutPrompt(facts), {
-            systemInstruction: buildBotInitiatedSystemInstruction(channelName),
-            model: 'main',
-            timeout: AI_TIMEOUT_MS,
+        // timeout ends each request, but the call retries a timed-out request, so the race keeps
+        // the chat from waiting longer than AI_TIMEOUT_MS for the fixed message
+        const deadline = new Promise((resolve) => {
+            timer = setTimeout(() => resolve(null), AI_TIMEOUT_MS);
         });
+        const raw = await Promise.race([
+            generateLiteContent(buildShoutoutPrompt(facts), {
+                systemInstruction: buildBotInitiatedSystemInstruction(channelName),
+                model: 'main',
+                timeout: AI_TIMEOUT_MS,
+            }),
+            deadline,
+        ]);
         if (!raw || !raw.trim()) {
             logger.warn({ channel: channelName }, '[SoCommand] AI returned no shoutout line; using the fixed message');
             return null;
@@ -238,6 +248,8 @@ async function _writeAiLine(channelName, facts, logger) {
     } catch (err) {
         logger.warn({ err, channel: channelName }, '[SoCommand] AI shoutout failed; using the fixed message');
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 }
 

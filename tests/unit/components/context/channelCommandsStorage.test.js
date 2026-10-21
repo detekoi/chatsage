@@ -1,7 +1,10 @@
 // tests/unit/components/context/channelCommandsStorage.test.js
-import { getCommandOptions } from '../../../../src/components/context/channelCommandsStorage.js';
+import {
+    loadAllChannelCommandSettings,
+    listenForCommandSettingsChanges,
+    ChannelCommandsStorageError,
+} from '../../../../src/components/context/channelCommandsStorage.js';
 import { getFirestore } from '../../../../src/lib/firestore.js';
-import logger from '../../../../src/lib/logger.js';
 
 jest.mock('../../../../src/lib/logger.js', () => ({
     __esModule: true,
@@ -15,47 +18,73 @@ jest.mock('../../../../src/lib/firestore.js', () => ({
 
 // Channel documents are keyed by broadcaster ID, resolved through the allow-list.
 jest.mock('../../../../src/lib/allowList.js', () => ({
-    getBroadcasterIdForChannel: jest.fn((name) => ({ testchannel: '4242' })[String(name).toLowerCase()] || null),
-    getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'testchannel' })[id] || null),
+    getBroadcasterIdForChannel: jest.fn((name) => ({ testchannel: '4242', other: '4343' })[String(name).toLowerCase()] || null),
+    getChannelNameForBroadcasterId: jest.fn((id) => ({ 4242: 'testchannel', 4343: 'other' })[id] || null),
 }));
 
-describe('getCommandOptions', () => {
-    let get;
-    let doc;
+const doc = (id, data) => ({ id, data: () => data });
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
-
-    const mockDoc = (snap) => {
-        get = jest.fn().mockResolvedValue(snap);
-        doc = jest.fn(() => ({ get }));
-        getFirestore.mockReturnValue({ collection: jest.fn(() => ({ doc })) });
+describe('loadAllChannelCommandSettings', () => {
+    const mockCollection = (docs) => {
+        getFirestore.mockReturnValue({
+            collection: jest.fn(() => ({ get: jest.fn().mockResolvedValue({ forEach: (fn) => docs.forEach(fn) }) })),
+        });
     };
 
-    test('returns the options stored for the command, read from the broadcaster ID document', async () => {
-        mockDoc({ exists: true, data: () => ({ commandOptions: { so: { aiMessage: false } } }) });
+    test('returns the disabled commands and the command options of each channel', async () => {
+        mockCollection([
+            doc('4242', { disabledCommands: ['trivia'], commandOptions: { SO: { aiMessage: false } } }),
+            doc('4343', { disabledCommands: [] }),
+        ]);
 
-        await expect(getCommandOptions('testchannel', 'so')).resolves.toEqual({ aiMessage: false });
-        expect(doc).toHaveBeenCalledWith('4242');
+        const { disabledCommands, commandOptions } = await loadAllChannelCommandSettings();
+
+        expect(disabledCommands.get('testchannel')).toEqual(new Set(['trivia']));
+        expect(disabledCommands.get('other')).toEqual(new Set());
+        // Command names are lowercased, so the bot finds them whatever case the dashboard wrote
+        expect(commandOptions.get('testchannel')).toEqual({ so: { aiMessage: false } });
+        expect(commandOptions.get('other')).toEqual({});
     });
 
     test.each([
-        ['no document', { exists: false, data: () => undefined }],
-        ['no options', { exists: true, data: () => ({ disabledCommands: ['so'] }) }],
-        ['options that are not an object', { exists: true, data: () => ({ commandOptions: { so: 'on' } }) }],
-    ])('returns {} for %s', async (_label, snap) => {
-        mockDoc(snap);
+        ['a string', 'on'],
+        ['an array', [true]],
+        ['null', null],
+    ])('drops options that are %s', async (_label, value) => {
+        mockCollection([doc('4242', { commandOptions: { so: value } })]);
 
-        await expect(getCommandOptions('testchannel', 'so')).resolves.toEqual({});
+        const { commandOptions } = await loadAllChannelCommandSettings();
+
+        expect(commandOptions.get('testchannel')).toEqual({});
     });
 
-    test('logs at warn and returns {} when Firestore fails', async () => {
-        get = jest.fn().mockRejectedValue(new Error('unavailable'));
-        getFirestore.mockReturnValue({ collection: jest.fn(() => ({ doc: jest.fn(() => ({ get })) })) });
+    test('throws a storage error when Firestore fails', async () => {
+        getFirestore.mockReturnValue({
+            collection: jest.fn(() => ({ get: jest.fn().mockRejectedValue(new Error('unavailable')) })),
+        });
 
-        await expect(getCommandOptions('testchannel', 'so')).resolves.toEqual({});
-        expect(logger.warn).toHaveBeenCalledTimes(1);
-        expect(logger.error).not.toHaveBeenCalled();
+        await expect(loadAllChannelCommandSettings()).rejects.toBeInstanceOf(ChannelCommandsStorageError);
+    });
+});
+
+describe('listenForCommandSettingsChanges', () => {
+    test('passes the disabled commands and the command options to the callback', () => {
+        let onSnapshot;
+        getFirestore.mockReturnValue({
+            collection: jest.fn(() => ({ onSnapshot: jest.fn((next) => { onSnapshot = next; return jest.fn(); }) })),
+        });
+        const callback = jest.fn();
+        listenForCommandSettingsChanges(callback);
+
+        onSnapshot({
+            docChanges: () => [
+                { type: 'modified', doc: doc('4242', { disabledCommands: ['geo'], commandOptions: { so: { twitchShoutout: false } } }) },
+                { type: 'removed', doc: doc('4343', { disabledCommands: ['so'], commandOptions: { so: { aiMessage: false } } }) },
+            ],
+        });
+
+        expect(callback).toHaveBeenCalledWith('testchannel', new Set(['geo']), { so: { twitchShoutout: false } });
+        // A removed document means "everything at its default", not "as before"
+        expect(callback).toHaveBeenCalledWith('other', new Set(), {});
     });
 });

@@ -38,6 +38,8 @@ function _channelDocRef(channelName) {
     return _getDb().collection(CHANNEL_COMMANDS_COLLECTION).doc(channelDocKey(channelName));
 }
 
+// The dashboard options of every command in a channel document, keyed by lowercased command name.
+// A value that is not a plain object is dropped, so a bad write reads as "no options".
 function _extractCommandOptions(data) {
     const raw = data?.commandOptions;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -50,25 +52,6 @@ function _extractCommandOptions(data) {
         }
     }
     return cleaned;
-}
-
-/**
- * Loads the options that the dashboard stores for one built-in command, for
- * example the !so switches. A command with no stored options or a failed read
- * gets {}, and the handler applies its own defaults.
- * @param {string} channelName - The channel name.
- * @param {string} commandName - The primary command name.
- * @returns {Promise<object>} The stored options.
- */
-export async function getCommandOptions(channelName, commandName) {
-    try {
-        const docSnap = await _channelDocRef(channelName).get();
-        const options = docSnap.exists ? docSnap.data()?.commandOptions?.[commandName] : null;
-        return options && typeof options === 'object' && !Array.isArray(options) ? options : {};
-    } catch (error) {
-        logger.warn({ err: error, channel: channelName, command: commandName }, '[ChannelCommandsStorage] Could not load command options; using defaults');
-        return {};
-    }
 }
 
 /**
@@ -158,7 +141,8 @@ export async function enableCommand(channelName, commandName) {
 
 /**
  * Loads all channel command settings from Firestore.
- * @returns {Promise<Map<string, Set<string>>>} Map of channel names to Set of disabled command names.
+ * @returns {Promise<{ disabledCommands: Map<string, Set<string>>, commandOptions: Map<string, object> }>}
+ *   Per channel name: the disabled command names, and the dashboard options of each command.
  */
 export async function loadAllChannelCommandSettings() {
     const db = _getDb();
@@ -166,7 +150,8 @@ export async function loadAllChannelCommandSettings() {
     
     try {
         const snapshot = await colRef.get();
-        const channelSettings = new Map();
+        const disabledByChannel = new Map();
+        const optionsByChannel = new Map();
         
         snapshot.forEach(doc => {
             const data = doc.data();
@@ -175,13 +160,12 @@ export async function loadAllChannelCommandSettings() {
                 logger.debug({ docId: doc.id }, '[ChannelCommandsStorage] Skipping command settings for an unknown channel');
                 return;
             }
-            const disabledCommands = new Set(data.disabledCommands || []);
-            disabledCommands.commandOptions = _extractCommandOptions(data);
-            channelSettings.set(channelName, disabledCommands);
+            disabledByChannel.set(channelName, new Set(data.disabledCommands || []));
+            optionsByChannel.set(channelName, _extractCommandOptions(data));
         });
         
-        logger.info(`[ChannelCommandsStorage] Loaded command settings for ${channelSettings.size} channels`);
-        return channelSettings;
+        logger.info(`[ChannelCommandsStorage] Loaded command settings for ${disabledByChannel.size} channels`);
+        return { disabledCommands: disabledByChannel, commandOptions: optionsByChannel };
     } catch (error) {
         logger.error({ err: error }, `[ChannelCommandsStorage] Error loading all channel command settings`);
         throw new ChannelCommandsStorageError('Failed to load all channel command settings', error);
@@ -191,7 +175,7 @@ export async function loadAllChannelCommandSettings() {
 /**
  * Sets up a listener for changes to the channelCommands collection.
  * @param {Function} onChangeCallback - Callback function called when changes occur.
- *                                     Receives (channelName, disabledCommandsSet) parameters.
+ *                                     Receives (channelName, disabledCommandsSet, commandOptions) parameters.
  * @returns {Function} Unsubscribe function to stop listening for changes.
  */
 export function listenForCommandSettingsChanges(onChangeCallback) {
@@ -213,7 +197,6 @@ export function listenForCommandSettingsChanges(onChangeCallback) {
                     const commandOptions = change.type === 'removed'
                         ? {}
                         : _extractCommandOptions(channelData);
-                    disabledCommands.commandOptions = commandOptions;
                     
                     logger.debug(`[ChannelCommandsStorage] Command settings changed for channel ${channelName}, disabled commands: [${Array.from(disabledCommands).join(', ')}]`);
                     try {

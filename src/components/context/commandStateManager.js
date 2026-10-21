@@ -51,13 +51,9 @@ export async function initializeCommandStateManager() {
         await initializeChannelCommandsStorage();
 
         // Load all existing channel command settings
-        channelCommandStates = await loadAllChannelCommandSettings();
-        channelCommandOptions = new Map();
-        for (const [channelName, state] of channelCommandStates.entries()) {
-            if (state?.commandOptions && typeof state.commandOptions === 'object') {
-                channelCommandOptions.set(channelName, state.commandOptions);
-            }
-        }
+        const settings = await loadAllChannelCommandSettings();
+        channelCommandStates = settings.disabledCommands;
+        channelCommandOptions = settings.commandOptions;
         logger.info(`[CommandStateManager] Loaded command states for ${channelCommandStates.size} channels`);
 
         // Drop any listener from a previous initialization before registering a new one; two
@@ -71,8 +67,7 @@ export async function initializeCommandStateManager() {
         firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet, commandOptions) => {
             logger.debug(`[CommandStateManager] Updating cached command state for channel ${channelName}`);
             channelCommandStates.set(channelName, disabledCommandsSet);
-            const resolvedOptions = commandOptions ?? disabledCommandsSet?.commandOptions ?? {};
-            channelCommandOptions.set(channelName, resolvedOptions);
+            channelCommandOptions.set(channelName, commandOptions || {});
         });
 
         logger.info("[CommandStateManager] Command state manager initialized successfully");
