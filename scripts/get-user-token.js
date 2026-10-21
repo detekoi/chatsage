@@ -39,6 +39,8 @@ const SCOPES = [
     'moderator:read:followers',
     // Announcements
     'moderator:manage:announcements',
+    // Native /shoutout from !so
+    'moderator:manage:shoutouts',
 ].join(' ');
 
 if (!CLIENT_ID || !CLIENT_SECRET) {

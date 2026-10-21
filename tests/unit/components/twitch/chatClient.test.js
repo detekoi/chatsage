@@ -8,6 +8,7 @@ jest.mock('../../../../src/config/index.js', () => ({
 jest.mock('../../../../src/components/twitch/helixClient.js', () => ({
     getUsersByLogin: jest.fn(),
     sendAnnouncement: jest.fn(),
+    sendShoutout: jest.fn(),
     sendChatMessage: jest.fn(),
 }));
 jest.mock('../../../../src/components/twitch/broadcasterTokenHelper.js', () => ({
@@ -21,8 +22,8 @@ jest.mock('../../../../src/components/twitch/botTokenHelper.js', () => ({
     _resetBotTokenState: jest.fn(),
 }));
 
-import { sendMessage, sendAnnouncement, _resetCache } from '../../../../src/components/twitch/chatClient.js';
-import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendChatMessage as helixSendChatMessage } from '../../../../src/components/twitch/helixClient.js';
+import { sendMessage, sendAnnouncement, sendShoutout, _resetCache } from '../../../../src/components/twitch/chatClient.js';
+import { getUsersByLogin, sendAnnouncement as helixSendAnnouncement, sendShoutout as helixSendShoutout, sendChatMessage as helixSendChatMessage } from '../../../../src/components/twitch/helixClient.js';
 import { getBroadcasterAccessToken, clearCachedBroadcasterToken } from '../../../../src/components/twitch/broadcasterTokenHelper.js';
 import { getBotAccessToken, clearCachedBotToken } from '../../../../src/components/twitch/botTokenHelper.js';
 
@@ -90,6 +91,86 @@ describe('chatClient.sendAnnouncement', () => {
 
         await expect(sendAnnouncement('#zeebthewerebear', 'hi')).resolves.toBe(false);
         expect(helixSendAnnouncement).not.toHaveBeenCalled();
+    });
+});
+
+describe('chatClient.sendShoutout', () => {
+    const TARGET_ID = '55555';
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        _resetCache();
+        getUsersByLogin.mockImplementation(async ([login]) => [
+            { id: login === 'wildcatsage' ? BOT_ID : BROADCASTER_ID },
+        ]);
+        getBotAccessToken.mockResolvedValue('bot-token');
+        getBroadcasterAccessToken.mockResolvedValue({ accessToken: 'broadcaster-token', twitchUserId: BROADCASTER_ID });
+        helixSendShoutout.mockResolvedValue({ success: true });
+    });
+
+    test('sends as the bot when the bot token works', async () => {
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: true, status: undefined });
+
+        expect(helixSendShoutout).toHaveBeenCalledTimes(1);
+        expect(helixSendShoutout).toHaveBeenCalledWith(BROADCASTER_ID, TARGET_ID, BOT_ID, 'bot-token');
+        expect(getBroadcasterAccessToken).not.toHaveBeenCalled();
+    });
+
+    test('falls back to the broadcaster when the bot is not a moderator', async () => {
+        helixSendShoutout.mockResolvedValueOnce({ success: false, status: 403 });
+
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: true, status: undefined });
+
+        expect(helixSendShoutout).toHaveBeenLastCalledWith(BROADCASTER_ID, TARGET_ID, BROADCASTER_ID, 'broadcaster-token');
+        expect(clearCachedBotToken).not.toHaveBeenCalled();
+    });
+
+    test('keeps a bot token that only lacks the shoutout scope', async () => {
+        helixSendShoutout.mockResolvedValueOnce({ success: false, status: 401, message: 'Missing scope: moderator:manage:shoutouts' });
+
+        await sendShoutout('#zeebthewerebear', TARGET_ID);
+
+        expect(clearCachedBotToken).not.toHaveBeenCalled();
+        expect(helixSendShoutout).toHaveBeenCalledTimes(2);
+    });
+
+    test('retries once with a refreshed bot token after an expired one', async () => {
+        getBotAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValueOnce('fresh-token');
+        helixSendShoutout.mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' });
+
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: true, status: undefined });
+
+        expect(clearCachedBotToken).toHaveBeenCalledTimes(1);
+        expect(helixSendShoutout).toHaveBeenLastCalledWith(BROADCASTER_ID, TARGET_ID, BOT_ID, 'fresh-token');
+        expect(getBroadcasterAccessToken).not.toHaveBeenCalled();
+    });
+
+    test('falls back to the broadcaster when the refreshed bot token also fails', async () => {
+        helixSendShoutout
+            .mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' })
+            .mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' });
+
+        await sendShoutout('#zeebthewerebear', TARGET_ID);
+
+        expect(helixSendShoutout).toHaveBeenCalledTimes(3);
+        expect(helixSendShoutout).toHaveBeenLastCalledWith(BROADCASTER_ID, TARGET_ID, BROADCASTER_ID, 'broadcaster-token');
+    });
+
+    test.each([400, 429])('does not retry with the broadcaster token on %i', async (status) => {
+        helixSendShoutout.mockResolvedValueOnce({ success: false, status });
+
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: false, status });
+
+        expect(helixSendShoutout).toHaveBeenCalledTimes(1);
+        expect(getBroadcasterAccessToken).not.toHaveBeenCalled();
+    });
+
+    test('returns failure when no token is available at all', async () => {
+        getBotAccessToken.mockResolvedValue(null);
+        getBroadcasterAccessToken.mockResolvedValue(null);
+
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: false });
+        expect(helixSendShoutout).not.toHaveBeenCalled();
     });
 });
 

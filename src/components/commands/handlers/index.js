@@ -44,6 +44,7 @@ import timer from './timer.js';
 
 // Custom/Social Commands
 import followage from './followage.js';
+import so from './so.js';
 
 
 logger.debug('Loading command handlers...');
@@ -98,6 +99,8 @@ const commandHandlers = {
 
     // --- Custom/Social Commands ---
     followage: followage,
+    so: so,
+    shoutout: so, // Alias
 };
 
 // Log loaded commands dynamically

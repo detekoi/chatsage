@@ -322,6 +322,15 @@ export default {
             "TranslationAlreadyOff": "La traduction était déjà désactivée.",
             "StoppedTranslationFor": "Traduction arrêtée pour {user}.",
             "TranslationAlreadyOffFor": "La traduction était déjà désactivée pour {user}."
+        },
+        "so": {
+            "Usage": "Utilisation : !so <pseudo>",
+            "UserNotFound": "Utilisateur \"{targetUsername}\" introuvable.",
+            "OwnChannel": "Tu ne peux pas faire de shoutout pour la chaîne où tu te trouves !",
+            "LiveNow": "Allez donner de la force à {targetDisplayName} ! En live en ce moment sur {game} : {url}",
+            "LastPlaying": "Allez faire un tour chez {targetDisplayName} ! Dernièrement en stream sur {game} : {url}",
+            "NoGame": "Allez faire un tour chez {targetDisplayName} : {url}",
+            "SorryThereWasError": "Désolé, une erreur est survenue lors de l'envoi du shoutout. Réessaie plus tard."
         }
     },
     "result": {

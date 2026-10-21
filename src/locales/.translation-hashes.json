@@ -384,7 +384,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "fr": {
     "common.timeString": "af55bd7822fd103b",
@@ -771,7 +778,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "de": {
     "common.timeString": "af55bd7822fd103b",
@@ -1158,7 +1172,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "it": {
     "common.timeString": "af55bd7822fd103b",
@@ -1545,7 +1566,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "pt": {
     "common.timeString": "af55bd7822fd103b",
@@ -1932,7 +1960,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "ja": {
     "common.timeString": "af55bd7822fd103b",
@@ -2319,7 +2354,14 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   },
   "ru": {
     "common.timeString": "af55bd7822fd103b",
@@ -2706,6 +2748,13 @@
     "geo.leaderboard": "55d4939eefa3ae4d",
     "geo.leaderboardEntry": "73234cface126a1b",
     "cmd.timer.MaxTimersReached": "c52de791f6dc562e",
-    "cmd.translate.UserNotFound": "5a06f57a9aa30523"
+    "cmd.translate.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.Usage": "a092c3e5ba7b0ff5",
+    "cmd.so.UserNotFound": "5a06f57a9aa30523",
+    "cmd.so.OwnChannel": "d4a6220476610555",
+    "cmd.so.LiveNow": "cff261501f6dc972",
+    "cmd.so.LastPlaying": "0bb646b801175d98",
+    "cmd.so.NoGame": "5bee67675c2bdf61",
+    "cmd.so.SorryThereWasError": "3dd7006b9a5fe174"
   }
 }

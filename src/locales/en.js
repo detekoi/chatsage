@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "Sorry, I couldn't find information about \"{userQuery}\" right now.",
             "SorryErrorOccurredWhile": "Sorry, an error occurred while searching."
         },
+        "so": {
+            "Usage": "Usage: !so <username>",
+            "UserNotFound": "User \"{targetUsername}\" not found.",
+            "OwnChannel": "You can't shout out the channel you're in!",
+            "LiveNow": "Go show {targetDisplayName} some love! They're live right now playing {game}: {url}",
+            "LastPlaying": "Go check out {targetDisplayName}! They were last playing {game}: {url}",
+            "NoGame": "Go check out {targetDisplayName}: {url}",
+            "SorryThereWasError": "Sorry, there was an error sending the shoutout. Please try again later."
+        },
         "timer": {
             "UsageTimerAddAddai": "Usage: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <name> [...]",
             "UnknownSubcommandUseAdd": "Unknown subcommand \"{subCommand}\". Use add, addai, edit, interval, lines, enable, disable, remove, show, or list.",
