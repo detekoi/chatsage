@@ -1,6 +1,7 @@
 // src/components/context/channelCommandsStorage.js
 //
-// Layout: channelCommands/{broadcasterId} -> { channelName, disabledCommands: string[] }
+// Layout: channelCommands/{broadcasterId} -> { channelName, disabledCommands: string[],
+//         commandOptions: { [command]: { [option]: value } } }
 // Keyed by broadcaster ID, not login (see lib/channelKey.js). The web UI writes
 // the same documents (chatsage-web-ui/functions/src/api/commands.router.ts).
 import { getFirestore, FieldValue } from '../../lib/firestore.js';
@@ -35,6 +36,25 @@ function _getDb() {
 
 function _channelDocRef(channelName) {
     return _getDb().collection(CHANNEL_COMMANDS_COLLECTION).doc(channelDocKey(channelName));
+}
+
+/**
+ * Loads the options that the dashboard stores for one built-in command, for
+ * example the !so switches. A command with no stored options gets {}, and the
+ * handler applies its own defaults.
+ * @param {string} channelName - The channel name.
+ * @param {string} commandName - The primary command name.
+ * @returns {Promise<object>} The stored options.
+ */
+export async function getCommandOptions(channelName, commandName) {
+    try {
+        const docSnap = await _channelDocRef(channelName).get();
+        const options = docSnap.exists ? docSnap.data()?.commandOptions?.[commandName] : null;
+        return options && typeof options === 'object' ? options : {};
+    } catch (error) {
+        logger.error({ err: error, channel: channelName, command: commandName }, '[ChannelCommandsStorage] Error loading command options');
+        throw new ChannelCommandsStorageError(`Failed to load options for ${commandName} in ${channelName}`, error);
+    }
 }
 
 /**
