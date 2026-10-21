@@ -11,6 +11,8 @@ import {
 // In-memory cache of command states per channel
 // Map<channelName, Set<disabledCommandNames>>
 let channelCommandStates = new Map();
+// Map<channelName, { [commandName]: { [option]: value } }>
+let channelCommandOptions = new Map();
 let firestoreListener = null;
 
 /**
@@ -49,7 +51,9 @@ export async function initializeCommandStateManager() {
         await initializeChannelCommandsStorage();
 
         // Load all existing channel command settings
-        channelCommandStates = await loadAllChannelCommandSettings();
+        const settings = await loadAllChannelCommandSettings();
+        channelCommandStates = settings.disabledCommands;
+        channelCommandOptions = settings.commandOptions;
         logger.info(`[CommandStateManager] Loaded command states for ${channelCommandStates.size} channels`);
 
         // Drop any listener from a previous initialization before registering a new one; two
@@ -60,9 +64,10 @@ export async function initializeCommandStateManager() {
         }
 
         // Set up real-time listener for changes
-        firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet) => {
+        firestoreListener = listenForCommandSettingsChanges((channelName, disabledCommandsSet, commandOptions) => {
             logger.debug(`[CommandStateManager] Updating cached command state for channel ${channelName}`);
             channelCommandStates.set(channelName, disabledCommandsSet);
+            channelCommandOptions.set(channelName, commandOptions || {});
         });
 
         logger.info("[CommandStateManager] Command state manager initialized successfully");
@@ -82,6 +87,7 @@ export function shutdownCommandStateManager() {
         firestoreListener = null;
     }
     channelCommandStates.clear();
+    channelCommandOptions.clear();
     logger.info("[CommandStateManager] Command state manager shut down");
 }
 
@@ -127,6 +133,21 @@ export function isCommandDisabled(channelName, commandName) {
     const isDisabled = disabledCommands.has(normalizedCommand);
     logger.debug(`[CommandStateManager] Command ${normalizedCommand} in channel ${normalizedChannel} is ${isDisabled ? 'disabled' : 'enabled'}`);
     return isDisabled;
+}
+
+/**
+ * Gets the cached dashboard options for a command in a channel.
+ * Reads synchronously from the onSnapshot-backed cache, like isCommandDisabled().
+ * @param {string} channelName - The channel name (without #).
+ * @param {string} commandName - The command name (or alias).
+ * @returns {object} The stored options for the command, or {} when none are set.
+ */
+export function getCommandOptions(channelName, commandName) {
+    const normalizedChannel = channelName.toLowerCase();
+    const normalizedCommand = normalizeCommandName(commandName);
+    const channelOptions = channelCommandOptions.get(normalizedChannel);
+    const options = channelOptions?.[normalizedCommand];
+    return options && typeof options === 'object' && !Array.isArray(options) ? options : {};
 }
 
 /**

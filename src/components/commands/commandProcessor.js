@@ -201,17 +201,6 @@ async function processMessage(channelName, tags, message) {
         return await _tryCustomCommand(channelName, tags, candidates, args);
     }
 
-    // A channel's own custom command wins over a built-in that yields to it. Every name of the
-    // built-in counts, so a custom !so also takes !shoutout. Once a custom command exists it decides
-    // alone: a sender its permission refuses, or a run that fails, does not fall back to the built-in.
-    if (handler.yieldsToCustomCommand) {
-        const names = [command, ...Object.keys(commandHandlers).filter(name => name !== command && commandHandlers[name] === handler)];
-        const customName = await _findCustomCommandName(channelName, names);
-        if (customName) {
-            return await _tryCustomCommand(channelName, tags, [customName], args);
-        }
-    }
-
     // --- Command Disabled Check ---
     logger.debug(`Checking if command !${command} is disabled in #${channelName}`);
     const commandDisabled = isCommandDisabled(channelName, command);
@@ -269,24 +258,6 @@ async function processMessage(channelName, tags, message) {
         }
         return true; // Command was attempted, even though it failed
     }
-}
-
-/**
- * Finds the first of several names that a channel has a custom command for.
- * A storage error counts as no custom command, so the built-in still runs.
- * @param {string} channelName - Channel name (without '#').
- * @param {string[]} names - Command names to look up (without !).
- * @returns {Promise<string|null>} The name with a custom command, or null.
- */
-async function _findCustomCommandName(channelName, names) {
-    try {
-        for (const name of names) {
-            if (await getCustomCommand(channelName, name)) return name;
-        }
-    } catch (error) {
-        logger.warn({ err: error, channel: channelName, names }, '[CommandProcessor] Custom command lookup failed; running the built-in');
-    }
-    return null;
 }
 
 /**
