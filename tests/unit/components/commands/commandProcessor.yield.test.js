@@ -26,13 +26,17 @@ jest.mock('../../../../src/components/llm/llmRequestLog.js', () => ({
     withLlmCaller: jest.fn((_caller, fn) => fn()),
 }));
 jest.mock('../../../../src/components/llm/inferenceHistoryStorage.js');
-jest.mock('../../../../src/components/commands/handlers/index.js', () => ({
-    __esModule: true,
-    default: {
-        so: { execute: jest.fn(), permission: 'moderator', yieldsToCustomCommand: true },
-        ping: { execute: jest.fn(), permission: 'everyone' },
-    },
-}));
+jest.mock('../../../../src/components/commands/handlers/index.js', () => {
+    const soHandler = { execute: jest.fn(), permission: 'moderator', yieldsToCustomCommand: true };
+    return {
+        __esModule: true,
+        default: {
+            so: soHandler,
+            shoutout: soHandler,
+            ping: { execute: jest.fn(), permission: 'everyone' },
+        },
+    };
+});
 
 import { processMessage } from '../../../../src/components/commands/commandProcessor.js';
 import commandHandlers from '../../../../src/components/commands/handlers/index.js';
@@ -66,6 +70,32 @@ describe('commandProcessor: built-ins that yield to a custom command', () => {
         getCustomCommand.mockResolvedValue(null);
 
         await expect(processMessage('testchannel', modTags('m2'), '!so idzuna')).resolves.toBe(true);
+
+        expect(commandHandlers.so.execute).toHaveBeenCalledTimes(1);
+    });
+
+    test('a custom !so also takes the !shoutout alias', async () => {
+        getCustomCommand.mockImplementation(async (_channel, name) => (name === 'so' ? { name: 'so', response: 'Mine!', permission: 'moderator' } : null));
+
+        await processMessage('testchannel', modTags('m4'), '!shoutout idzuna');
+
+        expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', 'Mine!', { skipTranslation: false });
+        expect(commandHandlers.so.execute).not.toHaveBeenCalled();
+    });
+
+    test('does not run the built-in when the custom command refuses the sender', async () => {
+        getCustomCommand.mockResolvedValue({ name: 'so', response: 'Mine!', permission: 'broadcaster' });
+
+        await expect(processMessage('testchannel', modTags('m5'), '!so idzuna')).resolves.toBe(false);
+
+        expect(enqueueMessage).not.toHaveBeenCalled();
+        expect(commandHandlers.so.execute).not.toHaveBeenCalled();
+    });
+
+    test('runs the built-in when the custom command lookup fails', async () => {
+        getCustomCommand.mockRejectedValue(new Error('firestore down'));
+
+        await processMessage('testchannel', modTags('m6'), '!so idzuna');
 
         expect(commandHandlers.so.execute).toHaveBeenCalledTimes(1);
     });

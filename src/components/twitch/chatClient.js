@@ -230,24 +230,25 @@ export async function sendShoutout(channelName, toBroadcasterId) {
     const cleanChannelName = channelName.replace(/^#/, '').toLowerCase();
 
     try {
-        const botAccessToken = await getBotAccessToken();
+        let botAccessToken = await getBotAccessToken();
         if (botAccessToken) {
             const [broadcasterId, botId] = await Promise.all([
                 _getBroadcasterId(cleanChannelName),
                 getBotUserId(),
             ]);
-            if (broadcasterId && botId) {
+            // Two attempts: an expired bot token is refreshed once and tried again, because the
+            // per-target cooldown can stop a moderator from simply repeating the command
+            for (let attempt = 0; attempt < 2 && broadcasterId && botId && botAccessToken; attempt++) {
                 const result = await helixSendShoutout(broadcasterId, toBroadcasterId, botId, botAccessToken);
                 if (result.success || (result.status !== 401 && result.status !== 403)) {
                     return { success: result.success, status: result.status };
                 }
                 // A token that predates the shoutout scope also answers 401; refreshing would not help it
-                if (result.status === 401 && !/scope/i.test(result.message || '')) {
-                    clearCachedBotToken();
-                }
-                logger.info({ channel: cleanChannelName, status: result.status },
-                    'Bot token shoutout not authorized, trying broadcaster token');
+                if (result.status !== 401 || /scope/i.test(result.message || '')) break;
+                clearCachedBotToken();
+                botAccessToken = attempt === 0 ? await getBotAccessToken() : null;
             }
+            logger.info({ channel: cleanChannelName }, 'Bot token shoutout not authorized, trying broadcaster token');
         }
 
         const broadcasterAuth = await getBroadcasterAccessToken(cleanChannelName);

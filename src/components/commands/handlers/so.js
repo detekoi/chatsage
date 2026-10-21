@@ -1,8 +1,10 @@
 // src/components/commands/handlers/so.js
 import { getUsersByLogin, getChannelInformation, getLiveStreams } from '../../twitch/helixClient.js';
 import { sendShoutout } from '../../twitch/chatClient.js';
-import { getContextManager } from '../../context/contextManager.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
+
+const TRAILING_PUNCTUATION_REGEX = /[.,!?;:'"]+$/;
+const TWITCH_LOGIN_REGEX = /^[a-z0-9_]{1,25}$/;
 
 /**
  * Handler for the !so (shoutout) command.
@@ -17,9 +19,19 @@ async function execute(context) {
     const { channel, user, args, logger } = context;
     const channelName = channel.substring(1); // Remove '#'
 
-    const targetUsername = (args[0] || '').toLowerCase().replace(/^@/, '');
+    // "@bob," typed mid-sentence still names bob, as the processor trims command names
+    const targetUsername = (args[0] || '').toLowerCase().replace(/^@/, '').replace(TRAILING_PUNCTUATION_REGEX, '');
     if (!targetUsername) {
         await sendLocalized(channel, 'cmd.so.Usage', {}, 'Usage: !so <username>');
+        return;
+    }
+    if (targetUsername === channelName) {
+        await sendLocalized(channel, 'cmd.so.OwnChannel', {}, `You can't shout out the channel you're in!`);
+        return;
+    }
+    // Helix rejects a malformed login with a 400 that getUsersByLogin reports as no users
+    if (!TWITCH_LOGIN_REGEX.test(targetUsername)) {
+        await sendLocalized(channel, 'cmd.so.UserNotFound', { targetUsername }, `User "${targetUsername}" not found.`);
         return;
     }
 
@@ -32,12 +44,6 @@ async function execute(context) {
         const target = users[0];
         const targetDisplayName = target.display_name || target.login;
         const url = `https://twitch.tv/${target.login}`;
-
-        const broadcasterId = await getContextManager().getBroadcasterId(channelName);
-        if (broadcasterId && target.id === broadcasterId) {
-            await sendLocalized(channel, 'cmd.so.OwnChannel', {}, `You can't shout out the channel you're in!`);
-            return;
-        }
 
         const [streams, channelInfo] = await Promise.all([
             getLiveStreams([target.id]),

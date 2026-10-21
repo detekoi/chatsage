@@ -134,13 +134,26 @@ describe('chatClient.sendShoutout', () => {
         expect(helixSendShoutout).toHaveBeenCalledTimes(2);
     });
 
-    test('evicts an expired bot token before falling back', async () => {
+    test('retries once with a refreshed bot token after an expired one', async () => {
+        getBotAccessToken.mockResolvedValueOnce('expired-token').mockResolvedValueOnce('fresh-token');
         helixSendShoutout.mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' });
+
+        await expect(sendShoutout('#zeebthewerebear', TARGET_ID)).resolves.toEqual({ success: true, status: undefined });
+
+        expect(clearCachedBotToken).toHaveBeenCalledTimes(1);
+        expect(helixSendShoutout).toHaveBeenLastCalledWith(BROADCASTER_ID, TARGET_ID, BOT_ID, 'fresh-token');
+        expect(getBroadcasterAccessToken).not.toHaveBeenCalled();
+    });
+
+    test('falls back to the broadcaster when the refreshed bot token also fails', async () => {
+        helixSendShoutout
+            .mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' })
+            .mockResolvedValueOnce({ success: false, status: 401, message: 'Invalid OAuth token' });
 
         await sendShoutout('#zeebthewerebear', TARGET_ID);
 
-        expect(clearCachedBotToken).toHaveBeenCalled();
-        expect(helixSendShoutout).toHaveBeenCalledTimes(2);
+        expect(helixSendShoutout).toHaveBeenCalledTimes(3);
+        expect(helixSendShoutout).toHaveBeenLastCalledWith(BROADCASTER_ID, TARGET_ID, BROADCASTER_ID, 'broadcaster-token');
     });
 
     test.each([400, 429])('does not retry with the broadcaster token on %i', async (status) => {

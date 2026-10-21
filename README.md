@@ -173,7 +173,7 @@ To set up the bot's user token:
    - For local development, set `TWITCH_BOT_REFRESH_TOKEN` in your `.env` file.
    - For production, add the refresh token as a new version of the `TWITCH_BOT_REFRESH_TOKEN` secret in Google Secret Manager. The deploy workflow mounts that secret as the `TWITCH_BOT_REFRESH_TOKEN` environment variable. Grant the `Secret Manager Secret Accessor` IAM role to the service account that runs WildcatSage.
 
-4. **Make the bot a moderator** in each channel where it sends announcements and Shoutouts. In a channel where the bot is not a moderator, WildcatSage sends them with the token of the broadcaster. Chat then shows the broadcaster as the sender.
+4. **Make the bot a moderator** in each channel where it sends announcements and Shoutouts. In a channel where the bot is not a moderator, WildcatSage sends them with the token of the broadcaster. Chat then shows the broadcaster as the sender. For a Shoutout, the token of the broadcaster also needs the `moderator:manage:shoutouts` scope. If the broadcaster signed in to the dashboard before WildcatSage requested that scope, the broadcaster must sign in again.
 
 When the bot's access token expires, WildcatSage requests a new one with the refresh token. If the refresh token becomes invalid, run `scripts/get-user-token.js` again and add a new secret version.
 

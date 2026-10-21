@@ -18,7 +18,6 @@ import { getContextManager } from '../../../../../src/components/context/context
 import { getUsersByLogin, getChannelInformation, getLiveStreams } from '../../../../../src/components/twitch/helixClient.js';
 import { sendShoutout } from '../../../../../src/components/twitch/chatClient.js';
 
-const BROADCASTER_ID = '1000';
 const TARGET = { id: '2000', login: 'idzuna', display_name: 'Idzuna' };
 
 describe('So Command Handler', () => {
@@ -34,10 +33,7 @@ describe('So Command Handler', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         enqueueMessage.mockResolvedValue();
-        getContextManager.mockReturnValue({
-            getBotLanguage: () => null,
-            getBroadcasterId: jest.fn().mockResolvedValue(BROADCASTER_ID),
-        });
+        getContextManager.mockReturnValue({ getBotLanguage: () => null });
         getUsersByLogin.mockResolvedValue([TARGET]);
         getLiveStreams.mockResolvedValue([]);
         getChannelInformation.mockResolvedValue([{ broadcaster_id: TARGET.id, game_name: 'Hollow Knight' }]);
@@ -109,13 +105,26 @@ describe('So Command Handler', () => {
         expect(sendShoutout).not.toHaveBeenCalled();
     });
 
-    test('refuses to shout out the channel itself', async () => {
-        getUsersByLogin.mockResolvedValue([{ id: BROADCASTER_ID, login: 'testchannel', display_name: 'TestChannel' }]);
-
-        await soHandler.execute(createMockContext(['testchannel']));
+    test('refuses to shout out the channel itself without a lookup', async () => {
+        await soHandler.execute(createMockContext(['@TestChannel']));
 
         expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', "You can't shout out the channel you're in!");
+        expect(getUsersByLogin).not.toHaveBeenCalled();
         expect(sendShoutout).not.toHaveBeenCalled();
+    });
+
+    test('ignores punctuation after the username', async () => {
+        await soHandler.execute(createMockContext(['@idzuna,']));
+
+        expect(getUsersByLogin).toHaveBeenCalledWith(['idzuna']);
+        expect(sendShoutout).toHaveBeenCalledWith('testchannel', TARGET.id);
+    });
+
+    test('reports a name that cannot be a Twitch login without a lookup', async () => {
+        await soHandler.execute(createMockContext(['not-a-login']));
+
+        expect(enqueueMessage).toHaveBeenCalledWith('#testchannel', 'User "not-a-login" not found.');
+        expect(getUsersByLogin).not.toHaveBeenCalled();
     });
 
     test('apologizes when a lookup throws', async () => {
