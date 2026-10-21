@@ -7,6 +7,7 @@ import {
     initializeCommandStateManager,
     shutdownCommandStateManager,
     isCommandDisabled,
+    getCommandOptions,
     disableCommandForChannel,
     enableCommandForChannel,
     getDisabledCommandsForChannel,
@@ -366,6 +367,30 @@ describe('commandStateManager', () => {
             const result = isValidCommand('sage', mockCommandHandlers);
 
             expect(result).toBe(true);
+        });
+    });
+
+    describe('getCommandOptions', () => {
+        it('returns cached command options from initial load and listener updates', async () => {
+            let changeCallback;
+            channelCommandsStorage.listenForCommandSettingsChanges.mockImplementation((cb) => {
+                changeCallback = cb;
+                return jest.fn();
+            });
+            const initialSet = new Set();
+            initialSet.commandOptions = { so: { aiMessage: false } };
+            channelCommandsStorage.loadAllChannelCommandSettings.mockResolvedValue(
+                new Map([['testchannel', initialSet]])
+            );
+
+            await initializeCommandStateManager();
+
+            expect(getCommandOptions('testchannel', 'so')).toEqual({ aiMessage: false });
+            expect(getCommandOptions('testchannel', 'shoutout')).toEqual({ aiMessage: false });
+            expect(getCommandOptions('otherchannel', 'so')).toEqual({});
+
+            changeCallback('testchannel', new Set(), { so: { twitchShoutout: false } });
+            expect(getCommandOptions('testchannel', 'so')).toEqual({ twitchShoutout: false });
         });
     });
 });

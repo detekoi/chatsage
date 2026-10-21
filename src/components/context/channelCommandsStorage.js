@@ -38,10 +38,24 @@ function _channelDocRef(channelName) {
     return _getDb().collection(CHANNEL_COMMANDS_COLLECTION).doc(channelDocKey(channelName));
 }
 
+function _extractCommandOptions(data) {
+    const raw = data?.commandOptions;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return {};
+    }
+    const cleaned = {};
+    for (const [cmd, opts] of Object.entries(raw)) {
+        if (opts && typeof opts === 'object' && !Array.isArray(opts)) {
+            cleaned[cmd.toLowerCase()] = opts;
+        }
+    }
+    return cleaned;
+}
+
 /**
  * Loads the options that the dashboard stores for one built-in command, for
- * example the !so switches. A command with no stored options gets {}, and the
- * handler applies its own defaults.
+ * example the !so switches. A command with no stored options or a failed read
+ * gets {}, and the handler applies its own defaults.
  * @param {string} channelName - The channel name.
  * @param {string} commandName - The primary command name.
  * @returns {Promise<object>} The stored options.
@@ -50,10 +64,10 @@ export async function getCommandOptions(channelName, commandName) {
     try {
         const docSnap = await _channelDocRef(channelName).get();
         const options = docSnap.exists ? docSnap.data()?.commandOptions?.[commandName] : null;
-        return options && typeof options === 'object' ? options : {};
+        return options && typeof options === 'object' && !Array.isArray(options) ? options : {};
     } catch (error) {
-        logger.error({ err: error, channel: channelName, command: commandName }, '[ChannelCommandsStorage] Error loading command options');
-        throw new ChannelCommandsStorageError(`Failed to load options for ${commandName} in ${channelName}`, error);
+        logger.warn({ err: error, channel: channelName, command: commandName }, '[ChannelCommandsStorage] Could not load command options; using defaults');
+        return {};
     }
 }
 
@@ -162,6 +176,7 @@ export async function loadAllChannelCommandSettings() {
                 return;
             }
             const disabledCommands = new Set(data.disabledCommands || []);
+            disabledCommands.commandOptions = _extractCommandOptions(data);
             channelSettings.set(channelName, disabledCommands);
         });
         
@@ -195,10 +210,14 @@ export function listenForCommandSettingsChanges(onChangeCallback) {
                     const disabledCommands = change.type === 'removed'
                         ? new Set()
                         : new Set(channelData?.disabledCommands || []);
+                    const commandOptions = change.type === 'removed'
+                        ? {}
+                        : _extractCommandOptions(channelData);
+                    disabledCommands.commandOptions = commandOptions;
                     
                     logger.debug(`[ChannelCommandsStorage] Command settings changed for channel ${channelName}, disabled commands: [${Array.from(disabledCommands).join(', ')}]`);
                     try {
-                        onChangeCallback(channelName, disabledCommands);
+                        onChangeCallback(channelName, disabledCommands, commandOptions);
                     } catch (err) {
                         logger.error({ err, channelName }, '[ChannelCommandsStorage] Command settings change callback failed');
                     }

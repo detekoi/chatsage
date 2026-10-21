@@ -1,6 +1,7 @@
 // tests/unit/components/context/channelCommandsStorage.test.js
-import { getCommandOptions, ChannelCommandsStorageError } from '../../../../src/components/context/channelCommandsStorage.js';
+import { getCommandOptions } from '../../../../src/components/context/channelCommandsStorage.js';
 import { getFirestore } from '../../../../src/lib/firestore.js';
+import logger from '../../../../src/lib/logger.js';
 
 jest.mock('../../../../src/lib/logger.js', () => ({
     __esModule: true,
@@ -21,6 +22,10 @@ jest.mock('../../../../src/lib/allowList.js', () => ({
 describe('getCommandOptions', () => {
     let get;
     let doc;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
 
     const mockDoc = (snap) => {
         get = jest.fn().mockResolvedValue(snap);
@@ -45,10 +50,12 @@ describe('getCommandOptions', () => {
         await expect(getCommandOptions('testchannel', 'so')).resolves.toEqual({});
     });
 
-    test('throws a storage error when Firestore fails', async () => {
+    test('logs at warn and returns {} when Firestore fails', async () => {
         get = jest.fn().mockRejectedValue(new Error('unavailable'));
         getFirestore.mockReturnValue({ collection: jest.fn(() => ({ doc: jest.fn(() => ({ get })) })) });
 
-        await expect(getCommandOptions('testchannel', 'so')).rejects.toBeInstanceOf(ChannelCommandsStorageError);
+        await expect(getCommandOptions('testchannel', 'so')).resolves.toEqual({});
+        expect(logger.warn).toHaveBeenCalledTimes(1);
+        expect(logger.error).not.toHaveBeenCalled();
     });
 });
