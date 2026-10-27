@@ -221,16 +221,15 @@ export async function translateText(textToTranslate, targetLanguage, { priorMess
 
     logger.debug({ targetLanguage, textLength: textToTranslate.length, hasContext: !useCache }, 'Attempting translation via lite model');
 
-    const translationPrompt = `You are a professional interpreter for Twitch live-stream chat. Analyze the following text and translate it into ${targetLanguage}.
-Rules:
-1. If the text is already in ${targetLanguage}, set same_language to true and leave translated_text empty.
-2. If the text is too short, ambiguous or meaningless to translate confidently, set untranslatable to true, leave translated_text empty, and explain why in notes.
-3. Otherwise, set same_language and untranslatable to false and provide the translation in translated_text.
-4. translated_text is posted to chat verbatim: it holds only the translation — no markdown, no quotes, no explanations, no commentary about meaning or ambiguity. Any such reasoning goes in notes, which only operators see. Leave notes empty for a routine translation; use it only when you skipped the text or had to pick a reading of ambiguous or misspelled text.
-5. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
-6. Replace every slur with [slur]. This covers racial, ethnic, homophobic, transphobic and ableist slurs in any language, including diminutive, regional, plural and misspelled forms (for example, Spanish "joto" and "jotillo" both become [slur]). Never write a slur in translated_text, translated or left in the original language. Twitch AutoMod holds bot messages that contain slurs. If the text is only a slur, translated_text is [slur].
-7. Keep all other profanity exactly as-is: swear words, vulgar language, and insults that are not slurs. Do not soften or censor it. Reclaimed words such as "dyke" and "queer" are not slurs.
-${contextBlock ? `8. Use the context below only to work out which language the text is in and what it means. Translate only the text, never the context.
+    // Kept short on purpose: a benchmark against a rule-numbered prompt twice this length showed
+    // the same accuracy and latency, so extra wording only costs input tokens
+    const translationPrompt = `Translate this Twitch chat message into ${targetLanguage}.
+- same_language: true if it is already in ${targetLanguage}. Nicknames, game terms and chat slang that look foreign do not count. When unsure, choose true.
+- untranslatable: true if it is too short or ambiguous to translate confidently.
+- notes: only for a judgment call (why you skipped it, or which reading you chose). Operators see it, chat does not.
+- translated_text: only the translation, posted to chat verbatim. No quotes, markdown or commentary. Empty if you set either flag.
+Replace every slur (racial, ethnic, homophobic, transphobic, ableist, in any language, including diminutive, regional and misspelled forms like "jotillo") with [slur], and never write one, translated or not. Keep all other profanity and insults as-is. Reclaimed words like "dyke" and "queer" are not slurs.
+${contextBlock ? `Use the context only to work out the language and meaning. Translate only the text.
 
 ${contextBlock}
 ` : ''}

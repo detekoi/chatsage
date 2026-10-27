@@ -201,7 +201,7 @@ describe('translationUtils', () => {
 
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('Twitch');
-            expect(prompt).toContain('nicknames');
+            expect(prompt).toContain('Nicknames');
             expect(prompt).toContain('game terms');
         });
 
@@ -234,7 +234,7 @@ describe('translationUtils', () => {
 
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('profanity');
-            expect(prompt).toContain('Replace every slur with [slur]');
+            expect(prompt).toMatch(/Replace every slur .* with \[slur\]/);
             expect(prompt).toContain('jotillo');
         });
 
@@ -322,7 +322,7 @@ describe('translationUtils', () => {
             expect(prompt).toContain('"salamat"');
             expect(prompt).toContain('reply to this message from Pedro');
             expect(prompt).toContain('"see you tomorrow"');
-            expect(prompt).toContain('Translate only the text, never the context');
+            expect(prompt).toContain('Use the context only to work out the language and meaning');
             expect(prompt.trim().endsWith('bai')).toBe(true);
         });
 
