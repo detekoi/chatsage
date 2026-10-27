@@ -1,5 +1,6 @@
 import logger from './logger.js';
 import { calculateStringSimilarity } from './stringUtils.js';
+import { maskSlurs } from './slurFilter.js';
 import { generateLiteContent } from '../components/llm/llmClient.js';
 import { withLlmCaller } from '../components/llm/llmRequestLog.js';
 import { TranslateCommandSchema, TranslationResponseSchema } from '../components/llm/schemaUtils.js';
@@ -227,8 +228,9 @@ Rules:
 3. Otherwise, set same_language and untranslatable to false and provide the translation in translated_text.
 4. translated_text is posted to chat verbatim: it holds only the translation — no markdown, no quotes, no explanations, no commentary about meaning or ambiguity. Any such reasoning goes in notes, which only operators see. Leave notes empty for a routine translation; use it only when you skipped the text or had to pick a reading of ambiguous or misspelled text.
 5. Chat messages often contain nicknames, game terms, and slang that may resemble foreign words — these are not indicators of a different language. When in doubt, prefer same_language = true.
-6. Preserve all profanity exactly as-is in translation (e.g. swear words, vulgar language). Only replace extreme slurs (racial or homophobic slurs) with a bracketed placeholder like [slur].
-${contextBlock ? `7. Use the context below only to work out which language the text is in and what it means. Translate only the text, never the context.
+6. Replace every slur with [slur]. This covers racial, ethnic, homophobic, transphobic and ableist slurs in any language, including diminutive, regional, plural and misspelled forms (for example, Spanish "joto" and "jotillo" both become [slur]). Never write a slur in translated_text, translated or left in the original language. Twitch AutoMod holds bot messages that contain slurs. If the text is only a slur, translated_text is [slur].
+7. Keep all other profanity exactly as-is: swear words, vulgar language, and insults that are not slurs. Do not soften or censor it. Reclaimed words such as "dyke" and "queer" are not slurs.
+${contextBlock ? `8. Use the context below only to work out which language the text is in and what it means. Translate only the text, never the context.
 
 ${contextBlock}
 ` : ''}
@@ -301,7 +303,8 @@ ${textToTranslate}`;
 
     // Similarity safeguard: if the "translation" is nearly identical to the input, treat as same language.
     // Edit distance rather than a per-position match, so an inserted or fixed character doesn't misalign the rest.
-    const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Unicode-aware, so non-Latin text isn't stripped down to its digits (or to nothing)
+    const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
     const normOriginal = normalize(textToTranslate);
     const normTranslated = normalize(cleanedText);
     if (normOriginal.length > 0 && normTranslated.length > 0) {
@@ -311,6 +314,13 @@ ${textToTranslate}`;
                 'Translation too similar to original, treating as same language.');
             return SAME_LANGUAGE;
         }
+    }
+
+    // The prompt asks the model to replace slurs, but the bot posts this text, so don't rely on it
+    const masked = maskSlurs(cleanedText);
+    if (masked.replaced > 0) {
+        logger.warn({ targetLanguage, replaced: masked.replaced }, '[Translate] Masked slurs the model left in the translation.');
+        cleanedText = masked.text;
     }
 
     // Cache the successful translation

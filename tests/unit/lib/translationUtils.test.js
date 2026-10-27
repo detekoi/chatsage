@@ -205,6 +205,26 @@ describe('translationUtils', () => {
             expect(prompt).toContain('game terms');
         });
 
+        it('should keep a non-Latin translation that shares only digits with the input', async () => {
+            generateLiteContent.mockResolvedValue(
+                createStructuredResponse(false, '100 円')
+            );
+
+            const result = await translateText('100 рублей', 'Japanese');
+
+            expect(result).toBe('100 円');
+        });
+
+        it('should treat an echoed non-Latin message as same language', async () => {
+            generateLiteContent.mockResolvedValue(
+                createStructuredResponse(false, 'привет всем')
+            );
+
+            const result = await translateText('Привет всем!', 'English');
+
+            expect(result).toBe(SAME_LANGUAGE);
+        });
+
         it('should preserve profanity but sanitize extreme slurs', async () => {
             generateLiteContent.mockResolvedValue(
                 createStructuredResponse(true, '')
@@ -214,7 +234,44 @@ describe('translationUtils', () => {
 
             const prompt = generateLiteContent.mock.calls[0][0];
             expect(prompt).toContain('profanity');
-            expect(prompt).toContain('slur');
+            expect(prompt).toContain('Replace every slur with [slur]');
+            expect(prompt).toContain('jotillo');
+        });
+
+        it('should mask a slur the model translated literally', async () => {
+            generateLiteContent.mockResolvedValue(
+                createStructuredResponse(false, 'faggot')
+            );
+
+            const result = await translateText('jotillo', 'English');
+
+            expect(result).toBe('[slur]');
+            expect(logger.warn).toHaveBeenCalledWith(
+                expect.objectContaining({ replaced: 1 }),
+                '[Translate] Masked slurs the model left in the translation.'
+            );
+        });
+
+        it('should keep profanity while masking a slur in the same translation', async () => {
+            generateLiteContent.mockResolvedValue(
+                createStructuredResponse(false, 'shut the fuck up, you maricón')
+            );
+
+            const result = await translateText('shut the fuck up, you faggot', 'Spanish');
+
+            expect(result).toBe('shut the fuck up, you [slur]');
+        });
+
+        it('should cache the masked translation, not the raw one', async () => {
+            generateLiteContent.mockResolvedValue(
+                createStructuredResponse(false, 'you faggot')
+            );
+
+            await translateText('tu jotillo', 'English');
+            const cached = await translateText('tu jotillo', 'English');
+
+            expect(cached).toBe('you [slur]');
+            expect(generateLiteContent).toHaveBeenCalledTimes(1);
         });
     });
 
