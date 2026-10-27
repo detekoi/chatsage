@@ -343,6 +343,7 @@ const riddleStorage = new RiddleStorage();
 const initializeRiddleStorage = () => riddleStorage.initializeStorage();
 const loadChannelRiddleConfig = (channelName) => riddleStorage.loadChannelConfig(channelName);
 const saveChannelRiddleConfig = (channelName, config) => riddleStorage.saveChannelConfig(channelName, config);
+const listenForRiddleConfigChanges = (onChange) => riddleStorage.listenForConfigChanges(onChange);
 const updatePlayerScore = (userId, login, channelName, points, displayName) => riddleStorage.updatePlayerScore(userId, login, channelName, points, displayName);
 const getLeaderboard = (channelName, limit) => riddleStorage.getLeaderboard(channelName, limit);
 const clearLeaderboardData = (channelName) => riddleStorage.clearChannelLeaderboardData(channelName);
@@ -359,6 +360,7 @@ export {
     initializeRiddleStorage,
     loadChannelRiddleConfig,
     saveChannelRiddleConfig,
+    listenForRiddleConfigChanges,
     updatePlayerScore,
     getLeaderboard,
     clearLeaderboardData,

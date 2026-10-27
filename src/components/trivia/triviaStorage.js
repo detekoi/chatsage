@@ -269,6 +269,7 @@ const triviaStorage = new TriviaStorage();
 const initializeStorage = () => triviaStorage.initializeStorage();
 const loadChannelConfig = (channelName) => triviaStorage.loadChannelConfig(channelName);
 const saveChannelConfig = (channelName, config) => triviaStorage.saveChannelConfig(channelName, config);
+const listenForConfigChanges = (onChange) => triviaStorage.listenForConfigChanges(onChange);
 const recordGameResult = (gameDetails) => triviaStorage.recordGameResult(gameDetails);
 const reportProblemQuestion = (questionText, reason) => triviaStorage.reportProblemQuestion(questionText, reason);
 const updatePlayerScore = (userId, login, channelName, points, displayName) => triviaStorage.updatePlayerScore(userId, login, channelName, points, displayName);
@@ -284,6 +285,7 @@ export {
     StorageError,
     loadChannelConfig,
     saveChannelConfig,
+    listenForConfigChanges,
     recordGameResult,
     reportProblemQuestion,
     updatePlayerScore,

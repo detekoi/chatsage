@@ -5,7 +5,7 @@ import { translateText } from '../../../../src/lib/translationUtils.js';
 import { validateGuess, selectLocation } from '../../../../src/components/geo/geoLocationService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
-import { updatePlayerScore, recordGameResult } from '../../../../src/components/geo/geoStorage.js';
+import { updatePlayerScore, recordGameResult, loadChannelConfig } from '../../../../src/components/geo/geoStorage.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -309,5 +309,49 @@ describe('GeoGameManager - guess ordering', () => {
             winnerUserId: '12345',
         }));
         expect(gameState.streakMap.get('12345')).toBe(1);
+    });
+});
+
+describe('GeoGameManager - stored config', () => {
+    const channelName = 'geoconfigchannel';
+    let geoGameManager;
+
+    beforeEach(async () => {
+        jest.clearAllMocks();
+        geoGameManager = getGeoGameManager();
+        activeGames.clear();
+        await geoGameManager.initialize();
+    });
+
+    test('pickPreferredGameTitle returns one of the stored game titles', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ gameTitlePreferences: ['Elden Ring', 'Skyrim'] });
+
+        const title = await geoGameManager.pickPreferredGameTitle(channelName);
+
+        expect(['Elden Ring', 'Skyrim']).toContain(title);
+    });
+
+    test('pickPreferredGameTitle returns null when no titles are stored', async () => {
+        await expect(geoGameManager.pickPreferredGameTitle(channelName)).resolves.toBeNull();
+    });
+
+    test('applyExternalConfig replaces the cached config, merged with the defaults', async () => {
+        await geoGameManager.pickPreferredGameTitle(channelName); // creates the cached state
+
+        geoGameManager.applyExternalConfig(channelName, { clueIntervalSeconds: 90, gameTitlePreferences: ['Zelda'] });
+
+        const { config } = activeGames.get(channelName);
+        expect(config.clueIntervalSeconds).toBe(90);
+        expect(config.pointsBase).toBe(15);
+        await expect(geoGameManager.pickPreferredGameTitle(channelName)).resolves.toBe('Zelda');
+    });
+
+    test('applyExternalConfig with null restores the defaults', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ pointsBase: 50 });
+        await geoGameManager.pickPreferredGameTitle(channelName);
+
+        geoGameManager.applyExternalConfig(channelName, null);
+
+        expect(activeGames.get(channelName).config.pointsBase).toBe(15);
     });
 });

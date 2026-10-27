@@ -372,6 +372,21 @@ describe('Trivia Command Handler', () => {
             );
         });
 
+        test('should accept the documented points key names', async () => {
+            const context = createMockContext(
+                ['config', 'pointsbase', '25', 'pointstimebonus', 'false', 'pointsdifficultymultiplier', 'true'],
+                '#testchannel',
+                { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '1' }
+            );
+
+            await triviaHandler.execute(context);
+
+            expect(mockTriviaManager.configureGame).toHaveBeenCalledWith(
+                'testchannel',
+                { pointsBase: 25, pointsTimeBonus: false, pointsDifficultyMultiplier: true }
+            );
+        });
+
         test('should reject configuration from non-mod', async () => {
             const context = createMockContext(['config', 'difficulty', 'hard']);
 

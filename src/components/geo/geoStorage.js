@@ -134,6 +134,7 @@ const geoStorage = new GeoStorage();
 const initializeStorage = () => geoStorage.initializeStorage();
 const loadChannelConfig = (channelName) => geoStorage.loadChannelConfig(channelName);
 const saveChannelConfig = (channelName, config) => geoStorage.saveChannelConfig(channelName, config);
+const listenForConfigChanges = (onChange) => geoStorage.listenForConfigChanges(onChange);
 const recordGameResult = (gameDetails) => geoStorage.recordGameResult(gameDetails);
 const updatePlayerScore = (userId, login, channelName, points, displayName) => geoStorage.updatePlayerScore(userId, login, channelName, points, displayName);
 const getLeaderboard = (channelName, limit) => geoStorage.getLeaderboard(channelName, limit);
@@ -148,6 +149,7 @@ export {
     StorageError,
     loadChannelConfig,
     saveChannelConfig,
+    listenForConfigChanges,
     recordGameResult,
     updatePlayerScore,
     getLeaderboard,

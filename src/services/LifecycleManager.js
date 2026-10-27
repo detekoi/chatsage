@@ -9,6 +9,12 @@ import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
 import { onPersonaChanges } from '../components/context/personaStorage.js';
 import { onChannelLanguageChanges } from '../components/context/languageStorage.js';
+import { listenForConfigChanges as listenForTriviaConfigChanges } from '../components/trivia/triviaStorage.js';
+import { listenForConfigChanges as listenForGeoConfigChanges } from '../components/geo/geoStorage.js';
+import { listenForRiddleConfigChanges } from '../components/riddle/riddleStorage.js';
+import { getTriviaGameManager } from '../components/trivia/triviaGameManager.js';
+import { getGeoGameManager } from '../components/geo/geoGameManager.js';
+import { getRiddleGameManager } from '../components/riddle/riddleGameManager.js';
 import { resetChatSession } from '../components/llm/llmClient.js';
 import { getActiveChannels, getChannelNameForBroadcasterId } from '../lib/allowList.js';
 import * as sharedChatManager from '../components/twitch/sharedChatManager.js';
@@ -24,6 +30,7 @@ class LifecycleManager {
         this.channelChangeListener = null;
         this.personaChangeListener = null;
         this.languageChangeListener = null;
+        this.gameConfigListeners = [];
         this.ownershipListener = null;
         this._instance = null;
     }
@@ -139,6 +146,19 @@ class LifecycleManager {
                 logger.info({ channelName, language: language ?? null }, 'LifecycleManager: Bot language changed, chat session reset');
             });
 
+            // 7. Setup Firestore Listeners for game config changes. Each game manager
+            // caches a channel's config from its first game on, and the dashboard
+            // writes Firestore and nothing else.
+            logger.info('LifecycleManager: Setting up Firestore game config listeners...');
+            this.gameConfigListeners = [
+                listenForTriviaConfigChanges((channelName, storedConfig) =>
+                    getTriviaGameManager().applyExternalConfig(channelName, storedConfig)),
+                listenForGeoConfigChanges((channelName, storedConfig) =>
+                    getGeoGameManager().applyExternalConfig(channelName, storedConfig)),
+                listenForRiddleConfigChanges((channelName, storedConfig) =>
+                    getRiddleGameManager().applyExternalConfig(channelName, storedConfig)),
+            ];
+
             this.isMonitoring = true;
             logger.info('LifecycleManager: Monitoring layer started successfully.');
 
@@ -161,6 +181,16 @@ class LifecycleManager {
         }
 
         logger.info('LifecycleManager: Stopping monitoring layer...');
+
+        // 0. Unsubscribe Firestore game config listeners
+        for (const unsubscribe of this.gameConfigListeners || []) {
+            try {
+                unsubscribe();
+            } catch (err) {
+                logger.error({ err }, 'LifecycleManager: Error unsubscribing game config listener');
+            }
+        }
+        this.gameConfigListeners = [];
 
         // 1. Unsubscribe Firestore language listener
         if (typeof this.languageChangeListener === 'function') {

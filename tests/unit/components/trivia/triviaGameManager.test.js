@@ -5,6 +5,7 @@ import { verifyAnswer } from '../../../../src/components/trivia/triviaQuestionSe
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 import { getTriviaGameManager, activeGames } from '../../../../src/components/trivia/triviaGameManager.js';
+import { loadChannelConfig } from '../../../../src/components/trivia/triviaStorage.js';
 
 // Mock dependencies
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -229,5 +230,74 @@ describe('TriviaGameManager - _handleAnswer (via processPotentialAnswer)', () =>
         triviaGameManager.processPotentialAnswer('testtriviachannel', 'id-userTriviaSpam', 'userTriviaSpam', 'UserTriviaSpam', userAnswer2);
         await new Promise(process.nextTick);
         expect(verifyAnswer).toHaveBeenCalledTimes(2); // Hit cache instead of verifyAnswer
+    });
+});
+
+describe('TriviaGameManager - stored config', () => {
+    const channelName = 'triviaconfigchannel';
+    let triviaGameManager;
+    let generateQuestionSpy;
+
+    beforeEach(async () => {
+        jest.clearAllMocks();
+        triviaGameManager = getTriviaGameManager();
+        await triviaGameManager.initialize();
+        getContextManager.mockReturnValue({ getBotLanguage: jest.fn().mockReturnValue('english') });
+        const triviaQuestionService = require('../../../../src/components/trivia/triviaQuestionService.js');
+        generateQuestionSpy = jest.spyOn(triviaQuestionService, 'generateQuestion').mockResolvedValue({
+            question: 'Q?', answer: 'A', alternateAnswers: [], explanation: '', difficulty: 'normal', topic: 'x',
+        });
+    });
+
+    afterEach(() => {
+        const state = activeGames.get(channelName);
+        if (state && state.state !== 'idle') triviaGameManager.stopGame(channelName);
+        activeGames.delete(channelName);
+    });
+
+    test('applyExternalConfig replaces the cached config, merged with the defaults', async () => {
+        await triviaGameManager.startGame(channelName, 'space', 'tester', 1);
+        triviaGameManager.stopGame(channelName);
+
+        triviaGameManager.applyExternalConfig(channelName, { difficulty: 'hard', pointsBase: 42 });
+
+        const { config } = activeGames.get(channelName);
+        expect(config.difficulty).toBe('hard');
+        expect(config.pointsBase).toBe(42);
+        expect(config.questionTimeSeconds).toBe(45);
+    });
+
+    test('applyExternalConfig with null restores the defaults', async () => {
+        await triviaGameManager.startGame(channelName, 'space', 'tester', 1);
+        triviaGameManager.stopGame(channelName);
+        activeGames.get(channelName).config.pointsBase = 99;
+
+        triviaGameManager.applyExternalConfig(channelName, null);
+
+        expect(activeGames.get(channelName).config.pointsBase).toBe(10);
+    });
+
+    test('applyExternalConfig does nothing for a channel with no cached state', () => {
+        triviaGameManager.applyExternalConfig(channelName, { difficulty: 'hard' });
+
+        expect(activeGames.has(channelName)).toBe(false);
+    });
+
+    test('a game started without a topic uses a preferred topic', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ topicPreferences: ['Pokemon'] });
+
+        await triviaGameManager.startGame(channelName, null, 'tester', 1);
+
+        expect(generateQuestionSpy).toHaveBeenCalled();
+        expect(generateQuestionSpy.mock.calls[0][0]).toBe('Pokemon');
+    });
+
+    test('a topic given in chat wins over the preferred topics', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ topicPreferences: ['Pokemon'] });
+
+        await triviaGameManager.startGame(channelName, 'history', 'tester', 1);
+
+        expect(generateQuestionSpy).toHaveBeenCalled();
+        expect(generateQuestionSpy.mock.calls[0][0]).toBe('history');
     });
 });

@@ -1401,6 +1401,43 @@ async function finalizeReportWithRoundNumber(channelName, username, roundNumberS
 }
 
 /**
+ * Picks one entry at random from a list of channel preferences.
+ * @param {string[]|undefined} preferences
+ * @returns {string|null} The entry, or null when the list is empty.
+ */
+function _pickPreference(preferences) {
+    const options = Array.isArray(preferences)
+        ? preferences.filter(p => typeof p === 'string' && p.trim() !== '')
+        : [];
+    if (options.length === 0) return null;
+    return options[Math.floor(Math.random() * options.length)].trim();
+}
+
+/**
+ * Picks one of the channel's preferred game titles for `!geo game` with no title.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {Promise<string|null>} A title, or null when the channel has none.
+ */
+async function pickPreferredGameTitle(channelName) {
+    const gameState = await _getOrCreateGameState(channelName);
+    return _pickPreference(gameState.config.gameTitlePreferences);
+}
+
+/**
+ * Replaces a channel's cached config with the one stored in Firestore. The
+ * config listener calls this when the dashboard writes the config. A channel
+ * with no cached state loads the stored config at its next game.
+ * @param {string} channelName - Channel name (without #).
+ * @param {object|null} storedConfig - The stored doc, or null when it was deleted.
+ */
+function applyExternalConfig(channelName, storedConfig) {
+    const gameState = activeGames.get(channelName);
+    if (!gameState) return;
+    gameState.config = { ...DEFAULT_CONFIG, ...(storedConfig || {}) };
+    logger.debug(`[GeoGame][${channelName}] Applied stored config from Firestore.`);
+}
+
+/**
  * Gets the singleton GeoGame Manager instance/interface.
  */
 function getGeoGameManager() {
@@ -1416,7 +1453,9 @@ function getGeoGameManager() {
         clearLeaderboard,
         getLastPlayedLocation,
         initiateReportProcess,
-        finalizeReportWithRoundNumber
+        finalizeReportWithRoundNumber,
+        pickPreferredGameTitle,
+        applyExternalConfig
     };
 }
 

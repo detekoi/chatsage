@@ -9,10 +9,12 @@ const mockGet = jest.fn();
 const mockLimit = jest.fn(() => ({ get: mockGet }));
 const mockOrderBy = jest.fn(() => ({ limit: mockLimit }));
 const mockWhere = jest.fn(() => ({ limit: mockLimit }));
+const mockOnSnapshot = jest.fn(() => jest.fn());
 const mockCollection = jest.fn(() => ({
     doc: mockDoc,
     orderBy: mockOrderBy,
     where: mockWhere,
+    onSnapshot: mockOnSnapshot,
 }));
 
 const mockBatchUpdate = jest.fn();
@@ -37,6 +39,9 @@ jest.mock('../../../src/lib/channelKey.js', () => ({
         if (!ids[login]) throw new Error(`unresolved ${login}`);
         return ids[login];
     }),
+    channelNameForDocKey: jest.fn((docId, data) => (
+        ({ '987654': 'somechannel' })[docId] || data?.channelName || null
+    )),
     normalizeChannelName: jest.fn(name => String(name).toLowerCase().replace(/^#/, '')),
 }));
 
@@ -171,5 +176,61 @@ describe('BaseGameStorage player stats', () => {
             expect(playerLabel('1', {})).toBe('1');
             expect(playerLabel('1', undefined)).toBe('1');
         });
+    });
+});
+
+describe('BaseGameStorage listenForConfigChanges', () => {
+    let storage;
+    let onChange;
+    let emit;
+
+    function change(type, id, data) {
+        return { type, doc: { id, data: () => data } };
+    }
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        storage = new BaseGameStorage({
+            gameName: 'Test',
+            configCollection: 'testConfigs',
+            statsCollection: 'testPlayerStats',
+            historyCollection: 'testHistory',
+        });
+        onChange = jest.fn();
+        storage.listenForConfigChanges(onChange);
+        const [onNext] = mockOnSnapshot.mock.calls[0];
+        emit = (...changes) => onNext({ docChanges: () => changes });
+    });
+
+    it('listens on the config collection', () => {
+        expect(mockCollection).toHaveBeenCalledWith('testConfigs');
+        expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps the broadcaster-ID doc to the channel login and passes the stored config', () => {
+        emit(change('modified', '987654', { difficulty: 'hard' }));
+
+        expect(onChange).toHaveBeenCalledWith('somechannel', { difficulty: 'hard' });
+    });
+
+    it('reports a deleted doc as null', () => {
+        emit(change('removed', '987654', { difficulty: 'hard' }));
+
+        expect(onChange).toHaveBeenCalledWith('somechannel', null);
+    });
+
+    it('skips a doc that maps to no channel', () => {
+        emit(change('added', 'legacylogin', {}));
+
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('logs a failed callback and keeps going with the next change', () => {
+        onChange.mockImplementationOnce(() => { throw new Error('boom'); });
+
+        emit(change('modified', '987654', {}), change('added', '111', { channelName: 'other' }));
+
+        expect(logger.error).toHaveBeenCalled();
+        expect(onChange).toHaveBeenLastCalledWith('other', { channelName: 'other' });
     });
 });

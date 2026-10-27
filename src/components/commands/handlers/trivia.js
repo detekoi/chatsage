@@ -32,9 +32,9 @@ const TRIVIA_CONFIG_SCHEMA = [
     { keys: ['duration', 'roundduration', 'rounddurationminutes'], type: 'int', optionName: 'roundDurationMinutes' },
     { keys: ['topic', 'topics'], type: 'list', optionName: 'topicPreferences' },
     { keys: ['scoring', 'scoretracking'], type: 'bool', optionName: 'scoreTracking' },
-    { keys: ['points', 'basepoints'], type: 'int', optionName: 'pointsBase' },
-    { keys: ['timebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
-    { keys: ['difficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
+    { keys: ['points', 'basepoints', 'pointsbase'], type: 'int', optionName: 'pointsBase' },
+    { keys: ['timebonus', 'pointstimebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
+    { keys: ['difficultymultiplier', 'pointsdifficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
 ];
 
 const TRIVIA_CONFIG_USAGE = `Usage: !trivia config difficulty <easy|normal|hard> time <seconds> duration <minutes> topic <list> scoring <true|false> points <value> timebonus <true|false> difficultymultiplier <true|false>`;
