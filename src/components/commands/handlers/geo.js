@@ -32,9 +32,9 @@ const GEO_CONFIG_SCHEMA = [
     { keys: ['region', 'regions'], type: 'list', optionName: 'regionRestrictions' },
     { keys: ['game', 'gametitle'], type: 'list', optionName: 'gameTitlePreferences' },
     { keys: ['scoring', 'scoretracking'], type: 'bool', optionName: 'scoreTracking' },
-    { keys: ['points', 'basepoints'], type: 'int', optionName: 'pointsBase' },
-    { keys: ['timebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
-    { keys: ['difficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
+    { keys: ['points', 'basepoints', 'pointsbase'], type: 'int', optionName: 'pointsBase' },
+    { keys: ['timebonus', 'pointstimebonus'], type: 'bool', optionName: 'pointsTimeBonus' },
+    { keys: ['difficultymultiplier', 'pointsdifficultymultiplier'], type: 'bool', optionName: 'pointsDifficultyMultiplier' },
 ];
 
 const GEO_CONFIG_USAGE = `Usage: !geo config difficulty <easy|normal|hard> interval <secs> duration <mins> region <list> game <list> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>`;
@@ -99,8 +99,16 @@ const geoHandler = {
                 consumedArgsCount = args.length;
             }
 
+            // With no title, a channel's preferred game titles come before the stream's game.
+            const preferredTitle = potentialScopeParts.length > 0
+                ? null
+                : await geoManager.pickPreferredGameTitle(channelName);
+
             if (potentialScopeParts.length > 0) {
                 scope = potentialScopeParts.join(' '); // Specific game title provided
+            } else if (preferredTitle) {
+                scope = preferredTitle;
+                logger.info(`[GeoGame] Using a preferred game title for !geo game: ${scope}`);
             } else {
                 // No title parts, get title from stream context
                 try {

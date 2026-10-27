@@ -927,6 +927,20 @@ export async function clearLeaderboard(channelName) {
 
 
 /**
+ * Replaces a channel's cached config with the one stored in Firestore. The
+ * config listener calls this when the dashboard writes the config. A channel
+ * with no cached state loads the stored config at its next game.
+ * @param {string} channelName - Channel name (without #).
+ * @param {object|null} storedConfig - The stored doc, or null when it was deleted.
+ */
+export function applyExternalConfig(channelName, storedConfig) {
+    const gameState = activeGames.get(channelName);
+    if (!gameState) return;
+    gameState.config = { ...DEFAULT_RIDDLE_CONFIG, ...(storedConfig || {}) };
+    logger.debug(`[RiddleGameManager][${channelName}] Applied stored config from Firestore.`);
+}
+
+/**
  * Gets the singleton RiddleGameManager instance.
  */
 let riddleGameManagerInstance = null;
@@ -943,6 +957,7 @@ export function getRiddleGameManager() {
             clearLeaderboard,
             initiateReportProcess,
             finalizeReportWithRoundNumber,
+            applyExternalConfig,
         };
     }
     return riddleGameManagerInstance;

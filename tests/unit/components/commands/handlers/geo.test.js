@@ -35,7 +35,8 @@ describe('Geo Command Handler', () => {
             configureGame: jest.fn().mockResolvedValue({ message: 'Configuration updated' }),
             resetChannelConfig: jest.fn().mockResolvedValue({ message: 'Config reset' }),
             clearLeaderboard: jest.fn().mockResolvedValue({ message: 'Leaderboard cleared' }),
-            initiateReportProcess: jest.fn().mockResolvedValue({ success: true, message: 'Report initiated' })
+            initiateReportProcess: jest.fn().mockResolvedValue({ success: true, message: 'Report initiated' }),
+            pickPreferredGameTitle: jest.fn().mockResolvedValue(null)
         };
         getGeoGameManager.mockReturnValue(mockGeoManager);
 
@@ -108,6 +109,28 @@ describe('Geo Command Handler', () => {
                 'testuser',
                 1
             );
+        });
+
+        test('should prefer a configured game title over the stream game', async () => {
+            mockGeoManager.pickPreferredGameTitle.mockResolvedValue('Elden Ring');
+            const context = createMockContext(['game', '2']);
+            await geoHandler.execute(context);
+
+            expect(mockContextManager.getContextForLLM).not.toHaveBeenCalled();
+            expect(mockGeoManager.startGame).toHaveBeenCalledWith(
+                'testchannel',
+                'game',
+                'Elden Ring',
+                'testuser',
+                2
+            );
+        });
+
+        test('should not look up a preferred title when a title is given', async () => {
+            const context = createMockContext(['game', 'Minecraft']);
+            await geoHandler.execute(context);
+
+            expect(mockGeoManager.pickPreferredGameTitle).not.toHaveBeenCalled();
         });
 
         test('should start game mode with specified title', async () => {
@@ -247,6 +270,21 @@ describe('Geo Command Handler', () => {
             expect(mockGeoManager.configureGame).toHaveBeenCalledWith(
                 'testchannel',
                 { difficulty: 'hard' }
+            );
+        });
+
+        test('should accept the documented points key names', async () => {
+            const context = createMockContext(
+                ['config', 'pointsbase', '25', 'pointstimebonus', 'false', 'pointsdifficultymultiplier', 'true'],
+                '#testchannel',
+                { username: 'testuser', 'display-name': 'TestUser', id: '123', mod: '1' }
+            );
+
+            await geoHandler.execute(context);
+
+            expect(mockGeoManager.configureGame).toHaveBeenCalledWith(
+                'testchannel',
+                { pointsBase: 25, pointsTimeBonus: false, pointsDifficultyMultiplier: true }
             );
         });
 

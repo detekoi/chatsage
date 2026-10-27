@@ -5,7 +5,7 @@
 // and the per-channel map inside each one by broadcaster ID; the player's
 // current login and display name are stored as fields for display only.
 import { getFirestore, FieldValue } from './firestore.js';
-import { channelDocKey, normalizeChannelName } from './channelKey.js';
+import { channelDocKey, channelNameForDocKey, normalizeChannelName } from './channelKey.js';
 import logger from './logger.js';
 
 export class StorageError extends Error {
@@ -88,6 +88,34 @@ export class BaseGameStorage {
             logger.error({ err: error, channel: channelName }, `${this._tag()} Error saving config`);
             throw new StorageError(`Failed to save config for ${channelName}`, error);
         }
+    }
+
+    /**
+     * Listens for config docs written by anyone, the web dashboard included.
+     * The game managers cache a channel's config from its first game on, so
+     * without this a dashboard change would only apply after a restart.
+     * @param {Function} onChange - Called with (channelName, storedConfig). A
+     *   deleted doc reports `null`, which means "back to the defaults".
+     * @returns {Function} Unsubscribe function.
+     */
+    listenForConfigChanges(onChange) {
+        return this._getDb().collection(this.configCollection).onSnapshot(snapshot => {
+            snapshot.docChanges().forEach(change => {
+                const data = change.doc.data();
+                const channelName = channelNameForDocKey(change.doc.id, data);
+                if (!channelName) {
+                    logger.debug({ docId: change.doc.id }, `${this._tag()} Config listener saw a change for an unknown channel. Skipping.`);
+                    return;
+                }
+                try {
+                    onChange(channelName, change.type === 'removed' ? null : data);
+                } catch (err) {
+                    logger.error({ err, channel: channelName }, `${this._tag()} Config change callback failed`);
+                }
+            });
+        }, error => {
+            logger.error({ err: error }, `${this._tag()} Error in config listener`);
+        });
     }
 
     // ── Game History ───────────────────────────────────────────────────

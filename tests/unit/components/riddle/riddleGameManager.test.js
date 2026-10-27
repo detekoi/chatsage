@@ -239,3 +239,28 @@ describe('RiddleGameManager - answer ordering', () => {
         expect(fresh.processingQueue).toEqual([]);
     });
 });
+
+describe('RiddleGameManager - applyExternalConfig', () => {
+    const channelName = 'riddleconfigchannel';
+    const riddleGameManager = getRiddleGameManager();
+
+    afterEach(() => {
+        activeGames.delete(channelName);
+    });
+
+    test('replaces the cached config, merged with the defaults', () => {
+        activeGames.set(channelName, { channelName, state: 'idle', config: { maxRounds: 3 } });
+
+        riddleGameManager.applyExternalConfig(channelName, { questionTimeSeconds: 60 });
+
+        const { config } = activeGames.get(channelName);
+        expect(config.questionTimeSeconds).toBe(60);
+        expect(config.maxRounds).toBe(10);
+    });
+
+    test('does nothing for a channel with no cached state', () => {
+        riddleGameManager.applyExternalConfig(channelName, { questionTimeSeconds: 60 });
+
+        expect(activeGames.has(channelName)).toBe(false);
+    });
+});

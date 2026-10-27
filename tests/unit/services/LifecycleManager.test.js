@@ -7,6 +7,10 @@ import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../src/compon
 import { listenForChannelChanges } from '../../../src/components/twitch/channelManager.js';
 import { onPersonaChanges } from '../../../src/components/context/personaStorage.js';
 import { onChannelLanguageChanges } from '../../../src/components/context/languageStorage.js';
+import { listenForConfigChanges as listenForTriviaConfigChanges } from '../../../src/components/trivia/triviaStorage.js';
+import { listenForConfigChanges as listenForGeoConfigChanges } from '../../../src/components/geo/geoStorage.js';
+import { listenForRiddleConfigChanges } from '../../../src/components/riddle/riddleStorage.js';
+import { getTriviaGameManager } from '../../../src/components/trivia/triviaGameManager.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');
@@ -35,6 +39,25 @@ jest.mock('../../../src/components/context/personaStorage.js', () => ({
 }));
 jest.mock('../../../src/components/context/languageStorage.js', () => ({
     onChannelLanguageChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/trivia/triviaStorage.js', () => ({
+    listenForConfigChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/geo/geoStorage.js', () => ({
+    listenForConfigChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/riddle/riddleStorage.js', () => ({
+    listenForRiddleConfigChanges: jest.fn(() => jest.fn()),
+}));
+const mockTriviaApplyExternalConfig = jest.fn();
+jest.mock('../../../src/components/trivia/triviaGameManager.js', () => ({
+    getTriviaGameManager: jest.fn(() => ({ applyExternalConfig: mockTriviaApplyExternalConfig })),
+}));
+jest.mock('../../../src/components/geo/geoGameManager.js', () => ({
+    getGeoGameManager: jest.fn(() => ({ applyExternalConfig: jest.fn() })),
+}));
+jest.mock('../../../src/components/riddle/riddleGameManager.js', () => ({
+    getRiddleGameManager: jest.fn(() => ({ applyExternalConfig: jest.fn() })),
 }));
 jest.mock('../../../src/components/llm/llmClient.js', () => ({
     resetChatSession: jest.fn(),
@@ -84,6 +107,19 @@ describe('LifecycleManager', () => {
             expect(lifecycleManager.isMonitoring).toBe(true);
         });
 
+        test('should pass dashboard game config changes to the game managers', async () => {
+            await lifecycleManager.startMonitoring();
+
+            expect(listenForTriviaConfigChanges).toHaveBeenCalled();
+            expect(listenForGeoConfigChanges).toHaveBeenCalled();
+            expect(listenForRiddleConfigChanges).toHaveBeenCalled();
+
+            const onTriviaChange = listenForTriviaConfigChanges.mock.calls[0][0];
+            onTriviaChange('testchannel', { difficulty: 'hard' });
+            expect(getTriviaGameManager).toHaveBeenCalled();
+            expect(mockTriviaApplyExternalConfig).toHaveBeenCalledWith('testchannel', { difficulty: 'hard' });
+        });
+
         test('should not start if already monitoring', async () => {
             lifecycleManager.isMonitoring = true;
             await lifecycleManager.startMonitoring();
@@ -100,6 +136,10 @@ describe('LifecycleManager', () => {
             listenForChannelChanges.mockReturnValue(mockUnsubChannel);
             onPersonaChanges.mockReturnValue(mockUnsubPersona);
             onChannelLanguageChanges.mockReturnValue(mockUnsubLanguage);
+            const mockUnsubGameConfigs = [jest.fn(), jest.fn(), jest.fn()];
+            listenForTriviaConfigChanges.mockReturnValue(mockUnsubGameConfigs[0]);
+            listenForGeoConfigChanges.mockReturnValue(mockUnsubGameConfigs[1]);
+            listenForRiddleConfigChanges.mockReturnValue(mockUnsubGameConfigs[2]);
 
             await lifecycleManager.startMonitoring();
             expect(lifecycleManager.isMonitoring).toBe(true);
@@ -110,6 +150,10 @@ describe('LifecycleManager', () => {
             expect(mockUnsubChannel).toHaveBeenCalled();
             expect(mockUnsubPersona).toHaveBeenCalled();
             expect(mockUnsubLanguage).toHaveBeenCalled();
+            for (const unsubscribe of mockUnsubGameConfigs) {
+                expect(unsubscribe).toHaveBeenCalled();
+            }
+            expect(lifecycleManager.gameConfigListeners).toEqual([]);
             expect(stopStreamInfoPolling).toHaveBeenCalled();
             expect(stopAdSchedulePoller).toHaveBeenCalled();
             expect(stopTimerManager).toHaveBeenCalled();
