@@ -623,7 +623,7 @@ async function sendAdNotification(channelName, type, seconds, prefetchedText, oc
         }
         if (!text) return;
 
-        await enqueueAnnouncement(`#${channelName}`, text, 'purple');
+        await enqueueMessage(`#${channelName}`, text);
         const state = getState(channelName);
         recordAutoText(state, text);
     } catch (error) {
