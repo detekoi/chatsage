@@ -5,6 +5,7 @@ jest.mock('../../../../../src/lib/ircSender.js');
 jest.mock('../../../../../src/components/context/contextManager.js');
 jest.mock('../../../../../src/components/twitch/helixClient.js', () => ({
     getUsersByLogin: jest.fn(),
+    getUsersById: jest.fn(),
     getChannelInformation: jest.fn(),
     getLiveStreams: jest.fn(),
 }));
@@ -13,6 +14,7 @@ jest.mock('../../../../../src/components/twitch/chatClient.js', () => ({
 }));
 jest.mock('../../../../../src/components/context/commandStateManager.js', () => ({
     getCommandOptions: jest.fn(),
+    isCommandDisabled: jest.fn(),
 }));
 jest.mock('../../../../../src/components/llm/llmClient.js', () => ({
     generateLiteContent: jest.fn(),
@@ -34,12 +36,12 @@ jest.mock('../../../../../src/lib/pronounService.js', () => {
     };
 });
 
-import soHandler, { buildShoutoutPrompt } from '../../../../../src/components/commands/handlers/so.js';
+import soHandler, { buildShoutoutPrompt, shoutOutRaider } from '../../../../../src/components/commands/handlers/so.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
-import { getUsersByLogin, getChannelInformation, getLiveStreams } from '../../../../../src/components/twitch/helixClient.js';
+import { getUsersByLogin, getUsersById, getChannelInformation, getLiveStreams } from '../../../../../src/components/twitch/helixClient.js';
 import { sendShoutout } from '../../../../../src/components/twitch/chatClient.js';
-import { getCommandOptions } from '../../../../../src/components/context/commandStateManager.js';
+import { getCommandOptions, isCommandDisabled } from '../../../../../src/components/context/commandStateManager.js';
 import { generateLiteContent } from '../../../../../src/components/llm/llmClient.js';
 import { buildBotInitiatedSystemInstruction } from '../../../../../src/components/llm/gemini/prompts.js';
 import { sendBotResponse } from '../../../../../src/components/llm/botResponseHandler.js';
@@ -67,6 +69,8 @@ describe('So Command Handler', () => {
         getLiveStreams.mockResolvedValue([]);
         getChannelInformation.mockResolvedValue([{ broadcaster_id: TARGET.id, game_name: 'Hollow Knight', title: 'Steel Soul attempt 4', tags: ['Cozy', 'English'] }]);
         getCommandOptions.mockReturnValue({});
+        isCommandDisabled.mockReturnValue(false);
+        getUsersById.mockResolvedValue([TARGET]);
         pronounService.getUserPronouns.mockResolvedValue(buildGrammar('sheher'));
         generateLiteContent.mockResolvedValue('Idzuna is braving Steel Soul in Hollow Knight, puns included. Go say hi to her!');
         sendShoutout.mockResolvedValue({ success: true });
@@ -320,6 +324,69 @@ describe('So Command Handler', () => {
                 '#testchannel',
                 'Sorry, there was an error sending the shoutout. Please try again later.'
             );
+        });
+    });
+
+    describe('shoutOutRaider', () => {
+        test('does nothing while raidShoutout is off, which is the default', async () => {
+            expect(await shoutOutRaider('testchannel', TARGET.id, logger)).toBe(false);
+
+            expect(getUsersById).not.toHaveBeenCalled();
+            expect(sendBotResponse).not.toHaveBeenCalled();
+            expect(enqueueMessage).not.toHaveBeenCalled();
+            expect(sendShoutout).not.toHaveBeenCalled();
+        });
+
+        test('shouts out the raider by user ID when raidShoutout is on', async () => {
+            getCommandOptions.mockReturnValue({ raidShoutout: true });
+
+            expect(await shoutOutRaider('testchannel', TARGET.id, logger)).toBe(true);
+
+            expect(getUsersById).toHaveBeenCalledWith([TARGET.id], 'so-raid');
+            expect(getUsersByLogin).not.toHaveBeenCalled();
+            expect(sendBotResponse).toHaveBeenCalledWith(
+                '#testchannel',
+                `Idzuna is braving Steel Soul in Hollow Knight, puns included. Go say hi to her! ${URL}`,
+                { skipTranslation: false }
+            );
+            expect(sendShoutout).toHaveBeenCalledWith('testchannel', TARGET.id);
+        });
+
+        test('follows the other !so options', async () => {
+            getCommandOptions.mockReturnValue({ raidShoutout: true, aiMessage: false, twitchShoutout: false });
+
+            await shoutOutRaider('testchannel', TARGET.id, logger);
+
+            expect(generateLiteContent).not.toHaveBeenCalled();
+            expect(sendShoutout).not.toHaveBeenCalled();
+            expect(enqueueMessage).toHaveBeenCalledWith(
+                '#testchannel',
+                `Go check out Idzuna! They were last playing Hollow Knight: ${URL}`
+            );
+        });
+
+        test('does nothing while !so is disabled in the channel', async () => {
+            getCommandOptions.mockReturnValue({ raidShoutout: true });
+            isCommandDisabled.mockReturnValue(true);
+
+            expect(await shoutOutRaider('testchannel', TARGET.id, logger)).toBe(false);
+
+            expect(isCommandDisabled).toHaveBeenCalledWith('testchannel', 'so');
+            expect(sendBotResponse).not.toHaveBeenCalled();
+            expect(enqueueMessage).not.toHaveBeenCalled();
+        });
+
+        test('says nothing in chat when the raider is not found or Twitch fails', async () => {
+            getCommandOptions.mockReturnValue({ raidShoutout: true });
+            getUsersById.mockResolvedValueOnce([]);
+            expect(await shoutOutRaider('testchannel', TARGET.id, logger)).toBe(false);
+
+            getUsersById.mockRejectedValueOnce(new Error('Helix down'));
+            expect(await shoutOutRaider('testchannel', TARGET.id, logger)).toBe(false);
+
+            expect(logger.error).toHaveBeenCalled();
+            expect(enqueueMessage).not.toHaveBeenCalled();
+            expect(sendBotResponse).not.toHaveBeenCalled();
         });
     });
 
