@@ -163,8 +163,8 @@ async function maybeSendGreeting(channelName) {
     const prompt = `The stream just went live. Write one warm, concise greeting for chat. ≤25 words.`;
     const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName }) || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        // Plain chat message, not an announcement: announcements are sent with the
-        // broadcaster's token, so a greeting would show the streamer greeting themself.
+        // Plain chat message, not an announcement: during a Stream Together session
+        // announcements show in every participant's chat, not only this channel's.
         await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
         recordAutoText(state, text);
         state.greetedOnStart = true;
