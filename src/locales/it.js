@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "Spiacente, non ho trovato informazioni su \"{userQuery}\" al momento.",
             "SorryErrorOccurredWhile": "Spiacente, si è verificato un errore durante la ricerca."
         },
+        "so": {
+            "Usage": "Uso: !so <nomeutente>",
+            "UserNotFound": "Utente \"{targetUsername}\" non trovato.",
+            "OwnChannel": "Non puoi fare uno shoutout al canale in cui ti trovi!",
+            "LiveNow": "Andate a dare un po' d'affetto a {targetDisplayName}! È in live proprio ora giocando a {game}: {url}",
+            "LastPlaying": "Andate a dare un'occhiata a {targetDisplayName}! L'ultima volta giocava a {game}: {url}",
+            "NoGame": "Andate a dare un'occhiata a {targetDisplayName}: {url}",
+            "SorryThereWasError": "Spiacenti, si è verificato un errore durante l'invio dello shoutout. Riprova più tardi."
+        },
         "timer": {
             "UsageTimerAddAddai": "Uso: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <nome> [...]",
             "UnknownSubcommandUseAdd": "Sottocomando sconosciuto \"{subCommand}\". Usa add, addai, edit, interval, lines, enable, disable, remove, show o list.",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "Traduzione interrotta per {user}.",
             "TranslationAlreadyOffFor": "La traduzione era già disattivata per {user}."
         },
-        "so": {
-            "Usage": "Uso: !so <nomeutente>",
-            "UserNotFound": "Utente \"{targetUsername}\" non trovato.",
-            "OwnChannel": "Non puoi fare uno shoutout al canale in cui ti trovi!",
-            "LiveNow": "Andate a dare un po' d'affetto a {targetDisplayName}! È in live proprio ora giocando a {game}: {url}",
-            "LastPlaying": "Andate a dare un'occhiata a {targetDisplayName}! L'ultima volta giocava a {game}: {url}",
-            "NoGame": "Andate a dare un'occhiata a {targetDisplayName}: {url}",
-            "SorryThereWasError": "Spiacenti, si è verificato un errore durante l'invio dello shoutout. Riprova più tardi."
+        "timedgames": {
+            "StatusOff": "I giochi a tempo sono disattivati. Quando attivi, il bot avvia un gioco ogni {minutes} min tra: {games}. Attivali con !timedgames on",
+            "StatusOn": "I giochi a tempo sono attivi: un gioco ogni {minutes} min durante la live, tra: {games}. Prossimo: {next}",
+            "TurnedOn": "I giochi a tempo sono attivi. Il bot avvia un gioco ogni {minutes} min durante la live, tra: {games}.",
+            "TurnedOff": "I giochi a tempo sono disattivati. Ora i giochi partono solo con comandi in chat.",
+            "IntervalInvalid": "Specifica l'intervallo in minuti interi, da {min} a {max}. Esempio: !timedgames interval 30",
+            "IntervalSet": "I giochi a tempo ora partono ogni {minutes} min.",
+            "GamesInvalid": "Indica uno o più tra questi giochi: {options}. Esempio: !timedgames games trivia,riddle",
+            "GamesSet": "I giochi a tempo ora ruotano tra: {games}.",
+            "SaveFailed": "Impossibile salvare le impostazioni dei giochi a tempo. Riprova."
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "Uso: !geo config difficulty <easy|normal|hard> interval <sec> duration <min> region <lista> game <lista> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>"
+        },
+        "timedgames": {
+            "Help": "Uso: !timedgames [on|off] | !timedgames interval <minuti> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ Gioco a tempo! Inizia il trivia. Scrivi la risposta in chat!",
+        "StartingGeo": "⏰ Gioco a tempo! Inizia il Geo-Game. Indovina il luogo in chat!",
+        "StartingRiddle": "⏰ Gioco a tempo! Inizia un indovinello. Scrivi la risposta in chat!"
     }
 };

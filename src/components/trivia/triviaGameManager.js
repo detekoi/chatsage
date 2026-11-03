@@ -1630,6 +1630,17 @@ function _pickPreference(preferences) {
 }
 
 /**
+ * Picks one of the channel's preferred trivia topics, the same way startGame
+ * does for a game started with no topic.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {Promise<string|null>} A topic, or null when the channel has none.
+ */
+async function pickPreferredTopic(channelName) {
+    const gameState = await _getOrCreateGameState(channelName);
+    return _pickPreference(gameState.config.topicPreferences);
+}
+
+/**
  * Replaces a channel's cached config with the one stored in Firestore. The
  * config listener calls this when the dashboard writes the config. A channel
  * with no cached state loads the stored config at its next game.
@@ -1660,6 +1671,7 @@ function getTriviaGameManager() {
         clearLeaderboard,
         initiateReportProcess,
         finalizeReportWithRoundNumber,
+        pickPreferredTopic,
         applyExternalConfig
     };
 }

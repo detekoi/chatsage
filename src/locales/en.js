@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Error: Could not find a suitable new location for round {currentRound}. Ending the game.",
         "NoClueEndingGame": "⚠️ Error: Could not generate a clue for round {currentRound}. Ending the game."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ Timed game! Trivia starts now. Type your answer in chat!",
+        "StartingGeo": "⏰ Timed game! Geo-Game starts now. Guess the location in chat!",
+        "StartingRiddle": "⏰ Timed game! A riddle starts now. Type your guess in chat!"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Sorry, I couldn't find or generate an answer for that right now.",
@@ -331,6 +336,17 @@ export default {
             "TranslationAlreadyOff": "Translation was already off.",
             "StoppedTranslationFor": "Stopped translation for {user}.",
             "TranslationAlreadyOffFor": "Translation was already off for {user}."
+        },
+        "timedgames": {
+            "StatusOff": "Timed games are off. When on, the bot starts a game every {minutes} min from: {games}. Turn them on with !timedgames on",
+            "StatusOn": "Timed games are on: a game every {minutes} min while live, from: {games}. Next up: {next}",
+            "TurnedOn": "Timed games are on. The bot starts a game every {minutes} min while the stream is live, from: {games}.",
+            "TurnedOff": "Timed games are off. Games now start only from chat commands.",
+            "IntervalInvalid": "Give the interval in whole minutes, from {min} to {max}. Example: !timedgames interval 30",
+            "IntervalSet": "Timed games now start every {minutes} min.",
+            "GamesInvalid": "Name one or more of these games: {options}. Example: !timedgames games trivia,riddle",
+            "GamesSet": "Timed games now rotate through: {games}.",
+            "SaveFailed": "Could not save the timed games settings. Please try again."
         }
     },
     "result": {
@@ -486,6 +502,9 @@ export default {
         },
         "geo": {
             "Config": "Usage: !geo config difficulty <easy|normal|hard> interval <secs> duration <mins> region <list> game <list> scoring <bool> points <num> timebonus <bool> difficultymultiplier <bool>"
+        },
+        "timedgames": {
+            "Help": "Usage: !timedgames [on|off] | !timedgames interval <minutes> | !timedgames games trivia,geo,riddle"
         }
     }
 };

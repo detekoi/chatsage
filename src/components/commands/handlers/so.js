@@ -1,7 +1,7 @@
 // src/components/commands/handlers/so.js
-import { getUsersByLogin, getChannelInformation, getLiveStreams } from '../../twitch/helixClient.js';
+import { getUsersByLogin, getUsersById, getChannelInformation, getLiveStreams } from '../../twitch/helixClient.js';
 import { sendShoutout } from '../../twitch/chatClient.js';
-import { getCommandOptions } from '../../context/commandStateManager.js';
+import { getCommandOptions, isCommandDisabled } from '../../context/commandStateManager.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { generateLiteContent } from '../../llm/llmClient.js';
 import { buildBotInitiatedSystemInstruction } from '../../llm/gemini/prompts.js';
@@ -35,9 +35,11 @@ const AI_TIMEOUT_MS = 10000;
  * The chat message goes out even when Twitch refuses the native Shoutout
  * (channel offline, cooldown, missing scope), so a shoutout never silently does nothing.
  *
- * Dashboard options (channelCommands commandOptions.so), both on by default:
- *   aiMessage      - write the line with the AI
- *   twitchShoutout - also send the native Twitch Shoutout
+ * Dashboard options (channelCommands commandOptions.so):
+ *   aiMessage      - write the line with the AI (on by default)
+ *   twitchShoutout - also send the native Twitch Shoutout (on by default)
+ *   raidShoutout   - shout out every streamer who raids the channel (off by default),
+ *                    see shoutOutRaider()
  *
  * Usage: !so <username>
  */
@@ -67,64 +69,7 @@ async function execute(context) {
             await sendLocalized(channel, 'cmd.so.UserNotFound', { targetUsername }, `User "${targetUsername}" not found.`);
             return;
         }
-        const target = users[0];
-        const targetDisplayName = target.display_name || target.login;
-        const url = `https://twitch.tv/${target.login}`;
-
-        const options = getCommandOptions(channelName, 'so') || {};
-        const aiMessage = options.aiMessage !== false;
-        const twitchShoutout = options.twitchShoutout !== false;
-
-        // The native Shoutout runs alongside the message; its outcome is only logged
-        const nativeShoutout = twitchShoutout ? sendShoutout(channelName, target.id) : Promise.resolve(null);
-
-        const [streams, channelInfo] = await Promise.all([
-            getLiveStreams([target.id]),
-            getChannelInformation([target.id]),
-        ]);
-
-        const stream = streams[0] || null;
-        const info = channelInfo[0] || {};
-        const game = (stream && stream.game_name) || info.game_name || '';
-
-        const facts = {
-            displayName: targetDisplayName,
-            isLive: !!stream,
-            game,
-            title: (stream && stream.title) || info.title || '',
-            tags: (stream && stream.tags) || info.tags || [],
-            bio: target.description || '',
-            pronouns: null,
-            language: getContextManager()?.getBotLanguage?.(channelName) || null,
-        };
-        // With no game, title, tags or bio the AI has nothing true to say and starts inventing praise
-        const hasFacts = !!(facts.game || facts.title || facts.tags.length || facts.bio);
-        let aiLine = null;
-        if (aiMessage && hasFacts) {
-            facts.pronouns = await _getPronouns(target.login, logger);
-            aiLine = await _writeAiLine(channelName, facts, logger);
-        }
-
-        if (aiLine) {
-            // The AI already wrote in the bot language, so the line needs no second translation
-            await sendBotResponse(channel, `${aiLine} ${url}`, { skipTranslation: !!facts.language });
-        } else if (stream && game) {
-            await sendLocalized(channel, 'cmd.so.LiveNow', { targetDisplayName, game, url }, `Go show ${targetDisplayName} some love! They're live right now playing ${game}: ${url}`);
-        } else if (game) {
-            await sendLocalized(channel, 'cmd.so.LastPlaying', { targetDisplayName, game, url }, `Go check out ${targetDisplayName}! They were last playing ${game}: ${url}`);
-        } else {
-            await sendLocalized(channel, 'cmd.so.NoGame', { targetDisplayName, url }, `Go check out ${targetDisplayName}: ${url}`);
-        }
-
-        const result = await nativeShoutout;
-        logger.info({
-            channel: channelName,
-            user: user.username,
-            target: target.login,
-            aiMessage: !!aiLine,
-            nativeShoutout: result ? result.success : 'off',
-            status: result?.status,
-        }, '[SoCommand] Shoutout sent');
+        await _shoutOut(channelName, users[0], logger, user.username);
     } catch (error) {
         logger.error({
             err: error,
@@ -133,6 +78,106 @@ async function execute(context) {
         }, '[SoCommand] Error sending shoutout');
         await sendLocalized(channel, 'cmd.so.SorryThereWasError', {}, `Sorry, there was an error sending the shoutout. Please try again later.`);
     }
+}
+
+/**
+ * Shouts out a streamer who raided the channel, when the channel turned on
+ * raidShoutout for !so in the dashboard. Uses the same message and native
+ * Shoutout as !so. Does nothing while !so is disabled in the channel.
+ * A failure is only logged: nobody in chat asked for this shoutout.
+ * @param {string} channelName - The raided channel's login (without #).
+ * @param {string} raiderUserId - The raiding broadcaster's Twitch user ID.
+ * @param {object} logger
+ * @returns {Promise<boolean>} True when a shoutout was sent.
+ */
+export async function shoutOutRaider(channelName, raiderUserId, logger) {
+    if (!channelName || !raiderUserId) return false;
+    const options = getCommandOptions(channelName, 'so') || {};
+    if (options.raidShoutout !== true || isCommandDisabled(channelName, 'so')) return false;
+
+    try {
+        const users = await getUsersById([raiderUserId], 'so-raid');
+        const target = users?.[0];
+        if (!target) {
+            logger.warn({ channel: channelName, raiderUserId }, '[SoCommand] Raider not found; no raid shoutout');
+            return false;
+        }
+        if (target.login === channelName) return false;
+        await _shoutOut(channelName, target, logger, 'raid');
+        return true;
+    } catch (error) {
+        logger.error({ err: error, channel: channelName, raiderUserId }, '[SoCommand] Error sending raid shoutout');
+        return false;
+    }
+}
+
+/**
+ * Posts the shoutout line for a streamer and sends the native Shoutout,
+ * following the channel's !so options.
+ * @param {string} channelName - The channel login (without #).
+ * @param {object} target - The Helix user of the streamer to shout out.
+ * @param {object} logger
+ * @param {string} requestedBy - Who asked for it, for the log: a login, or 'raid'.
+ */
+async function _shoutOut(channelName, target, logger, requestedBy) {
+    const channel = `#${channelName}`;
+    const targetDisplayName = target.display_name || target.login;
+    const url = `https://twitch.tv/${target.login}`;
+
+    const options = getCommandOptions(channelName, 'so') || {};
+    const aiMessage = options.aiMessage !== false;
+    const twitchShoutout = options.twitchShoutout !== false;
+
+    // The native Shoutout runs alongside the message; its outcome is only logged
+    const nativeShoutout = twitchShoutout ? sendShoutout(channelName, target.id) : Promise.resolve(null);
+
+    const [streams, channelInfo] = await Promise.all([
+        getLiveStreams([target.id]),
+        getChannelInformation([target.id]),
+    ]);
+
+    const stream = streams[0] || null;
+    const info = channelInfo[0] || {};
+    const game = (stream && stream.game_name) || info.game_name || '';
+
+    const facts = {
+        displayName: targetDisplayName,
+        isLive: !!stream,
+        game,
+        title: (stream && stream.title) || info.title || '',
+        tags: (stream && stream.tags) || info.tags || [],
+        bio: target.description || '',
+        pronouns: null,
+        language: getContextManager()?.getBotLanguage?.(channelName) || null,
+    };
+    // With no game, title, tags or bio the AI has nothing true to say and starts inventing praise
+    const hasFacts = !!(facts.game || facts.title || facts.tags.length || facts.bio);
+    let aiLine = null;
+    if (aiMessage && hasFacts) {
+        facts.pronouns = await _getPronouns(target.login, logger);
+        aiLine = await _writeAiLine(channelName, facts, logger);
+    }
+
+    if (aiLine) {
+        // The AI already wrote in the bot language, so the line needs no second translation
+        await sendBotResponse(channel, `${aiLine} ${url}`, { skipTranslation: !!facts.language });
+    } else if (stream && game) {
+        await sendLocalized(channel, 'cmd.so.LiveNow', { targetDisplayName, game, url }, `Go show ${targetDisplayName} some love! They're live right now playing ${game}: ${url}`);
+    } else if (game) {
+        await sendLocalized(channel, 'cmd.so.LastPlaying', { targetDisplayName, game, url }, `Go check out ${targetDisplayName}! They were last playing ${game}: ${url}`);
+    } else {
+        await sendLocalized(channel, 'cmd.so.NoGame', { targetDisplayName, url }, `Go check out ${targetDisplayName}: ${url}`);
+    }
+
+    const result = await nativeShoutout;
+    logger.info({
+        channel: channelName,
+        user: requestedBy,
+        target: target.login,
+        aiMessage: !!aiLine,
+        nativeShoutout: result ? result.success : 'off',
+        status: result?.status,
+    }, '[SoCommand] Shoutout sent');
 }
 
 /**

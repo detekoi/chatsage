@@ -3,6 +3,7 @@ import logger from '../lib/logger.js';
 import { startStreamInfoPolling, stopStreamInfoPolling } from '../components/twitch/streamInfoPoller.js';
 import { startAutoChatManager, stopAutoChatManager } from '../components/autoChat/autoChatManager.js';
 import { startTimerManager, stopTimerManager } from '../components/timers/timerManager.js';
+import { startTimedGamesManager, stopTimedGamesManager } from '../components/timedGames/timedGamesManager.js';
 import { startAdSchedulePoller, stopAdSchedulePoller } from '../components/twitch/adSchedulePoller.js';
 import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
@@ -98,6 +99,10 @@ class LifecycleManager {
             // 2b. Start Timer Manager (timed messages)
             logger.info('LifecycleManager: Starting Timer Manager...');
             await startTimerManager();
+
+            // 2c. Start Timed Games Manager (games started on a timer)
+            logger.info('LifecycleManager: Starting Timed Games Manager...');
+            await startTimedGamesManager();
 
             // 3. Start Ad Schedule Poller
             logger.info('LifecycleManager: Starting Ad Schedule Poller...');
@@ -250,6 +255,13 @@ class LifecycleManager {
             stopTimerManager();
         } catch (err) {
             logger.error({ err }, 'LifecycleManager: Error stopping timer manager');
+        }
+
+        // 6b. Stop Timed Games Manager
+        try {
+            stopTimedGamesManager();
+        } catch (err) {
+            logger.error({ err }, 'LifecycleManager: Error stopping timed games manager');
         }
 
         // 7. Stop Auto Chat Manager

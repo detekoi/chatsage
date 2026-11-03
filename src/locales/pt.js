@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "Desculpe, não encontrei informações sobre \"{userQuery}\" no momento.",
             "SorryErrorOccurredWhile": "Desculpe, ocorreu um erro ao pesquisar."
         },
+        "so": {
+            "Usage": "Uso: !so <usuário>",
+            "UserNotFound": "Usuário \"{targetUsername}\" não encontrado.",
+            "OwnChannel": "Você não pode dar shoutout no próprio canal!",
+            "LiveNow": "Vão dar uma força para {targetDisplayName}! Está ao vivo agora jogando {game}: {url}",
+            "LastPlaying": "Vá conferir {targetDisplayName}! Da última vez estava jogando {game}: {url}",
+            "NoGame": "Vá conferir {targetDisplayName}: {url}",
+            "SorryThereWasError": "Desculpe, ocorreu um erro ao enviar o shoutout. Tente novamente mais tarde."
+        },
         "timer": {
             "UsageTimerAddAddai": "Uso: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <nome> [...]",
             "UnknownSubcommandUseAdd": "Subcomando desconhecido \"{subCommand}\". Use add, addai, edit, interval, lines, enable, disable, remove, show ou list.",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "Tradução parada para {user}.",
             "TranslationAlreadyOffFor": "A tradução já estava desativada para {user}."
         },
-        "so": {
-            "Usage": "Uso: !so <usuário>",
-            "UserNotFound": "Usuário \"{targetUsername}\" não encontrado.",
-            "OwnChannel": "Você não pode dar shoutout no próprio canal!",
-            "LiveNow": "Vão dar uma força para {targetDisplayName}! Está ao vivo agora jogando {game}: {url}",
-            "LastPlaying": "Vá conferir {targetDisplayName}! Da última vez estava jogando {game}: {url}",
-            "NoGame": "Vá conferir {targetDisplayName}: {url}",
-            "SorryThereWasError": "Desculpe, ocorreu um erro ao enviar o shoutout. Tente novamente mais tarde."
+        "timedgames": {
+            "StatusOff": "Jogos programados estão desativados. Quando ativos, o bot inicia um jogo a cada {minutes} min entre: {games}. Ative com !timedgames on",
+            "StatusOn": "Jogos programados estão ativos: um jogo a cada {minutes} min durante a live, entre: {games}. Próximo: {next}",
+            "TurnedOn": "Jogos programados ativados. O bot inicia um jogo a cada {minutes} min enquanto a live estiver aberta, entre: {games}.",
+            "TurnedOff": "Jogos programados desativados. Agora os jogos só começam por comandos do chat.",
+            "IntervalInvalid": "Informe o intervalo em minutos inteiros, de {min} a {max}. Exemplo: !timedgames interval 30",
+            "IntervalSet": "Jogos programados agora começam a cada {minutes} min.",
+            "GamesInvalid": "Escolha um ou mais destes jogos: {options}. Exemplo: !timedgames games trivia,riddle",
+            "GamesSet": "Jogos programados agora alternam entre: {games}.",
+            "SaveFailed": "Não foi possível salvar as configurações de jogos programados. Tente novamente."
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "Uso: !geo config difficulty <fácil|normal|difícil> interval <segs> duration <mins> region <lista> game <lista> scoring <bool> points <núm> timebonus <bool> difficultymultiplier <bool>"
+        },
+        "timedgames": {
+            "Help": "Uso: !timedgames [on|off] | !timedgames interval <minutos> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ Jogo programado! O Trivia começa agora. Digite sua resposta no chat!",
+        "StartingGeo": "⏰ Jogo programado! O Geo-Game começa agora. Adivinhe o local no chat!",
+        "StartingRiddle": "⏰ Jogo programado! Um enigma começa agora. Digite seu palpite no chat!"
     }
 };

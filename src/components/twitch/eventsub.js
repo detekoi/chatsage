@@ -22,6 +22,8 @@ import {
     whenOwnershipReady,
 } from '../../lib/channelOwnership.js';
 import { forwardToInbox } from '../../lib/channelInbox.js';
+import { shoutOutRaider } from '../commands/handlers/so.js';
+import { withLlmCaller } from '../llm/llmRequestLog.js';
 
 // --- Initialization Gate ---
 // During cold start, EventSub webhooks can arrive before components are initialized.
@@ -547,6 +549,8 @@ export async function processNotification(notification) {
             const allowed = await isEventAllowed(toBroadcasterId, toLogin);
             if (!allowed) return;
             await notifyRaid(toLogin, fromName, viewers, fromId);
+            // After the welcome, so the raiders read the welcome first
+            await withLlmCaller('so.raid', () => shoutOutRaider(toLogin, fromId, logger));
         } catch (error) {
             logger.error({ err: error }, '[EventSub] Error handling channel.raid');
         }

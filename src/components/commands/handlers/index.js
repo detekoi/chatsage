@@ -39,6 +39,7 @@ import enable from './enable.js';
 import disable from './disable.js';
 import command from './command.js';
 import timer from './timer.js';
+import timedgames from './timedgames.js';
 // import cooldown from './cooldown.js';
 // import setthreshold from './setthreshold.js';
 
@@ -94,6 +95,7 @@ const commandHandlers = {
     command: command,
     timer: timer,
     timers: timer, // Alias
+    timedgames: timedgames, // Chat games on a timer (mods)
     // cooldown: cooldown,
     // setthreshold: setthreshold,
 

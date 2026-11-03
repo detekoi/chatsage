@@ -3,6 +3,7 @@ import { getContextManager } from '../../../src/components/context/contextManage
 import { startStreamInfoPolling, stopStreamInfoPolling } from '../../../src/components/twitch/streamInfoPoller.js';
 import { startAutoChatManager, stopAutoChatManager } from '../../../src/components/autoChat/autoChatManager.js';
 import { startTimerManager, stopTimerManager } from '../../../src/components/timers/timerManager.js';
+import { startTimedGamesManager, stopTimedGamesManager } from '../../../src/components/timedGames/timedGamesManager.js';
 import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
 import { listenForChannelChanges } from '../../../src/components/twitch/channelManager.js';
 import { onPersonaChanges } from '../../../src/components/context/personaStorage.js';
@@ -26,6 +27,10 @@ jest.mock('../../../src/components/autoChat/autoChatManager.js', () => ({
 jest.mock('../../../src/components/timers/timerManager.js', () => ({
     startTimerManager: jest.fn(),
     stopTimerManager: jest.fn(),
+}));
+jest.mock('../../../src/components/timedGames/timedGamesManager.js', () => ({
+    startTimedGamesManager: jest.fn(),
+    stopTimedGamesManager: jest.fn(),
 }));
 jest.mock('../../../src/components/twitch/adSchedulePoller.js', () => ({
     startAdSchedulePoller: jest.fn(),
@@ -103,6 +108,7 @@ describe('LifecycleManager', () => {
             expect(startStreamInfoPolling).toHaveBeenCalled();
             expect(startAutoChatManager).toHaveBeenCalled();
             expect(startTimerManager).toHaveBeenCalled();
+            expect(startTimedGamesManager).toHaveBeenCalled();
             expect(startAdSchedulePoller).toHaveBeenCalled();
             expect(lifecycleManager.isMonitoring).toBe(true);
         });
@@ -157,6 +163,7 @@ describe('LifecycleManager', () => {
             expect(stopStreamInfoPolling).toHaveBeenCalled();
             expect(stopAdSchedulePoller).toHaveBeenCalled();
             expect(stopTimerManager).toHaveBeenCalled();
+            expect(stopTimedGamesManager).toHaveBeenCalled();
             expect(stopAutoChatManager).toHaveBeenCalled();
             expect(lifecycleManager.activeStreams.size).toBe(0);
             expect(lifecycleManager.isMonitoring).toBe(false);

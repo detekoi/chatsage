@@ -12,6 +12,7 @@ import {
     notifyStreamOnline,
     notifyStreamOffline,
 } from '../../../../src/components/autoChat/autoChatManager.js';
+import { shoutOutRaider } from '../../../../src/components/commands/handlers/so.js';
 
 // Mock entire modules
 jest.mock('../../../../src/components/context/contextManager.js');
@@ -21,6 +22,9 @@ jest.mock('../../../../src/lib/ircSender.js');
 jest.mock('../../../../src/services/LifecycleManager.js');
 jest.mock('../../../../src/components/twitch/channelManager.js');
 jest.mock('../../../../src/components/autoChat/autoChatManager.js');
+jest.mock('../../../../src/components/commands/handlers/so.js', () => ({
+    shoutOutRaider: jest.fn(),
+}));
 
 describe('EventSub Phantom Entry Cleanup', () => {
     let mockLifecycle;
@@ -351,6 +355,9 @@ describe('EventSub channel identity and gating', () => {
         });
 
         expect(notifyRaid).toHaveBeenCalledWith(LOGIN, 'Raider', 40, '555');
+        expect(shoutOutRaider).toHaveBeenCalledWith(LOGIN, '555', expect.anything());
+        // The welcome goes out before the shoutout
+        expect(notifyRaid.mock.invocationCallOrder[0]).toBeLessThan(shoutOutRaider.mock.invocationCallOrder[0]);
     });
 
     test('stream.offline for a channel the bot is off for changes nothing and says nothing', async () => {

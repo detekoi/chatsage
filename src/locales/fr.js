@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "Désolé, impossible de trouver des informations sur \"{userQuery}\" pour le moment.",
             "SorryErrorOccurredWhile": "Désolé, une erreur s'est produite pendant la recherche."
         },
+        "so": {
+            "Usage": "Utilisation : !so <pseudo>",
+            "UserNotFound": "Utilisateur \"{targetUsername}\" introuvable.",
+            "OwnChannel": "Tu ne peux pas faire de shoutout pour la chaîne où tu te trouves !",
+            "LiveNow": "Allez donner de la force à {targetDisplayName} ! En live en ce moment sur {game} : {url}",
+            "LastPlaying": "Allez faire un tour chez {targetDisplayName} ! Dernièrement en stream sur {game} : {url}",
+            "NoGame": "Allez faire un tour chez {targetDisplayName} : {url}",
+            "SorryThereWasError": "Désolé, une erreur est survenue lors de l'envoi du shoutout. Réessaie plus tard."
+        },
         "timer": {
             "UsageTimerAddAddai": "Utilisation : !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <nom> [...]",
             "UnknownSubcommandUseAdd": "Sous-commande \"{subCommand}\" inconnue. Utilisez add, addai, edit, interval, lines, enable, disable, remove, show ou list.",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "Traduction arrêtée pour {user}.",
             "TranslationAlreadyOffFor": "La traduction était déjà désactivée pour {user}."
         },
-        "so": {
-            "Usage": "Utilisation : !so <pseudo>",
-            "UserNotFound": "Utilisateur \"{targetUsername}\" introuvable.",
-            "OwnChannel": "Tu ne peux pas faire de shoutout pour la chaîne où tu te trouves !",
-            "LiveNow": "Allez donner de la force à {targetDisplayName} ! En live en ce moment sur {game} : {url}",
-            "LastPlaying": "Allez faire un tour chez {targetDisplayName} ! Dernièrement en stream sur {game} : {url}",
-            "NoGame": "Allez faire un tour chez {targetDisplayName} : {url}",
-            "SorryThereWasError": "Désolé, une erreur est survenue lors de l'envoi du shoutout. Réessaie plus tard."
+        "timedgames": {
+            "StatusOff": "Les mini-jeux programmés sont désactivés. Activés, le bot en lance un toutes les {minutes} min parmi : {games}. Activez-les avec !timedgames on",
+            "StatusOn": "Les mini-jeux programmés sont activés : un jeu toutes les {minutes} min en live, parmi : {games}. Prochain jeu : {next}",
+            "TurnedOn": "Les mini-jeux programmés sont activés. Le bot en lance un toutes les {minutes} min pendant le live, parmi : {games}.",
+            "TurnedOff": "Les mini-jeux programmés sont désactivés. Les jeux ne se lancent plus que via les commandes du chat.",
+            "IntervalInvalid": "Indiquez l'intervalle en minutes entières, de {min} à {max}. Exemple : !timedgames interval 30",
+            "IntervalSet": "Les mini-jeux programmés se lanceront toutes les {minutes} min.",
+            "GamesInvalid": "Choisissez un ou plusieurs de ces jeux : {options}. Exemple : !timedgames games trivia,riddle",
+            "GamesSet": "Les mini-jeux programmés alternent désormais entre : {games}.",
+            "SaveFailed": "Impossible d'enregistrer les paramètres des mini-jeux programmés. Réessayez plus tard."
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "Utilisation : !geo config difficulty <facile|normal|difficile> interval <sec> duration <min> region <liste> game <liste> scoring <bool> points <nb> timebonus <bool> difficultymultiplier <bool>"
+        },
+        "timedgames": {
+            "Help": "Utilisation : !timedgames [on|off] | !timedgames interval <minutes> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ Mini-jeu programmé ! Le Trivia commence maintenant. Tapez votre réponse dans le chat !",
+        "StartingGeo": "⏰ Mini-jeu programmé ! Le Geo-Game commence maintenant. Devinez le lieu dans le chat !",
+        "StartingRiddle": "⏰ Mini-jeu programmé ! Une énigme commence maintenant. Tapez votre réponse dans le chat !"
     }
 };

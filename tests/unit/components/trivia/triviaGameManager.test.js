@@ -292,6 +292,18 @@ describe('TriviaGameManager - stored config', () => {
         expect(generateQuestionSpy.mock.calls[0][0]).toBe('Pokemon');
     });
 
+    test('pickPreferredTopic returns one of the stored topics', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ topicPreferences: ['Pokemon', 'Space'] });
+
+        const topic = await triviaGameManager.pickPreferredTopic(channelName);
+
+        expect(['Pokemon', 'Space']).toContain(topic);
+    });
+
+    test('pickPreferredTopic returns null when no topics are stored', async () => {
+        await expect(triviaGameManager.pickPreferredTopic(channelName)).resolves.toBeNull();
+    });
+
     test('a topic given in chat wins over the preferred topics', async () => {
         loadChannelConfig.mockResolvedValueOnce({ topicPreferences: ['Pokemon'] });
 
