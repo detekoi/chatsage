@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "Sorry, ich konnte gerade keine Infos zu \"{userQuery}\" finden.",
             "SorryErrorOccurredWhile": "Sorry, bei der Suche ist ein Fehler aufgetreten."
         },
+        "so": {
+            "Usage": "Verwendung: !so <Benutzername>",
+            "UserNotFound": "Benutzer \"{targetUsername}\" nicht gefunden.",
+            "OwnChannel": "Du kannst dem Kanal, in dem du gerade bist, kein Shoutout geben!",
+            "LiveNow": "Lasst {targetDisplayName} etwas Liebe da! Gerade live mit {game}: {url}",
+            "LastPlaying": "Schaut mal bei {targetDisplayName} vorbei! Zuletzt lief {game}: {url}",
+            "NoGame": "Schaut mal bei {targetDisplayName} vorbei: {url}",
+            "SorryThereWasError": "Sorry, beim Senden des Shoutouts ist ein Fehler aufgetreten. Bitte versuch es später noch einmal."
+        },
         "timer": {
             "UsageTimerAddAddai": "Verwendung: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <Name> [...]",
             "UnknownSubcommandUseAdd": "Unbekannter Unterbefehl \"{subCommand}\". Nutze add, addai, edit, interval, lines, enable, disable, remove, show oder list.",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "Übersetzung für {user} gestoppt.",
             "TranslationAlreadyOffFor": "Übersetzung für {user} war bereits ausgeschaltet."
         },
-        "so": {
-            "Usage": "Verwendung: !so <Benutzername>",
-            "UserNotFound": "Benutzer \"{targetUsername}\" nicht gefunden.",
-            "OwnChannel": "Du kannst dem Kanal, in dem du gerade bist, kein Shoutout geben!",
-            "LiveNow": "Lasst {targetDisplayName} etwas Liebe da! Gerade live mit {game}: {url}",
-            "LastPlaying": "Schaut mal bei {targetDisplayName} vorbei! Zuletzt lief {game}: {url}",
-            "NoGame": "Schaut mal bei {targetDisplayName} vorbei: {url}",
-            "SorryThereWasError": "Sorry, beim Senden des Shoutouts ist ein Fehler aufgetreten. Bitte versuch es später noch einmal."
+        "timedgames": {
+            "StatusOff": "Zeitgesteuerte Spiele sind aus. Wenn aktiv, startet der Bot alle {minutes} Min. ein Spiel aus: {games}. Aktiviere sie mit !timedgames on",
+            "StatusOn": "Zeitgesteuerte Spiele sind an: ein Spiel alle {minutes} Min. während des Streams aus: {games}. Als Nächstes: {next}",
+            "TurnedOn": "Zeitgesteuerte Spiele sind an. Der Bot startet alle {minutes} Min. ein Spiel, solange der Stream live ist, aus: {games}.",
+            "TurnedOff": "Zeitgesteuerte Spiele sind aus. Spiele starten jetzt nur noch über Chat-Befehle.",
+            "IntervalInvalid": "Gib das Intervall in ganzen Minuten an, von {min} bis {max}. Beispiel: !timedgames interval 30",
+            "IntervalSet": "Zeitgesteuerte Spiele starten jetzt alle {minutes} Min.",
+            "GamesInvalid": "Gib eines oder mehrere dieser Spiele an: {options}. Beispiel: !timedgames games trivia,riddle",
+            "GamesSet": "Zeitgesteuerte Spiele wechseln jetzt ab zwischen: {games}.",
+            "SaveFailed": "Einstellungen für zeitgesteuerte Spiele konnten nicht gespeichert werden. Bitte versuche es erneut."
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "Verwendung: !geo config difficulty <easy|normal|hard> interval <Sek> duration <Min> region <Liste> game <Liste> scoring <Bool> points <Zahl> timebonus <Bool> difficultymultiplier <Bool>"
+        },
+        "timedgames": {
+            "Help": "Verwendung: !timedgames [on|off] | !timedgames interval <Minuten> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ Zeitgesteuertes Spiel! Trivia startet jetzt. Schreib deine Antwort in den Chat!",
+        "StartingGeo": "⏰ Zeitgesteuertes Spiel! Geo-Game startet jetzt. Rate den Ort im Chat!",
+        "StartingRiddle": "⏰ Zeitgesteuertes Spiel! Ein Rätsel startet jetzt. Schreib deine Vermutung in den Chat!"
     }
 };

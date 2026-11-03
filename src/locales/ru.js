@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "К сожалению, сейчас не удалось найти информацию о \"{userQuery}\".",
             "SorryErrorOccurredWhile": "К сожалению, произошла ошибка при поиске."
         },
+        "so": {
+            "Usage": "Использование: !so <пользователь>",
+            "UserNotFound": "Пользователь \"{targetUsername}\" не найден.",
+            "OwnChannel": "Нельзя сделать шаутаут текущему каналу!",
+            "LiveNow": "Поддержите {targetDisplayName}! Прямо сейчас в эфире, играет в {game}: {url}",
+            "LastPlaying": "Загляните к {targetDisplayName}! Последняя игра — {game}: {url}",
+            "NoGame": "Загляните к {targetDisplayName}: {url}",
+            "SorryThereWasError": "Произошла ошибка при отправке шаутаута. Попробуйте позже."
+        },
         "timer": {
             "UsageTimerAddAddai": "Использование: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <название> [...]",
             "UnknownSubcommandUseAdd": "Неизвестная подкоманда \"{subCommand}\". Используйте add, addai, edit, interval, lines, enable, disable, remove, show или list.",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "Перевод для {user} остановлен.",
             "TranslationAlreadyOffFor": "Перевод для {user} уже был выключен."
         },
-        "so": {
-            "Usage": "Использование: !so <пользователь>",
-            "UserNotFound": "Пользователь \"{targetUsername}\" не найден.",
-            "OwnChannel": "Нельзя сделать шаутаут текущему каналу!",
-            "LiveNow": "Поддержите {targetDisplayName}! Прямо сейчас в эфире, играет в {game}: {url}",
-            "LastPlaying": "Загляните к {targetDisplayName}! Последняя игра — {game}: {url}",
-            "NoGame": "Загляните к {targetDisplayName}: {url}",
-            "SorryThereWasError": "Произошла ошибка при отправке шаутаута. Попробуйте позже."
+        "timedgames": {
+            "StatusOff": "Игры по таймеру выключены. При включении бот запускает игру каждые {minutes} мин из: {games}. Включить: !timedgames on",
+            "StatusOn": "Игры по таймеру включены: игра каждые {minutes} мин во время стрима из: {games}. Следующая: {next}",
+            "TurnedOn": "Игры по таймеру включены. Бот запускает игру каждые {minutes} мин во время стрима из: {games}.",
+            "TurnedOff": "Игры по таймеру выключены. Теперь игры запускаются только по командам в чате.",
+            "IntervalInvalid": "Укажите интервал в целых минутах от {min} до {max}. Пример: !timedgames interval 30",
+            "IntervalSet": "Игры по таймеру теперь запускаются каждые {minutes} мин.",
+            "GamesInvalid": "Укажите одну или несколько игр из списка: {options}. Пример: !timedgames games trivia,riddle",
+            "GamesSet": "Игры по таймеру теперь чередуют: {games}.",
+            "SaveFailed": "Не удалось сохранить настройки игр по таймеру. Попробуйте еще раз."
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "Использование: !geo config difficulty <easy|normal|hard> interval <сек> duration <мин> region <список> game <список> scoring <bool> points <число> timebonus <bool> difficultymultiplier <bool>"
+        },
+        "timedgames": {
+            "Help": "Использование: !timedgames [on|off] | !timedgames interval <минуты> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ Игра по таймеру! Викторина начинается. Пишите свой ответ в чат!",
+        "StartingGeo": "⏰ Игра по таймеру! Гео-игра начинается. Угадывайте локацию в чате!",
+        "StartingRiddle": "⏰ Игра по таймеру! Загадка начинается. Пишите свою догадку в чат!"
     }
 };

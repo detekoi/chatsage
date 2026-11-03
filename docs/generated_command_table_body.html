@@ -17,6 +17,12 @@
                 <td>Mod Only</td>
             </tr>
             <tr>
+                <td>!command</td>
+                <td>Manage custom commands (add/edit/remove/show/options)</td>
+                <td><code>!command</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
                 <td>!commands / !help</td>
                 <td>Shows where to find the list of available commands.</td>
                 <td><code>!help or !commands</code></td>
@@ -33,6 +39,24 @@
                 <td>Enables a previously disabled command in this channel</td>
                 <td><code>!enable</code></td>
                 <td>Mod Only</td>
+            </tr>
+            <tr>
+                <td>!followage</td>
+                <td>Check how long you or another user has been following the channel</td>
+                <td><code>!followage</code></td>
+                <td>Everyone</td>
+            </tr>
+            <tr>
+                <td>!forget</td>
+                <td>Deletes channel memories matching a phrase</td>
+                <td><code>!forget</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
+                <td>!forgetme</td>
+                <td>Deletes what the bot remembers about you and opts you out of channel memory</td>
+                <td><code>!forgetme</code></td>
+                <td>Everyone</td>
             </tr>
             <tr>
                 <td>!game</td>
@@ -53,10 +77,28 @@
                 <td>Everyone</td>
             </tr>
             <tr>
+                <td>!memory</td>
+                <td>Shows or changes whether the bot keeps long-term memory for this channel</td>
+                <td><code>!memory</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
                 <td>!ping</td>
                 <td>Checks if the bot is responsive. Responds with Pong!</td>
                 <td><code>!ping</code></td>
                 <td>Everyone</td>
+            </tr>
+            <tr>
+                <td>!quote / !quotes</td>
+                <td>Add, view, or search quotes. Usage: !quote [add|&lt;id&gt;|last|search &lt;term&gt;|delete &lt;id&gt;|edit &lt;id&gt; &lt;text&gt;]</td>
+                <td><code>!quote | !quote 12 | !quote add &lt;text [- author]&gt; | !quote last | !quote search &lt;term&gt; | !quote delete &lt;id&gt; | !quote edit &lt;id&gt; &lt;text [- author]&gt;</code></td>
+                <td>Everyone</td>
+            </tr>
+            <tr>
+                <td>!remember</td>
+                <td>Teaches the bot a piece of channel lore to remember long-term</td>
+                <td><code>!remember</code></td>
+                <td>Mod Only</td>
             </tr>
             <tr>
                 <td>!riddle</td>
@@ -71,14 +113,32 @@
                 <td>Everyone</td>
             </tr>
             <tr>
+                <td>!shoutout / !so</td>
+                <td>Shout out another streamer with an AI line about them and a link, and send Twitch's /shoutout</td>
+                <td><code>!so &lt;username&gt;</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
+                <td>!timedgames</td>
+                <td>Start chat games (trivia, geo, riddle) on a timer while the stream is live. Off by default.</td>
+                <td><code>!timedgames [on|off] | !timedgames interval &lt;minutes&gt; | !timedgames games &lt;trivia,geo,riddle&gt;</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
+                <td>!timer / !timers</td>
+                <td>Manage timed messages (add/addai/edit/interval/lines/enable/disable/remove/show/list)</td>
+                <td><code>!timer</code></td>
+                <td>Mod Only</td>
+            </tr>
+            <tr>
                 <td>!translate</td>
                 <td>Manage automatic message translation for users.</td>
-                <td><code>!translate &lt;language&gt; | !translate stop | !translate &lt;language&gt; &lt;user&gt; | !translate stop &lt;user&gt; | !translate stop all (Mods/Broadcaster)</code></td>
+                <td><code>!translate &lt;language&gt; [user] | !translate &lt;user&gt; &lt;language&gt; | !translate stop [user|all]</code></td>
                 <td>Everyone</td>
             </tr>
             <tr>
                 <td>!trivia</td>
                 <td>Starts or manages a Trivia game (!trivia help for details).</td>
-                <td><code>!trivia [&lt;rounds&gt;] | [topic] [rounds] | game [rounds] | stop | config &lt;options...&gt; | resetconfig | leaderboard | clearleaderboard | help</code></td>
+                <td><code>!trivia [&lt;rounds&gt;] | [topic] [rounds] | [rounds] [topic] | game [rounds] | stop | config &lt;options...&gt; | resetconfig | leaderboard | clearleaderboard | help</code></td>
                 <td>Everyone</td>
             </tr>

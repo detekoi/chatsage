@@ -260,6 +260,15 @@ export default {
             "SorryICouldnT2": "現在「{userQuery}」に関する情報が見つかりませんでした。",
             "SorryErrorOccurredWhile": "検索中にエラーが発生しました。"
         },
+        "so": {
+            "Usage": "使い方: !so <ユーザー名>",
+            "UserNotFound": "ユーザー \"{targetUsername}\" が見つかりません。",
+            "OwnChannel": "現在いるチャンネルにはシャウトアウトできません！",
+            "LiveNow": "{targetDisplayName} の配信も見に行ってみよう！現在 {game} を配信中: {url}",
+            "LastPlaying": "{targetDisplayName} をチェックしてみてね！直近では {game} をプレイしていました: {url}",
+            "NoGame": "{targetDisplayName} をチェックしてみてね: {url}",
+            "SorryThereWasError": "シャウトアウトの送信中にエラーが発生しました。後でもう一度お試しください。"
+        },
         "timer": {
             "UsageTimerAddAddai": "使い方: !timer add/addai/edit/interval/lines/enable/disable/remove/show/list <タイマー名> [...]",
             "UnknownSubcommandUseAdd": "不明なサブコマンド \"{subCommand}\" です。add, addai, edit, interval, lines, enable, disable, remove, show, list のいずれかを使用してください。",
@@ -323,14 +332,16 @@ export default {
             "StoppedTranslationFor": "{user} の翻訳を停止しました。",
             "TranslationAlreadyOffFor": "{user} の翻訳はすでにオフになっています。"
         },
-        "so": {
-            "Usage": "使い方: !so <ユーザー名>",
-            "UserNotFound": "ユーザー \"{targetUsername}\" が見つかりません。",
-            "OwnChannel": "現在いるチャンネルにはシャウトアウトできません！",
-            "LiveNow": "{targetDisplayName} の配信も見に行ってみよう！現在 {game} を配信中: {url}",
-            "LastPlaying": "{targetDisplayName} をチェックしてみてね！直近では {game} をプレイしていました: {url}",
-            "NoGame": "{targetDisplayName} をチェックしてみてね: {url}",
-            "SorryThereWasError": "シャウトアウトの送信中にエラーが発生しました。後でもう一度お試しください。"
+        "timedgames": {
+            "StatusOff": "定期ゲームはオフです。オンにすると、ボットが{minutes}分ごとに次のゲームから開始します: {games}。!timedgames on でオンにできます",
+            "StatusOn": "定期ゲームはオンです：配信中{minutes}分ごとに次のゲームから開始: {games}。次回: {next}",
+            "TurnedOn": "定期ゲームをオンにしました。配信中、ボットが{minutes}分ごとに次のゲームを開始します: {games}。",
+            "TurnedOff": "定期ゲームをオフにしました。今後はチャットコマンドからのみゲームが開始されます。",
+            "IntervalInvalid": "間隔を{min}〜{max}分の整数で指定してください。例: !timedgames interval 30",
+            "IntervalSet": "定期ゲームが{minutes}分ごとに開始されるようになりました。",
+            "GamesInvalid": "次のゲームから1つ以上指定してください: {options}。例: !timedgames games trivia,riddle",
+            "GamesSet": "定期ゲームの対象を設定しました: {games}。",
+            "SaveFailed": "定期ゲームの設定を保存できませんでした。もう一度お試しください。"
         }
     },
     "result": {
@@ -486,6 +497,14 @@ export default {
         },
         "geo": {
             "Config": "使い方: !geo config difficulty <easy|normal|hard> interval <秒> duration <分> region <リスト> game <リスト> scoring <真偽値> points <数値> timebonus <真偽値> difficultymultiplier <真偽値>"
+        },
+        "timedgames": {
+            "Help": "使い方: !timedgames [on|off] | !timedgames interval <分> | !timedgames games trivia,geo,riddle"
         }
+    },
+    "timedGames": {
+        "StartingTrivia": "⏰ 定期ゲーム！トリビアが始まるよ。答えをチャットに入力してね！",
+        "StartingGeo": "⏰ 定期ゲーム！ジオゲームが始まるよ。場所を予想してチャットに入力してね！",
+        "StartingRiddle": "⏰ 定期ゲーム！なぞなぞが始まるよ。答えをチャットに入力してね！"
     }
 };
