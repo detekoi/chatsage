@@ -116,19 +116,35 @@ async function startGame(channelName, game) {
     const channel = `#${channelName}`;
     const intro = INTRO_MESSAGES[game];
 
+    // Pick a preferred topic or title first. A game started with one posts its
+    // own start announcement, so the timed intro is only for games without.
+    let start;
+    let announcesItself = false;
     if (game === 'geo') {
         const geo = getGeoGameManager();
         const title = await geo.pickPreferredGameTitle(channelName);
-        // A titled geo game posts its own start announcement.
-        if (!title) await sendLocalized(channel, intro.key, {}, intro.text);
-        return title
-            ? geo.startGame(channelName, 'game', title, initiator, 1)
-            : geo.startGame(channelName, 'real', null, initiator, 1);
+        announcesItself = !!title;
+        start = title
+            ? () => geo.startGame(channelName, 'game', title, initiator, 1)
+            : () => geo.startGame(channelName, 'real', null, initiator, 1);
+    } else if (game === 'trivia') {
+        const trivia = getTriviaGameManager();
+        const topic = await trivia.pickPreferredTopic(channelName);
+        announcesItself = !!topic;
+        start = () => trivia.startGame(channelName, topic, initiator, 1);
+    } else {
+        start = () => getRiddleGameManager().startGame(channelName, null, initiator, 1);
     }
 
-    await sendLocalized(channel, intro.key, {}, intro.text);
-    if (game === 'trivia') return getTriviaGameManager().startGame(channelName, null, initiator, 1);
-    return getRiddleGameManager().startGame(channelName, null, initiator, 1);
+    // Each game manager only refuses to start over its own game, so check all
+    // three again after the claim and the preference lookup: a viewer may have
+    // started a different game in the meantime.
+    if (isAnyGameActive(channelName)) {
+        return { success: false, error: 'Another game started first' };
+    }
+
+    if (!announcesItself) await sendLocalized(channel, intro.key, {}, intro.text);
+    return start();
 }
 
 async function runForChannel(channelName, cfg, nowMs) {
@@ -168,6 +184,7 @@ async function runForChannel(channelName, cfg, nowMs) {
     }
 
     // The stream or the setting may have changed while the claim was in flight.
+    // startGame() checks again for a game that started in the meantime.
     if (!isStreamLive(channelName) || configCache.get(channelName)?.enabled !== true) return;
 
     try {

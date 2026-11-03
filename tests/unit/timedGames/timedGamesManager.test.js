@@ -16,7 +16,7 @@ import { claimTimedGameRun, recordTimedGameRun } from '../../../src/components/t
 import { activeGames as triviaGames } from '../../../src/components/trivia/triviaGameManager.js';
 import { activeGames as riddleGames } from '../../../src/components/riddle/riddleGameManager.js';
 
-const mockTrivia = { startGame: jest.fn() };
+const mockTrivia = { startGame: jest.fn(), pickPreferredTopic: jest.fn() };
 const mockGeo = { startGame: jest.fn(), pickPreferredGameTitle: jest.fn() };
 const mockRiddle = { startGame: jest.fn() };
 
@@ -83,6 +83,7 @@ describe('timedGamesManager', () => {
         isCommandDisabled.mockReturnValue(false);
         claimTimedGameRun.mockImplementation(async (_ch, _ms, game) => ({ claimed: true, lastRunAtMs: Date.now(), lastGame: game }));
         mockTrivia.startGame.mockResolvedValue({ success: true });
+        mockTrivia.pickPreferredTopic.mockResolvedValue(null);
         mockGeo.startGame.mockResolvedValue({ success: true });
         mockGeo.pickPreferredGameTitle.mockResolvedValue(null);
         mockRiddle.startGame.mockResolvedValue({ success: true });
@@ -151,6 +152,36 @@ describe('timedGamesManager', () => {
         mockGeo.pickPreferredGameTitle.mockResolvedValue('Elden Ring');
         await _tick();
         expect(mockGeo.startGame).toHaveBeenCalledWith(CHANNEL, 'game', 'Elden Ring', 'chatsagebot', 1);
+        expect(sendLocalized).not.toHaveBeenCalled();
+    });
+
+    test('trivia uses a preferred topic and skips the intro line', async () => {
+        setConfig({ games: ['trivia'] });
+        mockTrivia.pickPreferredTopic.mockResolvedValue('Space');
+        await _tick();
+        expect(mockTrivia.startGame).toHaveBeenCalledWith(CHANNEL, 'Space', 'chatsagebot', 1);
+        expect(sendLocalized).not.toHaveBeenCalled();
+    });
+
+    test('does not start when a viewer starts another game during the claim', async () => {
+        setConfig();
+        claimTimedGameRun.mockImplementation(async (_ch, _ms, game) => {
+            riddleGames.set(CHANNEL, { state: 'inProgress' });
+            return { claimed: true, lastRunAtMs: Date.now(), lastGame: game };
+        });
+        await _tick();
+        expect(mockTrivia.startGame).not.toHaveBeenCalled();
+        expect(sendLocalized).not.toHaveBeenCalled();
+    });
+
+    test('does not start when a viewer starts another game during the topic lookup', async () => {
+        setConfig({ games: ['trivia'] });
+        mockTrivia.pickPreferredTopic.mockImplementation(async () => {
+            riddleGames.set(CHANNEL, { state: 'selecting' });
+            return null;
+        });
+        await _tick();
+        expect(mockTrivia.startGame).not.toHaveBeenCalled();
         expect(sendLocalized).not.toHaveBeenCalled();
     });
 
