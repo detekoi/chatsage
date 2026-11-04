@@ -4,7 +4,7 @@ import { enqueueMessage } from '../../lib/ircSender.js';
 import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
 import { translateText } from '../../lib/translationUtils.js';
-import { generateQuestion, verifyAnswer } from './triviaQuestionService.js';
+import { generateQuestion, verifyAnswer, resolveGameTopic } from './triviaQuestionService.js';
 import { isTextTooSimilar as _isAnswerTooSimilar } from '../../lib/stringUtils.js';
 import {
     formatStartMessage, formatQuestionMessage, formatCorrectAnswerMessage,
@@ -1089,8 +1089,10 @@ async function startGame(channelName, topic = null, initiatorUsername = null, nu
 
     // Only send preamble if user specified rounds > 1 or a specific topic
     if (gameState.totalRounds > 1 || topic !== null) {
+        // The 'game' keyword shows as the name of the game the channel streams.
+        const topicLabel = topic?.toLowerCase() === 'game' ? resolveGameTopic(channelName) : topic;
         const startMessage = formatStartMessage(
-            topic || 'General Knowledge',
+            topicLabel || 'General Knowledge',
             gameState.config.questionTimeSeconds,
             gameState.totalRounds,
             gameState.botLanguage || null

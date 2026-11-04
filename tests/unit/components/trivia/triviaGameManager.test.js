@@ -1,7 +1,7 @@
 // tests/unit/components/trivia/triviaGameManager.test.js
 import { getContextManager } from '../../../../src/components/context/contextManager.js';
 import { translateText } from '../../../../src/lib/translationUtils.js';
-import { verifyAnswer } from '../../../../src/components/trivia/triviaQuestionService.js';
+import { verifyAnswer, resolveGameTopic } from '../../../../src/components/trivia/triviaQuestionService.js';
 import logger from '../../../../src/lib/logger.js';
 import { enqueueMessage } from '../../../../src/lib/ircSender.js';
 import { getTriviaGameManager, activeGames } from '../../../../src/components/trivia/triviaGameManager.js';
@@ -290,6 +290,19 @@ describe('TriviaGameManager - stored config', () => {
 
         expect(generateQuestionSpy).toHaveBeenCalled();
         expect(generateQuestionSpy.mock.calls[0][0]).toBe('Pokemon');
+    });
+
+    test('the game keyword in the preferred topics names the streamed game in the start message', async () => {
+        loadChannelConfig.mockResolvedValueOnce({ topicPreferences: ['game'] });
+        resolveGameTopic.mockReturnValue('Hollow Knight');
+
+        await triviaGameManager.startGame(channelName, null, 'tester', 1);
+
+        expect(generateQuestionSpy.mock.calls[0][0]).toBe('game');
+        expect(resolveGameTopic).toHaveBeenCalledWith(channelName);
+        const startMessage = enqueueMessage.mock.calls.map(c => c[1]).find(m => m.includes('Hollow Knight'));
+        expect(startMessage).toBeDefined();
+        expect(startMessage).not.toMatch(/Topic: game\b/);
     });
 
     test('pickPreferredTopic returns one of the stored topics', async () => {
