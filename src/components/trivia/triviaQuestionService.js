@@ -1,6 +1,6 @@
 // src/components/trivia/triviaQuestionService.js
 import logger from '../../lib/logger.js';
-import { getContextManager } from '../context/contextManager.js';
+import { getStreamGame } from '../context/liveStatus.js';
 import { generateStructuredJson } from '../llm/llmClient.js';
 import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
@@ -8,17 +8,15 @@ import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerification
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
 
 // --- Helper: Extract current game from context ---
-function getGameFromContext(channelName) {
+/**
+ * The topic that the 'game' keyword stands for: the game the channel is
+ * streaming, or "video games" when no game is known.
+ * @param {string|null} channelName - Channel name (without #).
+ * @returns {string}
+ */
+export function resolveGameTopic(channelName) {
     if (!channelName) return "video games";
-    try {
-        const contextManager = getContextManager();
-        const llmContext = contextManager.getContextForLLM(channelName, "trivia-system", "");
-        const currentGame = llmContext?.streamGame;
-        return currentGame && currentGame !== "N/A" ? currentGame : "video games";
-    } catch (error) {
-        logger.error({ err: error }, 'Error getting game from context');
-        return "video games";
-    }
+    return getStreamGame(channelName) || "video games";
 }
 
 
@@ -37,7 +35,7 @@ function getGameFromContext(channelName) {
 export async function generateQuestion(topic, difficulty, excludedQuestions = [], channelName = null, excludedAnswers = [], language = null) {
     let specificTopic = topic;
     if (topic && topic.toLowerCase() === 'game' && channelName) {
-        specificTopic = getGameFromContext(channelName);
+        specificTopic = resolveGameTopic(channelName);
         logger.info(`[TriviaService] Topic 'game' resolved to '${specificTopic}' from channel context.`);
     }
 

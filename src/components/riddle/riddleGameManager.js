@@ -3,6 +3,7 @@ import logger from '../../lib/logger.js';
 import { enqueueMessage } from '../../lib/ircSender.js';
 import { defaultPrefetchCache } from '../../lib/prefetchCache.js';
 import { getContextManager } from '../context/contextManager.js';
+import { getStreamGame } from '../context/liveStatus.js';
 import { translateText } from '../../lib/translationUtils.js';
 import { generateRiddle, verifyRiddleAnswer } from './riddleService.js';
 import { isTextTooSimilar as _isAnswerTooSimilar } from '../../lib/stringUtils.js';
@@ -753,8 +754,13 @@ export async function startGame(channelName, topic = null, initiatorUsername = n
 
     // Only send preamble if user specified rounds > 1 or a specific topic
     if (gameState.totalRounds > 1 || topic !== null) {
+        // The 'game' keyword shows as the name of the game the channel streams,
+        // with the same fallback that generateRiddle uses.
+        const topicLabel = topic?.toLowerCase() === 'game'
+            ? (getStreamGame(channelName) || 'general video games')
+            : topic;
         const startMessage = formatRiddleStartMessage(
-            topic, // Let formatter handle if topic is null
+            topicLabel, // Let formatter handle if topic is null
             gameState.config.questionTimeSeconds,
             gameState.totalRounds,
             gameState.botLanguage || null

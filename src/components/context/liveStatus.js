@@ -1,5 +1,5 @@
 // src/components/context/liveStatus.js
-// Shared live-stream check used by auto-chat and timer gating.
+// Shared stream checks used by auto-chat, timers and the chat games.
 
 import { getContextManager } from './contextManager.js';
 
@@ -12,4 +12,19 @@ import { getContextManager } from './contextManager.js';
 export function isStreamLive(channelName) {
     const ctx = getContextManager().getContextForLLM(channelName, 'system', 'live-check');
     return !!(ctx && ctx.streamGame && ctx.streamGame !== 'N/A');
+}
+
+/**
+ * The game a channel is streaming, from the same stream state that
+ * isStreamLive reads.
+ * @param {string} channelName - Channel name (without #).
+ * @returns {string|null} The game name, or null when no game is known.
+ */
+export function getStreamGame(channelName) {
+    try {
+        const ctx = getContextManager().getContextForLLM(channelName, 'system', 'stream-game');
+        return ctx && ctx.streamGame && ctx.streamGame !== 'N/A' ? ctx.streamGame : null;
+    } catch {
+        return null;
+    }
 }
