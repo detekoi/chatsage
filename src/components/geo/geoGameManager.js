@@ -10,7 +10,7 @@ import { formatStartMessage, formatClueMessage, formatCorrectGuessMessage, forma
 import { t, isCatalogued } from '../../lib/i18n.js';
 import { loadChannelConfig, saveChannelConfig, recordGameResult, updatePlayerScore, getRecentLocations, getLeaderboard, clearChannelLeaderboardData, reportProblemLocation, getLatestCompletedSessionInfo as getLatestGeoSession, flagGeoLocationByDocId } from './geoStorage.js';
 import { summarizeText } from '../llm/llmClient.js';
-import { summaryStyleOptions } from '../../lib/deslop.js';
+import { applyDeslop, summaryStyleOptions } from '../../lib/deslop.js';
 import crypto from 'crypto';
 
 // --- Game State & Config Interfaces (Conceptual) ---
@@ -319,7 +319,7 @@ async function _transitionToEnding(gameState, reason = "guessed", timeTakenMs = 
                     const summaryInput = revealText || baseMessageContent;
                     const summary = await summarizeText(summaryInput, SUMMARY_TARGET_LENGTH, summaryStyleOptions(gameState.channelName));
                     if (summary?.trim()) {
-                        roundEndMessage = prefix + summary.trim();
+                        roundEndMessage = prefix + applyDeslop(gameState.channelName, summary.trim());
                         // summarizeText() has no language directive, so the summary may come back
                         // in English — send this through the runtime translator as before.
                         roundEndLocalized = false;

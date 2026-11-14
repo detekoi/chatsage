@@ -13,7 +13,7 @@
 // zero instead: a short rule block that rides on prompts the bot already sends,
 // and a regex pass for the patterns a regex can find.
 
-import { isDeslopEnabled } from '../components/context/responseStyleStorage.js';
+import { isDeslopEnabled, isDeslopEnabledById } from '../components/context/responseStyleStorage.js';
 
 /**
  * Appended to the core system instruction, above the persona fence. Kept short
@@ -67,23 +67,39 @@ export function scrubSlop(text) {
 }
 
 /**
+ * Whose setting applies: the host's in a shared-chat session, as in
+ * buildSharedSystemInstruction(), otherwise the channel's own.
+ * @param {string} channelName
+ * @param {string|null} hostChannelId
+ * @returns {boolean}
+ */
+function isDeslopEnabledInScope(channelName, hostChannelId) {
+    return hostChannelId ? isDeslopEnabledById(hostChannelId) : isDeslopEnabled(channelName);
+}
+
+/**
  * Applies scrubSlop() to LLM-written text if the channel has De-Slop on. Call it
  * on generated text only: quotes, static custom commands and other text that a
  * person typed must reach chat as written.
  *
  * @param {string} channelName - Channel name, with or without '#'.
  * @param {string} text
+ * @param {object} [scope]
+ * @param {string|null} [scope.hostChannelId] - Host broadcaster ID of the shared-chat
+ *   session the text was generated in. The host's setting then decides.
  * @returns {string}
  */
-export function applyDeslop(channelName, text) {
-    return isDeslopEnabled(channelName) ? scrubSlop(text) : text;
+export function applyDeslop(channelName, text, { hostChannelId = null } = {}) {
+    return isDeslopEnabledInScope(channelName, hostChannelId) ? scrubSlop(text) : text;
 }
 
 /**
  * Options for summarizeText() that carry the channel's style into the summary.
  * @param {string} channelName - Channel name, with or without '#'.
+ * @param {object} [scope]
+ * @param {string|null} [scope.hostChannelId] - As for applyDeslop().
  * @returns {{styleHint?: string}}
  */
-export function summaryStyleOptions(channelName) {
-    return isDeslopEnabled(channelName) ? { styleHint: DESLOP_SUMMARY_HINT } : {};
+export function summaryStyleOptions(channelName, { hostChannelId = null } = {}) {
+    return isDeslopEnabledInScope(channelName, hostChannelId) ? { styleHint: DESLOP_SUMMARY_HINT } : {};
 }

@@ -2,10 +2,11 @@
 
 jest.mock('../../../src/components/context/responseStyleStorage.js', () => ({
     isDeslopEnabled: jest.fn(() => false),
+    isDeslopEnabledById: jest.fn(() => false),
 }));
 
 import { scrubSlop, applyDeslop, summaryStyleOptions, DESLOP_SUMMARY_HINT } from '../../../src/lib/deslop.js';
-import { isDeslopEnabled } from '../../../src/components/context/responseStyleStorage.js';
+import { isDeslopEnabled, isDeslopEnabledById } from '../../../src/components/context/responseStyleStorage.js';
 
 describe('scrubSlop', () => {
     test.each([
@@ -57,6 +58,39 @@ describe('applyDeslop', () => {
         isDeslopEnabled.mockReturnValue(true);
         expect(applyDeslop('#somechannel', text)).toBe('Good run, nice one.');
         expect(isDeslopEnabled).toHaveBeenCalledWith('#somechannel');
+    });
+});
+
+describe('shared-chat scope', () => {
+    const text = 'Good run \u2014 nice one.';
+
+    beforeEach(() => {
+        isDeslopEnabled.mockReset();
+        isDeslopEnabledById.mockReset();
+    });
+
+    test('the host setting decides, whatever the receiving channel has', () => {
+        isDeslopEnabled.mockReturnValue(false);
+        isDeslopEnabledById.mockImplementation(id => id === '100');
+
+        expect(applyDeslop('#guest', text, { hostChannelId: '100' })).toBe('Good run, nice one.');
+        expect(summaryStyleOptions('guest', { hostChannelId: '100' })).toEqual({ styleHint: DESLOP_SUMMARY_HINT });
+        expect(isDeslopEnabled).not.toHaveBeenCalled();
+    });
+
+    test('a guest with the switch on does not override a host with it off', () => {
+        isDeslopEnabled.mockReturnValue(true);
+        isDeslopEnabledById.mockReturnValue(false);
+
+        expect(applyDeslop('#guest', text, { hostChannelId: '100' })).toBe(text);
+        expect(summaryStyleOptions('guest', { hostChannelId: '100' })).toEqual({});
+    });
+
+    test('a single-channel scope falls back to the channel setting', () => {
+        isDeslopEnabled.mockReturnValue(true);
+
+        expect(applyDeslop('#solo', text, { channelName: 'solo' })).toBe('Good run, nice one.');
+        expect(isDeslopEnabledById).not.toHaveBeenCalled();
     });
 });
 

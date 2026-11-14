@@ -213,7 +213,7 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
             logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Attempting summarization.`);
             const summary = await summarizeText(description, availableChars, summaryStyleOptions(channelName));
             if (summary?.trim()) {
-                description = summary.trim();
+                description = applyDeslop(channelName, removeMarkdownAsterisks(summary.trim()));
                 logger.debug(`Analysis summarization successful (${description.length} chars)`);
             } else {
                 logger.warn(`Analysis summarization failed, using smart truncation`);
@@ -296,7 +296,7 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
             logger.debug(`[${channelName}] Response too long (${finalText.length}), attempting summarization`);
             const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH, summaryStyleOptions(channelName));
             if (summary?.trim()) {
-                finalText = summary.trim();
+                finalText = applyDeslop(channelName, removeMarkdownAsterisks(summary.trim()));
                 logger.debug(`[${channelName}] Summarization successful (${finalText.length} chars)`);
             } else {
                 logger.warn(`[${channelName}] Summarization failed, using smart truncation`);
@@ -339,7 +339,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
                 logger.info(`Additional game info too long (${responseText.length}). Attempting summarization.`);
                 const summary = await summarizeText(responseText, MAX_IRC_MESSAGE_LENGTH - 20, summaryStyleOptions(channelName));
                 if (summary?.trim()) {
-                    responseText = summary.trim();
+                    responseText = applyDeslop(channelName, removeMarkdownAsterisks(summary.trim()));
                     logger.debug(`Summarization successful (${responseText.length} chars)`);
                 } else {
                     logger.warn(`Summarization failed, using smart truncation`);

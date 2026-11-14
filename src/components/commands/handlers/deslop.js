@@ -2,6 +2,7 @@
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 import { isDeslopEnabled, setDeslopEnabled } from '../../context/responseStyleStorage.js';
 import { resetChatSession } from '../../llm/llmClient.js';
+import { resolveSharedSessionId } from '../../llm/llmUtils.js';
 
 /**
  * Handler for the !deslop command.
@@ -24,7 +25,11 @@ async function execute(context) {
             if (enabled !== isDeslopEnabled(channelName)) {
                 await setDeslopEnabled(channelName, enabled);
                 // The chat session bakes the system instruction in at construction.
+                // The Firestore listener ignores the bot's own write, so the shared
+                // session this channel is in must be reset here too.
                 resetChatSession(channelName);
+                const sharedSessionId = await resolveSharedSessionId(channelName);
+                if (sharedSessionId) resetChatSession(sharedSessionId);
             }
             if (enabled) {
                 await sendLocalized(channel, 'cmd.deslop.TurnedOn', {}, `De-Slop is on. I'll cut the AI-sounding filler from what I write. Turn it off with !deslop off.`, { replyToId });

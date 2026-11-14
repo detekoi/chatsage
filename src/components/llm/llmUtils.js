@@ -374,19 +374,19 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         }
 
         // d. Check length and Summarize if needed
-        let finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(stripMetaThoughts(initialResponseText)));
+        let finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(stripMetaThoughts(initialResponseText)), personaScope);
 
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
             wasSummarized = true;
 
-            const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH, summaryStyleOptions(channel));
+            const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH, summaryStyleOptions(channel, personaScope));
             if (summary?.trim()) {
-                finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(summary));
+                finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(summary), personaScope);
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to smart truncation.`);
-                finalReplyText = smartTruncate(applyDeslop(channel, removeMarkdownAsterisks(initialResponseText)), MAX_IRC_MESSAGE_LENGTH);
+                finalReplyText = smartTruncate(applyDeslop(channel, removeMarkdownAsterisks(initialResponseText), personaScope), MAX_IRC_MESSAGE_LENGTH);
             }
         }
 

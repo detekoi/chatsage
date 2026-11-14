@@ -7,12 +7,16 @@ jest.mock('../../../../../src/components/context/responseStyleStorage.js');
 jest.mock('../../../../../src/components/llm/llmClient.js', () => ({
     resetChatSession: jest.fn(),
 }));
+jest.mock('../../../../../src/components/llm/llmUtils.js', () => ({
+    resolveSharedSessionId: jest.fn(),
+}));
 
 import deslopHandler from '../../../../../src/components/commands/handlers/deslop.js';
 import { enqueueMessage } from '../../../../../src/lib/ircSender.js';
 import { getContextManager } from '../../../../../src/components/context/contextManager.js';
 import { isDeslopEnabled, setDeslopEnabled } from '../../../../../src/components/context/responseStyleStorage.js';
 import { resetChatSession } from '../../../../../src/components/llm/llmClient.js';
+import { resolveSharedSessionId } from '../../../../../src/components/llm/llmUtils.js';
 
 describe('Deslop Command Handler', () => {
     const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -30,6 +34,7 @@ describe('Deslop Command Handler', () => {
         getContextManager.mockReturnValue({ getBotLanguage: () => null });
         isDeslopEnabled.mockReturnValue(false);
         setDeslopEnabled.mockResolvedValue();
+        resolveSharedSessionId.mockResolvedValue(null);
     });
 
     test('is a moderator command with a usage line', () => {
@@ -60,6 +65,20 @@ describe('Deslop Command Handler', () => {
             expect.stringMatching(/^De-Slop is on\./),
             expect.objectContaining({ replyToId: 'msg-1' }),
         );
+    });
+
+    test('also resets the shared-chat session the channel is in', async () => {
+        resolveSharedSessionId.mockResolvedValue('shared-1');
+        await run(['on']);
+
+        expect(resolveSharedSessionId).toHaveBeenCalledWith('testchannel');
+        expect(resetChatSession).toHaveBeenCalledWith('testchannel');
+        expect(resetChatSession).toHaveBeenCalledWith('shared-1');
+    });
+
+    test('resets only the channel session outside shared chat', async () => {
+        await run(['on']);
+        expect(resetChatSession).toHaveBeenCalledTimes(1);
     });
 
     test('turns it off', async () => {
