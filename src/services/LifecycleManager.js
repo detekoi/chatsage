@@ -9,6 +9,7 @@ import { getHelixClient } from '../components/twitch/helixClient.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { listenForChannelChanges } from '../components/twitch/channelManager.js';
 import { onPersonaChanges } from '../components/context/personaStorage.js';
+import { onResponseStyleChanges } from '../components/context/responseStyleStorage.js';
 import { onChannelLanguageChanges } from '../components/context/languageStorage.js';
 import { listenForConfigChanges as listenForTriviaConfigChanges } from '../components/trivia/triviaStorage.js';
 import { listenForConfigChanges as listenForGeoConfigChanges } from '../components/geo/geoStorage.js';
@@ -30,6 +31,7 @@ class LifecycleManager {
         this.streamInfoIntervalId = null;
         this.channelChangeListener = null;
         this.personaChangeListener = null;
+        this.responseStyleChangeListener = null;
         this.languageChangeListener = null;
         this.gameConfigListeners = [];
         this.ownershipListener = null;
@@ -115,16 +117,17 @@ class LifecycleManager {
 
             // 5. Setup Firestore Listener for persona changes
             logger.info('LifecycleManager: Setting up Firestore persona listener...');
-            this.personaChangeListener = onPersonaChanges(({ twitchUserId }) => {
-                // The chat session bakes the system instruction in at construction,
-                // so a changed persona has to invalidate every session built from it.
+            // The chat session bakes the system instruction in at construction,
+            // so a change to anything composed into it has to invalidate every
+            // session built from it.
+            const resetSessionsForBroadcaster = (twitchUserId) => {
                 const channelName = getChannelNameForBroadcasterId(twitchUserId);
                 if (channelName) {
                     resetChatSession(channelName);
                 }
 
-                // A shared session blends several personas, so one change can
-                // invalidate more than one session. Sessions are few; scan them all.
+                // A shared session blends several channels' settings, so one change
+                // can invalidate more than one session. Sessions are few; scan them all.
                 for (const [sessionId, session] of sharedChatManager.getAllSessions()) {
                     const participates = session.participants?.some(
                         p => String(p.broadcaster_user_id) === String(twitchUserId)
@@ -134,7 +137,19 @@ class LifecycleManager {
                     }
                 }
 
+                return channelName;
+            };
+
+            this.personaChangeListener = onPersonaChanges(({ twitchUserId }) => {
+                const channelName = resetSessionsForBroadcaster(twitchUserId);
                 logger.info({ twitchUserId, channelName }, 'LifecycleManager: Persona changed, chat sessions reset');
+            });
+
+            // 5b. Setup Firestore Listener for response style (De-Slop) changes
+            logger.info('LifecycleManager: Setting up Firestore response style listener...');
+            this.responseStyleChangeListener = onResponseStyleChanges(({ twitchUserId, deslop }) => {
+                const channelName = resetSessionsForBroadcaster(twitchUserId);
+                logger.info({ twitchUserId, channelName, deslop }, 'LifecycleManager: Response style changed, chat sessions reset');
             });
 
             // 6. Setup Firestore Listener for bot language changes
@@ -215,6 +230,16 @@ class LifecycleManager {
                 logger.error({ err }, 'LifecycleManager: Error unsubscribing persona listener');
             }
             this.personaChangeListener = null;
+        }
+
+        // 2b. Unsubscribe Firestore response style listener
+        if (typeof this.responseStyleChangeListener === 'function') {
+            try {
+                this.responseStyleChangeListener();
+            } catch (err) {
+                logger.error({ err }, 'LifecycleManager: Error unsubscribing response style listener');
+            }
+            this.responseStyleChangeListener = null;
         }
 
         // 3. Unsubscribe Firestore channel listener

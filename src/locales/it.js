@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Errore: Impossibile trovare una nuova posizione adatta per il round {currentRound}. Fine della partita.",
         "NoClueEndingGame": "⚠️ Errore: Impossibile generare un indizio per il round {currentRound}. Fine della partita."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ Gioco a tempo! Inizia il trivia. Scrivi la risposta in chat!",
+        "StartingGeo": "⏰ Gioco a tempo! Inizia il Geo-Game. Indovina il luogo in chat!",
+        "StartingRiddle": "⏰ Gioco a tempo! Inizia un indovinello. Scrivi la risposta in chat!"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Scusa, non sono riuscito a trovare o generare una risposta al momento.",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "Indica uno o più tra questi giochi: {options}. Esempio: !timedgames games trivia,riddle",
             "GamesSet": "I giochi a tempo ora ruotano tra: {games}.",
             "SaveFailed": "Impossibile salvare le impostazioni dei giochi a tempo. Riprova."
+        },
+        "deslop": {
+            "TurnedOn": "De-Slop è attivo. Toglierò i riempitivi in stile AI da quello che scrivo. Disattivalo con !deslop off.",
+            "TurnedOff": "De-Slop è disattivato. Riattivalo con !deslop on.",
+            "StatusOn": "De-Slop è attivo. I mod possono disattivarlo con !deslop off.",
+            "StatusOff": "De-Slop è disattivato. I mod possono attivarlo con !deslop on.",
+            "SorrySomethingWentWrong": "Scusa, non sono riuscito a cambiare quell'impostazione. Riprova più tardi."
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "Uso: !timedgames [on|off] | !timedgames interval <minuti> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ Gioco a tempo! Inizia il trivia. Scrivi la risposta in chat!",
-        "StartingGeo": "⏰ Gioco a tempo! Inizia il Geo-Game. Indovina il luogo in chat!",
-        "StartingRiddle": "⏰ Gioco a tempo! Inizia un indovinello. Scrivi la risposta in chat!"
     }
 };

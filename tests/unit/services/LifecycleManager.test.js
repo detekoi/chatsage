@@ -7,11 +7,15 @@ import { startTimedGamesManager, stopTimedGamesManager } from '../../../src/comp
 import { startAdSchedulePoller, stopAdSchedulePoller } from '../../../src/components/twitch/adSchedulePoller.js';
 import { listenForChannelChanges } from '../../../src/components/twitch/channelManager.js';
 import { onPersonaChanges } from '../../../src/components/context/personaStorage.js';
+import { onResponseStyleChanges } from '../../../src/components/context/responseStyleStorage.js';
 import { onChannelLanguageChanges } from '../../../src/components/context/languageStorage.js';
 import { listenForConfigChanges as listenForTriviaConfigChanges } from '../../../src/components/trivia/triviaStorage.js';
 import { listenForConfigChanges as listenForGeoConfigChanges } from '../../../src/components/geo/geoStorage.js';
 import { listenForRiddleConfigChanges } from '../../../src/components/riddle/riddleStorage.js';
 import { getTriviaGameManager } from '../../../src/components/trivia/triviaGameManager.js';
+import { resetChatSession } from '../../../src/components/llm/llmClient.js';
+import { getChannelNameForBroadcasterId } from '../../../src/lib/allowList.js';
+import * as sharedChatManager from '../../../src/components/twitch/sharedChatManager.js';
 
 // Mock dependencies
 jest.mock('../../../src/components/twitch/helixClient.js');
@@ -41,6 +45,19 @@ jest.mock('../../../src/components/twitch/channelManager.js', () => ({
 }));
 jest.mock('../../../src/components/context/personaStorage.js', () => ({
     onPersonaChanges: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/components/context/responseStyleStorage.js', () => ({
+    onResponseStyleChanges: jest.fn(() => jest.fn()),
+    isDeslopEnabled: jest.fn(() => false),
+    isDeslopEnabledById: jest.fn(() => false),
+}));
+jest.mock('../../../src/lib/allowList.js', () => ({
+    ...jest.requireActual('../../../src/lib/allowList.js'),
+    getChannelNameForBroadcasterId: jest.fn(() => null),
+}));
+jest.mock('../../../src/components/twitch/sharedChatManager.js', () => ({
+    ...jest.requireActual('../../../src/components/twitch/sharedChatManager.js'),
+    getAllSessions: jest.fn(() => new Map()),
 }));
 jest.mock('../../../src/components/context/languageStorage.js', () => ({
     onChannelLanguageChanges: jest.fn(() => jest.fn()),
@@ -102,6 +119,23 @@ describe('LifecycleManager', () => {
     });
 
     describe('startMonitoring', () => {
+        test('should reset chat sessions when a channel changes its response style', async () => {
+            getChannelNameForBroadcasterId.mockReturnValue('testchannel');
+            sharedChatManager.getAllSessions.mockReturnValue(new Map([
+                ['shared-1', { participants: [{ broadcaster_user_id: '123' }, { broadcaster_user_id: '456' }] }],
+                ['shared-2', { participants: [{ broadcaster_user_id: '789' }] }],
+            ]));
+
+            await lifecycleManager.startMonitoring();
+            const onChange = onResponseStyleChanges.mock.calls[0][0];
+            resetChatSession.mockClear();
+            onChange({ twitchUserId: '123', deslop: true });
+
+            expect(resetChatSession).toHaveBeenCalledWith('testchannel');
+            expect(resetChatSession).toHaveBeenCalledWith('shared-1');
+            expect(resetChatSession).not.toHaveBeenCalledWith('shared-2');
+        });
+
         test('should start all pollers and managers', async () => {
             await lifecycleManager.startMonitoring();
 
@@ -138,9 +172,11 @@ describe('LifecycleManager', () => {
         test('should stop all pollers, managers, and unsubscribe listeners', async () => {
             const mockUnsubChannel = jest.fn();
             const mockUnsubPersona = jest.fn();
+            const mockUnsubResponseStyle = jest.fn();
             const mockUnsubLanguage = jest.fn();
             listenForChannelChanges.mockReturnValue(mockUnsubChannel);
             onPersonaChanges.mockReturnValue(mockUnsubPersona);
+            onResponseStyleChanges.mockReturnValue(mockUnsubResponseStyle);
             onChannelLanguageChanges.mockReturnValue(mockUnsubLanguage);
             const mockUnsubGameConfigs = [jest.fn(), jest.fn(), jest.fn()];
             listenForTriviaConfigChanges.mockReturnValue(mockUnsubGameConfigs[0]);
@@ -155,6 +191,7 @@ describe('LifecycleManager', () => {
 
             expect(mockUnsubChannel).toHaveBeenCalled();
             expect(mockUnsubPersona).toHaveBeenCalled();
+            expect(mockUnsubResponseStyle).toHaveBeenCalled();
             expect(mockUnsubLanguage).toHaveBeenCalled();
             for (const unsubscribe of mockUnsubGameConfigs) {
                 expect(unsubscribe).toHaveBeenCalled();

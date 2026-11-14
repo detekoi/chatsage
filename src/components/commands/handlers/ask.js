@@ -9,6 +9,7 @@ import {
     fetchIanaTimezoneForLocation
 } from '../../llm/llmClient.js';
 import { removeMarkdownAsterisks, getUserFriendlyError, GENERIC_ERROR_KEY, recordBotExchange } from '../../llm/llmUtils.js';
+import { applyDeslop } from '../../../lib/deslop.js';
 import { getCurrentTime } from '../../../lib/timeUtils.js';
 // Import the sender queue
 import { enqueueMessage } from '../../../lib/ircSender.js';
@@ -97,7 +98,7 @@ async function handleAskResponseFormatting(channel, userName, responseText, user
     let finalReplyText = responseText.replace(new RegExp(`^@?${escapeRegExp(userName.toLowerCase())}[,:]?\\s*`, 'i'), '').trim();
 
     // Remove markdown asterisks
-    finalReplyText = removeMarkdownAsterisks(finalReplyText);
+    finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(finalReplyText));
 
     const finalLength = finalReplyText.length;
     if (finalLength !== initialLength) {

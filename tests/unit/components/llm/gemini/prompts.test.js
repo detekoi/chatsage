@@ -5,6 +5,11 @@ jest.mock('../../../../../src/components/context/personaStorage.js', () => ({
     getCachedPersonaById: jest.fn(),
 }));
 
+jest.mock('../../../../../src/components/context/responseStyleStorage.js', () => ({
+    isDeslopEnabled: jest.fn(() => false),
+    isDeslopEnabledById: jest.fn(() => false),
+}));
+
 const {
     BOT_CORE_INSTRUCTION,
     DEFAULT_BOT_PERSONA,
@@ -20,11 +25,16 @@ const {
 
 const { getCachedPersona, getCachedPersonaById } =
     require('../../../../../src/components/context/personaStorage.js');
+const { isDeslopEnabled, isDeslopEnabledById } =
+    require('../../../../../src/components/context/responseStyleStorage.js');
+const { DESLOP_STYLE_BLOCK } = require('../../../../../src/lib/deslop.js');
 
 beforeEach(() => {
     jest.clearAllMocks();
     getCachedPersona.mockReturnValue(null);
     getCachedPersonaById.mockReturnValue(null);
+    isDeslopEnabled.mockReturnValue(false);
+    isDeslopEnabledById.mockReturnValue(false);
 });
 
 describe('CHAT_SAGE_SYSTEM_INSTRUCTION', () => {
@@ -261,6 +271,76 @@ describe('buildSharedSystemInstruction', () => {
 
     it('handles an empty participant list', () => {
         expect(buildSharedSystemInstruction('100', [])).toBe(CHAT_SAGE_SYSTEM_INSTRUCTION);
+    });
+});
+
+describe('De-Slop style rules', () => {
+    const builders = [
+        ['buildSystemInstruction', buildSystemInstruction, BOT_CORE_INSTRUCTION],
+        ['buildGameSystemInstruction', buildGameSystemInstruction, GAME_CORE_INSTRUCTION],
+        ['buildBotInitiatedSystemInstruction', buildBotInitiatedSystemInstruction, BOT_INITIATED_CORE_INSTRUCTION],
+    ];
+
+    it.each(builders)('%s leaves the prompt unchanged when the channel has the switch off', (_name, build) => {
+        const off = build('somechannel');
+        expect(off).not.toContain(DESLOP_STYLE_BLOCK);
+        expect(off).toBe(build(null));
+    });
+
+    it.each(builders)('%s puts the rules after the core and before the persona fence', (_name, build, core) => {
+        isDeslopEnabled.mockImplementation(name => name === 'somechannel');
+        getCachedPersona.mockReturnValue('Talk like a pirate.');
+
+        const result = build('somechannel');
+
+        expect(result.startsWith(`${core}\n\n${DESLOP_STYLE_BLOCK}\n\n--- CHANNEL PERSONA`)).toBe(true);
+        expect(result).toContain('Talk like a pirate.');
+        expect(build('otherchannel')).not.toContain(DESLOP_STYLE_BLOCK);
+    });
+
+    it('adds the same number of characters to every builder', () => {
+        const lengths = builders.map(([, build]) => build('somechannel').length);
+        isDeslopEnabled.mockReturnValue(true);
+        builders.forEach(([, build], i) => {
+            expect(build('somechannel').length - lengths[i]).toBe(DESLOP_STYLE_BLOCK.length + 2);
+        });
+    });
+
+    it('stays short, because it is sent with every call', () => {
+        expect(DESLOP_STYLE_BLOCK.length).toBeLessThan(700);
+    });
+
+    describe('in a shared chat session', () => {
+        const participants = [
+            { broadcaster_user_id: '100', broadcaster_user_login: 'host' },
+            { broadcaster_user_id: '200', broadcaster_user_login: 'guest' },
+        ];
+
+        it('follows the host setting when personas are blended', () => {
+            getCachedPersonaById.mockImplementation(id => (id === '100' ? 'Host voice.' : null));
+            isDeslopEnabledById.mockImplementation(id => id === '100');
+
+            const result = buildSharedSystemInstruction('100', participants);
+
+            expect(isDeslopEnabledById).toHaveBeenCalledWith('100');
+            expect(result.startsWith(`${BOT_CORE_INSTRUCTION}\n\n${DESLOP_STYLE_BLOCK}\n\n--- CHANNEL PERSONAS`)).toBe(true);
+        });
+
+        it('follows the host setting when nobody has a custom persona', () => {
+            isDeslopEnabledById.mockImplementation(id => id === '100');
+
+            const result = buildSharedSystemInstruction('100', participants);
+
+            expect(result.startsWith(`${BOT_CORE_INSTRUCTION}\n\n${DESLOP_STYLE_BLOCK}\n\n--- CHANNEL PERSONA `)).toBe(true);
+            expect(result).toContain(DEFAULT_BOT_PERSONA);
+        });
+
+        it('ignores a guest that has the switch on', () => {
+            getCachedPersonaById.mockImplementation(id => (id === '100' ? 'Host voice.' : null));
+            isDeslopEnabledById.mockImplementation(id => id === '200');
+
+            expect(buildSharedSystemInstruction('100', participants)).not.toContain(DESLOP_STYLE_BLOCK);
+        });
     });
 });
 

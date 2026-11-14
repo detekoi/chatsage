@@ -6,6 +6,7 @@ import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { TriviaQuestionSchema, LocalizedTriviaQuestionSchema, TriviaVerificationSchema } from '../llm/schemaUtils.js';
 import { calculateStringSimilarity } from '../../lib/stringUtils.js';
+import { applyDeslop } from '../../lib/deslop.js';
 
 // --- Helper: Extract current game from context ---
 /**
@@ -127,10 +128,10 @@ Only use web search if the question requires very recent or obscure facts that m
         }
 
         const questionObject = {
-            question: question,
+            question: applyDeslop(channelName, question),
             answer: correct_answer,
             alternateAnswers: alternate_answers || [],
-            explanation: explanation || "No explanation provided.",
+            explanation: applyDeslop(channelName, explanation || "No explanation provided."),
             difficulty: actualDiff || difficulty,
             // Cross-check the model's self-reported flag against provider metadata
             // (grounding metadata / web_search_call items) — models misreport this.

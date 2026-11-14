@@ -4,6 +4,7 @@ import { escapeRegExp } from '../../../lib/regexUtils.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { buildContextPrompt, summarizeText, generateSearchResponse } from '../../llm/llmClient.js';
 import { removeMarkdownAsterisks, recordBotExchange } from '../../llm/llmUtils.js';
+import { applyDeslop, summaryStyleOptions } from '../../../lib/deslop.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
@@ -67,15 +68,15 @@ const searchHandler = {
             // Strip mistaken @mentions of the user if present
             finalReplyText = finalReplyText.replace(new RegExp(`^@?${escapeRegExp(userName.toLowerCase())}[,:]?\\s*`, 'i'), '').trim();
             // Remove markdown asterisks
-            finalReplyText = removeMarkdownAsterisks(finalReplyText);
+            finalReplyText = applyDeslop(channelName, removeMarkdownAsterisks(finalReplyText));
 
             if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Initial search response too long (${finalReplyText.length} chars). Attempting summarization.`);
 
-                const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH);
+                const summary = await summarizeText(finalReplyText, SUMMARY_TARGET_LENGTH, summaryStyleOptions(channelName));
 
                 if (summary && summary.trim().length > 0) {
-                    finalReplyText = summary;
+                    finalReplyText = applyDeslop(channelName, summary);
                     logger.info(`Summarization successful (${finalReplyText.length} chars).`);
                 } else {
                     logger.warn(`Summarization failed for query: "${userQuery}". Falling back to intelligent truncation.`);

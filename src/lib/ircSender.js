@@ -3,6 +3,7 @@ import { sendMessage as helixSendMessage, sendAnnouncement as helixSendAnnouncem
 import { translateText, SAME_LANGUAGE } from './translationUtils.js';
 import { getContextManager } from '../components/context/contextManager.js';
 import { summarizeText } from '../components/llm/llmClient.js';
+import { scrubSlop, summaryStyleOptions } from './deslop.js';
 
 // --- Module State ---
 const messageQueue = [];
@@ -252,10 +253,13 @@ async function _preprocessText(channel, text, skipTranslation, skipLengthProcess
         logger.info(`[IRC Sender] ${label} too long (${finalText.length} chars > ${MAX_IRC_MESSAGE_LENGTH}), attempting LLM summarization.`);
 
         try {
-            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
+            // The summary is LLM-written whatever the source was, so a channel
+            // with De-Slop on gets the style hint and the regex cleanup here.
+            const styleOptions = summaryStyleOptions(channelName);
+            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH, styleOptions);
             if (summary?.trim()) {
                 const beforeLength = finalText.length;
-                finalText = summary.trim();
+                finalText = styleOptions.styleHint ? scrubSlop(summary.trim()) : summary.trim();
                 // Hard clamp to target length to guarantee Twitch-safe length even if model slightly exceeds target
                 if (finalText.length > SUMMARY_TARGET_LENGTH) {
                     logger.info(`[IRC Sender] Summary still too long (${finalText.length} > ${SUMMARY_TARGET_LENGTH}), applying intelligent truncation.`);

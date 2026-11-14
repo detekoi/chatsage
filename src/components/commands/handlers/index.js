@@ -31,6 +31,7 @@ import remember from './remember.js';
 import forget from './forget.js';
 import forgetme from './forgetme.js';
 import memory from './memory.js';
+import deslop from './deslop.js';
 // import summary from './summary.js';
 // import reset from './reset.js';
 
@@ -96,6 +97,7 @@ const commandHandlers = {
     timer: timer,
     timers: timer, // Alias
     timedgames: timedgames, // Chat games on a timer (mods)
+    deslop: deslop, // Plain-writing rules on/off and status (mods)
     // cooldown: cooldown,
     // setthreshold: setthreshold,
 

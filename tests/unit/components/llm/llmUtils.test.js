@@ -281,7 +281,7 @@ describe('llmUtils', () => {
 
             await handleStandardLlmQuery('#testchannel', 'testchannel', 'TestUser', 'testuser', 'Hello bot');
 
-            expect(summarizeText).toHaveBeenCalledWith(longResponse, 400);
+            expect(summarizeText).toHaveBeenCalledWith(longResponse, 400, {});
             expect(sendBotResponse).toHaveBeenCalledWith('#testchannel', 'Short summary', { replyToId: null, skipTranslation: false });
             expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/Summarization successful \(\d+ chars\)\./));
         });

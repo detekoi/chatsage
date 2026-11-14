@@ -3,6 +3,7 @@ import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import logger from '../../lib/logger.js';
 import { GeoClueSchema, GeoRevealSchema } from '../llm/schemaUtils.js';
+import { applyDeslop } from '../../lib/deslop.js';
 
 /**
  * Generates the initial clue for a location using Structured Output.
@@ -26,7 +27,7 @@ Difficulty: ${difficulty}
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
         }));
 
-        return parsed?.clue_text || null;
+        return parsed?.clue_text ? applyDeslop(channelName, parsed.clue_text) : null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating initial clue');
         return null;
@@ -64,7 +65,7 @@ Previous clues: ${previousClues.length ? previousClues.map((c, i) => `(${i + 1})
             tools: (mode === 'game' || (mode === 'real' && clueNumber > 1)) ? [{ googleSearch: {} }] : undefined
         }));
 
-        return parsed?.clue_text || null;
+        return parsed?.clue_text ? applyDeslop(channelName, parsed.clue_text) : null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating follow-up clue');
         return null;
@@ -103,7 +104,7 @@ ${mode === 'game' && gameTitle ? ` Game: "${gameTitle}".` : ''}
             tools: mode === 'game' ? [{ googleSearch: {} }] : undefined
         }));
 
-        return parsed?.reveal_text || null;
+        return parsed?.reveal_text ? applyDeslop(channelName, parsed.reveal_text) : null;
     } catch (error) {
         logger.error({ err: error }, '[GeoClue] Error generating final reveal');
         return null;

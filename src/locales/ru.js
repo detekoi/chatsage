@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Ошибка: не удалось найти подходящую новую локацию для раунда {currentRound}. Завершаем игру.",
         "NoClueEndingGame": "⚠️ Ошибка: не удалось сгенерировать подсказку для раунда {currentRound}. Завершаем игру."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ Игра по таймеру! Викторина начинается. Пишите свой ответ в чат!",
+        "StartingGeo": "⏰ Игра по таймеру! Гео-игра начинается. Угадывайте локацию в чате!",
+        "StartingRiddle": "⏰ Игра по таймеру! Загадка начинается. Пишите свою догадку в чат!"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Извини, не получилось найти или сгенерировать ответ прямо сейчас.",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "Укажите одну или несколько игр из списка: {options}. Пример: !timedgames games trivia,riddle",
             "GamesSet": "Игры по таймеру теперь чередуют: {games}.",
             "SaveFailed": "Не удалось сохранить настройки игр по таймеру. Попробуйте еще раз."
+        },
+        "deslop": {
+            "TurnedOn": "De-Slop включён. Буду убирать AI-воду из своих сообщений. Выключить: !deslop off.",
+            "TurnedOff": "De-Slop выключен. Включить обратно: !deslop on.",
+            "StatusOn": "De-Slop включён. Модераторы могут выключить его командой !deslop off.",
+            "StatusOff": "De-Slop выключен. Модераторы могут включить его командой !deslop on.",
+            "SorrySomethingWentWrong": "Извини, не удалось изменить настройку. Попробуй позже."
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "Использование: !timedgames [on|off] | !timedgames interval <минуты> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ Игра по таймеру! Викторина начинается. Пишите свой ответ в чат!",
-        "StartingGeo": "⏰ Игра по таймеру! Гео-игра начинается. Угадывайте локацию в чате!",
-        "StartingRiddle": "⏰ Игра по таймеру! Загадка начинается. Пишите свою догадку в чат!"
     }
 };

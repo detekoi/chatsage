@@ -5,6 +5,7 @@ import { generateStructuredJson } from '../llm/llmClient.js';
 import { buildGameSystemInstruction } from '../llm/gemini/prompts.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { RiddleSchema, LocalizedRiddleSchema, RiddleVerificationSchema } from '../llm/schemaUtils.js';
+import { applyDeslop } from '../../lib/deslop.js';
 
 // Blacklist meta-concepts and generic acknowledgements that make bad riddle answers
 const META_CONCEPT_BLACKLIST = [
@@ -181,11 +182,11 @@ Return JSON matching the schema.${languageDirective}`;
         }
 
         const riddleObject = {
-            question: args.riddle_question,
+            question: applyDeslop(channelName, args.riddle_question),
             answer: args.riddle_answer,
             keywords: args.keywords,
             difficulty: args.difficulty_generated || difficulty,
-            explanation: args.explanation || "No explanation provided.",
+            explanation: applyDeslop(channelName, args.explanation || "No explanation provided."),
             searchUsed: !!args.search_used || groundingSearchUsed,
             topic: actualTopic,
             requestedTopic: topic,

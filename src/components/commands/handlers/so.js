@@ -6,6 +6,7 @@ import { getContextManager } from '../../context/contextManager.js';
 import { generateLiteContent } from '../../llm/llmClient.js';
 import { buildBotInitiatedSystemInstruction } from '../../llm/gemini/prompts.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
+import { applyDeslop } from '../../../lib/deslop.js';
 import { sendBotResponse } from '../../llm/botResponseHandler.js';
 import { pronounService } from '../../../lib/pronounService.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
@@ -275,7 +276,7 @@ async function _writeAiLine(channelName, facts, logger) {
             return null;
         }
         // The link is added by the code, so drop any URL or bare domain link the model wrote anyway
-        let line = removeMarkdownAsterisks(raw)
+        let line = applyDeslop(channelName, removeMarkdownAsterisks(raw))
             .replace(/["“”]/g, '')
             .replace(/^['‘’]+|['‘’]+$/g, '')
             .replace(LINK_WITH_LEAD_IN_REGEX, '')

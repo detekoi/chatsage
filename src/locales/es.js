@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Error: No se pudo encontrar una nueva ubicación adecuada para la ronda {currentRound}. Terminando el juego.",
         "NoClueEndingGame": "⚠️ Error: No se pudo generar una pista para la ronda {currentRound}. Terminando el juego."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ ¡Juego programado! Trivia empieza ahora. ¡Escribe tu respuesta en el chat!",
+        "StartingGeo": "⏰ ¡Juego programado! Geo-Game empieza ahora. ¡Adivina la ubicación en el chat!",
+        "StartingRiddle": "⏰ ¡Juego programado! Empieza un acertijo. ¡Escribe tu respuesta en el chat!"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Lo siento, no pude encontrar o generar una respuesta ahora mismo.",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "Indica uno o más de estos juegos: {options}. Ejemplo: !timedgames games trivia,riddle",
             "GamesSet": "Los juegos programados ahora rotarán entre: {games}.",
             "SaveFailed": "No se pudo guardar la configuración de los juegos programados. Inténtalo de nuevo."
+        },
+        "deslop": {
+            "TurnedOn": "De-Slop está activado. Quitaré el relleno que suena a AI de lo que escriba. Desactívalo con !deslop off.",
+            "TurnedOff": "De-Slop está desactivado. Vuelve a activarlo con !deslop on.",
+            "StatusOn": "De-Slop está activado. Los mods pueden desactivarlo con !deslop off.",
+            "StatusOff": "De-Slop está desactivado. Los mods pueden activarlo con !deslop on.",
+            "SorrySomethingWentWrong": "Lo siento, no pude cambiar ese ajuste. Inténtalo de nuevo más tarde."
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "Uso: !timedgames [on|off] | !timedgames interval <minutos> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ ¡Juego programado! Trivia empieza ahora. ¡Escribe tu respuesta en el chat!",
-        "StartingGeo": "⏰ ¡Juego programado! Geo-Game empieza ahora. ¡Adivina la ubicación en el chat!",
-        "StartingRiddle": "⏰ ¡Juego programado! Empieza un acertijo. ¡Escribe tu respuesta en el chat!"
     }
 };

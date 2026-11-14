@@ -8,6 +8,7 @@ import { initializeMemoryStorage } from '../components/memory/memoryStorage.js';
 import { loadCatalogs } from '../lib/i18n.js';
 import { initializeAutoChatStorage } from '../components/context/autoChatStorage.js';
 import { initializePersonaStorage, loadAllChannelPersonas, publishBotDefaults } from '../components/context/personaStorage.js';
+import { loadAllResponseStyles } from '../components/context/responseStyleStorage.js';
 import { BOT_CORE_INSTRUCTION, DEFAULT_BOT_PERSONA } from '../components/llm/gemini/prompts.js';
 import { initializeCommandStateManager } from '../components/context/commandStateManager.js';
 import { initializeCustomCommandsStorage } from '../components/customCommands/customCommandsStorage.js';
@@ -111,6 +112,9 @@ export async function initializeStorageComponents() {
     // Publishes the default persona and immutable core for the dashboard to read,
     // so the web UI never keeps its own copy of the text. Non-fatal on failure.
     await publishBotDefaults(DEFAULT_BOT_PERSONA, BOT_CORE_INSTRUCTION);
+
+    logger.info('Initializing Response Style Storage...');
+    await loadAllResponseStyles();
 
     logger.info('Initializing Command State Manager...');
     await initializeCommandStateManager();

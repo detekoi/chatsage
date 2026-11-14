@@ -177,7 +177,7 @@ describe('Search Command Handler', () => {
             const context = createMockContext(['long', 'query']);
             await searchHandler.execute(context);
 
-            expect(summarizeText).toHaveBeenCalledWith(longResponse, 400);
+            expect(summarizeText).toHaveBeenCalledWith(longResponse, 400, {});
             expect(enqueueMessage).toHaveBeenCalledWith(
                 '#testchannel',
                 'summarized version',

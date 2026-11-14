@@ -2,6 +2,7 @@
 import logger from '../../lib/logger.js';
 import { generateLiteContent } from '../llm/llmClient.js';
 import { smartTruncate, removeMarkdownAsterisks } from '../llm/llmUtils.js';
+import { applyDeslop } from '../../lib/deslop.js';
 import { buildSystemInstruction } from '../llm/gemini/prompts.js';
 import { getRecentInferences, logInference } from '../llm/inferenceHistoryStorage.js';
 import { retrieveMemories, formatMemoriesForPrompt } from '../memory/memoryManager.js';
@@ -190,7 +191,7 @@ export async function resolvePrompt(prompt, language = null, streamContext = nul
         }
 
         // Clean up formatting that Twitch doesn't support (markdown links, bold, italic, citations)
-        let cleanText = removeMarkdownAsterisks(responseText);
+        let cleanText = applyDeslop(channel, removeMarkdownAsterisks(responseText));
 
         // Truncate to fit in Twitch chat
         if (cleanText.length > MAX_IRC_MESSAGE_LENGTH) {

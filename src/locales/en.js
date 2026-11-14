@@ -213,6 +213,13 @@ export default {
             "GeoGameGeoRegion": "Geo-Game: !geo [region] [rounds] (start real), !geo game [Title] [rounds] (start game), !geo stop (mods/initiator), !geo config <opts...> (mods), !geo resetconfig (mods), !geo leaderboard, !geo clearleaderboard (mods), !geo report <reason...>, !geo help",
             "UnknownCommandFormatOr": "Unknown command format or extra arguments provided. Use !geo help."
         },
+        "deslop": {
+            "TurnedOn": "De-Slop is on. I'll cut the AI-sounding filler from what I write. Turn it off with !deslop off.",
+            "TurnedOff": "De-Slop is off. Turn it back on with !deslop on.",
+            "StatusOn": "De-Slop is on. Mods can turn it off with !deslop off.",
+            "StatusOff": "De-Slop is off. Mods can turn it on with !deslop on.",
+            "SorrySomethingWentWrong": "Sorry, I couldn't change that setting. Please try again later."
+        },
         "help": {
             "CommandList": "You can find my command list here: {url}"
         },
