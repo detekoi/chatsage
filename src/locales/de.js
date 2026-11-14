@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein passender neuer Ort gefunden werden. Spiel wird beendet.",
         "NoClueEndingGame": "⚠️ Fehler: Für Runde {currentRound} konnte kein Hinweis generiert werden. Spiel wird beendet."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ Zeitgesteuertes Spiel! Trivia startet jetzt. Schreib deine Antwort in den Chat!",
+        "StartingGeo": "⏰ Zeitgesteuertes Spiel! Geo-Game startet jetzt. Rate den Ort im Chat!",
+        "StartingRiddle": "⏰ Zeitgesteuertes Spiel! Ein Rätsel startet jetzt. Schreib deine Vermutung in den Chat!"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Sorry, ich konnte dafür gerade keine Antwort finden oder generieren.",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "Gib eines oder mehrere dieser Spiele an: {options}. Beispiel: !timedgames games trivia,riddle",
             "GamesSet": "Zeitgesteuerte Spiele wechseln jetzt ab zwischen: {games}.",
             "SaveFailed": "Einstellungen für zeitgesteuerte Spiele konnten nicht gespeichert werden. Bitte versuche es erneut."
+        },
+        "deslop": {
+            "TurnedOn": "De-Slop ist an. Ich streiche AI-klingendes Füllzeug aus meinen Texten. Mit !deslop off ausschalten.",
+            "TurnedOff": "De-Slop ist aus. Mit !deslop on wieder einschalten.",
+            "StatusOn": "De-Slop ist an. Mods können es mit !deslop off ausschalten.",
+            "StatusOff": "De-Slop ist aus. Mods können es mit !deslop on einschalten.",
+            "SorrySomethingWentWrong": "Sorry, ich konnte diese Einstellung nicht ändern. Bitte versuch es später nochmal."
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "Verwendung: !timedgames [on|off] | !timedgames interval <Minuten> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ Zeitgesteuertes Spiel! Trivia startet jetzt. Schreib deine Antwort in den Chat!",
-        "StartingGeo": "⏰ Zeitgesteuertes Spiel! Geo-Game startet jetzt. Rate den Ort im Chat!",
-        "StartingRiddle": "⏰ Zeitgesteuertes Spiel! Ein Rätsel startet jetzt. Schreib deine Vermutung in den Chat!"
     }
 };

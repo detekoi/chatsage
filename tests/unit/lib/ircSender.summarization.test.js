@@ -8,9 +8,14 @@ jest.mock('../../../src/components/twitch/chatClient.js', () => ({
 jest.mock('../../../src/components/llm/llmClient.js', () => ({
     summarizeText: jest.fn()
 }));
+jest.mock('../../../src/components/context/responseStyleStorage.js', () => ({
+    isDeslopEnabled: jest.fn(() => false)
+}));
 
 import { enqueueMessage, clearMessageQueue, waitForQueueEmpty } from '../../../src/lib/ircSender.js';
 import * as llmClient from '../../../src/components/llm/llmClient.js';
+import { isDeslopEnabled } from '../../../src/components/context/responseStyleStorage.js';
+import { DESLOP_SUMMARY_HINT } from '../../../src/lib/deslop.js';
 import { sendMessage as mockHelixSendMessage } from '../../../src/components/twitch/chatClient.js';
 
 function buildLongText(len = 1200) {
@@ -24,6 +29,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
     beforeEach(() => {
         jest.useRealTimers(); // ensure real timers for queue delay behavior
         jest.clearAllMocks();
+        isDeslopEnabled.mockReturnValue(false);
         clearMessageQueue(); // Clear any leftover messages from previous tests
     });
 
@@ -43,7 +49,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
         // Verify summarization was called with correct parameters
         expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
-        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400); // SUMMARY_TARGET_LENGTH constant
+        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400, {}); // SUMMARY_TARGET_LENGTH constant, no style hint
 
         // Wait for queue processing to complete
         await waitForQueueEmpty();
@@ -56,6 +62,19 @@ describe('ircSender enqueueMessage summarization behavior', () => {
         expect(summary.length).toBeLessThanOrEqual(500);
     });
 
+    test('passes the style hint and cleans the summary when the channel has De-Slop on', async () => {
+        const longText = buildLongText(1200);
+        isDeslopEnabled.mockReturnValue(true);
+        llmClient.summarizeText.mockResolvedValue('Short summary \u2014 with a dash.');
+
+        await enqueueMessage('#test', longText, { replyToId: null, skipTranslation: true });
+        await waitForQueueEmpty();
+
+        expect(isDeslopEnabled).toHaveBeenCalledWith('test');
+        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400, { styleHint: DESLOP_SUMMARY_HINT });
+        expect(mockHelixSendMessage).toHaveBeenCalledWith('#test', 'Short summary, with a dash.', {});
+    });
+
     test('falls back to truncation when summarization returns null', async () => {
         const longText = buildLongText(1200);
         llmClient.summarizeText.mockResolvedValue(null);
@@ -64,7 +83,7 @@ describe('ircSender enqueueMessage summarization behavior', () => {
 
         // Verify summarization was attempted
         expect(llmClient.summarizeText).toHaveBeenCalledTimes(1);
-        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400);
+        expect(llmClient.summarizeText).toHaveBeenCalledWith(longText, 400, {});
 
         await waitForQueueEmpty();
 

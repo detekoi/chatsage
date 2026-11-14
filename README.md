@@ -27,6 +27,7 @@ WildcatSage is an AI-powered chatbot for Twitch chat. WildcatSage generates cont
 - [Twitch Token Management](#twitch-token-management)
 - [Docker](#docker)
 - [Deploying to Cloud Run](#deploying-to-cloud-run)
+- [Credits](#credits)
 
 ## Features
 
@@ -38,6 +39,7 @@ WildcatSage is an AI-powered chatbot for Twitch chat. WildcatSage generates cont
 - Maintain conversation history and summaries for each channel.
 - Execute custom chat commands with permission checks.
 - Support multilingual channels through configuration settings.
+- If a channel turns on De-Slop (`!deslop on`), remove AI-sounding filler from generated replies.
 - Read settings from environment variables.
 - Write structured JSON logs for production monitoring.
 - Provide a web interface for streamers to manage bot access.
@@ -262,3 +264,7 @@ mapping secrets from Google Secret Manager. Pushes to other branches run the tes
   for what the deployed service receives.
 - On a first deployment into a new project, deploy once, copy the service URL that Cloud Run prints,
   then set `PUBLIC_URL` in the workflow to that value and deploy again.
+
+## Credits
+
+The De-Slop writing rules are adapted from [Humanizer](https://github.com/blader/humanizer) by Siqi Chen, used under the MIT License. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) contains the copyright notice and the license text.

@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ エラー: ラウンド{currentRound}に適した新しい場所が見つかりませんでした。ゲームを終了します。",
         "NoClueEndingGame": "⚠️ エラー: ラウンド{currentRound}のヒントを生成できませんでした。ゲームを終了します。"
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ 定期ゲーム！トリビアが始まるよ。答えをチャットに入力してね！",
+        "StartingGeo": "⏰ 定期ゲーム！ジオゲームが始まるよ。場所を予想してチャットに入力してね！",
+        "StartingRiddle": "⏰ 定期ゲーム！なぞなぞが始まるよ。答えをチャットに入力してね！"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "すみません、今は回答を見つけたり生成したりできませんでした。",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "次のゲームから1つ以上指定してください: {options}。例: !timedgames games trivia,riddle",
             "GamesSet": "定期ゲームの対象を設定しました: {games}。",
             "SaveFailed": "定期ゲームの設定を保存できませんでした。もう一度お試しください。"
+        },
+        "deslop": {
+            "TurnedOn": "De-Slopがオンになったよ。文章からAIっぽい無駄な表現をカットするね。!deslop off でオフにできるよ。",
+            "TurnedOff": "De-Slopがオフになったよ。!deslop on でまたオンにできるよ。",
+            "StatusOn": "De-Slopはオンだよ。モデレーターは !deslop off でオフにできるよ。",
+            "StatusOff": "De-Slopはオフだよ。モデレーターは !deslop on でオンにできるよ。",
+            "SorrySomethingWentWrong": "ごめん、設定を変更できなかったよ。あとでもう一度試してね。"
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "使い方: !timedgames [on|off] | !timedgames interval <分> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ 定期ゲーム！トリビアが始まるよ。答えをチャットに入力してね！",
-        "StartingGeo": "⏰ 定期ゲーム！ジオゲームが始まるよ。場所を予想してチャットに入力してね！",
-        "StartingRiddle": "⏰ 定期ゲーム！なぞなぞが始まるよ。答えをチャットに入力してね！"
     }
 };

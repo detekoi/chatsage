@@ -99,6 +99,11 @@ export default {
         "NoLocationEndingGame": "⚠️ Erreur : Impossible de trouver un nouveau lieu approprié pour la manche {currentRound}. Fin de la partie.",
         "NoClueEndingGame": "⚠️ Erreur : Impossible de générer un indice pour la manche {currentRound}. Fin de la partie."
     },
+    "timedGames": {
+        "StartingTrivia": "⏰ Mini-jeu programmé ! Le Trivia commence maintenant. Tapez votre réponse dans le chat !",
+        "StartingGeo": "⏰ Mini-jeu programmé ! Le Geo-Game commence maintenant. Devinez le lieu dans le chat !",
+        "StartingRiddle": "⏰ Mini-jeu programmé ! Une énigme commence maintenant. Tapez votre réponse dans le chat !"
+    },
     "cmd": {
         "ask": {
             "SorryICouldnT": "Désolé, impossible de trouver ou générer une réponse pour le moment.",
@@ -342,6 +347,13 @@ export default {
             "GamesInvalid": "Choisissez un ou plusieurs de ces jeux : {options}. Exemple : !timedgames games trivia,riddle",
             "GamesSet": "Les mini-jeux programmés alternent désormais entre : {games}.",
             "SaveFailed": "Impossible d'enregistrer les paramètres des mini-jeux programmés. Réessayez plus tard."
+        },
+        "deslop": {
+            "TurnedOn": "De-Slop est activé. Je vire le blabla qui sonne trop AI de mes messages. Désactive-le avec !deslop off.",
+            "TurnedOff": "De-Slop est désactivé. Réactive-le avec !deslop on.",
+            "StatusOn": "De-Slop est activé. Les modos peuvent le désactiver avec !deslop off.",
+            "StatusOff": "De-Slop est désactivé. Les modos peuvent l'activer avec !deslop on.",
+            "SorrySomethingWentWrong": "Désolé, je n'ai pas pu modifier ce paramètre. Réessaie plus tard."
         }
     },
     "result": {
@@ -501,10 +513,5 @@ export default {
         "timedgames": {
             "Help": "Utilisation : !timedgames [on|off] | !timedgames interval <minutes> | !timedgames games trivia,geo,riddle"
         }
-    },
-    "timedGames": {
-        "StartingTrivia": "⏰ Mini-jeu programmé ! Le Trivia commence maintenant. Tapez votre réponse dans le chat !",
-        "StartingGeo": "⏰ Mini-jeu programmé ! Le Geo-Game commence maintenant. Devinez le lieu dans le chat !",
-        "StartingRiddle": "⏰ Mini-jeu programmé ! Une énigme commence maintenant. Tapez votre réponse dans le chat !"
     }
 };

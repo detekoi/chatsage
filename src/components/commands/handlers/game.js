@@ -14,6 +14,7 @@ import { analyzeImage } from '../../llm/geminiImageClient.js';
 import { enqueueMessage } from '../../../lib/ircSender.js';
 // Import markdown removal and smart truncation utilities
 import { removeMarkdownAsterisks, smartTruncate, recordBotExchange } from '../../llm/llmUtils.js';
+import { applyDeslop, summaryStyleOptions } from '../../../lib/deslop.js';
 import { logConversation } from '../../llm/conversationStorage.js';
 import { sendLocalized } from '../../../lib/localizedMessage.js';
 
@@ -205,12 +206,12 @@ Rules: focus on in-game elements only (ignore overlays), fix only clear factual 
             .trim();
 
         // Also apply markdown removal
-        description = removeMarkdownAsterisks(description);
+        description = applyDeslop(channelName, removeMarkdownAsterisks(description));
 
         // Handle length: try summarization first, then smart truncate as fallback
         if (description.length > availableChars) {
             logger.info(`Verified analysis too long (${description.length} > ${availableChars}). Attempting summarization.`);
-            const summary = await summarizeText(description, availableChars);
+            const summary = await summarizeText(description, availableChars, summaryStyleOptions(channelName));
             if (summary?.trim()) {
                 description = summary.trim();
                 logger.debug(`Analysis summarization successful (${description.length} chars)`);
@@ -288,12 +289,12 @@ async function getAdditionalGameInfo(channelName, userName, gameName) {
         }
 
         // Clean up markdown
-        let finalText = removeMarkdownAsterisks(responseText);
+        let finalText = applyDeslop(channelName, removeMarkdownAsterisks(responseText));
 
         // If too long, try LLM summarization first, then smart truncate as fallback
         if (finalText.length > SUMMARY_TARGET_LENGTH) {
             logger.debug(`[${channelName}] Response too long (${finalText.length}), attempting summarization`);
-            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH);
+            const summary = await summarizeText(finalText, SUMMARY_TARGET_LENGTH, summaryStyleOptions(channelName));
             if (summary?.trim()) {
                 finalText = summary.trim();
                 logger.debug(`[${channelName}] Summarization successful (${finalText.length} chars)`);
@@ -336,7 +337,7 @@ async function handleGameInfoResponse(channel, channelName, userName, gameInfo, 
 
             if (responseText.length > MAX_IRC_MESSAGE_LENGTH) {
                 logger.info(`Additional game info too long (${responseText.length}). Attempting summarization.`);
-                const summary = await summarizeText(responseText, MAX_IRC_MESSAGE_LENGTH - 20);
+                const summary = await summarizeText(responseText, MAX_IRC_MESSAGE_LENGTH - 20, summaryStyleOptions(channelName));
                 if (summary?.trim()) {
                     responseText = summary.trim();
                     logger.debug(`Summarization successful (${responseText.length} chars)`);
@@ -435,7 +436,7 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         }
 
         // 4. Format and Send Response
-        let finalReplyText = removeMarkdownAsterisks(searchResultText)
+        let finalReplyText = applyDeslop(channelName, removeMarkdownAsterisks(searchResultText))
             .replace(/^(Thinking Process|Reasoning|Analysis)[::-].*$/i, '')
             .replace(/^Based on the search results[:,]?\s*/i, '')
             .replace(/^According to [^:]+:\s*/i, '')
@@ -447,9 +448,9 @@ async function handleGameHelpRequest(channel, channelName, userName, helpQuery, 
         // Handle length: try summarization first, smart truncate as fallback
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`[${channelName}] Help response too long (${finalReplyText.length} chars). Attempting summarization.`);
-            const summary = await summarizeText(finalReplyText, MAX_IRC_MESSAGE_LENGTH - 20);
+            const summary = await summarizeText(finalReplyText, MAX_IRC_MESSAGE_LENGTH - 20, summaryStyleOptions(channelName));
             if (summary?.trim()) {
-                finalReplyText = removeMarkdownAsterisks(summary.trim());
+                finalReplyText = applyDeslop(channelName, removeMarkdownAsterisks(summary.trim()));
                 logger.debug(`[${channelName}] Summarization successful (${finalReplyText.length} chars)`);
             } else {
                 logger.warn(`[${channelName}] Summarization failed, using smart truncation`);

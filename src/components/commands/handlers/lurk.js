@@ -4,6 +4,7 @@ import { sendBotResponse } from '../../llm/botResponseHandler.js';
 import { buildContextPrompt, generateLiteContent } from '../../llm/llmClient.js';
 import { buildSystemInstruction } from '../../llm/gemini/prompts.js';
 import { removeMarkdownAsterisks } from '../../llm/llmUtils.js';
+import { applyDeslop } from '../../../lib/deslop.js';
 import { getContextManager } from '../../context/contextManager.js';
 import { getEmoteImageParts } from '../../../lib/geminiEmoteDescriber.js';
 import { pronounService } from '../../../lib/pronounService.js';
@@ -70,7 +71,7 @@ const lurkHandler = {
             if (llmResponse && llmResponse.trim()) {
                 llmResponse = llmResponse.replace(/^"|"$/g, '').trim();
                 // Remove markdown asterisks
-                llmResponse = removeMarkdownAsterisks(llmResponse);
+                llmResponse = applyDeslop(channelName, removeMarkdownAsterisks(llmResponse));
                 response = `${llmResponse}`;
             } else {
                 logger.warn({ channel: channelName }, 'LLM did not return content for !lurk; using fallback.');

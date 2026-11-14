@@ -8,6 +8,7 @@ import { sendLocalized } from '../../lib/localizedMessage.js';
 import * as sharedChatManager from '../twitch/sharedChatManager.js';
 import { pronounService } from '../../lib/pronounService.js';
 import { retrieveMemories, formatMemoriesForPrompt } from '../memory/memoryManager.js';
+import { applyDeslop, summaryStyleOptions } from '../../lib/deslop.js';
 
 /** Catalog key of the generic LLM error, exported so callers can substitute a more specific message. */
 export const GENERIC_ERROR_KEY = 'llm.error.Generic';
@@ -373,19 +374,19 @@ export async function handleStandardLlmQuery(channel, cleanChannel, displayName,
         }
 
         // d. Check length and Summarize if needed
-        let finalReplyText = removeMarkdownAsterisks(stripMetaThoughts(initialResponseText));
+        let finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(stripMetaThoughts(initialResponseText)));
 
         if (finalReplyText.length > MAX_IRC_MESSAGE_LENGTH) {
             logger.info(`Initial LLM response too long (${finalReplyText.length} chars). Attempting summarization.`);
             wasSummarized = true;
 
-            const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH);
+            const summary = await summarizeText(stripMetaThoughts(initialResponseText), SUMMARY_TARGET_LENGTH, summaryStyleOptions(channel));
             if (summary?.trim()) {
-                finalReplyText = removeMarkdownAsterisks(summary);
+                finalReplyText = applyDeslop(channel, removeMarkdownAsterisks(summary));
                 logger.info(`Summarization successful (${finalReplyText.length} chars).`);
             } else {
                 logger.warn(`Summarization failed or returned empty for ${triggerType} response. Falling back to smart truncation.`);
-                finalReplyText = smartTruncate(removeMarkdownAsterisks(initialResponseText), MAX_IRC_MESSAGE_LENGTH);
+                finalReplyText = smartTruncate(applyDeslop(channel, removeMarkdownAsterisks(initialResponseText)), MAX_IRC_MESSAGE_LENGTH);
             }
         }
 

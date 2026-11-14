@@ -231,12 +231,15 @@ export async function generateUnifiedResponse(contextPrompt, userQuery, options 
 export async function summarizeText(textToSummarize, targetCharLength = 400, _options = {}) {
     if (!textToSummarize || typeof textToSummarize !== 'string' || !textToSummarize.trim()) return null;
 
-    const prompt = `Summarize the following text in under ${targetCharLength} characters.
+    // styleHint is ours, not a generation option, so it must not reach the client.
+    const { styleHint, ...generationOptions } = _options;
+    const styleLine = styleHint ? `\n${styleHint}` : '';
+    const prompt = `Summarize the following text in under ${targetCharLength} characters.${styleLine}
 Text: ${textToSummarize}`;
 
     try {
         const responseText = await generateLiteContent(prompt, {
-            ..._options,
+            ...generationOptions,
             responseSchema: SummarySchema
         });
 

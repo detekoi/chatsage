@@ -18,6 +18,8 @@
 // prompt sets both, and game output adds an accuracy rule the chat core lacks.
 
 import { getCachedPersona, getCachedPersonaById } from '../../context/personaStorage.js';
+import { isDeslopEnabled, isDeslopEnabledById } from '../../context/responseStyleStorage.js';
+import { DESLOP_STYLE_BLOCK } from '../../../lib/deslop.js';
 
 const CORE_VALUES = `Values: Anti-oppression, LGBTQ+ affirming, anti-racist, anti-ableist, anti-misogynist, inclusive.`;
 
@@ -162,6 +164,18 @@ function resolveChannelPersona(channelName) {
 }
 
 /**
+ * Adds the De-Slop writing rules to a core instruction when the channel has the
+ * switch on. The rules sit above the persona fence, so a persona cannot relax
+ * them, and a channel with the switch off gets the core unchanged.
+ * @param {string} core - One of the core instruction constants.
+ * @param {boolean} deslop - Whether the channel has De-Slop on.
+ * @returns {string}
+ */
+function withStyleRules(core, deslop) {
+    return deslop ? `${core}\n\n${DESLOP_STYLE_BLOCK}` : core;
+}
+
+/**
  * Builds the full system instruction for a single channel.
  *
  * @param {string|null} [channelName] - Channel name (without '#'). When omitted,
@@ -169,7 +183,7 @@ function resolveChannelPersona(channelName) {
  * @returns {string} Core instruction followed by the fenced persona block.
  */
 export function buildSystemInstruction(channelName = null) {
-    return `${BOT_CORE_INSTRUCTION}
+    return `${withStyleRules(BOT_CORE_INSTRUCTION, isDeslopEnabled(channelName))}
 
 ${fencePersona(resolveChannelPersona(channelName))}`;
 }
@@ -186,7 +200,7 @@ ${fencePersona(resolveChannelPersona(channelName))}`;
  * @returns {string} Game core instruction followed by the fenced persona block.
  */
 export function buildGameSystemInstruction(channelName = null) {
-    return `${GAME_CORE_INSTRUCTION}
+    return `${withStyleRules(GAME_CORE_INSTRUCTION, isDeslopEnabled(channelName))}
 
 ${fencePersona(resolveChannelPersona(channelName))}`;
 }
@@ -204,7 +218,7 @@ ${fencePersona(resolveChannelPersona(channelName))}`;
  * @returns {string} Bot-initiated core instruction followed by the fenced persona block.
  */
 export function buildBotInitiatedSystemInstruction(channelName = null) {
-    return `${BOT_INITIATED_CORE_INSTRUCTION}
+    return `${withStyleRules(BOT_INITIATED_CORE_INSTRUCTION, isDeslopEnabled(channelName))}
 
 ${fencePersona(resolveChannelPersona(channelName))}`;
 }
@@ -248,11 +262,16 @@ export function buildSharedSystemInstruction(hostChannelId, participants = []) {
 
     // Nobody in the session customised anything — fall back to the single default
     // rather than emitting an empty blend fence.
+    // The host's De-Slop setting decides for the whole session, as its voice does.
+    const hostDeslop = isDeslopEnabledById(hostChannelId);
+
     if (blocks.length === 0) {
-        return buildSystemInstruction(null);
+        return `${withStyleRules(BOT_CORE_INSTRUCTION, hostDeslop)}
+
+${fencePersona(DEFAULT_BOT_PERSONA)}`;
     }
 
-    return `${BOT_CORE_INSTRUCTION}
+    return `${withStyleRules(BOT_CORE_INSTRUCTION, hostDeslop)}
 
 --- CHANNEL PERSONAS (shared chat session) ---
 ${SHARED_FENCE_PREAMBLE}

@@ -404,7 +404,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "fr": {
     "common.timeString": "af55bd7822fd103b",
@@ -811,7 +816,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "de": {
     "common.timeString": "af55bd7822fd103b",
@@ -1218,7 +1228,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "it": {
     "common.timeString": "af55bd7822fd103b",
@@ -1625,7 +1640,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "pt": {
     "common.timeString": "af55bd7822fd103b",
@@ -2032,7 +2052,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "ja": {
     "common.timeString": "af55bd7822fd103b",
@@ -2439,7 +2464,12 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   },
   "ru": {
     "common.timeString": "af55bd7822fd103b",
@@ -2846,6 +2876,11 @@
     "cmd.timedgames.GamesInvalid": "e23c022d11ffcfa1",
     "cmd.timedgames.GamesSet": "b6b4db88ab0975f9",
     "cmd.timedgames.SaveFailed": "6fee416ac737d587",
-    "usage.timedgames.Help": "c9955bd7faa307d8"
+    "usage.timedgames.Help": "c9955bd7faa307d8",
+    "cmd.deslop.TurnedOn": "7c5f0a2ab46ba6b9",
+    "cmd.deslop.TurnedOff": "c69797556c72c4bd",
+    "cmd.deslop.StatusOn": "2147c2df255acb4f",
+    "cmd.deslop.StatusOff": "3289d96cf0b37d3c",
+    "cmd.deslop.SorrySomethingWentWrong": "c096f7a9bdd26e04"
   }
 }

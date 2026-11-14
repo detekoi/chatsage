@@ -4,6 +4,7 @@ import { getContextManager } from '../context/contextManager.js';
 import { buildContextPrompt, generateSearchResponse, generateStandardResponse } from '../llm/llmClient.js';
 import { getChannelAutoChatConfig } from '../context/autoChatStorage.js';
 import { removeMarkdownAsterisks } from '../llm/llmUtils.js';
+import { applyDeslop } from '../../lib/deslop.js';
 import { withLlmCaller } from '../llm/llmRequestLog.js';
 import { fetchStreamThumbnail } from '../twitch/streamImageCapture.js';
 import { analyzeImage } from '../llm/geminiImageClient.js';
@@ -165,7 +166,7 @@ async function maybeSendGreeting(channelName) {
     if (text) {
         // Plain chat message, not an announcement: during a Stream Together session
         // announcements show in every participant's chat, not only this channel's.
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueMessage(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)));
         recordAutoText(state, text);
         state.greetedOnStart = true;
         state.lastAutoAtMs = now();
@@ -217,7 +218,7 @@ async function maybeHandleGameChange(channelName, prevGame, newGame) {
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
         if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) return;
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueMessage(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
@@ -265,7 +266,7 @@ async function maybeHandleLull(channelName) {
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
         if (now() - getLastMessageAt(channelName) < lullThresholdMin * 60 * 1000) return;
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueMessage(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
@@ -317,7 +318,7 @@ async function maybeHandleTopicShift(channelName) {
     if (text) {
         // Re-check: suppress if a user message arrived during LLM generation
         if (now() - getLastMessageAt(channelName) < quietMin * 60 * 1000) { state.lastSummaryHash = currentHash; return; }
-        await enqueueMessage(`#${channelName}`, removeMarkdownAsterisks(text));
+        await enqueueMessage(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)));
         recordAutoText(state, text);
         state.lastAutoAtMs = now();
     }
@@ -342,7 +343,7 @@ async function maybeSendFarewell(channelName) {
     const prompt = `The stream just ended. Write one warm, concise farewell message for chat. ≤25 words. No emojis.`;
     const text = await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName }) || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'primary');
+        await enqueueAnnouncement(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)), 'primary');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -368,7 +369,7 @@ async function maybeSendFollowCelebration(channelName) {
     const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
         || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
+        await enqueueAnnouncement(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)), 'blue');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -383,7 +384,7 @@ async function maybeSendSubscriptionCelebration(channelName) {
     const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
         || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'blue');
+        await enqueueAnnouncement(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)), 'blue');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -412,7 +413,7 @@ async function maybeSendGiftSubCelebration(channelName, total, gifterName, cumul
     const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
         || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'green');
+        await enqueueAnnouncement(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)), 'green');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -460,7 +461,7 @@ async function maybeSendRaidCelebration(channelName, raiderUserName, viewerCount
     const text = await generateStandardResponse(contextPrompt, prompt, { channelName })
         || await generateSearchResponse(contextPrompt, prompt, { channelName });
     if (text) {
-        await enqueueAnnouncement(`#${channelName}`, removeMarkdownAsterisks(text), 'orange');
+        await enqueueAnnouncement(`#${channelName}`, applyDeslop(channelName, removeMarkdownAsterisks(text)), 'orange');
         const state = getState(channelName);
         recordAutoText(state, text);
     }
@@ -579,7 +580,7 @@ export async function generateAdNotification(channelName, type, seconds) {
         const text = await withLlmCaller('ad-notification', async () =>
             await generateStandardResponse(contextPrompt, prompt, { serviceTier: 'flex', channelName })
             || await generateSearchResponse(contextPrompt, prompt, { channelName }));
-        return text ? removeMarkdownAsterisks(text) : null;
+        return text ? applyDeslop(channelName, removeMarkdownAsterisks(text)) : null;
     } catch (error) {
         logger.error({ err: error, channelName, type }, '[AutoChatManager] Error generating ad notification');
         return null;
